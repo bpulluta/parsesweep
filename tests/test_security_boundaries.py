@@ -269,6 +269,59 @@ def test_elapsed_response_deadline_closes_stream():
     source.close.assert_called_once()
 
 
+MiB = 1024 * 1024
+
+
+def _stream(monkeypatch, reads, *, stream, **options):
+    """Read a fake socket body through ``request_get`` (timeout 10 s)."""
+    from discovery_helpers import patch_socket_stream
+    from psweep.discovery.transport import request_get
+
+    url = "https://example.org/file"
+    patch_socket_stream(monkeypatch, {url: reads})
+    response = request_get(
+        url, headers={}, timeout=10, verify=True,
+        stream=stream, allow_redirects=False, **options,
+    )
+    return sum(len(chunk) for chunk in response.iter_content())
+
+
+def test_file_download_streams_past_the_in_memory_limit(monkeypatch):
+    """A 60 MiB body streams to disk under the file limit but is refused in memory."""
+    from psweep.discovery.transport import ResponseTooLargeError, max_file_bytes
+
+    body = [(0.0, b"x" * MiB)] * 60
+    assert _stream(monkeypatch, body, stream=True, max_bytes=max_file_bytes()) == 60 * MiB
+    monkeypatch.setenv("PSWEEP_MAX_RESPONSE_BYTES", str(100 * MiB))
+    with pytest.raises(ResponseTooLargeError, match=f"{50 * MiB} bytes") as page:
+        _stream(monkeypatch, body, stream=False)
+    assert "PSWEEP_MAX_RESPONSE_BYTES" not in str(page.value)
+    monkeypatch.setenv("PSWEEP_MAX_RESPONSE_BYTES", str(10 * MiB))
+    with pytest.raises(ResponseTooLargeError, match=f"{10 * MiB} bytes.*PSWEEP_MAX_RESPONSE_BYTES"):
+        _stream(monkeypatch, body, stream=True, max_bytes=max_file_bytes())
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "lots"])
+def test_file_limit_override_must_be_a_positive_integer(monkeypatch, value):
+    from psweep.discovery.transport import max_file_bytes
+
+    monkeypatch.setenv("PSWEEP_MAX_RESPONSE_BYTES", value)
+    with pytest.raises(ValueError, match="PSWEEP_MAX_RESPONSE_BYTES"):
+        max_file_bytes()
+
+
+def test_file_download_aborts_only_when_bytes_stop_arriving(monkeypatch):
+    """Files use a stall timeout; in-memory responses keep the total deadline."""
+    import requests
+
+    progressing = [(9.0, b"x")] * 6
+    assert _stream(monkeypatch, progressing, stream=True, max_bytes=MiB) == 6
+    with pytest.raises(requests.Timeout, match="deadline"):
+        _stream(monkeypatch, progressing, stream=False)
+    with pytest.raises(requests.Timeout, match="no data for 10 s"):
+        _stream(monkeypatch, [(1.0, b"x"), (11.0, b"x")], stream=True, max_bytes=MiB)
+
+
 @pytest.mark.parametrize(
     "endpoint",
     [None, "http://approved.example/v1", "https://other.example/v1"],

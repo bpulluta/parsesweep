@@ -216,6 +216,35 @@ def test_engine_run_downloads_supported_candidate_for_non_dry_run(tmp_path: Path
     assert downloaded_path.read_bytes().startswith(b"%PDF-1.4")
 
 
+@pytest.mark.parametrize(
+    "url, content_type",
+    [
+        ("https://gis.example.gov/arcgis/rest/services/P/FeatureServer/0/query?where=1%3D1&f=json",
+         "application/json; charset=utf-8"),
+        ("https://data.example.gov/resource/abcd-1234.json", "application/json"),
+        ("https://data.example.gov/api/permits?format=geojson", "application/geo+json"),
+    ],
+)
+def test_engine_run_downloads_json_data_exports(tmp_path: Path, monkeypatch, url, content_type):
+    """Public-database JSON APIs are documents, typed by Content-Type."""
+    _patch_requests_get(
+        monkeypatch, url=url, content_type=content_type, chunks=[b'{"features": []}'],
+    )
+    request = DiscoveryRequest(
+        domain="public_data",
+        sources=[url],
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
+    )
+    payload = json.loads(
+        DiscoveryEngine().run(request).manifest_path.read_text(encoding="utf-8")
+    )
+    (download,) = payload["downloads"]
+    assert download["status"] == "downloaded"
+    assert Path(download["path"]).suffix == ".json"
+    assert Path(download["path"]).read_bytes() == b'{"features": []}'
+
+
 def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Path, monkeypatch):
     _patch_requests_get(
         monkeypatch,
@@ -874,6 +903,24 @@ def test_build_download_summary_aggregates_status_counts():
     assert summary["total_bytes"] == 3072
     assert summary["by_status"]["downloaded"] == 2
     assert summary["by_status"]["failed"] == 1
+    assert summary["reused"] == 0
+
+
+def test_build_download_summary_counts_reused_outcomes_apart():
+    """Reused prior outcomes cost no request, so they never inflate totals."""
+    from psweep.discovery.engine import REUSED_DOWNLOAD_METHOD
+
+    reused = {"download_method": REUSED_DOWNLOAD_METHOD}
+    records = [
+        {"status": "downloaded", "bytes": 100, "download_method": "requests"},
+        {"status": "downloaded", "bytes": 900, **reused},
+        {"status": "skipped_http_404", **reused},
+    ]
+    summary = DiscoveryEngine._build_download_summary(records)
+
+    assert (summary["total"], summary["downloaded"], summary["skipped"]) == (1, 1, 0)
+    assert summary["total_bytes"] == 100
+    assert summary["reused"] == 2
 
 
 def test_build_candidate_summary_counts_by_acceptance_class_and_source():

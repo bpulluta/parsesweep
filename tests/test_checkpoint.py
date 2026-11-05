@@ -18,6 +18,7 @@ from psweep.discovery.publication import (
     PublicationError,
     artifact_sha256,
     effective_discovery_fingerprint,
+    load_prior_outcomes,
 )
 
 
@@ -176,6 +177,51 @@ class TestCheckpointIO:
                 path, {"target": _evidence(tmp_path, "r1")}
             )
         assert path.read_text() == "{"
+
+    def test_incomplete_entries_are_prior_outcomes_not_completions(
+        self, tmp_path
+    ):
+        """Downloads outlive a settings change; other outcomes do not."""
+        document = tmp_path / "a.pdf"
+        document.write_bytes(b"a")
+        downloaded = {
+            "status": "downloaded",
+            "final_url": "https://a.gov/a.pdf",
+            "path": str(document),
+            "sha256": artifact_sha256(document),
+        }
+        missing = {"status": "failed", "error": "404 Client Error"}
+        path = tmp_path / "checkpoint.json"
+        DiscoveryEngine._save_checkpoint_entries(
+            path,
+            {
+                "done": _evidence(tmp_path, "r1"),
+                "open": {
+                    "incomplete": True,
+                    "run_id": "r1",
+                    "outcomes": {
+                        "https://a.gov/a.pdf": downloaded,
+                        "https://a.gov/gone.pdf": missing,
+                        "https://a.gov/bad.pdf": {"status": "downloaded"},
+                    },
+                },
+            },
+            fingerprint="settings-a",
+        )
+        assert set(
+            DiscoveryEngine._load_checkpoint(path, validate_artifacts=False)
+        ) == {"done"}
+        assert load_prior_outcomes(path, fingerprint="settings-a") == {
+            "open": {
+                "https://a.gov/a.pdf": downloaded,
+                "https://a.gov/gone.pdf": missing,
+            }
+        }
+        assert load_prior_outcomes(path, fingerprint="settings-b") == {
+            "open": {"https://a.gov/a.pdf": downloaded}
+        }
+        path.write_text("{")
+        assert load_prior_outcomes(path, fingerprint="settings-a") == {}
 
     @pytest.mark.parametrize("entries", [[], {"key": []}, {"key": None}])
     def test_malformed_v2_entries_fail_closed(self, tmp_path, entries):

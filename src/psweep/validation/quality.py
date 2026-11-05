@@ -89,13 +89,13 @@ class _Tally:
         self.off_candidate += quality.get("off_candidate_items") or 0
         if quality.get("completeness") is not None:
             self.completeness.append(quality["completeness"])
+        self.unverified += quality.get("unverified_quotes") or 0
         if paths:
             self.verified += sum(
                 isinstance(node, dict) and node.get("value") is not None
                 for evidence in paths
                 for _, node in evidence_nodes(record["payload"], evidence)
             )
-            self.unverified += quality.get("unverified_quotes") or 0
         if (metrics.get("input_tokens") or 0) > 0:
             self.called += 1
             if metrics.get("cost_usd") is None:

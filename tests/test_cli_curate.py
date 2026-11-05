@@ -347,8 +347,23 @@ def test_curate_missing_manifest_is_not_legacy_ledger_fallback(tmp_path):
 
 @pytest.mark.parametrize("review_only", [True, False])
 def test_human_keep_releases_only_review_failure_blocks(tmp_path, review_only):
-    """Human review cannot release search/download incompleteness."""
+    """Human review cannot release search/download incompleteness: a kept
+    document is published either way, but only a released partition
+    withdraws its owner's stale path."""
     run, _, _, review = _curation_fixture(tmp_path)
+    stale = tmp_path / "domain/curated/old-report.pdf"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"old")
+    (tmp_path / "domain/download_index.csv").write_text(
+        csv_content(
+            ["relative_path", "url", "path"],
+            [{
+                "relative_path": "old-report.pdf",
+                "url": "https://agency.gov/report.pdf",
+                "path": str(stale),
+            }],
+        )
+    )
     manifest_path = run / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["downloads"][0].update(
@@ -368,4 +383,5 @@ def test_human_keep_releases_only_review_failure_blocks(tmp_path, review_only):
     result = CliRunner().invoke(cli, ["curate", "--run", str(run), "--quiet"])
     assert result.exit_code == 0, result.output
     assert (run / "curated/report.pdf").exists()
-    assert (tmp_path / "domain/curated/report.pdf").exists() is review_only
+    assert (tmp_path / "domain/curated/report.pdf").exists()
+    assert stale.exists() is not review_only

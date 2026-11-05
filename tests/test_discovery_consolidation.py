@@ -249,7 +249,7 @@ def test_llm_urls_hide_credentials_but_retain_document_identifiers(monkeypatch, 
     path.write_text("synthetic")
     url = "https://user:password@agency.gov/view?id=42&X-Amz-Signature=secret&token=credential#access_token=fragment"
     client = SimpleNamespace(extract=Mock(return_value={"data": {
-        "is_primary": True, "relevance": 0.9, "doc_kind": "comment", "reason": "raw",
+        "doc_kind": "comment", "reason": "raw", "grade": 4,
     }}))
     reviewer = DocumentReviewer(
         document_description="comments", cache_dir=tmp_path / ".review_cache"
@@ -374,7 +374,7 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
             "inputs": {}, "outputs": {document: output / label / "report.json"},
             "roster": None, "candidates": {}, "anchors": {}, "roster_errors": {}, "context": context, "root": root,
             "schema": schema, "schema_path": schema_path, "metadata": metadata,
-            "evidence_paths": [], "fingerprints": {document: "a" * 64},
+            "evidence_paths": [], "quote_rows": None, "fingerprints": {document: "a" * 64},
         }
         result = _extract_one_document(
             document, plan, extractor=extractor, run_id="run://integration",
@@ -408,7 +408,7 @@ def test_browser_render_redirect_cannot_bypass_source_policy(monkeypatch, tmp_pa
         fetch_html=Mock(return_value="<html><body>" + "rendered " * 2000 + "</body></html>"),
         current_url="https://outside.example.org/document", close=lambda: None,
     )
-    monkeypatch.setattr(DiscoveryEngine, "_open_browser_for_download", lambda self: (browser, "fixture"))
+    monkeypatch.setattr(DiscoveryEngine, "_open_browser_for_download", lambda self, request: (browser, "fixture"))
     request = _request(
         tmp_path, allowed_domains=["agency.gov"],
         browser_escalation={"enabled": True},

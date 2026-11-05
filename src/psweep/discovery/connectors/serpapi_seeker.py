@@ -5,10 +5,12 @@ from __future__ import annotations
 import os
 import re
 import time
+from itertools import zip_longest
 from typing import Any
 from urllib.parse import urlencode, urlsplit
 
 from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
+from psweep.discovery.urls import canonical_url
 from psweep.utils.file_io import atomic_json
 from ..retry import compute_backoff, is_transient_error
 from .base import BaseSeekerConnector, SeekerInput
@@ -41,12 +43,7 @@ def _is_search_timeout(exc: Exception) -> bool:
 
 
 class SerpApiSeeker(BaseSeekerConnector):
-    """
-    SerpApi-based seeker connector for Google Search discovery.
-
-    Normalizes SerpApi organic search results to discovery candidates.
-    Handles API key management and error scenarios gracefully.
-    """
+    """SerpApi web search; ``search.params.engine`` picks the engine."""
 
     def __init__(
         self,
@@ -166,30 +163,15 @@ class SerpApiSeeker(BaseSeekerConnector):
             )
 
     def discover(self, seeker_input: SeekerInput) -> list[dict[str, Any]]:
-        """
-        Execute search query against Google via SerpApi.
+        """Run each rendered query; return candidates deduped by URL.
 
-        Normalizes organic search results to discovery candidates.
+        Results are interleaved by rank across queries (every query's
+        first hit, then every second hit, ...), so a per-target selection
+        cap keeps each query's best results instead of the first query's.
 
-        Parameters
-        ----------
-        seeker_input : SeekerInput
-            Query and constraints
-
-        Returns
-        -------
-        list[dict[str, Any]]
-            List of normalized candidate dictionaries with url, source, title, snippet.
-
-        Raises
-        ------
-        ValueError
-            If query is empty or invalid.
-        SerpApiSearchTimeout
-            If any query exhausts timeout retries; includes completed results and
-            explicit query errors, after attempting the remaining queries.
-        RuntimeError
-            If SerpApi fails for another reason; aborts without partial success.
+        Raises ``ValueError`` when no query renders,
+        ``SerpApiSearchTimeout`` (carrying completed results) when a query
+        times out after retries, and ``RuntimeError`` otherwise.
         """
         rendered_queries = resolve_search_queries(seeker_input)
         if not rendered_queries:
@@ -199,8 +181,7 @@ class SerpApiSeeker(BaseSeekerConnector):
 
         search_callable = self._build_search_callable()
 
-        deduped_candidates: list[dict[str, Any]] = []
-        seen_urls: set[str] = set()
+        ranked_by_query: list[list[dict[str, Any]]] = []
         timeout_errors: list[str] = []
         for rendered_query in rendered_queries:
             try:
@@ -228,7 +209,9 @@ class SerpApiSeeker(BaseSeekerConnector):
                     f"SerpApi search failed for query '{rendered_query}': {sanitized_message}"
                 ) from exc
 
-            normalized = self._normalize_results(results, rendered_query)
+            normalized = self._normalize_results(
+                results, rendered_query, str(params["engine"])
+            )
             per_query: dict[str, dict[str, Any]] = {}
             for candidate in normalized:
                 per_query.setdefault(candidate["url"], candidate)
@@ -243,12 +226,9 @@ class SerpApiSeeker(BaseSeekerConnector):
                     "limit": seeker_input.max_results,
                 }
             )
-            for candidate in limited:
-                url = candidate["url"]
-                if url not in seen_urls:
-                    seen_urls.add(url)
-                    deduped_candidates.append(candidate)
+            ranked_by_query.append(limited)
 
+        deduped_candidates = _interleave_by_rank(ranked_by_query)
         if timeout_errors:
             raise SerpApiSearchTimeout(deduped_candidates, timeout_errors)
         return deduped_candidates
@@ -386,13 +366,9 @@ class SerpApiSeeker(BaseSeekerConnector):
     def _normalize_results(
         serpapi_response: dict[str, Any],
         query: str,
+        engine: str,
     ) -> list[dict[str, Any]]:
-        """
-        Normalize SerpApi organic results to discovery candidate format.
-
-        Extracts organic results ensuring proper URL validation.
-        Tracks source and reasoning for scoring stage.
-        """
+        """Normalize organic then news results; ``source`` names the engine."""
         candidates: list[dict[str, Any]] = []
         organic_results = serpapi_response.get("organic_results", [])
 
@@ -411,20 +387,21 @@ class SerpApiSeeker(BaseSeekerConnector):
                 reasons.append("Snippet match detected")
 
             candidate = {
-                "url": url,
-                "source": "serpapi_google",
+                "url": canonical_url(url),
+                "source": f"serpapi_{engine}",
                 "title": title or None,
                 "snippet": snippet or None,
                 "reasons": reasons,
             }
             candidates.append(candidate)
 
-        # Google News (tbm=nws / engine=google_news) returns news_results, each
-        # carrying a published `date` — a high-value temporal signal. Flatten
-        # any nested `stories` and fold the date into the candidate text so it is
-        # preserved for scoring, selection, and downstream extraction.
+        news_source = f"serpapi_{engine}"
+        if not engine.endswith("_news"):
+            news_source += "_news"
         candidates.extend(
-            SerpApiSeeker._normalize_news_results(serpapi_response, query)
+            SerpApiSeeker._normalize_news_results(
+                serpapi_response, query, news_source
+            )
         )
 
         return candidates
@@ -433,8 +410,9 @@ class SerpApiSeeker(BaseSeekerConnector):
     def _normalize_news_results(
         serpapi_response: dict[str, Any],
         query: str,
+        source: str,
     ) -> list[dict[str, Any]]:
-        """Normalize SerpApi news_results (Google News) to candidate format."""
+        """Normalize news_results, flattening stories; keep the date."""
         candidates: list[dict[str, Any]] = []
         news_results = serpapi_response.get("news_results", [])
         if not isinstance(news_results, list):
@@ -471,8 +449,8 @@ class SerpApiSeeker(BaseSeekerConnector):
 
             candidates.append(
                 {
-                    "url": url,
-                    "source": "serpapi_google_news",
+                    "url": canonical_url(url),
+                    "source": source,
                     "title": title or None,
                     "snippet": snippet or None,
                     "published_date": date or None,
@@ -492,6 +470,18 @@ class SerpApiSeeker(BaseSeekerConnector):
     def supports_provider(self, provider: str) -> bool:
         """Check if this connector supports the provider."""
         return provider.lower() in {"serpapi", "serpapi_google"}
+
+
+def _interleave_by_rank(
+    ranked_by_query: list[list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Merge per-query result lists rank by rank, keeping first URLs."""
+    merged: dict[str, dict[str, Any]] = {}
+    for rank_group in zip_longest(*ranked_by_query):
+        for candidate in rank_group:
+            if candidate is not None:
+                merged.setdefault(candidate["url"], candidate)
+    return list(merged.values())
 
 
 def resolve_search_queries(seeker_input: SeekerInput) -> list[str]:

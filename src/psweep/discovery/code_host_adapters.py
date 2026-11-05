@@ -15,8 +15,8 @@ engine, or config dependency and is unit-testable with a fake ``get``.
 The bundled :class:`MunicodeAdapter` targets ``library.municode.com``, the
 dominant US municipal-code host. Municode serves public municipal law
 (government edicts); this collects it as reference material, honors the site's
-robots policy through the engine's existing policy gate, and uses a generic
-User-Agent (never a named AI-crawler UA, which the site disallows).
+robots policy through the engine's existing policy gate, and sends the shared
+discovery User-Agent (never a named AI-crawler UA, which the site disallows).
 """
 
 from __future__ import annotations
@@ -89,10 +89,6 @@ class MunicodeAdapter:
     _HOSTS = ("library.municode.com",)
     _API = "https://library.municode.com/api"
     _HEADERS = {
-        "User-Agent": (
-            "Mozilla/5.0 (compatible; ParseSweep/1.0; "
-            "reference municipal-law collection)"
-        ),
         "Accept": "application/json",
         # The SPA's only anti-scraping gate: /api returns 401 without this.
         "X-CSRF": "1",

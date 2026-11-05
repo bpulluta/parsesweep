@@ -149,6 +149,11 @@ pixi run psweep extract --config config/my_domain/run.yaml
   --validate-config   Dry run — validate inputs only
 ```
 
+Every quote is checked against the document text, ignoring case, punctuation and line-break
+hyphenation (`…` marks an elision). A roster cell whose quote is not found is nulled; in rows
+mode (`validation.quote_field`) the row is dropped. Each rejection is a warning in the record's
+`quality`.
+
 ### Compile
 
 ```bash
@@ -189,8 +194,9 @@ Parallel downloads are set by `discovery.runtime.max_concurrent_downloads`
 (default: 2).
 
 Discovery exits **0** for `success`, `dry_run`, or validated `reused` work,
-**1** for failed or partially failed acquisition (including zero downloads due
-to failure), and **2** for a genuinely empty result. Quiet/default/verbose modes
+**1** for failed acquisition (including zero downloads due to failure), **2**
+for a genuinely empty result, and **3** for partial failure (usable results plus
+errors; `run` continues downstream and exits 3). Quiet/default/verbose modes
 use the same outcome and exit code; a partial manifest is not success.
 
 ### Discovery Configuration — Add as Needed
@@ -617,6 +623,10 @@ skip. Targets and shared `sources` are checkpointed one by one and are not part
 of the fingerprint, so adding one fetches only the new item; a target also
 re-runs when its `urls` or rendered queries change. Resumed runs
 publish file by file; only `--fresh` replaces whole curated partitions.
+Incomplete items (retryable failures, unfinished crawl, `runtime.max_files`)
+publish what they have additively and converge across re-runs: earlier
+downloads whose SHA-256 still matches are reused without a request or a
+`max_files` slot, so each run fetches only the remaining children.
 Discovery publication locks reject concurrent corpus writers; its journal
 recovers interrupted curated/provenance swaps on the next writer. This is a
 small discovery-specific protocol, not a general pipeline transaction.
@@ -669,8 +679,8 @@ from output-record reuse and opt-in search caching; delete `.text/`, `.pages/`,
 or `.sections/` to request a cold OCR or targeting run.
 
 Extraction exit codes are `0` for success/verified reuse (including zero items),
-`1` for operational or partial failure, and `2` for an empty input selection.
-`run` stops before compilation on failure or empty selection. Invalid schema,
+`1` for operational failure, `2` for an empty input selection, and `3` for
+partial failure. `run` stops before compilation on 1 or 2 and continues on 3. Invalid schema,
 input, scope, credentials, collisions, or overlapping paths fail before fresh
 output deletion. Records and manifests use atomic single-file replacement;
 this does not certify concurrent extraction writers or a whole-run transaction.
@@ -679,7 +689,11 @@ this does not certify concurrent extraction writers or a whole-run transaction.
 
 ## Supported Formats
 
-PDF, DOCX, DOC, TXT, XLSX, CSV
+PDF, DOCX, DOC, TXT, HTML, XLSX, CSV, JSON
+
+Data exports (CSV, each XLSX sheet, and JSON record arrays such as Socrata, ArcGIS REST, GeoJSON or
+CKAN results) become one line per record of `Header: value` pairs, so any excerpt of a large table
+still names its columns. Other JSON is read as indented text.
 
 ---
 

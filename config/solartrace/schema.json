@@ -39,7 +39,7 @@
           },
           "solsmart_awardee": {
             "title": "SolSmart Awardee",
-            "description": "SolSmart designation level of the AHJ.",
+            "description": "SolSmart designation level awarded to this AHJ, e.g. from a SolSmart community listing or designation announcement naming it. No only when a source says the AHJ is not designated; absence from a list is not No.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -66,13 +66,13 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           },
           "online_permitting": {
             "title": "Online Permitting",
-            "description": "Residential solar permit applications can be submitted online.",
+            "description": "Yes when the AHJ accepts residential solar or building permit applications online (portal, e-permit system, or email). No only when a source says applications must be submitted in person or on paper.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -96,13 +96,13 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           },
           "online_instant_permitting": {
             "title": "Online Instant Permitting",
-            "description": "Automated instant permit issuance and which platform.",
+            "description": "Automated instant permitting for standard residential PV. 'Yes (SolarAPP+)' when the AHJ accepts or uses SolarAPP+, or an official SolarAPP+ availability list or data export lists it; 'Yes (Symbium)' / 'Yes (Other)' for other automated platforms. No only when a source says the AHJ offers no instant permitting; absence from a list is not No.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -129,13 +129,13 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           },
           "structural_stamp": {
             "title": "Structural Stamp From Professional Engineer Required",
-            "description": "Whether residential PV plans need a structural engineer stamp.",
+            "description": "Whether residential rooftop PV needs a professional engineer's structural review: a stamped or sealed structural letter, an engineer's evaluation, or structural calculations. Always = required for every rooftop PV permit; Sometimes = required only in some cases or waivable (e.g. only for certain roofs, or waived under a standard procedure); Never only when a source says it is not required.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -160,13 +160,13 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           },
           "electrical_stamp": {
             "title": "Electrical Stamp From Licensed Electrician Required",
-            "description": "Whether residential PV plans need an electrical engineer stamp.",
+            "description": "Whether residential PV plans need the stamp, seal, or signature of a licensed electrician or electrical engineer. Always = required for every PV permit; Sometimes = only in some cases; Never only when a source says it is not required.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -191,13 +191,13 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           },
           "third_party_permitting": {
             "title": "Third-Party Permitting Available",
-            "description": "Third-party plan review/inspection is allowed.",
+            "description": "Whether private third-party plan reviewers or inspectors (e.g. approved third-party agencies or private engineers performing reviews or inspections) may be used. Yes = allowed; Sometimes = only for some review or inspection types or circumstances; No only when a source says only AHJ staff may review or inspect. Permitting software or platforms such as SolarAPP+ are not third-party permitting.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -222,13 +222,13 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           },
           "rough_in": {
             "title": "Rough-In Inspection Required",
-            "description": "A rough-in inspection is required.",
+            "description": "Whether residential PV requires a rough-in inspection (of a partially installed system, before final). Yes when such an inspection is required. No only when the quote is the AHJ's complete list of required PV inspections and it has no rough-in (e.g. final inspection only).",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -252,13 +252,13 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           },
           "virtual_inspections": {
             "title": "Virtual Inspections Available",
-            "description": "Remote/virtual inspections are offered.",
+            "description": "Yes when the AHJ offers remote inspections for residential PV or building permits (live video, virtual, or photo/self-inspection documentation). No only when a source says they are not offered.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -282,13 +282,13 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           },
           "fire_review": {
             "title": "Fire Review Required",
-            "description": "Separate fire-department review for residential PV.",
+            "description": "Whether residential PV permits need a separate fire department or fire marshal review. Yes = required; Not for Resi = fire review applies only to non-residential PV; No only when a source says residential PV needs no fire review.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -313,7 +313,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+                "description": "Verbatim sentence, list, or table row from the document that states this fact for this AHJ (or lists this AHJ); not a document title, citation, or study finding, nor a statement about another place or a vendor. Null when value is null."
               }
             }
           }

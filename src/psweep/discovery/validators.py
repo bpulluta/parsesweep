@@ -181,16 +181,16 @@ class ContentSampler:
 
     @staticmethod
     def _extract_text_from_html_or_txt(file_path: str) -> str:
-        """Extract text from HTML/HTM/TXT using the shared extraction pipeline.
+        """Extract text from HTML/HTM/JSON/TXT using the shared extraction pipeline.
 
-        For HTML files, this uses the document_utils extractor which includes
-        JS-shell detection (returns empty for SPA framework pages).
-        For TXT files, reads directly.
+        HTML (with JS-shell detection) and JSON use the document_utils
+        extractor, so sampling sees the text extraction sees. TXT is read
+        directly.
         """
         from pathlib import Path
 
         path = Path(file_path)
-        if path.suffix.lower() in (".html", ".htm"):
+        if path.suffix.lower() in (".html", ".htm", ".json"):
             try:
                 from ..extraction.document_utils import (
                     extract_text_from_document,
@@ -198,7 +198,7 @@ class ContentSampler:
 
                 return extract_text_from_document(path) or ""
             except Exception as e:
-                raise ValueError(f"Failed to extract HTML text: {e}")
+                raise ValueError(f"Failed to extract {path.suffix} text: {e}")
         else:
             try:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -221,7 +221,7 @@ class ContentSampler:
             return cls._extract_text_from_xlsx(file_path)
         elif file_path_lower.endswith(".csv"):
             return cls._extract_text_from_csv(file_path)
-        elif file_path_lower.endswith((".txt", ".html", ".htm")):
+        elif file_path_lower.endswith((".txt", ".html", ".htm", ".json")):
             return cls._extract_text_from_html_or_txt(file_path)
         else:
             raise ValueError(

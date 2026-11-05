@@ -12,6 +12,7 @@ python = ">=3.12,<3.13"
 tesseract = ">=5.5.1,<6"
 pdftotext = ">=2.2.2,<3"
 pytest = ">=9.0.3,<10"
+ffmpeg = { version = ">=9.0.2,<10", build = "lgpl*" }
 [pypi-dependencies]
 psweep = { path = ".", editable = true}
 

@@ -7,8 +7,11 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from psweep.discovery import DiscoveryRequest
 from psweep.discovery.connectors import SerpApiSeeker, SeekerInput
 from psweep.discovery.connectors.serpapi_seeker import render_query_template
+from psweep.discovery.publication import effective_discovery_fingerprint
+from psweep.discovery.urls import canonical_url
 
 
 @pytest.fixture
@@ -313,3 +316,85 @@ def test_cache_refresh_fetches_and_updates_persistent_results(
     search.reset_mock()
     assert len(SerpApiSeeker(cache_dir=cache).discover(request)) == 2
     search.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://a.gov/p?srsltid=AfmB", "https://a.gov/p"),
+        ("https://a.gov/p?utm_source=x&id=7&gclid=1", "https://a.gov/p?id=7"),
+        ("https://a.gov/p?FBCLID=1&Utm_Medium=m", "https://a.gov/p"),
+        ("https://a.gov/bids.aspx?bidId=12", "https://a.gov/bids.aspx?bidId=12"),
+        ("https://a.gov/l?5a55ec85_page=2&v=3", "https://a.gov/l?5a55ec85_page=2&v=3"),
+        ("https://a.gov/d?fileID=9&q=a%20b+c", "https://a.gov/d?fileID=9&q=a%20b+c"),
+        ("https://a.gov/d?fileID=9&srsltid=x#top", "https://a.gov/d?fileID=9#top"),
+        ("https://a.gov/d?utm_id", "https://a.gov/d"),
+        ("https://a.gov/p", "https://a.gov/p"),
+    ],
+)
+def test_canonical_url_strips_only_tracking_parameters(url, expected):
+    assert canonical_url(url) == expected
+
+
+def test_tracking_variants_dedupe_across_queries(search):
+    search.side_effect = [
+        {"organic_results": [{"link": "https://a.gov/solar?srsltid=one"}]},
+        {"organic_results": [
+            {"link": "https://a.gov/solar?srsltid=two"},
+            {"link": "https://a.gov/bids.aspx?bidId=4&utm_source=g"},
+        ]},
+    ]
+    candidates = SerpApiSeeker().discover(SeekerInput(queries=["first", "second"]))
+    assert [c["url"] for c in candidates] == [
+        "https://a.gov/solar", "https://a.gov/bids.aspx?bidId=4",
+    ]
+
+
+def test_queries_interleave_by_rank_so_a_capped_selection_sees_each_query(search):
+    def page(prefix, count):
+        return {"organic_results": [
+            {"link": f"https://{prefix}.gov/{rank}"} for rank in range(count)
+        ]}
+
+    search.side_effect = [page("a", 3), page("b", 2), page("c", 1)]
+    candidates = SerpApiSeeker().discover(
+        SeekerInput(queries=["first", "second", "third"])
+    )
+    assert [c["url"] for c in candidates] == [
+        "https://a.gov/0", "https://b.gov/0", "https://c.gov/0",
+        "https://a.gov/1", "https://b.gov/1",
+        "https://a.gov/2",
+    ]
+
+
+@pytest.mark.parametrize(
+    "params,organic,news",
+    [
+        (None, "serpapi_google", "serpapi_google_news"),
+        ({"engine": "bing"}, "serpapi_bing", "serpapi_bing_news"),
+        ({"engine": "google_news"}, "serpapi_google_news", "serpapi_google_news"),
+    ],
+)
+def test_source_names_the_configured_engine(search, params, organic, news):
+    search.return_value = {
+        "organic_results": [{"link": "https://a.gov/organic"}],
+        "news_results": [{"link": "https://a.gov/news", "date": "1 day ago"}],
+    }
+    candidates = SerpApiSeeker().discover(SeekerInput(queries=["q"], params=params))
+    assert [c["source"] for c in candidates] == [organic, news]
+
+
+@pytest.mark.parametrize(
+    "change,invalidates",
+    [
+        ({"seeker_params": {"udm": "14"}}, True),
+        ({"seeker_max_results": 3}, True),
+        ({"seeker_cache": True}, False),
+    ],
+)
+def test_search_settings_decide_resume(change, invalidates):
+    """Completed targets re-run when search settings change, not on cache toggles."""
+    base = {"domain": "d", "queries": ["{label}"], "targets": [{"label": "a"}]}
+    before = effective_discovery_fingerprint(DiscoveryRequest(**base))
+    after = effective_discovery_fingerprint(DiscoveryRequest(**base, **change))
+    assert (before != after) is invalidates

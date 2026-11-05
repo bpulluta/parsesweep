@@ -8,7 +8,9 @@ from typing import Any, Protocol
 from urllib.parse import urljoin, urlparse
 
 from .retry import compute_backoff, is_transient_error
-from .transport import NetworkPolicyError, request_get, validate_public_url
+from .transport import (
+    MAX_PAGE_BYTES, NetworkPolicyError, request_get, validate_public_url,
+)
 
 URLGate = Callable[[str], object]
 RetryConfig = tuple[int, float, float]
@@ -79,6 +81,7 @@ def _get_redirect_chain(
     gate: URLGate | None,
     response_url_gate: URLGate | None,
     limiter: RateLimiter | None,
+    max_bytes: int,
 ) -> Any:
     """Check each target before following a bounded redirect chain."""
     import requests  # noqa: PLC0415 - dependency is optional at import time
@@ -105,6 +108,7 @@ def _get_redirect_chain(
             verify=verify,
             stream=stream,
             allow_redirects=False,
+            max_bytes=max_bytes,
             **cookie_options,
         )
         try:
@@ -152,6 +156,7 @@ def send_get(
     limiter: RateLimiter | None = None,
     retry: RetryConfig = (1, 0.0, 0.0),
     raise_for_status: bool = True,
+    max_bytes: int = MAX_PAGE_BYTES,
 ) -> tuple[Any, int]:
     """Return a response and attempt count through the GET boundary.
 
@@ -161,6 +166,7 @@ def send_get(
     own and must close successful responses. Status errors are retried
     with discovery backoff. Robots lookup disables ``raise_for_status``
     to interpret missing rules without invoking a recursive gate.
+    ``max_bytes`` and ``stream`` bound the body (see ``request_get``).
     """
     max_attempts, initial_backoff, max_backoff = retry
     from psweep.security import resolve_tls_verification
@@ -178,6 +184,7 @@ def send_get(
                 gate=gate,
                 response_url_gate=response_url_gate,
                 limiter=limiter,
+                max_bytes=max_bytes,
             )
             if raise_for_status:
                 response.raise_for_status()

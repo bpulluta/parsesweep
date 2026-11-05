@@ -36,6 +36,42 @@ class NetworkPolicyError(RuntimeError):
         )
 
 
+MAX_PAGE_BYTES = 50 * 1024 * 1024
+"""Decoded-size limit of responses read into memory (pages, search, APIs)."""
+MAX_FILE_BYTES = 1024 * 1024 * 1024
+"""Default decoded-size limit of files streamed to disk."""
+MAX_FILE_BYTES_ENV = "PSWEEP_MAX_RESPONSE_BYTES"
+
+
+def max_file_bytes() -> int:
+    """Return the file download limit; ``MAX_FILE_BYTES_ENV`` overrides it."""
+    raw = os.environ.get(MAX_FILE_BYTES_ENV, "").strip()
+    if not raw:
+        return MAX_FILE_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value <= 0:
+        msg = f"{MAX_FILE_BYTES_ENV} must be a positive integer, got {raw!r}"
+        raise ValueError(msg)
+    return value
+
+
+class ResponseTooLargeError(NetworkPolicyError):
+    """A wanted response exceeded its byte limit: lost data, not a policy skip."""
+
+    def __init__(self, url: str, max_bytes: int, *, file: bool) -> None:
+        self.max_bytes = max_bytes
+        reason = (
+            f"file download exceeds the byte limit of {max_bytes} bytes; "
+            f"set {MAX_FILE_BYTES_ENV} to raise it and rediscover with --fresh"
+            if file
+            else f"in-memory response exceeds the byte limit of {max_bytes} bytes"
+        )
+        super().__init__(url, reason)
+
+
 def public_address(address: str) -> bool:
     """Reject non-global, multicast, scoped, and reserved addresses."""
     if "%" in address:
@@ -159,14 +195,25 @@ class PublicHTTPAdapter(HTTPAdapter):
 
 
 class BoundedResponse:
-    """Expose discovery response operations with bounded decoding."""
+    """Expose discovery response operations with bounded decoding.
+
+    An in-memory response must finish by ``deadline``. A file streamed to
+    disk passes ``stall_timeout`` instead: every received chunk extends the
+    deadline, so only a transfer that stops delivering bytes is aborted.
+    """
 
     def __init__(
-        self, response: requests.Response, *, max_bytes: int, deadline: float
+        self,
+        response: requests.Response,
+        *,
+        max_bytes: int,
+        deadline: float,
+        stall_timeout: float | None = None,
     ):
         self._response = response
         self._max_bytes = max_bytes
         self._deadline = deadline
+        self._stall_timeout = stall_timeout
         self._content: bytes | None = None
         self._bytes_read = 0
         self.status_code = response.status_code
@@ -189,19 +236,24 @@ class BoundedResponse:
                 self._check_limits()
                 if not chunk:
                     break
+                if self._stall_timeout is not None:
+                    self._deadline = time.monotonic() + self._stall_timeout
                 yield chunk
         except BaseException:
             self.close()
             raise
 
     def _check_limits(self) -> None:
+        file = self._stall_timeout is not None
         if time.monotonic() > self._deadline:
-            msg = "Discovery response deadline exceeded"
+            msg = (
+                f"Discovery file download stalled: no data for {self._stall_timeout:g} s"
+                if file
+                else "Discovery response deadline exceeded"
+            )
             raise requests.Timeout(msg)
         if self._bytes_read > self._max_bytes:
-            raise NetworkPolicyError(
-                self.url, "decoded response exceeds the byte limit"
-            )
+            raise ResponseTooLargeError(self.url, self._max_bytes, file=file)
 
     @property
     def content(self) -> bytes:
@@ -239,20 +291,20 @@ def request_get(
     stream: bool,
     allow_redirects: bool,
     cookies=None,
+    max_bytes: int = MAX_PAGE_BYTES,
 ) -> BoundedResponse:
-    """Send once; the caller owns redirects and response lifetime."""
+    """Send once; the caller owns redirects and response lifetime.
+
+    ``stream=False`` reads the body into memory within ``timeout`` in total.
+    ``stream=True`` is a file the caller writes to disk: it passes the file
+    limit (``max_file_bytes()``) and only a stall of ``timeout`` aborts it.
+    """
     validate_public_url(url)
     verify = resolve_tls_verification("PSWEEP_SSL_VERIFY", verify)
     if allow_redirects:
         raise NetworkPolicyError(
             url, "redirects must pass the shared destination gate"
         )
-    max_bytes = int(
-        os.environ.get("PSWEEP_MAX_RESPONSE_BYTES", str(50 * 1024 * 1024))
-    )
-    if max_bytes <= 0:
-        msg = "PSWEEP_MAX_RESPONSE_BYTES must be a positive integer"
-        raise ValueError(msg)
     deadline = time.monotonic() + timeout
     with requests.Session() as session:
         # Proxies/netrc could bypass policy or add ambient credentials.
@@ -273,6 +325,7 @@ def request_get(
             response,
             max_bytes=max_bytes,
             deadline=deadline,
+            stall_timeout=timeout if stream else None,
         )
         if not stream:
             _ = bounded.content

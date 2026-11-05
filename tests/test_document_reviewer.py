@@ -12,7 +12,9 @@ from pathlib import Path
 import pytest
 
 import psweep.extraction.document_utils as document_utils
+from psweep.discovery import document_reviewer
 from psweep.discovery.document_reviewer import DocumentReviewer
+from psweep.discovery.publication import record_is_curated
 from psweep.extraction import llm_factory
 
 
@@ -302,12 +304,7 @@ class _CapturingClient:
 
     def extract(self, *, text, schema, system_prompt, user_prompt):
         self.prompts.append(user_prompt)
-        return {
-            "data": {
-                "is_primary": True, "relevance": 0.9,
-                "doc_kind": "comment", "reason": "ok",
-            }
-        }
+        return {"data": {"doc_kind": "comment", "reason": "ok", "grade": 4}}
 
 
 class TestReviewSourceUrlContext:
@@ -471,3 +468,208 @@ class TestByteIdenticalDedup:
         ]
         redundant = DocumentReviewer._find_byte_identical_duplicates(records)
         assert redundant == set()
+
+
+class _LevelClient:
+    """Return one anchored level per call and record every prompt."""
+
+    def __init__(self, level: int) -> None:
+        self.level = level
+        self.prompts: list[str] = []
+
+    def extract(self, *, text, schema, system_prompt, user_prompt):
+        self.prompts.append(user_prompt)
+        reply = {"doc_kind": "record", "reason": "ok", "grade": self.level}
+        return {"data": reply}
+
+
+def _equal_grade(relevance: float) -> dict:
+    return {
+        "is_primary": True,
+        "relevance": relevance,
+        "doc_kind": "k",
+        "reason": "r",
+    }
+
+
+class TestAnchoredGrades:
+    """The grader returns one rubric level; selection derives from it."""
+
+    @pytest.fixture(autouse=True)
+    def _text(self, monkeypatch):
+        monkeypatch.setattr(
+            document_utils,
+            "extract_text_from_document",
+            lambda _p: "record text " * 20,
+        )
+
+    @pytest.mark.parametrize(
+        ("level", "primary", "relevance"),
+        [(0, False, 0.0), (2, False, 0.5), (3, True, 0.75), (4, True, 1.0)],
+    )
+    def test_level_maps_to_primary_and_relevance(
+        self, tmp_path: Path, level, primary, relevance
+    ):
+        rec = _record(tmp_path, "doc.pdf", "County A")
+        reviewer = DocumentReviewer(document_description="records")
+        reviewer._client = _LevelClient(level)
+        reviewer.review([rec], [])
+        assert rec["review_is_primary"] is primary
+        assert rec["review_relevance"] == relevance
+        assert rec["review_selected"] is primary
+
+    def test_prompt_carries_description_target_and_rubric(
+        self, tmp_path: Path
+    ):
+        rec = _record(tmp_path, "doc.pdf", "County A")
+        rec["url"] = "https://example.gov/doc.pdf"
+        client = _LevelClient(4)
+        reviewer = DocumentReviewer(document_description="rates in {city}")
+        reviewer._client = client
+        reviewer.review([rec], [])
+        (prompt,) = client.prompts
+        assert prompt.startswith("TARGET DOCUMENT: rates in {city}\n")
+        assert "SEARCH TARGET: label=County A\n" in prompt
+        assert "SOURCE_URL: https://example.gov/doc.pdf" in prompt
+        assert all(f"\n{level} = " in prompt for level in range(5))
+        assert "grade (integer 0-4)" in prompt
+        assert prompt.endswith("EXCERPT:\n" + "record text " * 20)
+
+    def test_rubric_is_domain_agnostic(self):
+        rubric = (
+            document_reviewer._REVIEW_SYSTEM + document_reviewer._REVIEW_PROMPT
+        ).lower()
+        for term in ("solar", "permit", "ordinance", "county", "tariff"):
+            assert term not in rubric
+
+    def test_rubric_change_invalidates_cache_and_rerun_is_free(
+        self, tmp_path: Path, monkeypatch
+    ):
+        cache = tmp_path / ".review_cache"
+        rec = _record(tmp_path, "doc.pdf", "County A")
+
+        def run() -> tuple[dict, _LevelClient]:
+            reviewer = DocumentReviewer(
+                document_description="records", cache_dir=cache
+            )
+            reviewer._client = _LevelClient(4)
+            copy = dict(rec)
+            reviewer.review([copy], [])
+            return copy, reviewer._client
+
+        first, client = run()
+        assert not first["review_cached"] and len(client.prompts) == 1
+        rerun, client = run()
+        assert rerun["review_cached"] and client.prompts == []
+
+        rubric = document_reviewer._REVIEW_PROMPT
+        monkeypatch.setattr(
+            document_reviewer,
+            "_REVIEW_PROMPT",
+            rubric.replace("0 = unrelated", "0 = off-topic"),
+        )
+        changed, client = run()
+        assert not changed["review_cached"] and len(client.prompts) == 1
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_equal_grades_rank_by_provenance_not_input_order(
+        self, tmp_path: Path, reverse
+    ):
+        names = ("a", "b", "c")
+        records = [_record(tmp_path, f"{n}.pdf", "County A") for n in names]
+        for rec, host in zip(records, ("c", "a", "b"), strict=True):
+            rec["url"] = f"https://{host}.example.gov/doc.pdf"
+        reviewer = DocumentReviewer(
+            document_description="records",
+            keep_top=1,
+            deduplicate_redundant=False,
+        )
+        _stub_grades(reviewer, {f"{n}.pdf": _equal_grade(1.0) for n in names})
+        reviewer.review(records[::-1] if reverse else records, [])
+        assert [r["review_selected"] for r in records] == [False, True, False]
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_equal_grade_mirror_keeps_the_same_copy(
+        self, tmp_path: Path, reverse
+    ):
+        records = [_record(tmp_path, f"{n}.pdf", "County A") for n in "ab"]
+        for rec, query in zip(records, ("", "?cache=1800"), strict=True):
+            rec["url"] = f"https://example.gov/doc.pdf{query}"
+            rec["content_hash"] = "same"
+        reviewer = DocumentReviewer(document_description="records", keep_top=2)
+        _stub_grades(reviewer, {f"{n}.pdf": _equal_grade(0.75) for n in "ab"})
+        reviewer.review(records[::-1] if reverse else records, [])
+        assert [r["review_selected"] for r in records] == [False, True]
+        assert records[0]["review_redundant"] is True
+
+
+class TestRecordings:
+    """Recordings are graded on a cached transcript, never transcribed."""
+
+    TRANSCRIPT = "[00:00:00] I support the wind project because " * 3
+
+    @staticmethod
+    def _recording(tmp_path: Path, name: str, transcript: str | None) -> dict:
+        record = _record(tmp_path, name, "County A")
+        if transcript is not None:
+            document_utils.write_text_cache(
+                Path(record["path"]),
+                transcript,
+                method="transcript:fixture:v1",
+            )
+        return record
+
+    def test_recording_with_a_cached_transcript_is_graded(self, tmp_path: Path):
+        recording = self._recording(tmp_path, "meeting.mp3", self.TRANSCRIPT)
+        client = _LevelClient(4)
+        reviewer = DocumentReviewer(document_description="public comments")
+        reviewer._client = client
+        _, notes = reviewer.review([recording], [])
+        (prompt,) = client.prompts
+        assert prompt.endswith(self.TRANSCRIPT)
+        assert recording["review_relevance"] == 1.0
+        assert recording["review_selected"] is True
+        assert not any("recording(s) kept" in note for note in notes)
+
+    def test_untranscribed_recordings_stay_selected_outside_keep_top(
+        self, tmp_path: Path
+    ):
+        recordings = [
+            self._recording(tmp_path, f"meeting-{n}.mp3", None) for n in (1, 2)
+        ]
+        minutes = _record(tmp_path, "minutes.txt", "County A")
+        Path(minutes["path"]).write_text("minutes of the hearing " * 5)
+        client = _LevelClient(4)
+        reviewer = DocumentReviewer(
+            document_description="public comments", keep_top=1
+        )
+        reviewer._client = client
+        _, notes = reviewer.review([*recordings, minutes], [])
+        assert len(client.prompts) == 1
+        assert minutes["review_selected"] is True
+        for recording in recordings:
+            assert recording["review_selected"] is True
+            assert "review_relevance" not in recording
+            assert not recording.get("review_failed")
+            assert recording["review_reason"] == document_reviewer.RECORDING_KEPT
+            assert record_is_curated(recording, review_ran=True)
+        assert (
+            "2 recording(s) kept without review (transcribed at extraction)."
+            in notes
+        )
+        assert not any("browser_escalation" in note for note in notes)
+
+    def test_browser_escalation_note_counts_only_non_audio_unreadables(
+        self, tmp_path: Path
+    ):
+        silent = self._recording(tmp_path, "silent.mp3", "[inaudible]")
+        shell = _record(tmp_path, "shell.html", "County A")
+        reviewer = DocumentReviewer(document_description="public comments")
+        reviewer._client = _LevelClient(4)
+        _, notes = reviewer.review([silent, shell], [])
+        assert silent["status"] == shell["status"] == "skipped_unreadable"
+        assert not record_is_curated(silent, review_ran=True)
+        assert (
+            "1 document(s) had too little text to review; JS-rendered pages "
+            "need discovery.crawl.browser_escalation." in notes
+        )

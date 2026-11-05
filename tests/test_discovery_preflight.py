@@ -190,7 +190,7 @@ def test_run_preflight_rejects_empty_discovery(tmp_path, monkeypatch, schema_pat
         {"runtime": {"max_files": 3}},
         schema=str(schema_path),
     )
-    with patch("psweep.cli.app.subprocess.run") as run:
+    with patch("psweep.pipeline.subprocess.run") as run:
         invocation = CliRunner().invoke(
             cli, ["run", "--config", str(config), "--fresh", "--yes", "-q"]
         )

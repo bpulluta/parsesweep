@@ -194,7 +194,7 @@ def test_partial_target_is_not_checkpointed_as_complete(monkeypatch, tmp_path):
     _mock_engine_search(monkeypatch)
     engine = DiscoveryEngine()
 
-    def download(*, request, candidates, documents_dir, max_downloads):
+    def download(*, request, candidates, documents_dir, max_downloads, reusable):
         records = []
         for idx, candidate in enumerate(candidates):
             path = documents_dir / f"record-{idx}.pdf"
@@ -218,7 +218,7 @@ def test_partial_target_is_not_checkpointed_as_complete(monkeypatch, tmp_path):
 @pytest.mark.parametrize("fresh", [False, True])
 @pytest.mark.parametrize("selected", [False, True])
 @pytest.mark.parametrize("partial_hit", [False, True])
-def test_incomplete_shared_partition_stays_run_local(
+def test_incomplete_shared_partition_publishes_additively(
     monkeypatch, tmp_path, fresh, selected, partial_hit
 ):
     _mock_engine_search(monkeypatch)
@@ -247,7 +247,7 @@ def test_incomplete_shared_partition_stays_run_local(
     )
     engine = DiscoveryEngine()
 
-    def download(*, request, candidates, documents_dir, max_downloads):
+    def download(*, request, candidates, documents_dir, max_downloads, reusable):
         records = []
         for candidate in candidates:
             relative = (
@@ -277,6 +277,8 @@ def test_incomplete_shared_partition_stays_run_local(
         # A prior owner holds the plain name, so the new file may carry a suffix.
         assert any((result.curated_dir / "by_state/washington").glob("partial-comments*.pdf")) is partial_hit
         assert (domain / "curated/by_state/california/last-comments.pdf").exists()
+    published = list((domain / "curated/by_state/washington").glob("partial-comments*.pdf"))
+    assert len(published) == 1 + (selected and partial_hit)
     with old_index.open() as stream:
         rows = list(csv.DictReader(stream))
     by_path = {row["relative_path"]: row for row in rows}
@@ -388,7 +390,7 @@ def test_cli_does_not_label_partial_discovery_complete(monkeypatch, tmp_path, wi
     ))
     result = CliRunner().invoke(discover, ["--domain", "timeout-test", "--query", "test", "--dry-run"])
 
-    assert result.exit_code == (1 if with_errors else 0), result.output
+    assert result.exit_code == (3 if with_errors else 0), result.output
     if with_errors:
         assert "results may be partial" in result.output
         assert "Discovery complete" not in result.output

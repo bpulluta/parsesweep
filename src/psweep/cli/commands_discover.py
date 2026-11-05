@@ -284,13 +284,15 @@ def discover(
     )
     downloaded_count = int(download_summary.get("downloaded") or 0)
     total_count = int(download_summary.get("total") or 0)
+    reused_count = int(download_summary.get("reused") or 0)
 
     view.summary(
         {
             "Run ID": result.run_id,
             "Mode": "dry-run" if request.dry_run else "run",
             "Status": manifest_data.get("status") or "unknown",
-            "Downloaded": f"{downloaded_count}/{total_count}",
+            "Downloaded": f"{downloaded_count}/{total_count}"
+            + (f" (+{reused_count} reused)" if reused_count else ""),
             "Notes": str(len(notes)),
             "Errors": str(len(errors)),
         },

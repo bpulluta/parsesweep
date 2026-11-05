@@ -17,7 +17,7 @@ from psweep.discovery.network import (
 from ..urls import (
     compile_url_patterns, is_http_url, matches_allowed_domain, url_extension,
 )
-from ..retry import is_transient_error
+from ..retry import browser_may_recover, is_transient_error
 from .base import BaseDiggerConnector, CrawlResult, DiggerArtifact, DiggerInput
 
 # Patterns that indicate an HTML response is a JS-rendered shell
@@ -155,11 +155,13 @@ def crawl(
 
     Sources are pages at depth 0 (any non-document URL, including ``.html``);
     a page is fetched only while its depth is below ``max_depth``. Document
-    links (and, when link-text patterns are set, matching HTML pages) become
-    artifacts attributed to their source URL. Deduplication is per source, so
+    links become artifacts attributed to their source URL. When link-text
+    patterns are set, only matching pages are followed, and each is also an
+    artifact (e.g. "Next" pagination of a listing). Deduplication is per source, so
     a link reachable from several sources is attributed to each; a page shared
     by several sources is fetched once. A source is incomplete when one of its
-    pages failed with a retryable error or the page/file budget cut it off.
+    pages failed with a retryable error or the page/file budget cut off a link
+    it would have kept or followed.
     """
     allowed = digger_input.allowed_domains or _source_domains(digger_input.sources)
     save_pages = bool(digger_input.include_link_text_patterns)
@@ -183,6 +185,31 @@ def crawl(
             and url_extension(url) not in DOCUMENT_EXTENSIONS
         )
 
+    def classify(link: dict[str, str], depth: int, origin: str) -> tuple[bool, bool]:
+        """Return whether a page link is a new artifact and a page to follow."""
+        link_url, link_text = link["url"], link.get("text") or ""
+        if not is_http_url(link_url) or not matches_allowed_domain(link_url, allowed):
+            return False, False
+        accepted = matches_include_patterns(link_url, link_text, digger_input)
+        document = _is_document_link(link_url, digger_input)
+        artifact = bool(
+            (document or (save_pages and link_text))
+            and accepted
+            and (link_url, origin) not in seen
+        )
+        follow = (
+            bool(accepted and link_text)
+            if save_pages
+            else not _is_navigation_link(link_text)
+        )
+        page = (
+            follow
+            and not document
+            and depth + 1 < digger_input.max_depth
+            and (link_url, origin) not in visited
+        )
+        return artifact, page
+
     while queue and pages_fetched < digger_input.max_pages and not full():
         url, depth, origin = queue.popleft()
         if not pending(url, depth, origin):
@@ -202,31 +229,29 @@ def crawl(
             incomplete.add(origin)
         links = fetched[url] or []
         for position, link in enumerate(links, start=1):
-            link_url, link_text = link["url"], link.get("text") or ""
-            if not is_http_url(link_url) or not matches_allowed_domain(link_url, allowed):
-                continue
-            accepted = matches_include_patterns(link_url, link_text, digger_input)
-            if _is_document_link(link_url, digger_input) or (save_pages and link_text):
-                if accepted and (link_url, origin) not in seen:
-                    seen.add((link_url, origin))
-                    artifacts.append(
-                        DiggerArtifact(
-                            url=link_url,
-                            source=source,
-                            status="link_discovered",
-                            metadata={"link_text": link_text, "source_url": origin},
-                        )
+            artifact, page = classify(link, depth, origin)
+            if artifact:
+                seen.add((link["url"], origin))
+                artifacts.append(
+                    DiggerArtifact(
+                        url=link["url"],
+                        source=source,
+                        status="link_discovered",
+                        metadata={
+                            "link_text": link.get("text") or "",
+                            "source_url": origin,
+                        },
                     )
-                    if full():
-                        if position < len(links):
-                            incomplete.add(origin)
-                        break
-            elif (
-                depth + 1 < digger_input.max_depth
-                and (link_url, origin) not in visited
-                and not _is_navigation_link(link_text)
-            ):
-                queue.append((link_url, depth + 1, origin))
+                )
+                if full():
+                    # Cut off only if a wanted link or page remains unvisited.
+                    if page or any(
+                        any(classify(rest, depth, origin)) for rest in links[position:]
+                    ):
+                        incomplete.add(origin)
+                    break
+            if page:
+                queue.append((link["url"], depth + 1, origin))
     incomplete.update(origin for url, depth, origin in queue if pending(url, depth, origin))
     return CrawlResult(artifacts, incomplete, pages_fetched)
 
@@ -404,7 +429,8 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     from ..browser import BrowserSession
 
                     session = BrowserSession(
-                        page_load_timeout=fetch_options["timeout_seconds"]
+                        request_headers=fetch_options["request_headers"],
+                        page_load_timeout=fetch_options["timeout_seconds"],
                     )
                     session._start()  # noqa: SLF001
                     browser = session
@@ -413,13 +439,22 @@ class HttpDiggerConnector(BaseDiggerConnector):
             return browser
 
         def fetch_links(url: str) -> list[dict[str, str]]:
-            html_text, final_url = self._fetch_page_html(
-                url=url, acquisition=acquisition, **fetch_options,
-            )
-            if _is_js_shell(html_text) and extra.get("browser_escalation") is True:
+            escalate = extra.get("browser_escalation") is True
+            refused: Exception | None = None
+            try:
+                html_text, final_url = self._fetch_page_html(
+                    url=url, acquisition=acquisition, **fetch_options,
+                )
+            except Exception as exc:
+                if not (escalate and browser_may_recover(exc)):
+                    raise
+                html_text, final_url, refused = "", url, exc
+            if escalate and (refused is not None or _is_js_shell(html_text)):
                 _require_browser_policy_support(digger_input)
                 session = get_browser()
                 if session is None:
+                    if refused is not None:
+                        raise refused
                     return []
                 html_text, final_url = _fetch_browser_html(
                     session, url, settle_seconds=4, **acquisition,
@@ -459,7 +494,8 @@ class SeleniumDiggerConnector(BaseDiggerConnector):
             digger_input.allowed_domains or _source_domains(digger_input.sources),
         )
         with BrowserSession(
-            page_load_timeout=max(1, digger_input.timeout_seconds)
+            request_headers=(digger_input.extra_params or {}).get("request_headers"),
+            page_load_timeout=max(1, digger_input.timeout_seconds),
         ) as browser:
 
             def fetch_links(url: str) -> list[dict[str, str]]:

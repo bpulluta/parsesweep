@@ -171,3 +171,32 @@ def test_write_compilation_run_manifest_roundtrip(tmp_path):
     assert stage["runs"][0]["mode"] == "roster"
     assert stage["runs"][0]["roster_targets"] == 3
     assert "aggregate" not in stage
+
+
+def test_extraction_stage_names_every_model_that_spent(monkeypatch, tmp_path):
+    """Transcription spend is named beside the extraction model."""
+    monkeypatch.chdir(tmp_path)
+    workspace = Workspace("widgets")
+    runs = workspace.extracted / "run_manifests"
+    for run_id, models in (("a", ["gemini-3.5-flash", "gpt-x"]), ("b", [])):
+        _write_json(
+            runs / f"{run_id}.manifest.json",
+            {
+                "run_id": run_id,
+                "costs": {"total_cost_usd": 0.5, "models": models},
+                "lineage": {"model": "gpt-x", "provider": "openai"},
+                "timing": {"finished_at": f"2026-01-01T00:0{len(models)}:00Z"},
+            },
+        )
+    accounting = build_pipeline_accounting(
+        domain="widgets",
+        extraction_dir=workspace.extracted,
+        output_dir=workspace.compiled,
+        compilation_stats={"records": 1},
+    )
+    stage = accounting["stages"]["extraction"]
+    assert stage["model"] == ["gemini-3.5-flash", "gpt-x"]
+    assert [run["model"] for run in stage["runs"]] == [
+        "gpt-x",
+        ["gemini-3.5-flash", "gpt-x"],
+    ]

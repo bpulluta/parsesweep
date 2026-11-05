@@ -210,9 +210,9 @@ not merely HTTP availability.
 ### Automation reports no downloads
 
 Inspect manifest `status` and `errors`. Quiet/default/verbose modes share exit
-codes: error-free `success`/`dry_run`/`reused` = `0`, `failed`/`partial_failure`
-(including zero downloads caused by failure) = `1`, genuinely `empty` = `2`.
-A partial result is not successful acquisition.
+codes: error-free `success`/`dry_run`/`reused` = `0`, `failed` (including zero
+downloads caused by failure) = `1`, genuinely `empty` = `2`, `partial_failure` = `3`.
+A partial result is not successful acquisition; re-running retries its failures.
 
 ## Re-running after changes
 

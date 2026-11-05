@@ -25,6 +25,7 @@ _GRADE = {
     "doc_kind": "record",
     "reason": "fixture",
 }
+_REPLY = {"doc_kind": "record", "reason": "fixture", "grade": 4}
 
 
 @pytest.fixture(autouse=True)
@@ -199,27 +200,27 @@ def test_resolved_model_identity_is_not_stale(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "invalid",
+    "reply",
     [
-        {"is_primary": "false"},
-        {"is_primary": 1},
-        {"relevance": "0.9"},
-        {"relevance": True},
-        {"relevance": float("nan")},
-        {"relevance": float("inf")},
-        {"relevance": 1.1},
-        {"doc_kind": []},
-        {"reason": None},
+        {**_REPLY, "grade": "4"},
+        {**_REPLY, "grade": True},
+        {**_REPLY, "grade": 4.0},
+        {**_REPLY, "grade": 5},
+        {**_REPLY, "grade": -1},
+        {**_REPLY, "grade": None},
+        {**_REPLY, "doc_kind": []},
+        {**_REPLY, "reason": None},
+        _GRADE,
     ],
 )
-def test_invalid_grade_fails_explicitly_and_retains_usage(tmp_path, invalid):
+def test_invalid_grade_fails_explicitly_and_retains_usage(tmp_path, reply):
     """Bad grade fields never become truthy selections or erase usage."""
     record = _record(tmp_path)
 
     class Client:
         def extract(self, **kwargs):
             return {
-                "data": {**_GRADE, **invalid},
+                "data": reply,
                 "cost": 0.25,
                 "input_tokens": 10,
                 "output_tokens": 3,
@@ -242,7 +243,7 @@ def test_invalid_grade_fails_explicitly_and_retains_usage(tmp_path, invalid):
 def test_invalid_grade_is_retried_once(tmp_path):
     """A malformed first grade does not fail (and block) the target."""
     record = _record(tmp_path)
-    replies = [{**_GRADE, "is_primary": "false"}, _GRADE]
+    replies = [{**_REPLY, "grade": "4"}, _REPLY]
 
     class Client:
         def extract(self, **kwargs):
@@ -269,9 +270,7 @@ def test_parallel_grades_accumulate_all_returned_usage(tmp_path):
                 first_round = len(calls) <= 4
             invalid = barrier.wait(timeout=5) == 0 if first_round else True
             return {
-                "data": {**_GRADE, "is_primary": "false"}
-                if invalid
-                else _GRADE,
+                "data": {**_REPLY, "grade": "4"} if invalid else _REPLY,
                 "cost": 0.125,
                 "input_tokens": 11,
                 "output_tokens": 7,
@@ -528,3 +527,23 @@ def test_unreadable_document_is_a_terminal_skip_with_one_note(tmp_path, monkeypa
         "2 document(s) had too little text to review; "
         "JS-rendered pages need discovery.crawl.browser_escalation."
     ]
+
+
+def test_failed_text_extraction_is_a_terminal_skip(tmp_path, monkeypatch):
+    """Failing extraction is unreadable content, not a retryable error."""
+
+    def _raise(_path):
+        raise ValueError("corrupt")
+
+    sampler = document_reviewer.ContentSampler
+    monkeypatch.setattr(document_utils, "extract_text_from_document", _raise)
+    monkeypatch.setattr(sampler, "extract_text", staticmethod(_raise))
+    record = _record(tmp_path)
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._client = object()
+    _, notes = reviewer.review([record], [])
+    assert record["status"] == "skipped_unreadable"
+    assert record["reason"] == "document text extraction failed"
+    assert not record.get("review_failed") and not is_retryable(record)
+    assert reviewer.get_costs()["llm_calls"] == 0
+    assert any("too little text" in note for note in notes)

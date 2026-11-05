@@ -97,12 +97,12 @@ compilation:
 #     max_pages: 50                      # HTML pages fetched per crawl
 #     allowed_domains: [example.org]     # crawl/download host allowlist
 #     include_url_patterns: ['/documents/']      # regex; matching links count as documents
-#     include_link_text_patterns: ['manual']     # regex on link text
+#     include_link_text_patterns: ['^next$']     # regex on link text; only matches are followed
 #     browser_downloads: false           # true downloads through headless Chrome
-#     browser_escalation: {enabled: true}        # opt-in JS-shell browser recovery
+#     browser_escalation: {enabled: true}        # opt-in browser recovery: JS shells, 401/403/429/451
 #                                        # (min_shell_chars, min_rendered_chars, settle_seconds)
 #     code_host_adapters: {enabled: true}        # opt-in code-host API recovery
-#     request_headers: {User-Agent: ParseSweep/2.0}  # public headers only
+#     request_headers: {Accept-Language: en-US}  # public headers only; also User-Agent
 #   search:
 #     max_results: 10                    # unique candidates PER QUERY
 #     cache: false                       # true caches SerpApi results
@@ -149,7 +149,8 @@ compilation:
 #   fields: [field_a, field_b]           # focus; default: every scored field
 #   # Rows mode (no roster) only:
 #   key_fields: [state, county, feature] # row identity; include a context field
-#   quote_field: source_verbatim         # matches rows whose keys differ
+#   quote_field: source_verbatim         # matches rows whose keys differ; extract drops
+#                                        # rows whose quote is not in the source
 # Converge on an exemplar with references + min_accuracy, compare challengers
 # blind with models + judge, then scale with `validate --sample N` and add the
 # labelled sample to references.

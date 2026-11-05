@@ -13,6 +13,7 @@ import pytest
 from psweep.config import RuntimeConfigError
 from psweep.config.runtime_config_loader import load_runtime_config_file
 from psweep.discovery.targets import identify_target
+from psweep.extraction import document_utils
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 
 FIELDS = ["state", "ahj"]
@@ -169,8 +170,10 @@ def _record(ws, relative):
 def test_shared_doc_keeps_only_roster_candidates(workspace):
     _run(workspace.inputs)
     record = _record(workspace, "_shared/survey.json")
-    prompt = next(text for text in workspace.llm.texts if "ROSTER CANDIDATES" in text)
+    prompt = next(text for text in workspace.llm.texts if "Statewide solar" in text)
+    assert "ROSTER CANDIDATES" in prompt
     assert '"ahj": "Pima County"' in prompt and "Boulder" not in prompt
+    assert "SOURCE_URL: https://state.example/survey" in prompt
     assert [item["ahj"] for item in record["payload"]["jurisdictions"]] == ["Pima County"]
     assert record["quality"]["off_candidate_items"] == 1
     assert record["quality"]["unverified_quotes"] == 0
@@ -337,3 +340,19 @@ def test_partial_key_overlap_fails_before_calls(workspace):
     with pytest.raises(RuntimeConfigError, match="partially overlaps"):
         _prepare_extraction(workspace.inputs)
     assert workspace.llm.texts == []
+
+
+def test_shared_table_window_is_labelled_and_layout_change_reextracts(workspace, monkeypatch):
+    towns = "\n".join(f"Town {number} County,AZ,FALSE" for number in range(150))
+    table = f"Jurisdiction Name,State,SolarAPP\n{towns}\nPima County,AZ,TRUE\n{towns}\n"
+    _add_doc(workspace, "_shared/locations.csv", table, scope="shared")
+    _run(workspace.inputs)
+    prompt = next(t for t in workspace.llm.texts if "Jurisdiction Name: Pima County" in t)
+    assert "Jurisdiction Name: Pima County | State: AZ | SolarAPP: TRUE" in prompt
+    assert len(prompt) < len(table) / 4
+    workspace.llm.texts.clear()
+    _run(workspace.inputs)
+    assert workspace.llm.texts == []
+    monkeypatch.setitem(document_utils.TABLE_TEXT_LAYOUT, ".csv", "another-layout")
+    _run(workspace.inputs)
+    assert len(workspace.llm.texts) == 1 and "SolarAPP: TRUE" in workspace.llm.texts[0]

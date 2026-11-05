@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from psweep.outcomes import EXIT_CODES, EXIT_FAILED, exit_code
+
 
 @dataclass(slots=True)
 class CandidateScore:
@@ -143,23 +145,16 @@ def discovery_exit_code(manifest: dict) -> int:
         message = "Expected a discovery manifest object"
         raise TypeError(message)
     status = manifest.get("status")
-    if status not in {
-        "success",
-        "reused",
-        "dry_run",
-        "empty",
-        "failed",
-        "partial_failure",
-    }:
+    if status not in EXIT_CODES:
         message = "Discovery manifest has no valid outcome status"
         raise ValueError(message)
     errors = manifest.get("errors")
     if not isinstance(errors, list):
         message = "Discovery manifest.errors must be an array"
         raise TypeError(message)
-    if errors or status in {"failed", "partial_failure"}:
-        return 1
-    return 2 if status == "empty" else 0
+    if errors and status not in {"failed", "partial_failure"}:
+        return EXIT_FAILED
+    return exit_code(status)
 
 
 @dataclass(slots=True)

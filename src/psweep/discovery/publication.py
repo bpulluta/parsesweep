@@ -20,7 +20,9 @@ from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path, PurePosixPath
 from collections.abc import Iterator, Mapping
 
-from psweep.extraction.document_utils import text_cache_paths
+from psweep.extraction.document_utils import (
+    read_text_cache, text_cache_paths, write_text_cache,
+)
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
 from .retry import is_retryable
@@ -662,7 +664,7 @@ def _merged_index(
     return csv_content(fieldnames, list(rows.values())), removed
 
 
-def _promotion_files(source: Path, is_blocked) -> tuple[list, set]:
+def _promotion_files(source: Path) -> tuple[list, set]:
     files: list[tuple[Path, Path, Path]] = []
     promoted: set[str] = set()
     for src in source.rglob("*"):
@@ -675,12 +677,49 @@ def _promotion_files(source: Path, is_blocked) -> tuple[list, set]:
         partition = rel.parent
         while partition != Path() and partition.name.startswith("."):
             partition = partition.parent
-        if is_blocked(partition):
-            continue
         files.append((src, rel, partition))
         if not any(part.startswith(".") for part in rel.parts):
             promoted.add(rel.as_posix())
     return files, promoted
+
+
+def _documents(base: Path) -> list[Path]:
+    """Regular document files under ``base``, excluding dot sidecars."""
+    return [
+        path
+        for path in base.rglob("*")
+        if path.is_file()
+        and not path.is_symlink()
+        and not any(part.startswith(".") for part in path.relative_to(base).parts)
+    ]
+
+
+def _inherit_text_caches(source: Path, curated: Path, replaced: set[Path]) -> None:
+    """Carry OCR/transcript text to a republished copy of the same bytes.
+
+    A re-downloaded file is a new inode, so the text cache of the
+    consolidated file it replaces no longer validates. The cache is
+    re-written for the run's copy when the SHA-256 matches and the copy has
+    none, and is then promoted with it.
+    """
+    new = _documents(source)
+    outgoing = {curated / path.relative_to(source) for path in new}
+    for part in replaced:
+        if (curated / part).is_dir():
+            outgoing.update(_documents(curated / part))
+    cached = {}
+    for old in outgoing:
+        hit = read_text_cache(old, return_meta=True) if old.is_file() else None
+        if hit:
+            cached[hit[1]["source_sha256"]] = hit
+    if not cached:
+        return
+    for path in new:
+        if read_text_cache(path) is None and (
+            hit := cached.get(artifact_sha256(path))
+        ):
+            text, meta = hit
+            write_text_cache(path, text, meta["method"], page_count=meta.get("page_count"))
 
 
 def _stage_promotion(
@@ -698,11 +737,13 @@ def _stage_promotion(
     """Stage a run's publication into consolidated curation.
 
     ``attempted_partitions`` (``--fresh`` runs) are replaced wholesale; any
-    other selected document is published file by file. Outside blocked
-    partitions, the consolidated documents of ``withdrawn`` owners, of
-    ``completed`` targets/sources not promoted now, and the old paths of
-    renamed owners are removed (see ``_merged_index``), so documents of
-    other targets sharing a partition are kept.
+    other selected document is published file by file. Blocked (incomplete)
+    partitions are only added to: same-name files are replaced, nothing is
+    removed. Outside them, the consolidated documents of ``withdrawn``
+    owners, of ``completed`` targets/sources not promoted now, and the old
+    paths of renamed owners are removed (see ``_merged_index``), so
+    documents of other targets sharing a partition are kept. Text caches of
+    replaced files carry over to identical new files.
     """
     if source.resolve() == (root / "curated").resolve():
         msg = "Run curation and consolidated curation must have distinct paths"
@@ -718,7 +759,6 @@ def _stage_promotion(
     def is_blocked(part):
         return part in blocked_ancestors or _under(part, blocked)
 
-    files, promoted = _promotion_files(source, is_blocked)
     attempted = {
         _relative(part, partition=True)
         for part in (attempted_partitions or ())
@@ -726,6 +766,8 @@ def _stage_promotion(
     replacements = _minimal(
         {part for part in attempted if not is_blocked(part)}
     )
+    _inherit_text_caches(source, root / "curated", replacements)
+    files, promoted = _promotion_files(source)
     staged_root = staging / "promoted"
     staged_root.mkdir()
     for src, rel, _ in files:
@@ -777,7 +819,9 @@ def promote_curated(
     blocked_partitions=None,
     run_index: Path | None = None,
 ) -> None:
-    """Publish complete partitions and their consolidated provenance."""
+    """Publish run curation and its consolidated provenance; blocked
+    partitions are published additively.
+    """
     root = Path(domain_dir).resolve()
     source = Path(run_curated_dir).resolve()
     index = (
@@ -993,9 +1037,56 @@ def load_checkpoint(
     return {
         key: entry
         for key, entry in entries.items()
-        if (fingerprint is None or entry.get("fingerprint") == fingerprint)
+        if not entry.get("incomplete")
+        and (fingerprint is None or entry.get("fingerprint") == fingerprint)
         and (not validate_artifacts or checkpoint_artifacts_valid(entry))
     }
+
+
+def load_prior_outcomes(
+    path: Path, *, fingerprint: str
+) -> dict[str, dict[str, dict[str, object]]]:
+    """Final child outcomes saved for incomplete targets and sources.
+
+    Returns ``{owner key: {url: outcome}}``. A download carries its file
+    path and SHA-256, which the caller verifies before reuse, so it holds
+    under any settings; other final outcomes (terminal failures, skips)
+    hold only for the same ``fingerprint``.
+    """
+    try:
+        entries = _checkpoint_data(path)
+    except PublicationError:
+        return {}
+    prior: dict[str, dict[str, dict[str, object]]] = {}
+    for key, entry in entries.items():
+        outcomes = entry.get("outcomes")
+        if not entry.get("incomplete") or not isinstance(outcomes, dict):
+            continue
+        same = entry.get("fingerprint") == fingerprint
+        kept = {
+            url: outcome
+            for url, outcome in outcomes.items()
+            if isinstance(outcome, dict)
+            and (
+                _download_evidence(outcome)
+                if outcome.get("status") == "downloaded"
+                else same and isinstance(outcome.get("status"), str)
+            )
+        }
+        if kept:
+            prior[key] = kept
+    return prior
+
+
+def _download_evidence(outcome: Mapping[str, object]) -> bool:
+    path, digest = outcome.get("path"), outcome.get("sha256")
+    return (
+        isinstance(path, str)
+        and Path(path).is_absolute()
+        and isinstance(digest, str)
+        and len(digest) == SHA256_HEX_LENGTH
+        and isinstance(outcome.get("final_url"), str)
+    )
 
 
 def save_checkpoint_entries(

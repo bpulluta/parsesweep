@@ -339,6 +339,44 @@ def test_browser_gate_denies_before_each_navigation(monkeypatch, connector):
     assert result.artifacts == []
 
 
+@pytest.mark.parametrize(
+    ("escalation", "browser", "navigated", "found"),
+    [
+        (True, True, ["https://county.gov/hub"], ["https://county.gov/doc.pdf"]),
+        (False, True, [], []),
+        (True, False, [], []),
+    ],
+)
+def test_refused_page_is_retried_through_the_browser(
+    monkeypatch, escalation, browser, navigated, found
+):
+    """A 403 crawl page escalates like a JS shell; without a browser it stays a 403."""
+    hub = "https://county.gov/hub"
+    monkeypatch.setattr(FakeBrowser, "navigations", [])
+    monkeypatch.setattr(
+        FakeBrowser,
+        "pages",
+        {hub: (hub, '<a href="/doc.pdf">Doc</a>', [])},
+    )
+    if not browser:
+        monkeypatch.setattr(FakeBrowser, "_start", lambda self: 1 / 0)
+    monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
+    monkeypatch.setattr(
+        network, "request_get", lambda url, **_kwargs: Response(url, status=403)
+    )
+    result = HttpDiggerConnector().discover(
+        DiggerInput(
+            sources=[hub],
+            max_depth=1,
+            max_pages=5,
+            extra_params={"browser_escalation": escalation},
+        ),
+    )
+    assert FakeBrowser.navigations == navigated
+    assert [artifact.url for artifact in result.artifacts] == found
+    assert result.incomplete_sources == set()
+
+
 HUB = "https://county.gov/hub"
 SITE = {
     HUB: [
@@ -410,6 +448,61 @@ def test_link_text_patterns_keep_matching_pages():
     assert urls == ["https://county.gov/codes"]
 
 
+LISTING = "https://county.gov/list"
+
+
+def _paginated(page):
+    links = [{"url": f"https://county.gov/item{page}", "text": f"Item {page}"}]
+    if page < 5:
+        nxt = f"{LISTING}?page={page + 1}"
+        links += [{"url": nxt, "text": "Next"}, {"url": nxt, "text": ""}]
+    return links
+
+
+def _crawl_listing(**overrides):
+    fetched = []
+
+    def fetch_links(url):
+        fetched.append(url)
+        page = int(url.partition("?page=")[2] or 1)
+        return _paginated(page)
+
+    options = {
+        "sources": [LISTING],
+        "max_depth": 10,
+        "max_pages": 10,
+        "include_link_text_patterns": ["^next$"],
+    } | overrides
+    result = crawl(DiggerInput(**options), fetch_links, "test")
+    return [a.url for a in result.artifacts], fetched, result
+
+
+def test_link_text_patterns_follow_pagination_to_its_end():
+    """Every matched page is saved and followed; nothing else is."""
+    urls, fetched, result = _crawl_listing()
+    pages = [f"{LISTING}?page={n}" for n in range(2, 6)]
+    assert urls == pages
+    assert fetched == [LISTING, *pages]
+    assert {a.metadata["source_url"] for a in result.artifacts} == {LISTING}
+    assert result.incomplete_sources == set()
+
+
+def test_pagination_stops_at_depth_and_page_budgets():
+    urls, fetched, result = _crawl_listing(max_depth=4)
+    assert len(urls) == 4 and len(fetched) == 4
+    assert result.incomplete_sources == set()
+    urls, fetched, result = _crawl_listing(max_pages=2)
+    assert len(fetched) == 2
+    assert result.incomplete_sources == {LISTING}
+
+
+def test_link_text_patterns_do_not_follow_unmatched_or_textless_links():
+    _, fetched, _, _ = _crawl(max_depth=3, include_link_text_patterns=["^codes$"])
+    assert fetched == [HUB, "https://county.gov/codes"]
+    _, fetched, _, _ = _crawl(max_depth=3, include_link_text_patterns=["^nothing$"])
+    assert fetched == [HUB]
+
+
 def test_budgets_bound_pages_and_files():
     assert _crawl(max_pages=1)[1] == [HUB]
     assert _crawl(max_files=1)[0] == ["https://county.gov/docs/a.pdf"]
@@ -448,6 +541,20 @@ def test_exhausted_budgets_leave_sources_incomplete():
     assert crawl_incomplete(max_depth=1, max_pages=1) == set()
 
 
+def test_exact_file_budget_is_incomplete_only_if_a_wanted_link_remains():
+    """Links after the last wanted one (navigation, other sites) cannot be cut off."""
+    assert crawl_incomplete(max_depth=1, max_files=1) == set()
+    pattern = ["docs|showpublisheddocument"]
+    assert crawl_incomplete(max_depth=1, max_files=1, include_url_patterns=pattern) == {HUB}
+    assert crawl_incomplete(max_depth=1, max_files=2, include_url_patterns=pattern) == set()
+
+
+def test_budget_filled_by_an_unfollowed_page_is_incomplete():
+    """A saved "Next" page that the file budget kept from being followed is unfinished."""
+    _, fetched, result = _crawl_listing(max_files=1)
+    assert fetched == [LISTING] and result.incomplete_sources == {LISTING}
+
+
 def crawl_incomplete(**overrides):
     return _crawl_with_failures({}, **overrides).incomplete_sources
 
@@ -483,6 +590,62 @@ def test_resolve_digger_connector():
         resolve_digger_connector("browser")
 
 
+@pytest.mark.parametrize(
+    "connector", [HttpDiggerConnector, SeleniumDiggerConnector]
+)
+def test_crawl_browser_sends_the_configured_user_agent(monkeypatch, connector):
+    """Browser crawls identify with the same User-Agent as HTTP fetches."""
+    hub = "https://county.gov/hub"
+    opened = []
+
+    class RecordingBrowser(FakeBrowser):
+        pages = {hub: (hub, "<p>hub</p>", [])}
+        navigations = []
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            opened.append(kwargs["request_headers"])
+
+    monkeypatch.setattr("psweep.discovery.browser.BrowserSession", RecordingBrowser)
+    monkeypatch.setattr(
+        network,
+        "request_get",
+        lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
+    )
+    connector().discover(
+        DiggerInput(
+            sources=[hub],
+            max_depth=1,
+            max_pages=1,
+            extra_params={
+                "request_headers": {"user-agent": "Operator/1"},
+                "browser_escalation": True,
+            },
+        ),
+    )
+    assert len(opened) == 1
+    assert {k.lower(): v for k, v in opened[0].items()}["user-agent"] == "Operator/1"
+
+
+def test_browser_session_user_agent_follows_request_headers():
+    from psweep.discovery.browser import BrowserSession
+    from psweep.discovery.constants import USER_AGENT
+
+    assert BrowserSession().user_agent == USER_AGENT
+    session = BrowserSession(request_headers={"user-agent": "Operator/1"})
+    assert session.user_agent == "Operator/1"
+
+
+def test_download_browser_uses_resolved_request_headers(monkeypatch):
+    from psweep.discovery.engine import DiscoveryRequest
+
+    monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
+    session, _note = DiscoveryEngine._open_browser_for_download(
+        DiscoveryRequest(domain="x", request_headers={"User-Agent": "Operator/1"})
+    )
+    assert session.options["request_headers"]["User-Agent"] == "Operator/1"
+
+
 def test_open_browser_returns_none_when_unavailable(monkeypatch):
     import psweep.discovery.browser as browser_mod
 
@@ -490,6 +653,10 @@ def test_open_browser_returns_none_when_unavailable(monkeypatch):
         raise browser_mod.BrowserUnavailableError("no chrome")
 
     monkeypatch.setattr(browser_mod.BrowserSession, "_start", _boom)
-    session, note = DiscoveryEngine._open_browser_for_download()
+    from psweep.discovery.engine import DiscoveryRequest
+
+    session, note = DiscoveryEngine._open_browser_for_download(
+        DiscoveryRequest(domain="x")
+    )
     assert session is None
     assert "unavailable" in note.lower()

@@ -91,9 +91,11 @@ class PipelineError(ParseSweepError):
         *,
         stage: str | None = None,
         hint: str | None = None,
+        returncode: int | None = None,
     ) -> None:
         super().__init__(message, hint=hint)
         self.stage = stage
+        self.returncode = returncode
 
 
 class APIKeyError(ConfigurationError):

@@ -126,7 +126,8 @@ def compile_roster(
                 continue
             flags, level, chosen, urls = _resolve(candidates)
             conflicts += bool(flags)
-            first = next((c for c in chosen if c["quote"]), chosen[0])
+            # Cite a quoted, target-scoped source (the AHJ's own page) over a shared listing.
+            first = min(chosen, key=lambda c: (not c["quote"], c["scope"] != "target"))
             row[field] = first["value"]
             cell_evidence[field] = {
                 "value": first["value"],

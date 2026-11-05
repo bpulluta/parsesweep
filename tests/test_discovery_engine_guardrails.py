@@ -78,7 +78,7 @@ def test_forbidden_download_retries_via_browser(tmp_path, monkeypatch):
     monkeypatch.setattr(
         DiscoveryEngine,
         "_open_browser_for_download",
-        lambda self: (dummy_browser, "browser fallback"),
+        lambda self, request: (dummy_browser, "browser fallback"),
     )
     monkeypatch.setattr(
         DiscoveryEngine,
@@ -356,7 +356,7 @@ def test_browser_escalation_uses_recalibrated_shell_default(tmp_path, monkeypatc
     monkeypatch.setattr(
         DiscoveryEngine,
         "_open_browser_for_download",
-        lambda self: (None, "browser disabled for test"),
+        lambda self, request: (None, "browser disabled for test"),
     )
 
     request = DiscoveryRequest(

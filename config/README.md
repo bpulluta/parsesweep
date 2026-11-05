@@ -189,7 +189,12 @@ Search uses SerpApi and runs only when `queries` or a target `query` is set.
 | `max_results` | int | `10` | Local unique-candidate cap per query, including cached/news results. |
 | `cache` | bool | `false` | Cache results on disk; a cache hit makes no live call. |
 | `cache_ttl_minutes` | number | `0` | Cache expiry; `0` never expires. |
-| `params` | dict | — | Extra SerpApi params (e.g. `{tbm: nws}`); `q`, `num`, `api_key` are reserved. |
+| `params` | dict | — | Extra SerpApi params, sent verbatim (e.g. `{tbm: nws}`, `{engine: bing}`); `q`, `num`, `api_key` are reserved. |
+
+For Google, `params: {udm: web}` (the "Web" results tab) is recommended for
+document discovery: without it, Google often ignores quoted names and `site:`
+and returns a handful of vendor/aggregator pages. Search candidates drop
+click-tracking parameters (`utm_*`, `gclid`, `srsltid`, …) and keep all others.
 
 Configure candidate ranking via `link_prioritization:` (`mode`, `top_k`,
 `keywords`, `domain_scores`), not unsupported keys inside `search`.
@@ -292,7 +297,7 @@ do not count against any target's caps.
 | `include_url_patterns` | list | — | Regexes; matching links are treated as documents. |
 | `include_link_text_patterns` | list | — | Regexes on link text. |
 | `browser_downloads` | bool | `false` | Download through headless Chrome (bot-protected sites). |
-| `browser_escalation` | dict | off | `{enabled: true}` opts into JS-shell browser recovery. |
+| `browser_escalation` | dict | off | `{enabled: true}` opts into browser recovery of JS shells and refused (401/403/429/451) pages and downloads. |
 | `code_host_adapters` | dict | off | `{enabled: true}` opts into code-host API recovery. |
 | `request_headers` | dict | — | Public, non-empty HTTP headers; no credentials. |
 
@@ -394,7 +399,14 @@ complete once every outcome is final (downloaded, skipped, rejected, or a
 terminal failure such as HTTP 404 or a TLS error). Retryable failures (timeouts,
 429/5xx, network errors, a robots.txt that could not be fetched for such a
 reason) and a crawl cut short by such a failure or by
-`max_pages`/`max_files` keep it open for the next run. Resumed runs
+`max_pages`/`max_files` keep it open for the next run. An incomplete item
+publishes what it has so far file by file (it never withdraws a published file)
+and the checkpoint keeps its children's final outcomes: the next run re-fetches
+the listing/search, reuses each earlier download whose file still matches its
+SHA-256 without a request or a `max_files` slot, skips dead links, and fetches
+only the rest, so a capped listing converges batch by batch. Completed items
+make no requests; new or changed children of a completed listing are picked up
+by `psweep discover --fresh`, which ignores all reuse. Resumed runs
 publish file by file; only `--fresh` replaces whole curated partitions. Each
 curated path belongs to one target or source and stays stable across re-runs:
 when another published owner already holds a filename, the newcomer gets a short
@@ -408,18 +420,19 @@ OCR pairs use full filenames, so `report.pdf` and `report.html` cannot collide.
 Source size/mtime and digest plus the cached-text digest must match; partial,
 stale, or mismatched pairs are misses. Temporary-file replacement publishes
 metadata last; no stem-only fallback exists. Curation carries OCR caches with
-selected files. Native extraction/OCR correction behavior is unchanged.
+selected files, and republication (including `--fresh`) carries OCR/transcript
+text to a re-downloaded file with the same SHA-256. Native extraction/OCR correction behavior is unchanged.
 
 Discovery exit codes are verbosity-independent: `success`, `dry_run`, and
-validated `reused` work return **0**; failed or partially failed acquisition
-(including failure with zero downloads) returns **1**; genuinely `empty` work
-returns **2**. Inspect the manifest's outcome rather than counting files alone.
+validated `reused` work return **0**; failed acquisition (including failure
+with zero downloads) returns **1**; genuinely `empty` work returns **2**;
+partial failure (usable results plus errors) returns **3**, which `run` continues past. Inspect the manifest's outcome rather than counting files alone.
 
 **`manifest.json` observability sections:**
 - `timing`: `started_at`, `completed_at`, `elapsed_seconds`
 - `stage_summaries.seeker`: candidates discovered, after prioritization
 - `stage_summaries.crawl`: provider, max_depth, applied, candidates-in/out
-- `stage_summaries.downloads`: downloaded, skipped, failed, total_bytes
+- `stage_summaries.downloads`: this run's fetches (downloaded, skipped, failed, total_bytes) and `reused` prior outcomes of incomplete work (no request)
 - `candidate_summary`: total, by acceptance class (accepted/needs_review/rejected), by source
 - `lineage`: `documents_dir`, `download_index_csv`, `review_index_csv`, `curated_dir`, `curated_count`, ranked candidates
 
@@ -454,8 +467,8 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 and valid record-byte evidence are required. Stale, malformed, and old unverifiable
 outputs re-extract. Limits apply after reuse. `--fresh` resets the entire resolved
 output after preflight, then rebuilds only selected documents. Failed preflight
-preserves old outputs. Extract exits 0 for success/reuse, 1 for any operational
-failure (including partial), and 2 for empty selection; zero-item payloads are valid.
+preserves old outputs. Extract exits 0 for success/reuse, 1 for operational
+failure, 2 for empty selection, and 3 for partial failure; zero-item payloads are valid.
 
 Use a JSON schema directly, not YAML schema packs. Model aliases remain string
 maps; unreachable long-form definitions and `model_defaults` are rejected.

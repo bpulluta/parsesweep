@@ -138,3 +138,154 @@ def test_document_pdf_return_meta_passes_actual_scope(tmp_path, monkeypatch):
         "selected",
         {"used_ocr": False, "page_range": (2, 3), "page_count": 3},
     )
+
+
+# ── Tabular exports: every row is self-describing (``Header: value`` pairs) ──
+
+
+def _doc(tmp_path: Path, name: str, content) -> Path:
+    path = tmp_path / name
+    if isinstance(content, bytes):
+        path.write_bytes(content)
+    else:
+        path.write_text(content, encoding="utf-8")
+    return path
+
+
+def test_csv_rows_carry_their_header_labels(tmp_path: Path):
+    path = _doc(
+        tmp_path,
+        "locations.csv",
+        "\ufeffSolarAPP+ locations\n"
+        "Jurisdiction Name,Latitude,State,Notes,Solar + Storage\n"
+        'Pima County,32.0444,AZ,,TRUE\n"Town of\n  Gilbert",33.3,AZ,"multi, word",FALSE,extra\n'
+        "Short Town\n",
+    )
+    assert extract_text_from_document(path).splitlines() == [
+        "SolarAPP+ locations",
+        "Jurisdiction Name: Pima County | Latitude: 32.0444 | State: AZ | Solar + Storage: TRUE",
+        "Jurisdiction Name: Town of Gilbert | Latitude: 33.3 | State: AZ | Notes: multi, word"
+        " | Solar + Storage: FALSE | extra",
+        "Jurisdiction Name: Short Town",
+    ]
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["Pima County,32.0444,AZ\nBoulder County,40.1,CO\n", "a,b,a\nPima County,32.0444,AZ\n"],
+)
+def test_csv_without_a_header_row_stays_positional(tmp_path: Path, content):
+    text = extract_text_from_document(_doc(tmp_path, "rows.csv", content))
+    assert "Pima County | 32.0444 | AZ" in text.splitlines()
+
+
+def test_csv_falls_back_to_cp1252(tmp_path: Path):
+    path = _doc(tmp_path, "fees.csv", "Name,Fee\nCañon City,$100\n".encode("cp1252"))
+    assert extract_text_from_document(path) == "Name: Cañon City | Fee: $100"
+
+
+def test_xlsx_sheets_label_rows_with_their_own_header(tmp_path: Path):
+    workbook = openpyxl.Workbook()
+    first = workbook.active
+    first.title = "Counties"
+    for row in (("County", "Online"), ("Pima County", True), ("Boulder County", None)):
+        first.append(row)
+    second = workbook.create_sheet("Fees")
+    for row in (("Permit", "Fee"), ("Solar PV", 300)):
+        second.append(row)
+    path = tmp_path / "book.xlsx"
+    workbook.save(path)
+    assert extract_text_from_document(path).splitlines() == [
+        "",
+        "### Sheet: Counties ###",
+        "",
+        "County: Pima County | Online: true",
+        "County: Boulder County",
+        "",
+        "### Sheet: Fees ###",
+        "",
+        "Permit: Solar PV | Fee: 300",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (  # Socrata resource/x.json
+            [{"county": "Pima", "online": True, "fee": 300, "notes": None}, {"county": "Yuma"}],
+            ["county: Pima | online: true | fee: 300", "county: Yuma"],
+        ),
+        (  # ArcGIS REST query
+            {
+                "objectIdFieldName": "OBJECTID",
+                "fields": [{"name": "NAME", "type": "esriFieldTypeString"}],
+                "features": [
+                    {"attributes": {"NAME": "Pima County", "LEVEL": "Gold"},
+                     "geometry": {"x": -111.7, "y": 32.0}},
+                ],
+            },
+            [
+                "objectIdFieldName: OBJECTID",
+                "", "### fields ###", "",
+                "name: NAME | type: esriFieldTypeString",
+                "", "### features ###", "",
+                "attributes.NAME: Pima County | attributes.LEVEL: Gold"
+                " | geometry.x: -111.7 | geometry.y: 32.0",
+            ],
+        ),
+        (  # GeoJSON: polygon rings carry no text and are skipped
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {"type": "Feature",
+                     "properties": {"name": "Pima County", "tags": ["solar", "pv"],
+                                    "contacts": [{"role": "permits"}]},
+                     "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 1]]]}},
+                ],
+            },
+            [
+                "type: FeatureCollection",
+                "", "### features ###", "",
+                "type: Feature | properties.name: Pima County | properties.tags: solar, pv"
+                " | properties.contacts.0.role: permits | geometry.type: Polygon",
+            ],
+        ),
+        (  # CKAN datastore_search
+            {"success": True,
+             "result": {"records": [{"_id": 1, "County": "Pima"}], "total": 1}},
+            ["success: true | result.total: 1", "", "### result.records ###", "",
+             "_id: 1 | County: Pima"],
+        ),
+        (  # array of arrays: positional table rows
+            {"data": [["Pima County", 32.0], ["Yuma County", 32.6]]},
+            ["", "### data ###", "", "Pima County | 32.0", "Yuma County | 32.6"],
+        ),
+    ],
+)
+def test_json_record_arrays_render_as_labelled_rows(tmp_path: Path, payload, expected):
+    import json
+
+    path = _doc(tmp_path, "export.json", json.dumps(payload))
+    assert is_supported_document(path)
+    assert extract_text_from_document(path).splitlines() == expected
+
+
+def test_json_without_records_is_indented_text(tmp_path: Path):
+    path = _doc(tmp_path, "config.json", '{"county": "Pima", "levels": ["Gold"]}')
+    assert extract_text_from_document(path) == (
+        '{\n  "county": "Pima",\n  "levels": [\n    "Gold"\n  ]\n}'
+    )
+
+
+def test_invalid_json_fails_loudly(tmp_path: Path):
+    with pytest.raises(RuntimeError, match="Failed to extract from JSON"):
+        extract_text_from_document(_doc(tmp_path, "bad.json", "<html>not json</html>"))
+
+
+def test_quotes_verify_against_labelled_rows(tmp_path: Path):
+    from psweep.extraction.roster import quote_present
+
+    path = _doc(tmp_path, "l.csv", "Jurisdiction Name,State,Solar + Storage\nPima County,AZ,TRUE\n")
+    text = extract_text_from_document(path)
+    assert quote_present("Jurisdiction Name: Pima County | State: AZ", text)
+    assert quote_present("Pima County, AZ", text) is False

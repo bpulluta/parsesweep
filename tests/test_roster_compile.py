@@ -212,3 +212,22 @@ def test_numeric_agreement_and_punctuation_conflict(tmp_path):
     assert evidence["note"]["conflict"] is True
     assert compiler.roster_stats["conflicts"] == 1
     assert _row(frame, "Maricopa County")["confidence"] == "low"
+
+
+def test_agreeing_cell_cites_the_targets_own_page_over_a_shared_listing(tmp_path):
+    records = tmp_path / "records"
+    records.mkdir()
+    _write(records, "a_listing", "https://shared.org/list", "shared", [
+        _item("AZ", "Maricopa County", online=_ev("Yes", "Maricopa County AZ")),
+    ])
+    _write(records, "b_own", "https://m.gov/permits", "target", [
+        _item("AZ", "Maricopa County", online=_ev("Yes", "Apply for permits online")),
+    ])
+    frame, _ = DataCompiler(
+        _metadata(tmp_path), inputs=INPUTS, verbose=False,
+    ).compile_from_directory(records)
+    row = _row(frame, "Maricopa County")
+    assert json.loads(row["evidence"])["online"] == {
+        "value": "Yes", "quote": "Apply for permits online", "url": "https://m.gov/permits",
+    }
+    assert row["confidence"] == "high"

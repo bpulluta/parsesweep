@@ -146,6 +146,7 @@ def test_redirect_and_retry_share_pacing_and_request_options(monkeypatch):
         response_url_gate=final_checks.append,
         limiter=SimpleNamespace(wait=lambda: waits.append(True)),
         retry=(3, 0.25, 1),
+        max_bytes=1234,
     )
     assert attempts == 2
     assert response is responses[-1]
@@ -161,6 +162,7 @@ def test_redirect_and_retry_share_pacing_and_request_options(monkeypatch):
             "verify": True,
             "stream": True,
             "allow_redirects": False,
+            "max_bytes": 1234,
         }
         for _, options in calls
     )
@@ -266,6 +268,45 @@ def test_robots_uses_shared_gate_free_timeout_and_pacing(monkeypatch):
         tos_policy_mode="ignore",
     )
     assert len(calls) == 1
+
+
+def test_user_agent_is_honest_and_browser_compatible():
+    """WAFs reject agents without a Mozilla prefix or with URLs/"discovery"."""
+    from psweep import __version__
+    from psweep.discovery.constants import ROBOTS_AGENT, USER_AGENT
+
+    assert USER_AGENT == f"Mozilla/5.0 (compatible; {ROBOTS_AGENT}/{__version__})"
+    for blocked in ("http", "www.", "@", "discovery", "Chrome", "Safari"):
+        assert blocked not in USER_AGENT
+
+
+@pytest.mark.parametrize(
+    "robots, allowed",
+    [
+        ("User-agent: ParseSweep\nDisallow: /private\n\nUser-agent: *\nAllow: /\n", False),
+        ("User-agent: Mozilla\nDisallow: /\n", True),
+    ],
+)
+def test_robots_groups_match_the_product_token_not_the_header(
+    monkeypatch, robots, allowed
+):
+    """Robots rules name ParseSweep whatever User-Agent the request sends."""
+    sent = []
+
+    def get(url, **kwargs):
+        sent.append(kwargs["headers"])
+        return Response(url, text=robots)
+
+    monkeypatch.setattr(network, "request_get", get)
+    result = DiscoveryPolicyEvaluator().evaluate(
+        url="https://county.gov/private",
+        ssl_verify=True,
+        request_headers={"User-Agent": "Operator/1"},
+        robots_policy_mode="enforce",
+        tos_policy_mode="ignore",
+    )
+    assert result.allowed is allowed
+    assert sent == [{"User-Agent": "Operator/1"}]
 
 
 @pytest.mark.parametrize("mode, allowed", [("warn", True), ("enforce", False)])

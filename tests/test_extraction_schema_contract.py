@@ -207,7 +207,7 @@ def _plan(tmp_path, document, schema, schema_path, metadata):
         "inputs": {}, "outputs": {document: tmp_path / "document.json"},
         "roster": None, "candidates": {}, "anchors": {}, "roster_errors": {}, "context": {}, "root": tmp_path,
         "schema": schema, "schema_path": schema_path, "metadata": metadata,
-        "evidence_paths": [], "fingerprints": {document: "a" * 64},
+        "evidence_paths": [], "quote_rows": None, "fingerprints": {document: "a" * 64},
     }
 
 

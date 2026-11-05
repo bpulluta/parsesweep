@@ -87,14 +87,16 @@ def test_preview_uses_configured_model_price(tmp_path, monkeypatch):
 # ── shared on-disk artifact counters ─────────────────────────────────────────
 
 
-def test_count_curated_documents_skips_sidecars_and_json(tmp_path):
+def test_count_curated_documents_skips_sidecars(tmp_path):
     d = tmp_path / "curated"
     d.mkdir()
     (d / "a.pdf").write_text("x")
     (d / "b.docx").write_text("x")
+    (d / "c.json").write_text("[]")  # JSON data export -> a document
     (d / "a.text").write_text("x")  # .text sidecar -> excluded
-    (d / "meta.json").write_text("{}")  # .json -> excluded
-    assert _count_curated_documents(d) == 2
+    (d / ".review").mkdir()
+    (d / ".review" / "a.pdf.json").write_text("{}")  # hidden -> excluded
+    assert _count_curated_documents(d) == 3
 
 
 def test_count_curated_documents_missing_dir(tmp_path):
