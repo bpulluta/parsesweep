@@ -147,7 +147,7 @@ extraction:
 
     runner = CliRunner()
     with patch(
-        "psweep.cli.app.subprocess.run",
+        "psweep.pipeline.subprocess.run",
         return_value=SimpleNamespace(returncode=0),
     ):
         result = runner.invoke(
@@ -190,7 +190,7 @@ extraction:
 
     runner = CliRunner()
     with patch(
-        "psweep.cli.app.subprocess.run",
+        "psweep.pipeline.subprocess.run",
         return_value=SimpleNamespace(returncode=0),
     ):
         result = runner.invoke(

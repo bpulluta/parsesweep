@@ -37,7 +37,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from psweep.config import load_runtime_config_file, resolve_command_config
 from psweep.config.runtime_config_loader import resolve_compilation_metadata
@@ -48,9 +48,10 @@ from psweep.compilation.input_provenance import (
 from psweep.discovery.request_inputs import discovery_request_fields
 from jsonschema import ValidationError
 
-from psweep.exceptions import APIKeyError
+from psweep.exceptions import APIKeyError, PipelineError
+from psweep.outcomes import EXIT_PARTIAL, exit_code
 from psweep import extraction as extraction_api
-from psweep.extraction import document_utils
+from psweep.extraction import document_utils, transcription
 from psweep.extraction.page_locator import (
     PageLocator,
     DEFAULT_PAGE_TRIGGER_CHARS,
@@ -75,6 +76,7 @@ from psweep.extraction.record_writer import (
     write_extraction_record,
 )
 from psweep.extraction.roster import (
+    QuoteRows,
     batch,
     candidate_hash,
     candidates_block,
@@ -122,9 +124,7 @@ class ExtractionRunResult:
     @property
     def exit_code(self) -> int:
         """Return the subprocess outcome without importing CLI code."""
-        if self.status in {"failed", "partial_failure"}:
-            return 1
-        return 2 if self.status == "empty" else 0
+        return exit_code(self.status)
 
     @property
     def success_rate(self) -> float:
@@ -155,6 +155,7 @@ class PipelineResult:
 
     domain: str
     stages_run: list[str]
+    partial_stages: list[str] = field(default_factory=list)
     extraction: Optional[ExtractionRunResult] = None
     compilation: Optional[CompilationResult] = None
 
@@ -420,7 +421,16 @@ def _manual_ranges(inputs: dict, documents: list[Path], root: Path) -> dict:
 
 
 def _extraction_fingerprints(  # noqa: PLR0913 - full effective behavior
-    inputs, llm, locator, schema_path, documents, ranges, context, roster, anchors
+    inputs,
+    llm,
+    locator,
+    schema_path,
+    documents,
+    ranges,
+    context,
+    roster,
+    anchors,
+    transcriber=None,
 ):
     """Bind reused records to effective behavior and source bytes."""
     targeting = inputs.get("page_targeting") or {}
@@ -431,6 +441,7 @@ def _extraction_fingerprints(  # noqa: PLR0913 - full effective behavior
             "reasoning_models",
             "ocr_corrections",
             "timeout_seconds",
+            "quote_field",
         )
     }
     policy.update(
@@ -459,13 +470,15 @@ def _extraction_fingerprints(  # noqa: PLR0913 - full effective behavior
     for doc in documents:
         info = source_context(doc, context)
         cached = document_utils.read_text_cache(doc, return_meta=True)
+        audio = transcription.is_audio(doc)
         data = {
             **policy,
             "effective_text": (
                 {key: cached[1].get(key) for key in ("method", "text_sha256")}
-                if cached and cached[1].get("method") != "ocr"
+                if cached and cached[1].get("method") != "ocr" and not audio
                 else None
             ),
+            "table_layout": document_utils.TABLE_TEXT_LAYOUT.get(doc.suffix.lower()),
             "source": str(doc),
             "source_sha256": artifact_sha256(doc),
             "manual_pages": ranges.get(doc),
@@ -474,6 +487,9 @@ def _extraction_fingerprints(  # noqa: PLR0913 - full effective behavior
                 candidate_hash(roster, anchors[doc]) if doc in anchors else None
             ),
         }
+        if audio:
+            # A transcript derives from source bytes and this identity.
+            data["transcription"] = getattr(transcriber, "identity", None)
         fingerprints[doc] = hashlib.sha256(
             json.dumps(data, sort_keys=True).encode()
         ).hexdigest()
@@ -605,10 +621,13 @@ def _prepare_extraction(
         llm_config=inputs.get("llm_config"),
     )
     locator = _extraction_locator_config(inputs, llm)
+    transcriber = transcription.build_transcriber(inputs)
     context = build_source_context_map(Path(inputs["path"]).resolve())
     roster = load_roster(inputs, plan["metadata"])
     candidates, anchors, roster_errors = (
-        _roster_plan(documents, plan["root"], context, roster, inputs)
+        _roster_plan(
+            documents, plan["root"], context, roster, inputs, transcriber
+        )
         if roster and not validate_only
         else ({}, {}, {})
     )
@@ -622,6 +641,7 @@ def _prepare_extraction(
         context,
         roster,
         anchors,
+        transcriber,
     )
     if fresh and not validate_only:
         for doc, selected in ranges.items():
@@ -650,6 +670,7 @@ def _prepare_extraction(
         "pending": pending,
         "reused": reused,
         "llm": llm,
+        "transcriber": transcriber,
         "ranges": ranges,
         "context": context,
         "roster": roster,
@@ -657,13 +678,24 @@ def _prepare_extraction(
         "anchors": anchors,
         "roster_errors": roster_errors,
         "evidence_paths": evidence_paths(plan["schema"]),
+        "quote_rows": (
+            QuoteRows(
+                plan["metadata"].get_main_data_array(),
+                plan["metadata"].get_row_array(),
+                inputs["quote_field"],
+            )
+            if inputs.get("quote_field")
+            else None
+        ),
         "fingerprints": fingerprints,
         "inputs": inputs,
         "fresh": fresh,
     }
 
 
-def _document_text(doc_path, page_range, section_text, corrections):
+def _document_text(
+    doc_path, page_range, section_text, corrections, transcriber=None
+):
     """Prepare text and effective scope for one document."""
     scope = {}
     if section_text is not None:
@@ -678,7 +710,7 @@ def _document_text(doc_path, page_range, section_text, corrections):
         effective = scope.get("page_range") if page_range is not None else None
     else:
         text = document_utils.extract_text_from_document(
-            doc_path, page_range=page_range
+            doc_path, page_range=page_range, transcriber=transcriber
         )
         effective = page_range
     if not text.strip():
@@ -687,7 +719,7 @@ def _document_text(doc_path, page_range, section_text, corrections):
     return text, effective, scope
 
 
-def _roster_plan(documents, root, context, roster, inputs):
+def _roster_plan(documents, root, context, roster, inputs, transcriber=None):
     """Anchor every document to roster targets before any provider call."""
     candidates, anchors, errors = {}, {}, {}
     for doc in documents:
@@ -701,7 +733,7 @@ def _roster_plan(documents, root, context, roster, inputs):
         elif info.scope == "shared":
             try:
                 text = _document_text(
-                    doc, None, None, inputs.get("ocr_corrections")
+                    doc, None, None, inputs.get("ocr_corrections"), transcriber
                 )[0]
             except Exception as exc:  # noqa: BLE001 - isolate unreadable documents
                 errors[doc] = f"Roster candidate scan failed: {exc}"
@@ -734,15 +766,16 @@ def _keep_roster_items(data, array, roster, target_ids) -> int:
     return len(items) - len(data[array])
 
 
-def _roster_extract(extractor, schema, array, roster, candidates, budget):
+def _roster_extract(extractor, schema, array, roster, candidates, budget, info):
     """Extract shared-document candidate windows and drop off-roster items."""
     budget -= len(
         candidates_block(roster, set().union(*(ids for _, ids in candidates)))
-    )
+    ) + len(prepend_source_context("", info))
     results, items, dropped = [], [], 0
     for text, target_ids in batch(candidates, max(budget, 1)):
         result = extractor.extract(
-            candidates_block(roster, target_ids) + text, schema
+            candidates_block(roster, target_ids) + prepend_source_context(text, info),
+            schema,
         )
         dropped += _keep_roster_items(result.data, array, roster, target_ids)
         items.extend(result.data[array])
@@ -792,7 +825,11 @@ def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page
             text, result = "", _no_roster_match(array)
         elif doc_path in plan["candidates"]:
             text = _document_text(
-                doc_path, None, None, inputs.get("ocr_corrections")
+                doc_path,
+                None,
+                None,
+                inputs.get("ocr_corrections"),
+                plan.get("transcriber"),
             )[0]
             result = _roster_extract(
                 extractor,
@@ -801,6 +838,7 @@ def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page
                 roster,
                 plan["candidates"][doc_path],
                 inputs.get("max_context", DEFAULT_MAX_CONTEXT),
+                info,
             )
         else:
             text, effective_range, parser_scope = _document_text(
@@ -808,6 +846,7 @@ def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page
                 page_range,
                 section_text,
                 inputs.get("ocr_corrections"),
+                plan.get("transcriber"),
             )
             prompt = prepend_source_context(text, info)
             if anchors:
@@ -823,7 +862,12 @@ def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page
                 result.off_candidate_items = _keep_roster_items(
                     result.data, array, roster, anchors
                 )
-        rejected = verify_quotes(result.data, plan["evidence_paths"], text)
+        rejected = verify_quotes(
+            result.data,
+            text,
+            evidence=plan["evidence_paths"],
+            rows=plan["quote_rows"],
+        )
         result.unverified_quotes = len(rejected)
         result.validation_notes = [*(result.validation_notes or []), *rejected]
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -984,8 +1028,11 @@ def _complete_extraction(
                 result.get("cost") is None for result in results
             ),
         }
-    for client in locator_clients:
+    spent = {llm["model"]} if measured["calls"] else set()
+    for client in (*locator_clients, plan.get("transcriber")):
         usage = getattr(client, "usage", {})
+        if usage.get("calls"):
+            spent.add(client.model)
         for key in measured:
             measured[key] += usage.get(key, 0)
     total_cost = measured["cost"]
@@ -1012,7 +1059,7 @@ def _complete_extraction(
             "llm_calls": measured["calls"],
             "unknown_cost_calls": measured["unknown_cost_calls"],
             "documents_billed": len(pending),
-            "model": llm["model"],
+            "models": sorted(spent),
         },
     )
     manifest["status"]["result"] = status
@@ -1336,10 +1383,10 @@ def run_pipeline(
     command. It is suitable for scripting and automation where you want
     programmatic control over the pipeline without the Rich terminal UI.
 
-    Raises ``psweep.exceptions.PipelineError`` when any stage fails.
+    Raises ``psweep.exceptions.PipelineError`` when a stage fails; stages that
+    finish with usable output and recorded errors are listed in
+    ``PipelineResult.partial_stages`` instead.
     """
-    from psweep.exceptions import PipelineError
-
     cfg_path = Path(config_path)
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config not found: {cfg_path}")
@@ -1382,15 +1429,39 @@ def run_pipeline(
         extra_flags=("-q",),
     )
 
-    for stage, cmd in stage_cmds:
-        logger.info("Running stage: %s", stage)
-        result = subprocess.run(cmd, capture_output=False)
-        if result.returncode != 0:
-            raise PipelineError(
-                f"Stage '{stage}' failed (exit {result.returncode})",
-                stage=stage,
-            )
+    partial = execute_run_stages(
+        stage_cmds,
+        on_stage=lambda _index, stage: logger.info("Running stage: %s", stage),
+    )
 
     return PipelineResult(
-        domain=domain, stages_run=[stage for stage, _ in stage_cmds]
+        domain=domain,
+        stages_run=[stage for stage, _ in stage_cmds],
+        partial_stages=partial,
     )
+
+
+def execute_run_stages(
+    stage_cmds: Sequence[tuple[str, list[str]]],
+    on_stage: Callable[[int, str], None] | None = None,
+) -> list[str]:
+    """Run stage subprocesses in order and return the stages that ended partial.
+
+    A partial stage (usable output plus recorded errors) does not stop the
+    stages after it; re-running retries its failed items. Any other non-zero
+    exit raises ``PipelineError``.
+    """
+    partial: list[str] = []
+    for index, (stage, cmd) in enumerate(stage_cmds, 1):
+        if on_stage is not None:
+            on_stage(index, stage)
+        returncode = subprocess.run(cmd).returncode
+        if returncode == EXIT_PARTIAL:
+            partial.append(stage)
+        elif returncode != 0:
+            raise PipelineError(
+                f"Stage '{stage}' failed (exit {returncode})",
+                stage=stage,
+                returncode=returncode,
+            )
+    return partial

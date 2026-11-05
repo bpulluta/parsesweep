@@ -17,12 +17,15 @@ from psweep.discovery.targets import identify_target
 from psweep.exceptions import SchemaValidationError
 from psweep.extraction.llm_client import LLMClient
 from psweep.extraction.roster import (
+    WINDOW_CHARS,
+    QuoteRows,
     Roster,
     batch,
     candidate_hash,
     candidates_block,
     load_roster,
     normalize,
+    quote_present,
     roster_fields,
     scan_candidates,
     verify_quotes,
@@ -126,7 +129,7 @@ def test_verify_quotes_nulls_unverifiable_evidence():
         ]
     }
     paths = [("items", "*", name) for name in ("kept", "fabricated", "unquoted", "empty")]
-    assert verify_quotes(data, paths, "All permits are online.") == [
+    assert verify_quotes(data, "All permits are online.", evidence=paths) == [
         'unverified quote at items[0].fabricated: "never said"',
         "unverified quote at items[0].unquoted: null",
     ]
@@ -265,14 +268,16 @@ def test_completeness_treats_all_null_evidence_as_empty():
 )
 def test_verify_quotes_tolerates_pdf_text_artifacts(source, quote):
     data = {"fee": {"value": "Yes", "quote": quote}}
-    assert verify_quotes(data, [("fee",)], source) == []
+    assert verify_quotes(data, source, evidence=[("fee",)]) == []
     assert data["fee"]["value"] == "Yes"
 
 
 def test_verify_quotes_still_rejects_fabrication_and_records_it():
     quote = "Applications are approved instantly via SolarAPP+ " * 5
     data = {"rows": [{"fee": {"value": "Yes", "quote": quote}}]}
-    (warning,) = verify_quotes(data, [("rows", "*", "fee")], "Permits take 10 business days.")
+    (warning,) = verify_quotes(
+        data, "Permits take 10 business days.", evidence=[("rows", "*", "fee")]
+    )
     assert warning == f"unverified quote at rows[0].fee: {json.dumps(quote[:160])}"
     assert data["rows"][0]["fee"] == {"value": None, "quote": None}
 
@@ -302,3 +307,104 @@ def test_batch_splits_oversized_span_at_line_boundaries():
     pieces = batch([(span, {"1"})], 30)
     assert all(len(text) <= 30 for text, _ in pieces)
     assert [line for text, _ in pieces for line in text.splitlines() if line] == span.splitlines()
+
+
+def test_card_layout_window_keeps_the_label_value_lines_after_a_name(roster):
+    filler = "\n\n".join(f"Town {number} Program\nhexagon SolSmart" for number in range(200))
+    card = "Pima County, AZ\n\nProgram\nhexagon SolSmart\n\nDesignation Level\nGold\n\n"
+    text = f"{filler}\n\n{card}Designation Year\n2017\n\n{filler}"
+    assert len(text) > WINDOW_CHARS
+    ((window, ids),) = scan_candidates(text, roster)
+    assert ids == {PIMA}
+    assert "Designation Level\nGold" in window and "2017" in window
+    assert len(window) < 2 * 400 + len(card) + 40
+
+
+def test_labelled_table_row_window_keeps_its_neighbours(roster):
+    def row(name):
+        return f"Jurisdiction Name: {name} | State: AZ | Solar + Storage: TRUE"
+
+    text = "\n".join(row(f"Town {number}") for number in range(100))
+    text += "\n" + row("Pima County") + "\n" + text
+    ((window, _),) = scan_candidates(text, roster)
+    lines = window.splitlines()
+    assert row("Pima County") in lines and 3 <= len(lines) <= 15
+
+
+ROWS_TEXT = "Wells shall be set back 500 feet. Noise is limited to 55 dBA."
+
+
+def test_rows_mode_drops_items_whose_quote_is_absent():
+    data = {
+        "place": {"state": "CA"},
+        "rules": [
+            {"feature": "setback", "verbatim": "set back 500 FEET"},
+            {"feature": "lot", "verbatim": "minimum lot of 40 acres"},
+            {"feature": "fence", "verbatim": None},
+        ],
+    }
+    warnings = verify_quotes(data, ROWS_TEXT, rows=QuoteRows("rules", None, "verbatim"))
+    assert [rule["feature"] for rule in data["rules"]] == ["setback"]
+    assert data["place"] == {"state": "CA"}
+    assert warnings == [
+        'unverified quote at rules[1].verbatim: "minimum lot of 40 acres"',
+        "unverified quote at rules[2].verbatim: null",
+    ]
+
+
+def test_rows_mode_drops_child_rows_and_items_left_without_rows():
+    data = {
+        "tariffs": [
+            {
+                "name": "R-1",
+                "charges": [
+                    {"amount": "500", "text": "set back 500 feet"},
+                    {"amount": "9", "text": "fabricated charge"},
+                ],
+            },
+            {"name": "R-2", "charges": [{"amount": "1", "text": "also fabricated"}]},
+        ]
+    }
+    warnings = verify_quotes(data, ROWS_TEXT, rows=QuoteRows("tariffs", "charges", "text"))
+    assert data["tariffs"] == [
+        {"name": "R-1", "charges": [{"amount": "500", "text": "set back 500 feet"}]}
+    ]
+    assert warnings == [
+        'unverified quote at tariffs[0].charges[1].text: "fabricated charge"',
+        'unverified quote at tariffs[1].charges[0].text: "also fabricated"',
+    ]
+
+
+def test_rows_mode_reads_a_parent_quote_for_child_rows():
+    data = {
+        "tariffs": [
+            {"text": "Noise is limited to 55 dBA", "charges": [{"amount": "55"}, {"amount": "56"}]},
+            {"text": "Noise is limited to 60 dBA", "charges": [{"amount": "60"}]},
+        ]
+    }
+    warnings = verify_quotes(data, ROWS_TEXT, rows=QuoteRows("tariffs", "charges", "text"))
+    assert [item["text"] for item in data["tariffs"]] == ["Noise is limited to 55 dBA"]
+    assert len(data["tariffs"][0]["charges"]) == 2 and len(warnings) == 1
+
+
+def test_without_rows_or_evidence_nothing_is_checked():
+    data = {"rules": [{"verbatim": "fabricated"}]}
+    assert verify_quotes(data, ROWS_TEXT) == []
+    assert data == {"rules": [{"verbatim": "fabricated"}]}
+
+
+@pytest.mark.parametrize(
+    ("quote", "present"),
+    [
+        ("Wells shall be set back \u2026 Noise is limited to 55 dBA.", True),
+        ("Wells shall be set back... 55 dBA", True),
+        ("Wells shall be set back 500 feet.", True),
+        ("Noise is limited \u2026 Wells shall be set back", False),  # parts out of order
+        ("Wells shall be set back \u2026 60 dBA", False),
+        ("Wells shall be set \u2026 ack 500 feet", False),  # parts keep word boundaries
+        ("\u2026", False),
+        (None, False),
+    ],
+)
+def test_elided_quotes_match_their_parts_in_order(quote, present):
+    assert quote_present(quote, ROWS_TEXT) is present

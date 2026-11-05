@@ -6,7 +6,9 @@ Raw grades are cached by content and grading inputs in a domain-level
 directory, so identical documents are never re-graded across runs.
 
 Reuse the extraction LLM client and document text extraction. Explicit
-per-record failures let the caller block unsafe publication.
+per-record failures let the caller block unsafe publication. Recordings
+are graded on a cached transcript only; review never pays to transcribe,
+so a recording without one stays selected for extraction to transcribe.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from psweep.extraction.transcription import TranscriptionError, is_audio
 from psweep.utils.file_io import atomic_json
 from .targets import target_identity
 from .urls import redact_url, redact_urls_in_text
@@ -53,6 +56,10 @@ class UnreadableDocumentError(ReviewError):
         super().__init__(message, retryable=False)
 
 
+class _NoTranscriptError(Exception):
+    """A recording without a cached transcript: kept, ungraded."""
+
+
 # Field name constants — use these everywhere instead of string literals so a
 # typo is a NameError at import time rather than a silent runtime no-op.
 FIELD_REVIEW_SELECTED = "review_selected"
@@ -62,25 +69,50 @@ FIELD_REVIEW_REDUNDANT = "review_redundant"
 FIELD_REVIEW_DOC_KIND = "review_doc_kind"
 FIELD_REVIEW_REASON = "review_reason"
 FIELD_REVIEW_CACHED = "review_cached"
+RECORDING_KEPT = "recording kept without review (transcribed at extraction)"
 
 _REVIEW_SYSTEM = (
-    "You review candidate documents and decide which one best matches the "
-    "TARGET DOCUMENT description the caller provides. Judge each document "
-    "strictly against that description: a document is primary only when it IS "
-    "the described document, not merely related to it. The description defines "
-    "what counts — do not impose outside assumptions about document type. "
-    "Return your assessment as a JSON object."
+    "You grade one candidate document against the TARGET DOCUMENT description "
+    "the caller provides, judging only from the excerpt and source URL shown. "
+    "The description defines what counts — do not impose outside assumptions "
+    "about document type. Return your assessment as a JSON object."
+)
+
+# Anchored levels instead of a free-form score: re-grades of the same
+# document land on the same level, so selection stays stable.
+_TOP_GRADE = 4
+_PRIMARY_GRADE = 3
+_REVIEW_PROMPT = (
+    "TARGET DOCUMENT: {description}\n"
+    "{target_line}{source_line}\n"
+    "Grade the excerpt below with exactly one level:\n"
+    "4 = it IS the target document for the search target and fully matches "
+    "the description, including any stated preferences.\n"
+    "3 = it IS the target document for the search target, but is partial or "
+    "less preferred by the description.\n"
+    "2 = it matches the described document type or subject, but the excerpt "
+    "and source URL do not show that it belongs to the search target.\n"
+    "1 = it concerns the subject or the search target but is not the "
+    "described document.\n"
+    "0 = unrelated.\n"
+    "Decide first whether the document belongs to the search target as the "
+    "description defines it (without a SEARCH TARGET line, the description "
+    "alone defines it). When that evidence is missing or ambiguous, choose "
+    "the lower level.\n"
+    "Return JSON with: doc_kind (a short free-form label for what this "
+    "document actually is), reason (one sentence citing the deciding "
+    "evidence), and grade (integer 0-4).\n\n"
+    "EXCERPT:\n{sample}"
 )
 
 _REVIEW_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "is_primary": {"type": "boolean"},
-        "relevance": {"type": "number"},
         "doc_kind": {"type": "string"},
         "reason": {"type": "string"},
+        "grade": {"type": "integer", "minimum": 0, "maximum": _TOP_GRADE},
     },
-    "required": ["is_primary", "relevance", "doc_kind", "reason"],
+    "required": ["doc_kind", "reason", "grade"],
 }
 
 _DEDUP_SYSTEM = (
@@ -429,6 +461,26 @@ class DocumentReviewer:
             and isinstance(grade.get("reason"), str)
         )
 
+    @staticmethod
+    def _grade_from_reply(reply: object) -> dict[str, Any] | None:
+        """Map a valid anchored level to the stored grade, else None."""
+        if not isinstance(reply, dict):
+            return None
+        level = reply.get("grade")
+        if (
+            type(level) is not int
+            or not 0 <= level <= _TOP_GRADE
+            or not isinstance(reply.get("doc_kind"), str)
+            or not isinstance(reply.get("reason"), str)
+        ):
+            return None
+        return {
+            "is_primary": level >= _PRIMARY_GRADE,
+            "relevance": level / _TOP_GRADE,
+            "doc_kind": reply["doc_kind"],
+            "reason": reply["reason"],
+        }
+
     def _track_usage(self, result: object = None) -> None:
         """Accumulate returned numeric usage under the shared lock."""
         usage = result if isinstance(result, dict) else {}
@@ -476,6 +528,8 @@ class DocumentReviewer:
             )
 
             text = extract_text_from_document(Path(file_path))
+        except TranscriptionError as exc:
+            raise _NoTranscriptError from exc
         except Exception:  # noqa: BLE001 - unreadable file, skip grading
             # Fall back to the sampler if full extraction fails
             try:
@@ -498,27 +552,18 @@ class DocumentReviewer:
         }
         target_context = redact_urls_in_text(target_context)
         source_url = redact_url(source_url) if source_url else ""
-        target_line = (
-            f"\nSEARCH TARGET CONTEXT: {target_context}\n"
-            if target_context
-            else ""
-        )
-        source_line = (
-            f"SOURCE_URL: {source_url} "
-            "(actual download location of this file)\n"
-            if source_url
-            else ""
-        )
-        user_prompt = (
-            f"TARGET DOCUMENT: {self._description}\n"
-            f"{target_line}{source_line}\n"
-            "Grade the document excerpt below against the target description. "
-            "Return JSON with: is_primary (bool — true only if this IS the "
-            "target document type AND is specifically relevant to the search "
-            "target context above), relevance (0.0-1.0), doc_kind (a short "
-            "free-form label describing what this document actually is), and "
-            "a one-sentence reason.\n\n"
-            f"EXCERPT:\n{sample}"
+        user_prompt = _REVIEW_PROMPT.format(
+            description=self._description,
+            target_line=(
+                f"SEARCH TARGET: {target_context}\n" if target_context else ""
+            ),
+            source_line=(
+                f"SOURCE_URL: {source_url} "
+                "(actual download location of this file)\n"
+                if source_url
+                else ""
+            ),
+            sample=sample,
         )
         for _ in range(_GRADE_ATTEMPTS):
             try:
@@ -534,10 +579,15 @@ class DocumentReviewer:
                 raise ReviewError(message, usage_unknown=True) from exc
             # Retain returned usage even when the grade data is invalid.
             self._track_usage(result)
-            grade = result.get("data") if isinstance(result, dict) else None
-            if self._valid_grade(grade):
+            grade = self._grade_from_reply(
+                result.get("data") if isinstance(result, dict) else None
+            )
+            if grade is not None:
                 return {**grade, "coverage": coverage}
-        message = "invalid LLM grade: expected boolean, finite score and strings"
+        message = (
+            f"invalid LLM grade: expected integer level 0-{_TOP_GRADE} "
+            "and strings"
+        )
         raise ReviewError(message)
 
     # Raw grade cache (selection is always recomputed).
@@ -572,8 +622,9 @@ class DocumentReviewer:
                 "max_chars": self._max_chars,
                 "keywords": self._review_keywords,
                 "system": _REVIEW_SYSTEM,
+                "prompt": _REVIEW_PROMPT,
                 "schema": _REVIEW_SCHEMA,
-                "grading": "document-context-source-excerpt-v2",
+                "grade_scale": [_PRIMARY_GRADE, _TOP_GRADE],
                 "sampling": "head-keyword-body-tail-v2",
             },
             sort_keys=True,
@@ -740,6 +791,10 @@ class DocumentReviewer:
                 )
                 self._require_grade(grade)
                 self._write_cached_grade(cache_key, grade)
+        except _NoTranscriptError:
+            record[FIELD_REVIEW_SELECTED] = True
+            record[FIELD_REVIEW_REASON] = RECORDING_KEPT
+            return record, None, False
         except UnreadableDocumentError as exc:
             record.update(status="skipped_unreadable", reason=str(exc))
             record[FIELD_REVIEW_SELECTED] = False
@@ -847,13 +902,16 @@ class DocumentReviewer:
                 record[FIELD_REVIEW_DOC_KIND] = grade["doc_kind"]
                 record[FIELD_REVIEW_REASON] = grade["reason"]
 
+            # Equal levels are common; break ties by provenance so
+            # selection never depends on download order.
             ranked = sorted(
                 (r for r in records if "review_relevance" in r),
                 key=lambda r: (
-                    bool(r.get("review_is_primary")),
-                    float(r.get("review_relevance") or 0.0),
+                    not r.get(FIELD_REVIEW_IS_PRIMARY),
+                    -float(r.get(FIELD_REVIEW_RELEVANCE) or 0.0),
+                    self._record_source_url(r),
+                    str(r.get("path") or ""),
                 ),
-                reverse=True,
             )
 
             # Comparative dedup: identify redundant docs among the confirmed
@@ -958,7 +1016,19 @@ class DocumentReviewer:
             f"selected {selected} primary document(s) "
             f"(keep_top={self._keep_top})."
         )
-        unreadable = sum(r.get("status") == "skipped_unreadable" for r in gradable)
+        kept = sum(
+            r.get(FIELD_REVIEW_REASON) == RECORDING_KEPT for r in gradable
+        )
+        if kept:
+            notes.append(
+                f"{kept} recording(s) kept without review "
+                "(transcribed at extraction)."
+            )
+        unreadable = sum(
+            r.get("status") == "skipped_unreadable"
+            and not is_audio(Path(r["path"]))
+            for r in gradable
+        )
         if unreadable:
             notes.append(
                 f"{unreadable} document(s) had too little text to review; "

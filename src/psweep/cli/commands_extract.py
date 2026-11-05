@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from psweep.config import RuntimeConfigError
 from psweep.exceptions import ParseSweepError
+from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
 from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 
@@ -31,7 +32,9 @@ def _render_extraction(plan, view):
     return _execute_extraction(plan, on_progress=progress)
 
 
-@click.command()
+@click.command(
+    epilog=f"Supported file types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+)
 @click.argument("path", type=click.Path(), required=False)
 @click.option(
     "--config",
@@ -142,8 +145,9 @@ def extract(
 ):
     """Extract structured data from documents using an LLM.
 
-    Reads PDF, DOCX, TXT, and XLSX files from PATH (default: the domain's
-    curated discovery directory) and writes one JSON file per document to the output directory.
+    Reads every supported file type (listed below; recordings are
+    transcribed) from PATH (default: the domain's curated discovery
+    directory) and writes one JSON file per document to the output directory.
     Already-processed files are skipped by default; pass --fresh to re-extract
     documents that already have output JSON (cached text/sidecars are still
     reused). Output defaults to ``outputs/<domain>/extracted/`` when --output is omitted;

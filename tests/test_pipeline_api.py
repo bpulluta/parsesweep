@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 from psweep.cli.main import cli
 from psweep.exceptions import PipelineError
+from psweep.outcomes import EXIT_PARTIAL
 
 import pytest
 from psweep.config import RuntimeConfigError
@@ -105,7 +106,7 @@ def test_extract_documents_uses_max_context_chars(
     monkeypatch.setattr("psweep.extraction.DocumentExtractor", DummyExtractor)
     monkeypatch.setattr(
         "psweep.extraction.document_utils.extract_text_from_document",
-        lambda doc, page_range=None: "extracted text",
+        lambda doc, page_range=None, **_: "extracted text",
     )
 
     result = extract_documents(
@@ -465,7 +466,7 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr("psweep.extraction.DocumentExtractor", DummyExtractor)
     monkeypatch.setattr(
         "psweep.extraction.document_utils.extract_text_from_document",
-        lambda doc, page_range=None: seen_page_ranges.append((doc.name, page_range))
+        lambda doc, page_range=None, **_: seen_page_ranges.append((doc.name, page_range))
         or "extracted text",
     )
 
@@ -529,7 +530,7 @@ def test_run_ui_does_not_predict_reuse_from_raw_checkpoint(
         lambda _self, rows, **_kwargs: plans.append(rows),
     )
     subprocess = Mock(return_value=SimpleNamespace(returncode=1))
-    monkeypatch.setattr("psweep.cli.app.subprocess.run", subprocess)
+    monkeypatch.setattr("psweep.pipeline.subprocess.run", subprocess)
 
     result = CliRunner().invoke(cli, ["run", "--config", str(config), "--yes"])
     assert result.exit_code == 1, result.output
@@ -583,12 +584,50 @@ def test_parent_fresh_run_leaves_cleanup_to_extract_stage(
         assert not output.exists()
 
 
+@pytest.mark.parametrize("entrypoint", ["cli", "api"])
+def test_partial_stage_continues_downstream_and_reports_partial(
+    tmp_path: Path, schema_path: Path, monkeypatch, entrypoint,
+) -> None:
+    """A partial discover still feeds extraction; a failed stage stops the run."""
+    monkeypatch.chdir(tmp_path)
+    config, _ = _run_config(tmp_path, schema_path)
+    codes = {"discover": EXIT_PARTIAL, "extract": 0, "compile": 0, "validate": 0}
+    seen = []
+
+    def child(command, **_kwargs):
+        stage = next(name for name in codes if name in command)
+        seen.append(stage)
+        return SimpleNamespace(returncode=codes[stage])
+
+    monkeypatch.setattr("psweep.pipeline.subprocess.run", child)
+    if entrypoint == "cli":
+        result = CliRunner().invoke(cli, ["run", "--config", str(config), "--yes"])
+        assert result.exit_code == EXIT_PARTIAL, result.output
+        assert "partial (discover had errors" in result.output
+    else:
+        assert run_pipeline(config).partial_stages == ["discover"]
+    assert seen[:2] == ["discover", "extract"] and "compile" in seen
+
+    seen.clear()
+    codes["discover"] = 1
+    if entrypoint == "cli":
+        result = CliRunner().invoke(cli, ["run", "--config", str(config), "--yes"])
+        assert result.exit_code == 1, result.output
+        assert "Stage 'discover' failed" in result.output
+    else:
+        with pytest.raises(PipelineError, match="Stage 'discover' failed"):
+            run_pipeline(config)
+    assert seen == ["discover"]
+
+
 def test_count_curated_documents_skips_sidecars(tmp_path: Path) -> None:
     d = tmp_path / "curated"
     d.mkdir()
     (d / "a.pdf").write_text("x", encoding="utf-8")
     (d / "a.pdf.text").write_text("x", encoding="utf-8")
-    (d / "meta.json").write_text("{}", encoding="utf-8")
+    (d / ".review").mkdir()
+    (d / ".review" / "a.pdf.json").write_text("{}", encoding="utf-8")
+    (d / ".discovery-publication.json").write_text("{}", encoding="utf-8")
     assert count_curated_documents(d) == 1
 
 

@@ -37,6 +37,13 @@ _TRANSIENT_MARKERS: tuple[str, ...] = (
     "net::err_empty_response",
 )
 _URL = re.compile(r"\S+://\S+")
+# Edge bot-manager challenges (Cloudflare, Vercel, AWS WAF) answer 403/429/503
+# to every non-browser client; repeating the request cannot pass them.
+_CHALLENGE_HEADERS: tuple[str, ...] = (
+    "cf-mitigated",
+    "x-vercel-mitigated",
+    "x-amzn-waf-action",
+)
 
 
 def compute_backoff(
@@ -62,9 +69,10 @@ def is_transient_error(exc: BaseException) -> bool:
     """Return True when a later attempt of the same request may succeed.
 
     Timeouts, connection errors, truncated streams and HTTP 429/5xx are
-    transient; status-less browser failures (``Failed to fetch`` also covers
-    CORS and mixed-content rejections) are transient only on network markers; TLS certificate errors and other HTTP 4xx
-    responses are terminal. A policy rejection is transient only when its
+    transient unless a bot-manager challenge answered. Status-less browser
+    failures (``Failed to fetch`` also covers CORS and mixed-content
+    rejections) are transient only on network markers; TLS certificate errors
+    and other HTTP 4xx responses are terminal. A policy rejection is transient only when its
     evaluation failed transiently (e.g. robots.txt timed out) or a transient
     error caused it. Typed errors are classified by type and status; only
     untyped errors fall back to message markers.
@@ -77,7 +85,10 @@ def is_transient_error(exc: BaseException) -> bool:
     if isinstance(exc, requests.exceptions.SSLError):
         return False
     if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
-        return _transient_status(exc.response.status_code)
+        headers = exc.response.headers or {}
+        return _transient_status(exc.response.status_code) and not any(
+            name in headers for name in _CHALLENGE_HEADERS
+        )
     if isinstance(exc, BrowserDownloadError) and exc.status is not None:
         return _transient_status(exc.status)
     if isinstance(
@@ -97,6 +108,16 @@ def is_transient_error(exc: BaseException) -> bool:
 
 def _transient_status(status: int) -> bool:
     return status == 429 or status >= 500
+
+
+def browser_may_recover(exc: BaseException) -> bool:
+    """Return True when a real browser may pass where the HTTP client was refused."""
+    if not isinstance(exc, requests.exceptions.HTTPError):
+        return False
+    status = getattr(exc.response, "status_code", None)
+    return status in {401, 403, 429, 451} or any(
+        marker in str(exc).lower() for marker in ("forbidden", "unauthorized", "access denied")
+    )
 
 
 def error_record(exc: BaseException, **context: str | None) -> dict[str, object]:

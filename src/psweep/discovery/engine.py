@@ -56,8 +56,10 @@ from .policies import (
     DEFAULT_ROBOTS_POLICY_MODE,
     DEFAULT_TOS_POLICY_MODE,
     DiscoveryPolicyEvaluator,
+    PolicyCheckResult,
 )
 from .network import NetworkPolicyError, check_url, send_get
+from .transport import ResponseTooLargeError, max_file_bytes
 from .document_reviewer import DocumentReviewer
 from .publication import (
     PublicationPaths,
@@ -73,10 +75,17 @@ from .publication import (
     merge_download_index,
     refresh_latest_pointer,
     load_checkpoint,
+    load_prior_outcomes,
     save_checkpoint_entries,
     publish_manual_curation,
 )
-from .retry import compute_backoff, error_record, is_retryable, is_transient_error
+from .retry import (
+    browser_may_recover,
+    compute_backoff,
+    error_record,
+    is_retryable,
+    is_transient_error,
+)
 from .urls import (
     compile_url_patterns,
     decode_discovery_url,
@@ -89,6 +98,16 @@ from .urls import (
 
 # Download partition and index label for shared (non-target) documents.
 SHARED_PARTITION = "_shared"
+
+# Download method of an outcome reused from an earlier run of an incomplete
+# target or source, made without a network request.
+REUSED_DOWNLOAD_METHOD = "reused"
+
+# Record fields kept as the final outcome of a child of an incomplete owner.
+PRIOR_OUTCOME_FIELDS = (
+    "status", "final_url", "mime_type", "reason", "error",
+    "policy_blocking_code", "policy_reason",
+)
 
 # Browser escalation defaults for JS-rendered HTML shells. Explicit
 # discovery.browser_escalation thresholds take precedence.
@@ -265,12 +284,15 @@ class _PartitionIndex:
     def __init__(self, partitions=()):
         self.paths: set[Path] = set()
         self.ancestors: set[Path] = set()
+        self.causes: set[str] = set()
         for partition in partitions:
             self.add(partition)
 
-    def add(self, partition: Path) -> None:
+    def add(self, partition: Path, cause: str | None = None) -> None:
         self.paths.add(partition)
         self.ancestors.update(partition.parents)
+        if cause:
+            self.causes.add(cause)
 
     def __bool__(self) -> bool:
         return bool(self.paths)
@@ -679,7 +701,7 @@ class DiscoveryEngine:
             target = raw.get("_target")
             return DiscoveryCandidate(
                 url=url,
-                source=raw.get("source", "serpapi_google"),
+                source=str(raw["source"]),
                 score=CandidateScore(
                     url_signal=0.5,
                     anchor_signal=0.1,
@@ -1049,6 +1071,7 @@ class DiscoveryEngine:
             timeout=(request.timeout_seconds or 60) if request else 60,
             verify=ssl_verify,
             stream=True,
+            max_bytes=max_file_bytes(),
             gate=gate,
             response_url_gate=gate,
             limiter=rate_limiter,
@@ -1057,28 +1080,6 @@ class DiscoveryEngine:
                 float(retry_policy["initial_backoff_seconds"]),
                 float(retry_policy["max_backoff_seconds"]),
             ),
-        )
-
-    @staticmethod
-    def _should_retry_download_with_browser(exc: BaseException) -> bool:
-        """Return True when a direct fetch should be retried via browser."""
-        try:
-            import requests
-        except ImportError:
-            return False
-
-        if not isinstance(exc, requests.exceptions.HTTPError):
-            return False
-
-        response = getattr(exc, "response", None)
-        status_code = getattr(response, "status_code", None)
-        if status_code in {401, 403, 429, 451}:
-            return True
-
-        lowered = str(exc).lower()
-        return any(
-            marker in lowered
-            for marker in ("forbidden", "unauthorized", "access denied")
         )
 
     def _download_single_candidate(
@@ -1092,9 +1093,12 @@ class DiscoveryEngine:
         retry_policy: dict[str, float | int],
         rate_limiter: _RequestRateLimiter | None,
         browser: object | None = None,
+        prior: dict[str, object] | None = None,
     ) -> tuple[
         int, dict[str, object], dict[str, object] | None, bool, list[str]
     ]:
+        """Fetch one candidate, or reuse its ``prior`` final outcome from an
+        earlier run without a network request (see ``_reusable_outcomes``)."""
         url = candidate.url
         url = decode_discovery_url(url)
         if not isinstance(url, str) or not re.match(
@@ -1103,6 +1107,14 @@ class DiscoveryEngine:
             return (
                 idx,
                 {"url": url, "status": "skipped_invalid_url"},
+                None,
+                False,
+                [],
+            )
+        if prior is not None and prior.get("status") != "downloaded":
+            return (
+                idx,
+                {**prior, "url": url, "download_method": REUSED_DOWNLOAD_METHOD},
                 None,
                 False,
                 [],
@@ -1128,10 +1140,13 @@ class DiscoveryEngine:
                 [],
             )
 
-        policy_result = self._evaluate_request_policy(
-            url=url,
-            request=request,
-            ssl_verify=ssl_verify,
+        policy_result = (
+            PolicyCheckResult() if prior is not None
+            else self._evaluate_request_policy(
+                url=url,
+                request=request,
+                ssl_verify=ssl_verify,
+            )
         )
         if not policy_result.allowed and not policy_result.retryable:
             return (
@@ -1157,7 +1172,15 @@ class DiscoveryEngine:
                 raise NetworkPolicyError(
                     url, "; ".join(policy_result.messages), policy_result
                 )
-            if browser is not None:
+            if prior is not None:
+                final_url, mime_type = str(prior["final_url"]), prior.get("mime_type")
+                attempt_count, download_method = 0, REUSED_DOWNLOAD_METHOD
+                prior_path = Path(str(prior["path"]))
+
+                def _chunks(_p: Path = prior_path) -> object:
+                    with _p.open("rb") as handle:
+                        yield from iter(lambda: handle.read(65536), b"")
+            elif browser is not None:
                 self._browser_policy_gate(request, url, configured=configured)
                 if rate_limiter is not None:
                     rate_limiter.wait()
@@ -1187,7 +1210,7 @@ class DiscoveryEngine:
                 except Exception as exc:
                     if not self._browser_recovery_enabled(
                         request
-                    ) or not self._should_retry_download_with_browser(exc):
+                    ) or not browser_may_recover(exc):
                         raise
                     self._browser_policy_gate(request, url, configured=configured)
 
@@ -1195,7 +1218,7 @@ class DiscoveryEngine:
                     browser_owned = False
                     if browser_session is None:
                         browser_session, _browser_note = (
-                            self._open_browser_for_download()
+                            self._open_browser_for_download(request)
                         )
                         browser_owned = browser_session is not None
                     if browser_session is None:
@@ -1310,6 +1333,12 @@ class DiscoveryEngine:
 
             while True:
                 try:
+                    if prior is not None:
+                        self._place_prior(prior_path, target_path)
+                        own_target = True
+                        bytes_written = target_path.stat().st_size
+                        content_hash = str(prior["sha256"])
+                        break
                     bytes_written = 0
                     hasher = hashlib.sha256()
                     with target_path.open("xb") as handle:
@@ -1349,7 +1378,11 @@ class DiscoveryEngine:
                 list(policy_result.warning_codes),
             )
         except Exception as exc:
-            if isinstance(exc, NetworkPolicyError) and not is_transient_error(exc):
+            if (
+                isinstance(exc, NetworkPolicyError)
+                and not isinstance(exc, ResponseTooLargeError)
+                and not is_transient_error(exc)
+            ):
                 return (
                     idx,
                     {
@@ -1413,6 +1446,26 @@ class DiscoveryEngine:
         sanitized_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-_")
         return f"{sanitized_stem or 'document'}{ext}"
 
+    @staticmethod
+    def _place_prior(source: Path, target: Path) -> None:
+        """Hardlink reused bytes, copying across filesystems; raise
+        ``FileExistsError`` when ``target`` is taken."""
+        try:
+            os.link(source, target)
+        except FileExistsError:
+            raise
+        except OSError:
+            import shutil
+
+            try:
+                with source.open("rb") as src, target.open("xb") as dst:
+                    shutil.copyfileobj(src, dst)
+            except FileExistsError:
+                raise
+            except BaseException:
+                target.unlink(missing_ok=True)
+                raise
+
     _normalize_url_text = staticmethod(normalize_url_text)
     _url_host = staticmethod(url_host)
 
@@ -1468,6 +1521,60 @@ class DiscoveryEngine:
             ),
         )
 
+    @staticmethod
+    def _reuse_key(candidate: DiscoveryCandidate) -> tuple[str, str]:
+        return (
+            owner_key(candidate.target_id, candidate.source_url) or "",
+            decode_discovery_url(candidate.url),
+        )
+
+    @classmethod
+    def _reusable_outcomes(
+        cls,
+        candidates: list[DiscoveryCandidate],
+        prior: dict[str, dict[str, dict[str, object]]],
+    ) -> dict[tuple[str, str], dict[str, object]]:
+        """Prior final outcomes of ``candidates``; a download only while its
+        file still matches the saved SHA-256."""
+        reusable: dict[tuple[str, str], dict[str, object]] = {}
+        for candidate in candidates:
+            key = cls._reuse_key(candidate)
+            outcome = prior.get(key[0], {}).get(key[1])
+            if outcome is None or key in reusable:
+                continue
+            if outcome.get("status") == "downloaded":
+                try:
+                    if artifact_sha256(Path(str(outcome["path"]))) != outcome["sha256"]:
+                        continue
+                except (OSError, ValueError):
+                    continue
+            reusable[key] = outcome
+        return reusable
+
+    @classmethod
+    def _stage_downloads(
+        cls,
+        candidates: list[DiscoveryCandidate],
+        max_downloads: int | None,
+        reusable: dict[tuple[str, str], dict[str, object]],
+    ) -> tuple[list[DiscoveryCandidate], list[DiscoveryCandidate]]:
+        """Split candidates into staged and cut by ``max_downloads``, which
+        only counts new fetches: configured URLs and reused outcomes are free."""
+        staged = [c for c in candidates if c.source == CONFIGURED_SOURCE]
+        cut: list[DiscoveryCandidate] = []
+        fetches = 0
+        for candidate in candidates:
+            if candidate.source == CONFIGURED_SOURCE:
+                continue
+            if cls._reuse_key(candidate) in reusable:
+                staged.append(candidate)
+            elif max_downloads is None or fetches < max_downloads:
+                staged.append(candidate)
+                fetches += 1
+            else:
+                cut.append(candidate)
+        return staged, cut
+
     def _download_candidates(
         self,
         *,
@@ -1475,8 +1582,10 @@ class DiscoveryEngine:
         candidates: list[DiscoveryCandidate],
         documents_dir: Path,
         max_downloads: int | None = None,
+        reusable: dict[tuple[str, str], dict[str, object]] | None = None,
     ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[str]]:
-        """Download candidates; configured URLs are staged outside ``max_downloads``."""
+        """Download candidates; configured URLs and ``reusable`` prior outcomes
+        are staged outside ``max_downloads``."""
         try:
             import requests  # noqa: F401
         except ImportError as exc:
@@ -1502,15 +1611,21 @@ class DiscoveryEngine:
         rate_limiter = self._rate_limiter or _RequestRateLimiter(
             request.min_request_interval_ms
         )
-        configured = [c for c in candidates if c.source == CONFIGURED_SOURCE]
-        others = [c for c in candidates if c.source != CONFIGURED_SOURCE]
-        staged_candidates = configured + others[:max_downloads]
+        reusable = reusable or {}
+        staged_candidates, cut = self._stage_downloads(
+            candidates, max_downloads, reusable
+        )
+        priors = [reusable.get(self._reuse_key(c)) for c in staged_candidates]
         self._emit_progress(
             request,
             f"download: staging {len(staged_candidates)} candidate(s) for fetch",
         )
 
         download_notes_extra: list[str] = []
+        if cut:
+            download_notes_extra.append(
+                f"The runtime.max_files budget left {len(cut)} candidate(s) undownloaded."
+            )
         CompletedT = tuple[
             int,
             dict[str, object],
@@ -1525,8 +1640,8 @@ class DiscoveryEngine:
         # THROUGH a real browser. A single Chrome session is shared and
         # downloads run serially (the driver is not thread-safe).
         browser = None
-        if request.browser_downloads:
-            browser, note = self._open_browser_for_download()
+        if request.browser_downloads and None in priors:
+            browser, note = self._open_browser_for_download(request)
             download_notes_extra.append(note)
 
         try:
@@ -1542,6 +1657,7 @@ class DiscoveryEngine:
                             retry_policy=retry_policy,
                             rate_limiter=rate_limiter,
                             browser=browser,
+                            prior=priors[idx - 1],
                         )
                     )
             else:
@@ -1551,6 +1667,7 @@ class DiscoveryEngine:
                         idx=idx, candidate=candidate, request=request,
                         documents_dir=documents_dir, ssl_verify=ssl_verify,
                         retry_policy=retry_policy, rate_limiter=rate_limiter,
+                        prior=priors[idx - 1],
                     )
 
                 completed.extend(bounded_results(
@@ -1606,6 +1723,14 @@ class DiscoveryEngine:
         notes = [
             f"Download stage completed: {downloaded_count} file(s) saved from {len(candidates)} candidate(s)."
         ]
+        reused = [r for r in downloads if r.get("download_method") == REUSED_DOWNLOAD_METHOD]
+        if reused:
+            files = sum(r.get("status") == "downloaded" for r in reused)
+            notes.append(
+                f"Resume reused {files} prior download(s) and {len(reused) - files} other "
+                "final outcome(s) of incomplete targets/sources without a network request; "
+                f"{len(downloads) - len(reused)} candidate(s) fetched."
+            )
         browser_fallback_count = sum(
             1
             for record in downloads
@@ -1756,21 +1881,27 @@ class DiscoveryEngine:
     def _build_download_summary(
         download_records: list[dict[str, object]],
     ) -> dict[str, object]:
-        """Aggregate download outcomes and byte counts from download records."""
+        """Aggregate this run's fetch outcomes and bytes; reused prior
+        outcomes made no request and are only counted in ``reused``."""
         counts: dict[str, int] = {}
         total_bytes = 0
+        reused = 0
         for record in download_records:
+            if record.get("download_method") == REUSED_DOWNLOAD_METHOD:
+                reused += 1
+                continue
             status = str(record.get("status") or "unknown")
             counts[status] = counts.get(status, 0) + 1
             if status == "downloaded":
                 total_bytes += int(record.get("bytes") or 0)
         return {
-            "total": len(download_records),
+            "total": len(download_records) - reused,
             "downloaded": counts.get("downloaded", 0),
             "skipped": sum(
                 v for k, v in counts.items() if k.startswith("skipped")
             ),
             "failed": counts.get("failed", 0),
+            "reused": reused,
             "total_bytes": total_bytes,
             "by_status": counts,
         }
@@ -1839,8 +1970,10 @@ class DiscoveryEngine:
             ),
         }
 
-    @staticmethod
-    def _open_browser_for_download() -> tuple[object | None, str]:
+    @classmethod
+    def _open_browser_for_download(
+        cls, request: DiscoveryRequest
+    ) -> tuple[object | None, str]:
         """Open a shared headless-browser session for downloads, if possible.
 
         Returns ``(session_or_None, note)``. On any failure (Selenium missing,
@@ -1852,7 +1985,9 @@ class DiscoveryEngine:
         except ImportError:
             return None, "Browser mode requested but Selenium is not installed."
         try:
-            session = BrowserSession()
+            session = BrowserSession(
+                request_headers=cls._resolve_request_headers(request)
+            )
             session._start()  # noqa: SLF001 - own the lifecycle here
         except BrowserUnavailableError as exc:
             return None, f"Browser mode unavailable ({exc}); used direct HTTP."
@@ -1937,6 +2072,7 @@ class DiscoveryEngine:
         *,
         request: DiscoveryRequest,
         candidates: list[DiscoveryCandidate],
+        prior: dict[str, dict[str, dict[str, object]]] | None = None,
     ) -> tuple[
         list[DiscoveryCandidate],
         list[dict[str, object]],
@@ -1949,7 +2085,9 @@ class DiscoveryEngine:
         Every input candidate is kept; linked documents become new candidates
         attributed to their source page's target and subject to selection.
         Also returns the source candidates whose crawl is unfinished
-        (retryable page failure or exhausted budget).
+        (retryable page failure or exhausted budget); ``state`` names the
+        cause. Links already settled by ``prior`` outcomes of these owners do
+        not count against ``runtime.max_files``.
         """
         state: dict[str, object] = {
             "applied": False,
@@ -1968,6 +2106,8 @@ class DiscoveryEngine:
         pages, notes, unevaluated = self._filter_urls_for_policy(
             urls=pages, request=request, ssl_verify=ssl_verify, stage_name="Crawl",
         )
+        if unevaluated:
+            state["unfinished_cause"] = "crawl policy check unavailable"
         if not pages:
             notes.append("Crawl skipped: no HTML source pages to follow.")
             return candidates, [], notes, state, [
@@ -1975,13 +2115,16 @@ class DiscoveryEngine:
             ]
 
         self._emit_progress(request, f"crawl: following links from {len(pages)} page(s)")
+        owners = {owner_key(c.target_id, c.source_url) for c in candidates}
+        known = sum(len((prior or {}).get(key, {})) for key in owners if key)
+        file_budget = None if request.max_files is None else request.max_files + known
         try:
             result = resolve_digger_connector(request.crawl_provider).discover(
                 DiggerInput(
                     sources=pages,
                     max_depth=request.max_depth,
                     max_pages=request.max_pages,
-                    max_files=request.max_files,
+                    max_files=file_budget,
                     timeout_seconds=request.timeout_seconds or 30,
                     allowed_domains=request.allowed_domains,
                     include_url_patterns=request.include_url_patterns,
@@ -2006,6 +2149,8 @@ class DiscoveryEngine:
             notes.append("Crawl failed; continuing with uncrawled candidates.")
             retry_urls = (set(pages) if error["retryable"] else set()) | unevaluated
             unfinished = [c for c in candidates if c.url in retry_urls]
+            if error["retryable"]:
+                state["unfinished_cause"] = "retryable crawl failure"
             return candidates, normalize_error_records([error]), notes, state, unfinished
 
         origins: dict[str, list[DiscoveryCandidate]] = {}
@@ -2015,14 +2160,20 @@ class DiscoveryEngine:
         crawled: list[DiscoveryCandidate] = []
         for artifact in result.artifacts:
             metadata = artifact.metadata or {}
+            page = urlparse(artifact.url)._replace(query="", fragment="")
             for origin in origins.get(str(metadata.get("source_url")), ()):
                 if (artifact.url, origin.target_id) in seen:
                     continue
                 seen.add((artifact.url, origin.target_id))
+                # Query variants of a configured page (its pagination) are
+                # that configured page, so they skip selection and review.
+                continuation = origin.source == CONFIGURED_SOURCE and (
+                    page == urlparse(origin.url)._replace(query="", fragment="")
+                )
                 crawled.append(
                     DiscoveryCandidate(
                         url=artifact.url,
-                        source=artifact.source,
+                        source=CONFIGURED_SOURCE if continuation else artifact.source,
                         score=CandidateScore(url_signal=0.35, trust_signal=0.55),
                         reasons=[ROUTE_REASON_CRAWLED],
                         mime_type=artifact.mime_type,
@@ -2041,12 +2192,28 @@ class DiscoveryEngine:
             incomplete_sources=sorted(result.incomplete_sources),
         )
         notes.append(
-            f"Crawl followed {len(pages)} page(s) and added {len(crawled)} linked candidate(s)."
+            f"Crawl fetched {result.pages_fetched} page(s) from {len(pages)} source page(s) "
+            f"and added {len(crawled)} linked candidate(s)."
         )
         if result.incomplete_sources:
+            budgets = [
+                f"{name}={shown}"
+                for name, shown, limit, used in (
+                    ("crawl.max_pages", request.max_pages, request.max_pages,
+                     result.pages_fetched),
+                    ("runtime.max_files", request.max_files, file_budget,
+                     len(result.artifacts)),
+                )
+                if limit is not None and used >= limit
+            ]
+            cause = (
+                f"budget reached ({', '.join(budgets)})" if budgets
+                else "retryable page failure"
+            )
+            state["unfinished_cause"] = f"crawl {cause}"
             notes.append(
-                f"Crawl unfinished for {len(result.incomplete_sources)} source page(s) "
-                "(retryable failure or crawl budget); they stay incomplete."
+                f"Crawl unfinished for {len(result.incomplete_sources)} source page(s): "
+                f"{cause}; they stay incomplete."
             )
         unfinished = [
             c for c in candidates
@@ -2238,7 +2405,12 @@ class DiscoveryEngine:
         documents_dir: Path,
         curated_dir: Path | None,
         download_records: list[dict[str, object]],
+        keep: frozenset[Path] = frozenset(),
     ) -> tuple[int, int]:
+        """Delete run-local files the mode does not retain.
+
+        ``keep`` (with each file's text cache) is never deleted.
+        """
         import shutil
 
         resolved_mode = str(mode or "all").strip().lower()
@@ -2249,6 +2421,11 @@ class DiscoveryEngine:
 
         files_removed = 0
         bytes_removed = 0
+        protected = {
+            path.resolve()
+            for kept in keep
+            for path in (kept, *text_cache_paths(kept))
+        }
 
         def _remove_file(path: Path) -> None:
             nonlocal files_removed, bytes_removed
@@ -2263,14 +2440,25 @@ class DiscoveryEngine:
             except OSError:
                 return
 
+        def _prune_empty_dirs() -> None:
+            for dir_path in sorted(
+                (p for p in documents_dir.rglob("*") if p.is_dir()),
+                reverse=True,
+            ):
+                with contextlib.suppress(OSError):
+                    dir_path.rmdir()
+
         if resolved_mode == "none":
             if documents_dir.exists():
                 for file_path in sorted(
                     (p for p in documents_dir.rglob("*") if p.is_file()),
                     reverse=True,
                 ):
-                    _remove_file(file_path)
-                shutil.rmtree(documents_dir, ignore_errors=True)
+                    if file_path.resolve() not in protected:
+                        _remove_file(file_path)
+                _prune_empty_dirs()
+                with contextlib.suppress(OSError):
+                    documents_dir.rmdir()
             if curated_dir and curated_dir.exists():
                 for file_path in sorted(
                     (p for p in curated_dir.rglob("*") if p.is_file()),
@@ -2292,19 +2480,15 @@ class DiscoveryEngine:
                 ):
                     continue
                 file_path = Path(str(record["path"]))
+                if file_path.resolve() in protected:
+                    continue
                 _remove_file(file_path)
                 if file_path.parent.exists():
                     cache_dir = file_path.parent / TEXT_CACHE_DIRNAME
                     if cache_dir.exists():
                         for cache_path in text_cache_paths(file_path):
                             _remove_file(cache_path)
-            # Prune empty directories
-            for dir_path in sorted(
-                (p for p in documents_dir.rglob("*") if p.is_dir()),
-                reverse=True,
-            ):
-                with contextlib.suppress(OSError):
-                    dir_path.rmdir()
+            _prune_empty_dirs()
         return files_removed, bytes_removed
 
     @staticmethod
@@ -2764,7 +2948,7 @@ class DiscoveryEngine:
         browser = None
         escalated = 0
         try:
-            browser, browser_note = self._open_browser_for_download()
+            browser, browser_note = self._open_browser_for_download(request)
             if browser is None:
                 notes.append(
                     f"Browser escalation: {len(candidates_for_escalation)} "
@@ -3601,13 +3785,14 @@ class DiscoveryEngine:
             key = identify_target(target, request.partition_by)
             if key in incomplete_keys:
                 blocked.add(
-                    self._partition(request, key, self._target_metadata(target))
+                    self._partition(request, key, self._target_metadata(target)),
+                    "search unfinished",
                 )
         if not targets and any(
             metric.get("search_complete") is False
             for metric in selection_metrics
         ):
-            blocked.add(Path())
+            blocked.add(Path(), "search unfinished")
         return incomplete_keys, blocked
 
     def _block_candidates(
@@ -3617,6 +3802,7 @@ class DiscoveryEngine:
         candidates: list[DiscoveryCandidate],
         incomplete_keys: set[str],
         blocked: _PartitionIndex,
+        cause: str,
     ) -> None:
         """Keep the owners of unfinished candidates incomplete and blocked."""
         for candidate in candidates:
@@ -3626,7 +3812,8 @@ class DiscoveryEngine:
             blocked.add(
                 self._partition(
                     request, candidate.target_id, candidate.target_metadata
-                )
+                ),
+                cause,
             )
 
     def _download_completions(
@@ -3658,7 +3845,9 @@ class DiscoveryEngine:
                     request,
                     record.get("target_id"),
                     record.get("target_metadata"),
-                )
+                ),
+                "retryable review failure" if record.get("review_failed")
+                else "retryable download failure",
             )
 
         entries: dict[str, dict[str, object]] = {}
@@ -3884,10 +4073,11 @@ class DiscoveryEngine:
             else contextlib.nullcontext()
         ):
             if publishes:
+                # Blocked partitions are published additively, not replaced.
                 assign_document_names(
                     manifest.downloads,
                     paths.domain_dir / "download_index.csv",
-                    attempted_parts,
+                    {part for part in attempted_parts if not blocked.overlaps(part)},
                 )
             payload = manifest.to_dict()
             if result.status == "reused":
@@ -3958,35 +4148,122 @@ class DiscoveryEngine:
         snapshot_path: Path,
         checkpoint_path: Path,
         fingerprint: str,
+        prior_outcomes: dict[str, dict[str, dict[str, object]]],
     ) -> None:
-        """Save completions with published artifact hashes."""
-        if result.dry_run or not entries or not result.download_index_path:
+        """Save completions with published artifact hashes, and the final
+        child outcomes of incomplete targets/sources for the next run."""
+        if result.dry_run:
             return
-        evidence = {
-            str(snapshot_path): artifact_sha256(snapshot_path),
-            str(snapshot_path.with_suffix(".index.csv")): artifact_sha256(
-                snapshot_path.with_suffix(".index.csv")
-            ),
+        saved = {
+            key: {"incomplete": True, "run_id": result.run_id, "outcomes": outcomes}
+            for key, outcomes in self._incomplete_outcomes(
+                paths=paths,
+                download_records=download_records,
+                completed=entries,
+                prior=prior_outcomes,
+            ).items()
         }
-        curated_paths: dict[str, dict[str, str]] = {}
+        if entries and result.download_index_path:
+            evidence = {
+                str(snapshot_path): artifact_sha256(snapshot_path),
+                str(snapshot_path.with_suffix(".index.csv")): artifact_sha256(
+                    snapshot_path.with_suffix(".index.csv")
+                ),
+            }
+            curated_paths: dict[str, dict[str, str]] = {}
+            for record in download_records:
+                key = self._record_completion_key(record)
+                relative_path = record.get("relative_path")
+                if not key or not relative_path or key not in entries:
+                    continue
+                path = paths.domain_dir / "curated" / str(relative_path)
+                if path.is_file():
+                    curated_paths.setdefault(key, {})[str(path)] = artifact_sha256(
+                        path
+                    )
+            for key, entry in entries.items():
+                entry["artifacts"] = evidence
+                entry["curated_paths"] = curated_paths.get(key, {})
+            saved.update(entries)
+        if saved:
+            self._save_checkpoint_entries(
+                checkpoint_path, saved, fingerprint=fingerprint
+            )
+
+    def _incomplete_outcomes(
+        self,
+        *,
+        paths: PublicationPaths,
+        download_records: list[dict[str, object]],
+        completed: dict[str, dict[str, object]],
+        prior: dict[str, dict[str, dict[str, object]]],
+    ) -> dict[str, dict[str, dict[str, object]]]:
+        """Final child outcomes of owners left incomplete, merged over
+        ``prior``: downloads with file evidence, and other non-retryable
+        outcomes. Retryable failures are fetched again."""
+        outcomes: dict[str, dict[str, dict[str, object]]] = {}
         for record in download_records:
             key = self._record_completion_key(record)
-            relative_path = record.get("relative_path")
-            if not key or not relative_path:
+            url = record.get("url")
+            if not key or key in completed or not isinstance(url, str):
                 continue
-            if key not in entries:
+            if record.get("status") == "downloaded":
+                path = Path(str(record.get("path") or ""))
+                if not path.is_file() and record.get("relative_path"):
+                    path = paths.domain_dir / "curated" / str(record["relative_path"])
+                if not path.is_file() or not record.get("content_hash"):
+                    continue
+                outcome = {
+                    "status": "downloaded",
+                    "final_url": record.get("final_url") or url,
+                    "mime_type": record.get("mime_type"),
+                    "path": str(path.resolve()),
+                    "sha256": record["content_hash"],
+                }
+            elif is_retryable(record):
                 continue
-            path = paths.domain_dir / "curated" / str(relative_path)
-            if path.is_file():
-                curated_paths.setdefault(key, {})[str(path)] = artifact_sha256(
-                    path
-                )
-        for key, entry in entries.items():
-            entry["artifacts"] = evidence
-            entry["curated_paths"] = curated_paths.get(key, {})
-        self._save_checkpoint_entries(
-            checkpoint_path, entries, fingerprint=fingerprint
-        )
+            else:
+                outcome = {
+                    field: record[field]
+                    for field in PRIOR_OUTCOME_FIELDS
+                    if record.get(field) is not None
+                }
+            outcomes.setdefault(key, {})[url] = outcome
+        return {key: {**prior.get(key, {}), **new} for key, new in outcomes.items()}
+
+    @classmethod
+    def _remove_superseded_run_files(
+        cls,
+        *,
+        paths: PublicationPaths,
+        download_records: list[dict[str, object]],
+        prior: dict[str, dict[str, dict[str, object]]],
+    ) -> None:
+        """Delete an earlier run's copy of each file this run reused; the
+        current run now holds it. Consolidated curated files are never
+        touched."""
+        runs_dir = (paths.domain_dir / "runs").resolve()
+        current = paths.documents_dir.resolve()
+        for record in download_records:
+            if record.get("download_method") != REUSED_DOWNLOAD_METHOD:
+                continue
+            outcome = prior.get(cls._record_completion_key(record) or "", {}).get(
+                str(record.get("url"))
+            )
+            if not outcome or not outcome.get("path"):
+                continue
+            old = Path(str(outcome["path"])).resolve()
+            if runs_dir not in old.parents or current in old.parents:
+                continue
+            for path in (old, *text_cache_paths(old)):
+                path.unlink(missing_ok=True)
+            for parent in old.parents:
+                if parent == runs_dir:
+                    break
+                try:
+                    parent.rmdir()
+                except OSError:
+                    break
 
     def _finalize_completion(
         self,
@@ -3996,6 +4273,7 @@ class DiscoveryEngine:
         result: DiscoveryResult,
         download_records: list[dict[str, object]],
         entries: dict[str, dict[str, object]],
+        prior_outcomes: dict[str, dict[str, dict[str, object]]],
         snapshot_path: Path,
         checkpoint_path: Path,
         fingerprint: str,
@@ -4005,11 +4283,20 @@ class DiscoveryEngine:
         if request.dry_run:
             return
         if not all_reused and request.retention_documents != "all":
+            # Incomplete owners resume from these files; keep them.
+            unfinished = {
+                Path(str(record["path"]))
+                for record in download_records
+                if record.get("path")
+                and (key := self._record_completion_key(record))
+                and key not in entries
+            }
             self._apply_document_retention(
                 mode=request.retention_documents,
                 documents_dir=paths.documents_dir,
                 curated_dir=result.curated_dir,
                 download_records=download_records,
+                keep=frozenset(unfinished),
             )
         self._save_completion_evidence(
             paths=paths,
@@ -4019,7 +4306,13 @@ class DiscoveryEngine:
             snapshot_path=snapshot_path,
             checkpoint_path=checkpoint_path,
             fingerprint=fingerprint,
+            prior_outcomes=prior_outcomes,
         )
+        if not all_reused and request.retention_documents != "all":
+            # After the checkpoint points at this run's copies.
+            self._remove_superseded_run_files(
+                paths=paths, download_records=download_records, prior=prior_outcomes
+            )
         # Reuse and empty runs keep the prior latest-downloads pointer.
         if download_records:
             self._refresh_latest_pointer(
@@ -4076,8 +4369,12 @@ class DiscoveryEngine:
                 with contextlib.suppress(OSError):
                     checkpoint_path.unlink(missing_ok=True)
             completed_checkpoint_keys: dict[str, dict[str, object]] = {}
+            prior_outcomes: dict[str, dict[str, dict[str, object]]] = {}
         else:
             completed_checkpoint_keys = self._load_checkpoint(
+                checkpoint_path, fingerprint=fingerprint
+            )
+            prior_outcomes = load_prior_outcomes(
                 checkpoint_path, fingerprint=fingerprint
             )
         original_sources = list(request.sources)
@@ -4133,7 +4430,9 @@ class DiscoveryEngine:
         candidates_after_seeker = len(candidates)
 
         candidates, crawl_errors, crawl_notes, crawl_state, crawl_unfinished = (
-            self._crawl_candidates(request=request, candidates=candidates)
+            self._crawl_candidates(
+                request=request, candidates=candidates, prior=prior_outcomes
+            )
         )
         all_errors = normalize_error_records([*all_errors, *crawl_errors])
         if crawl_state["applied"]:
@@ -4168,6 +4467,7 @@ class DiscoveryEngine:
             candidates=crawl_unfinished,
             incomplete_keys=incomplete_keys,
             blocked=blocked_parts,
+            cause=str(crawl_state.get("unfinished_cause") or "crawl unfinished"),
         )
         download_notes: list[str] = []
         review_costs: dict[str, object] = {}
@@ -4183,28 +4483,36 @@ class DiscoveryEngine:
             download_errors: list[dict[str, object]] = []
             if candidates_for_download:
                 download_cap = request.max_files
-                if download_cap is not None:
-                    self._block_candidates(
-                        request=request,
-                        candidates=[
-                            c for c in candidates_for_download
-                            if c.source != CONFIGURED_SOURCE
-                        ][download_cap:],
-                        incomplete_keys=incomplete_keys,
-                        blocked=blocked_parts,
-                    )
+                reusable = self._reusable_outcomes(
+                    candidates_for_download, prior_outcomes
+                )
+                _, cut = self._stage_downloads(
+                    candidates_for_download, download_cap, reusable
+                )
+                self._block_candidates(
+                    request=request,
+                    candidates=cut,
+                    incomplete_keys=incomplete_keys,
+                    blocked=blocked_parts,
+                    cause=f"budget runtime.max_files={download_cap}",
+                )
                 download_records, download_errors, stage_download_notes = (
                     self._download_candidates(
                         request=request,
                         candidates=candidates_for_download,
                         documents_dir=documents_dir,
                         max_downloads=download_cap,
+                        reusable=reusable,
                     )
                 )
                 download_notes.extend(stage_download_notes)
                 if self._remaining_downloads is not None:
                     self._remaining_downloads = max(
-                        0, self._remaining_downloads - len(download_records)
+                        0,
+                        self._remaining_downloads - sum(
+                            record.get("download_method") != REUSED_DOWNLOAD_METHOD
+                            for record in download_records
+                        ),
                     )
 
                 download_records, download_notes, review_costs = (
@@ -4274,9 +4582,10 @@ class DiscoveryEngine:
                     )
                 if blocked_parts:
                     download_notes.append(
-                        "Incomplete partitions retained run-local; "
-                        "consolidated curation and provenance "
-                        "were not replaced."
+                        f"{len(blocked_parts.paths)} partition(s) still incomplete "
+                        f"({'; '.join(sorted(blocked_parts.causes))}): documents "
+                        "downloaded so far were published additively, nothing was "
+                        "withdrawn, and the next run continues."
                     )
 
         empty_parts = self._empty_target_completions(
@@ -4406,6 +4715,7 @@ class DiscoveryEngine:
             result=result,
             download_records=download_records,
             entries=new_checkpoint_entries,
+            prior_outcomes=prior_outcomes,
             snapshot_path=snapshot_path,
             checkpoint_path=checkpoint_path,
             fingerprint=fingerprint,

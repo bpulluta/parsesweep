@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -16,10 +15,13 @@ from psweep.cli.commands_extract import extract
 from psweep.cli.commands_validate import validate
 from psweep.discovery.request_inputs import discovery_request_fields
 from psweep.discovery.targets import iter_targets
+from psweep.exceptions import PipelineError
+from psweep.outcomes import EXIT_PARTIAL
 from psweep.pipeline import (
     build_run_stage_commands,
     count_curated_documents,
     count_extracted_documents,
+    execute_run_stages,
     resolve_run_discovery_enabled,
 )
 from psweep.workspace import Workspace
@@ -256,18 +258,27 @@ def run(
         "validate": "Validating results",
     }
     total_stages = len(stage_cmds)
-    for i, (stage_name, cmd) in enumerate(stage_cmds, 1):
+
+    def _announce(index: int, stage_name: str) -> None:
         view.phase(
-            f"Phase {i}/{total_stages}: {_stage_labels.get(stage_name, stage_name.title())}"
+            f"Phase {index}/{total_stages}: "
+            f"{_stage_labels.get(stage_name, stage_name.title())}"
         )
-        result = subprocess.run(cmd)
-        if result.returncode != 0:
-            view.error(f"Stage '{stage_name}' failed (exit {result.returncode})")
-            raise click.exceptions.Exit(result.returncode)
+
+    try:
+        partial_stages = execute_run_stages(stage_cmds, on_stage=_announce)
+    except PipelineError as exc:
+        view.error(str(exc))
+        raise click.exceptions.Exit(exc.returncode or 1) from exc
 
     # Build a richer post-run summary from on-disk artifacts.
     summary_rows: dict[str, str] = {
-        "Status": "complete",
+        "Status": (
+            f"partial ({', '.join(partial_stages)} had errors; "
+            "re-run retries transient ones)"
+            if partial_stages
+            else "complete"
+        ),
         "Stages": " → ".join(stages_list),
     }
     # Report run-scoped discovery output when this invocation executed discovery.
@@ -285,6 +296,8 @@ def run(
     if final_extracted:
         summary_rows["Extracted"] = str(final_extracted)
     view.summary(summary_rows, title="Pipeline Complete")
+    if partial_stages:
+        raise click.exceptions.Exit(EXIT_PARTIAL)
 
 
 def _register_commands() -> None:

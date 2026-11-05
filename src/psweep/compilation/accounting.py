@@ -380,7 +380,13 @@ def build_pipeline_accounting(
             run_docs = int(costs.get("documents_billed") or 0)
             run_calls = int(costs.get("llm_calls", run_docs) or 0)
             run_unknown = int(costs.get("unknown_cost_calls") or 0)
-            run_model = lineage.get("model") or costs.get("model")
+            # Every model that spent (extraction, transcription,
+            # locators); a run that spent nothing names its extraction
+            # model.
+            run_models = sorted(
+                costs.get("models")
+                or ([lineage["model"]] if lineage.get("model") else [])
+            )
             run_provider = lineage.get("provider")
             run_schema = lineage.get("schema_id")
             run_completed = run_timing.get("finished_at") or run_timing.get("completed_at")
@@ -396,8 +402,7 @@ def build_pipeline_accounting(
             ext_unknown_cost_calls += run_unknown
             if run_provider:
                 providers.add(str(run_provider))
-            if run_model:
-                models.add(str(run_model))
+            models.update(run_models)
             if run_schema:
                 schema_ids.add(str(run_schema))
             if run_completed:
@@ -422,8 +427,10 @@ def build_pipeline_accounting(
                 "elapsed_seconds": run_elapsed,
             }
             # Add optional fields
-            if run_model:
-                run_record["model"] = run_model
+            if run_models:
+                run_record["model"] = (
+                    run_models if len(run_models) > 1 else run_models[0]
+                )
             if run_provider:
                 run_record["provider"] = run_provider
             if run_schema:

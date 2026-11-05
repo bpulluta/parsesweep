@@ -20,10 +20,15 @@ from __future__ import annotations
 import time
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from requests.structures import CaseInsensitiveDict
+
 from psweep.security import protected_mode
+
+from .constants import USER_AGENT
 
 
 class BrowserUnavailableError(RuntimeError):
@@ -44,11 +49,6 @@ class BrowserNavigationError(RuntimeError):
 
 
 _CHROME_ERROR_CODE = re.compile(r"\bERR_[A-Z_]+\b")
-
-_DEFAULT_UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-)
 
 
 def browser_available() -> bool:
@@ -77,10 +77,12 @@ class BrowserSession:
         self,
         *,
         headless: bool = True,
-        user_agent: str = _DEFAULT_UA,
+        request_headers: Mapping[str, str] | None = None,
         page_load_timeout: int = 45,
     ) -> None:
-        self.user_agent = user_agent
+        # Chrome can only override the User-Agent; it follows the HTTP fetches.
+        headers = CaseInsensitiveDict(request_headers or {})
+        self.user_agent = headers.get("User-Agent") or USER_AGENT
         self._headless = headless
         self._page_load_timeout = page_load_timeout
         self._driver: Any = None

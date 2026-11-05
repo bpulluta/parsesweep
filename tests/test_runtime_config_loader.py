@@ -1277,3 +1277,21 @@ def test_validation_section_resolves(tmp_path: Path):
         "quote_field": None,
         "min_accuracy": None,
     }
+
+
+@pytest.mark.parametrize(
+    ("validation", "expected"),
+    [
+        ({"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "verbatim"},
+         "verbatim"),
+        ({"models": ["a"], "key_fields": ["state", "feature"]}, None),
+    ],
+)
+def test_rows_quote_field_reaches_extraction(tmp_path: Path, validation, expected):
+    path = _validation_config(tmp_path, validation, rows=True)
+    extract = resolve_command_config(
+        command="extract", cli_values={}, config_data=load_runtime_config_file(path)
+    )
+    assert extract.get("quote_field") == expected
+    if expected:
+        assert extract["_config_sources"]["quote_field"] == "config.validation.quote_field"

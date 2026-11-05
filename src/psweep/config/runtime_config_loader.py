@@ -78,6 +78,14 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": "Model override for extraction runs.",
         },
         {
+            "name": "transcription_model",
+            "level": "optional",
+            "description": (
+                "models: alias that transcribes audio documents "
+                "(.mp3 .m4a .wav .ogg .flac); required for audio."
+            ),
+        },
+        {
             "name": "limit",
             "level": "optional",
             "description": "Process only the first N files.",
@@ -155,7 +163,8 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
         {"name": "key_fields", "level": "optional",
          "description": "Row identity in rows mode (required there; rejected in roster mode)."},
         {"name": "quote_field", "level": "advanced",
-         "description": "Rows mode: the item's verbatim quote for anchor alignment."},
+         "description": "Rows mode: each row's verbatim quote; extraction drops rows whose "
+                        "quote is not in the source, validation aligns on it."},
         {"name": "min_accuracy", "level": "optional",
          "description": "Gate in (0, 1] on the primary's accuracy against every reference."},
     ],
@@ -218,6 +227,7 @@ _ALLOWED_SECTION_FIELDS = {
         "max_concurrent",
         "timeout_seconds",
         "ocr_corrections",  # optional per-domain OCR text-correction rules
+        "transcription_model",
     },
     "compilation": {
         "output",
@@ -390,7 +400,7 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
                 + ", ".join(sorted(allowed))
             )
 
-    for name in ("pages", "pages_csv", "model"):
+    for name in ("pages", "pages_csv", "model", "transcription_model"):
         if name in extraction and extraction[name] is not None:
             if not isinstance(extraction[name], str):
                 raise RuntimeConfigError(
@@ -516,6 +526,18 @@ _CELLS_SUFFIXES = ("_quote", "_url", "_support", "_conflict")
 def _did_you_mean(value: str, choices) -> str:
     close = get_close_matches(value, sorted(choices), n=1)
     return f" — did you mean '{close[0]}'?" if close else ""
+
+
+def _check_transcription_model(
+    extraction: dict[str, Any], aliases: dict[str, Any]
+) -> None:
+    """``extraction.transcription_model`` must name a ``models:`` tier."""
+    alias = extraction.get("transcription_model")
+    if alias is not None and alias not in aliases:
+        raise RuntimeConfigError(
+            f"extraction.transcription_model: '{alias}' is not a models: alias"
+            + _did_you_mean(alias, aliases)
+        )
 
 
 def _validation_names(section: dict[str, Any], key: str) -> tuple[str, ...]:
@@ -909,7 +931,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
             raise RuntimeConfigError(msg)
         _normalize_pages_block(extraction)
         _validate_extraction_section_schema(extraction)
-
+        _check_transcription_model(extraction, config_data.get("models") or {})
     compilation = config_data.get("compilation")
     if compilation is not None:
         if not isinstance(compilation, dict):
@@ -985,6 +1007,7 @@ _FIELD_MAP: dict[str, str] = {
     "ocr_corrections": "ocr_corrections",
     "provider": "provider",
     "model": "model",
+    "transcription_model": "transcription_model",
     "limit": "limit",
     "skip_existing": "skip_existing",
     "max_context": "max_context",
@@ -1134,6 +1157,9 @@ def resolve_command_config(
         for field in ("targets", "partition_by"):
             if field in discovery:
                 merged[field], sources[field] = discovery[field]
+    if section_name == "extraction" and (cfg.get("validation") or {}).get("quote_field"):
+        merged["quote_field"] = cfg["validation"]["quote_field"]
+        sources["quote_field"] = "config.validation.quote_field"
 
     missing = [
         name for name in _REQUIRED_FIELDS.get(section_name, ()) if not merged.get(name)

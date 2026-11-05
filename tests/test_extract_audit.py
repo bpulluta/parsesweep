@@ -409,6 +409,7 @@ def _plan(tmp_path, metadata, doc):
         "schema_path": metadata.schema_path,
         "metadata": metadata,
         "evidence_paths": [],
+        "quote_rows": None,
         "fingerprints": {doc: "a" * 64},
     }
 

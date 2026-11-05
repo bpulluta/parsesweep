@@ -1,12 +1,7 @@
-"""Shared URL helpers for the discovery module.
+"""Shared discovery URL helpers: parse, match, canonicalize, redact.
 
-These were previously duplicated (byte-for-byte in some cases) across the
-engine and the candidate selector. Centralizing them removes the drift risk.
-
-Note: the link prioritizer keeps its own length-guarded extension parser
-(a scoring heuristic) and the engine keeps its MIME-aware extension resolver
-(download gating) — those serve different purposes and are intentionally
-not folded in here.
+The link prioritizer (scoring) and the engine (MIME-aware download
+gating) keep their own extension parsers on purpose.
 """
 
 from __future__ import annotations
@@ -15,7 +10,9 @@ import re
 from functools import lru_cache
 from html import unescape
 from pathlib import Path
-from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
+from urllib.parse import (
+    parse_qsl, unquote, urlencode, urlparse, urlsplit, urlunparse, urlunsplit,
+)
 
 _SEPARATOR_RE = re.compile(r"[_\-/]")
 
@@ -94,6 +91,35 @@ def redact_url(url: str) -> str:
         return urlunparse(parsed._replace(netloc=host, query=query, fragment=""))
     except ValueError:
         return "[invalid URL]"
+
+
+_TRACKING_PARAMETER_RE = re.compile(
+    r"^(?:utm_.*|gclid|gclsrc|dclid|gbraid|wbraid|fbclid|msclkid|yclid|igshid|"
+    r"mc_cid|mc_eid|_ga|_gl|srsltid)$",
+    re.IGNORECASE,
+)
+
+
+def canonical_url(url: str) -> str:
+    """Drop click-tracking query parameters, keeping every other byte.
+
+    Other parameters can identify the document (``?bidId=``,
+    ``?fileID=``, ``?<id>_page=N``), so only known tracking keys go.
+    """
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return url
+    if not parsed.query:
+        return url
+    segments = parsed.query.split("&")
+    kept = [
+        segment for segment in segments
+        if not _TRACKING_PARAMETER_RE.match(unquote(segment.split("=", 1)[0]))
+    ]
+    if len(kept) == len(segments):
+        return url
+    return urlunsplit(parsed._replace(query="&".join(kept)))
 
 
 def redact_urls_in_text(text: str) -> str:

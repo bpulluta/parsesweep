@@ -80,8 +80,8 @@ class TestCanHandle:
     def test_request_headers_are_an_independent_copy(self):
         adapter = MunicodeAdapter()
         headers = adapter.request_headers()
-        headers["User-Agent"] = "operator"
-        assert "ParseSweep" in adapter.request_headers()["User-Agent"]
+        headers["X-CSRF"] = "operator"
+        assert adapter.request_headers()["X-CSRF"] == "1"
 
 
 class TestFetchText:
@@ -94,16 +94,14 @@ class TestFetchText:
         assert "<" not in text and ">" not in text
         assert "&nbsp;" not in text
 
-    def test_sends_csrf_header_and_generic_ua(self):
+    def test_sends_csrf_header_and_leaves_user_agent_to_the_engine(self):
         calls: list[tuple[str, dict]] = []
         MunicodeAdapter().fetch_text(_PUBLIC_URL, _friendswood_get(calls))
         assert calls, "adapter made no HTTP calls"
         for _url, headers in calls:
             assert headers.get("X-CSRF") == "1"
-            ua = headers.get("User-Agent", "")
-            assert "ParseSweep" in ua
-            # Never a named AI-crawler UA (Municode disallows those).
-            assert "GPTBot" not in ua and "Bytespider" not in ua
+            # The engine adds the one shared discovery User-Agent.
+            assert "User-Agent" not in headers
 
     def test_missing_node_id_returns_none(self):
         url = "https://library.municode.com/tx/friendswood/codes/code_of_ordinances"

@@ -10,6 +10,7 @@ import pymupdf
 from click.testing import CliRunner
 
 from psweep.cli.main import cli
+from psweep.outcomes import EXIT_FAILED, EXIT_PARTIAL
 from psweep.pipeline import extract_documents
 
 
@@ -92,9 +93,11 @@ def _cli(documents, schema, output, *flags):
     )
 
 
-@pytest.mark.parametrize("failure", ["all", "partial"])
-def test_document_failures_exit_one(workflow, failure):
-    """Recorded failures must stop subprocess-driven downstream stages."""
+@pytest.mark.parametrize(
+    ("failure", "expected"), [("all", EXIT_FAILED), ("partial", EXIT_PARTIAL)]
+)
+def test_document_failures_exit_nonzero(workflow, failure, expected):
+    """Total failure halts downstream stages; partial failure is distinguishable."""
     documents, schema, output, provider = workflow
     if failure == "partial":
         (documents / "beta.txt").write_text("Source beta")
@@ -105,7 +108,7 @@ def test_document_failures_exit_one(workflow, failure):
     else:
         provider.side_effect = RuntimeError("fixture failure")
     result = _cli(documents, schema, output)
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == expected, result.output
     assert list((output / "run_manifests").glob("*.json"))
 
 

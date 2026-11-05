@@ -297,3 +297,10 @@ class TestNonPdfGuard:
         assert not error_records, (
             f"Unexpected ERROR logs: {[r.message for r in error_records]}"
         )
+
+
+def test_locator_names_the_model_that_answered():
+    loc = PageLocator("residential rate schedule per kwh")
+    assert loc.model is None
+    loc._client = type("Client", (), {"raw_model": "gpt-x"})()
+    assert loc.model == "gpt-x"

@@ -4,7 +4,12 @@ import pytest
 import requests
 
 from psweep.discovery.browser import BrowserDownloadError
-from psweep.discovery.retry import error_record, is_retryable, is_transient_error
+from psweep.discovery.retry import (
+    browser_may_recover,
+    error_record,
+    is_retryable,
+    is_transient_error,
+)
 
 
 def _http_error(status):
@@ -42,6 +47,38 @@ def _http_error(status):
 )
 def test_transient_error_classification(exc, expected):
     assert is_transient_error(exc) is expected
+
+
+@pytest.mark.parametrize(
+    ("status", "header"),
+    [
+        (429, "X-Vercel-Mitigated"),
+        (403, "cf-mitigated"),
+        (503, "cf-mitigated"),
+        (405, "x-amzn-waf-action"),
+    ],
+)
+def test_bot_manager_challenges_are_terminal(status, header):
+    exc = _http_error(status)
+    exc.response.headers[header] = "challenge"
+    assert is_transient_error(exc) is False
+    assert error_record(exc, stage="download")["retryable"] is False
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (_http_error(403), True),
+        (_http_error(429), True),
+        (_http_error(451), True),
+        (_http_error(404), False),
+        (_http_error(500), False),
+        (requests.HTTPError("Access Denied"), True),
+        (requests.ConnectionError("forbidden"), False),
+    ],
+)
+def test_browser_may_recover_refusals_only(exc, expected):
+    assert browser_may_recover(exc) is expected
 
 
 @pytest.mark.parametrize(

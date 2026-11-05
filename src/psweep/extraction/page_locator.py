@@ -176,6 +176,11 @@ class _BaseLocator:
         """Expose actual calls without creating a client on reuse."""
         return dict(getattr(self._client, "usage", {}) or {})
 
+    @property
+    def model(self) -> str | None:
+        """The model answering this locator (None before any call)."""
+        return getattr(self._client, "raw_model", None)
+
     def _dense_indices(self, texts) -> list[int]:
         lowered = (text.lower() for text in texts)
         scores = [

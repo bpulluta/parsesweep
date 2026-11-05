@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import psweep.discovery.engine as engine_mod
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 from psweep.discovery.connectors.base import CrawlResult, DiggerArtifact
@@ -90,6 +92,71 @@ def test_crawl_children_inherit_origin_attribution(monkeypatch):
     assert crawled.reasons == [ROUTE_REASON_CRAWLED]
     assert (crawled.target_id, crawled.source_scope, crawled.source_url) == ("t1", "target", hub)
     assert crawled.target_metadata == {"label": "cty"}
+
+
+def test_configured_page_query_variants_stay_configured(monkeypatch):
+    """Pagination of a configured listing is that listing; its links are not."""
+    hub = "https://county.gov/list"
+    page = f"{hub}?page=2#top"
+    other = "https://county.gov/list/detail?page=2"
+    found = "https://search.example/list"
+    fake = _FakeConnector([
+        DiggerArtifact(url=url, source="http_digger", metadata={"source_url": src})
+        for url, src in ((page, hub), (other, hub), (f"{found}?page=2", found))
+    ])
+    monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: fake)
+    candidates = [
+        _candidate(hub, source_scope="shared", source_url=hub),
+        _candidate(found, source="serpapi", target_id="t1", source_url=found),
+    ]
+    routed, *_ = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=2), candidates=candidates
+    )
+    sources = {c.url: c.source for c in routed[2:]}
+    assert sources == {
+        page: "configured", other: "http_digger", f"{found}?page=2": "http_digger"
+    }
+    assert {c.source_url for c in routed[2:4]} == {hub}
+
+
+@pytest.mark.parametrize(
+    ("fetched", "cause"),
+    [
+        (3, "budget reached (crawl.max_pages=3, runtime.max_files=1)"),
+        (1, "budget reached (runtime.max_files=1)"),
+    ],
+)
+def test_crawl_names_the_budget_that_cut_it_off(monkeypatch, fetched, cause):
+    hub = "https://county.gov/list"
+    artifact = DiggerArtifact(url=f"{hub}/a.pdf", source="http_digger",
+                              metadata={"source_url": hub})
+
+    class _Cut:
+        def discover(self, _di):  # noqa: ANN001
+            return CrawlResult([artifact], {hub}, pages_fetched=fetched)
+
+    monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: _Cut())
+    _, _, notes, _, unfinished = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=2, max_pages=3, max_files=1),
+        candidates=[_candidate(hub)],
+    )
+    assert f"Crawl fetched {fetched} page(s) from 1 source page(s)" in notes[0]
+    assert notes[1] == f"Crawl unfinished for 1 source page(s): {cause}; they stay incomplete."
+    assert [c.url for c in unfinished] == [hub]
+
+
+def test_crawl_without_exhausted_budget_reports_a_retryable_failure(monkeypatch):
+    hub = "https://county.gov/list"
+
+    class _Failed:
+        def discover(self, _di):  # noqa: ANN001
+            return CrawlResult([], {hub}, pages_fetched=0)
+
+    monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: _Failed())
+    _, _, notes, _, _ = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=2), candidates=[_candidate(hub)]
+    )
+    assert "retryable page failure" in notes[-1]
 
 
 def test_crawl_connector_failure_keeps_candidates(monkeypatch):
@@ -266,7 +333,7 @@ def test_checkpoint_persisted_once_after_curation(tmp_path, monkeypatch):
     dom = tmp_path / "outputs" / "d" / "discovered"
     labels = ("alpha", "beta", "gamma")
 
-    def _download(*, request, candidates, documents_dir, max_downloads):
+    def _download(*, request, candidates, documents_dir, max_downloads, reusable):
         records = []
         for label in labels:
             path = documents_dir / f"{label}.pdf"

@@ -57,7 +57,7 @@ shared runtime definitions; templates show explicit choices separately.
 | `runtime.max_concurrent_downloads` | discovery | `2` | Change download concurrency |
 | `retry_policy.max_attempts` | discovery | `3` total attempts | Change the retry budget |
 | `crawl.browser_downloads` | discovery | `false` | Download through a headless browser |
-| `crawl.browser_escalation.enabled` | discovery | `false` | Opt into thin/JS-shell browser recovery |
+| `crawl.browser_escalation.enabled` | discovery | `false` | Opt into browser recovery of JS shells and refused (401/403/429/451) pages and downloads |
 | `crawl.code_host_adapters.enabled` | discovery | `false` | Opt into supported code-host API recovery |
 | `document_review` | discovery | Not configured (no LLM review) | Add explicit paid model-based curation |
 | `partition_by` | discovery | `_targets/<id>/` per target, `_shared/` for sources | You need a metadata-based output layout |
@@ -126,7 +126,23 @@ discovery:
 Configured URLs (`sources` and target `urls`) bypass selection, the
 classifier's `action: filter`, and `document_review.keep_top`; shared sources
 do not count against any target's caps. Links crawled from them (with
-`crawl.max_depth > 0`) are ordinary candidates.
+`crawl.max_depth > 0`) are ordinary candidates, except query variants of a
+configured page (its pagination), which are that configured page.
+
+Without `crawl.include_link_text_patterns`, a crawl follows non-navigation
+links. With it, only links whose text matches are followed, and each matching
+page is also kept, so a paginated listing is collected page by page:
+
+```yaml
+discovery:
+  crawl:
+    max_depth: 10                       # longest page chain to follow
+    include_link_text_patterns: ['^next$']
+```
+
+Every non-document candidate (search results included) is fetched once at
+depth 0 to look for matching links, and `crawl.max_pages` is one budget for the
+whole run: size it above the number of HTML candidates plus listing pages.
 
 Scope applies before top-one selection and to final redirects. Search `site:`
 and `filetype:` hints are not scope/type guarantees.
@@ -164,7 +180,12 @@ protected mode rejects any configured false value, even if overridden.
 Invalid boolean values fail. Prefer `REQUESTS_CA_BUNDLE` (or `SSL_CERT_FILE`)
 for approved VPN/private roots instead of disabling verification. Discovery
 ignores environment proxies and `.netrc` credentials.
-`PSWEEP_MAX_RESPONSE_BYTES` bounds each decoded response (default 50 MiB).
+Files streamed to disk stop at 1 GiB decoded (positive integer
+`PSWEEP_MAX_RESPONSE_BYTES` overrides it) and abort only after
+`runtime.timeout_seconds` without data; pages, search and API responses read
+into memory stop at a fixed 50 MiB and must finish within the timeout. An
+oversized document is a failed download (`partial_failure`), never a skip;
+after raising the limit, rediscover with `--fresh`.
 See [Security and protected operation](security.md) for network/resource limits.
 
 ## Discovery configuration validation
@@ -183,11 +204,14 @@ without contacting providers or writing run artifacts. It requires `sources`,
 `run_pipeline` perform this check before starting discovery. Validation does
 not establish provider availability, credentials, or live network reliability.
 
-`discovery.crawl.request_headers` reaches the engine's HTTP requests. Set public
-headers such as `User-Agent` here; do not store secrets in configs or print
-secret-bearing headers with effective-config/validation output. Browser requests
-have their own header behavior. Explicit CLI options (`--domain`, `--source`,
-`--query`) override config values.
+`discovery.crawl.request_headers` reaches every HTTP request (pages, crawl,
+robots.txt, code-host APIs). The default `User-Agent` is
+`Mozilla/5.0 (compatible; ParseSweep/<version>)`; robots.txt rules are matched
+on the `ParseSweep` token whatever `User-Agent` is sent. Browser sessions send
+the same `User-Agent` (the only header Chrome lets them set). Do not store
+secrets in configs or print secret-bearing headers with
+effective-config/validation output. Explicit CLI options (`--domain`,
+`--source`, `--query`) override config values.
 
 Strict robots/ToS enforcement is available for HTTP acquisition. It cannot
 certify browser redirects or subresource requests and therefore fails before
@@ -201,8 +225,9 @@ Outcome and exit code do not depend on quiet/default/verbose rendering:
 | Manifest status | Exit code | Meaning |
 |-----------------|-----------|---------|
 | `success`, `dry_run`, `reused` | `0` | Successful acquisition, valid plan, or validated reuse with no errors. |
-| `failed`, `partial_failure` | `1` | Acquisition failed wholly or partly; zero downloads caused by failure are not an empty success. |
+| `failed` | `1` | Acquisition failed; zero downloads caused by failure are not an empty success. |
 | `empty` | `2` | No usable results and no acquisition failure. |
+| `partial_failure` | `3` | Usable results plus recorded errors; `run` continues downstream and a re-run retries the failures. |
 
 Checkpoint **v2** requires the effective discovery config fingerprint and
 SHA-256 artifact evidence, including curated files, to match before reuse.
@@ -211,6 +236,18 @@ reacquisition. Search-result caching remains a separate opt-in mechanism. Target
 of the fingerprint, so adding one fetches only the new item; a target also
 re-runs when its `urls` or rendered queries change. Resumed runs
 publish file by file; only `--fresh` replaces whole curated partitions.
+
+An item left incomplete (retryable failure, unfinished search or crawl, or the
+`runtime.max_files` budget) publishes its downloads so far additively — same
+names are replaced, nothing is withdrawn — and its checkpoint entry keeps the
+final outcome of each child URL. The next run re-fetches the listing or search,
+reuses every earlier download whose file still matches its SHA-256 without a
+request and without using a `max_files` slot, does not re-request terminal
+outcomes (e.g. HTTP 404), and fetches only the remaining children. A capped
+listing therefore converges batch by batch, and a run with one transient child
+failure re-fetches only that child. Run notes report reused and fetched counts
+and why partitions are still incomplete. A completed item makes no requests;
+`psweep discover --fresh` re-checks completed listings and ignores all reuse.
 
 Corpus publication rejects concurrent writers with a lock and journals the
 known curated/provenance swaps. The next writer recovers an interrupted
@@ -222,7 +259,9 @@ OCR pairs use `.text/<filename>.txt` and `.text/<filename>.meta.json`, so
 `report.pdf` and `report.html` do not share a cache. Readers verify source
 size/mtime and source SHA-256 plus cached-text SHA-256. Partial/stale/mismatched
 pairs are misses; temporary-file replacement publishes metadata last. Old
-stem-only pairs are not reused. LLM review grades are cached by document content
+stem-only pairs are not reused. Republished discovery files (including
+`--fresh`) inherit the OCR/transcript text of a replaced file with the same
+SHA-256, so unchanged scans and recordings are not processed again. LLM review grades are cached by document content
 and grading inputs in `discovered/.review_cache/<key>.json` and reused across
 runs. OCR caches now hold raw text, applying current corrections
 on consumption; older corrected entries invalidate rather than silently reuse.
@@ -235,8 +274,9 @@ evidence match. Missing proof or invalid JSON triggers re-extraction, without a
 new resume setting. Valid reuse needs no provider credentials or calls. `--fresh`
 resets the whole resolved output after successful preflight; filtered/limited
 fresh runs rebuild only that subset. Overlapping output/input paths are rejected.
-Exit 0 means success/reuse (including valid zero-item payloads); exit 1 includes
-partial failure; empty selection exits 2. Pipeline drivers halt downstream work.
+Exit 0 means success/reuse (including valid zero-item payloads); exit 1 is
+failure; empty selection exits 2; partial failure exits 3. `run` (and
+`run_pipeline`) halt on 1 or 2, continue past 3, and exit 3 at the end.
 Atomic per-file record/manifest replacement is not a whole-run transaction or
 concurrent-writer certification. Inert category/profile settings and YAML schema
 pack unwrapping are retired; use direct JSON schemas and supported string aliases.
@@ -303,9 +343,9 @@ sentiment, or geographical support. US county-FIPS derivation remains an
 explicit, optional wide-output normalization, not a requirement of any domain.
 
 Page/section selection and context truncation are preserved as limitations in
-canonical records and extraction manifests. Incomplete searches do not replace
-previous good curated partitions. A seeded or capped sample is not a recall or
-population estimate.
+canonical records and extraction manifests. Incomplete searches only add to
+previous good curated partitions; they never withdraw files. A seeded or capped
+sample is not a recall or population estimate.
 
 ### Scale boundary
 

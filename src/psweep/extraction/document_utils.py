@@ -2,14 +2,20 @@
 
 from html.parser import HTMLParser
 import contextlib
+import csv
 import hashlib
+import io
 import json
 import logging
+import re
+from collections.abc import Iterable
+from itertools import zip_longest
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from psweep.utils.file_io import artifact_sha256, staged_file
 from .pdf_utils import _cleanup_ocr_errors
+from .transcription import AUDIO_EXTENSIONS, transcript
 
 logger = logging.getLogger(__name__)
 
@@ -110,17 +116,18 @@ def write_text_cache(
         )
 
 
-# Supported file extensions
-SUPPORTED_EXTENSIONS = {
-    ".pdf",
-    ".docx",
-    ".txt",
-    ".xlsx",
-    ".csv",
-    ".doc",
-    ".html",
-    ".htm",
-}
+# Text layout of table formats; extraction fingerprints include it so a layout
+# change re-extracts records built from the old layout.
+TABLE_TEXT_LAYOUT = dict.fromkeys((".csv", ".xlsx", ".json"), "labelled-rows")
+
+# The one supported file-type definition; discovery derives what it
+# downloads from it. Recordings are documents (transcribed when read).
+DOCUMENT_EXTENSIONS: frozenset[str] = (
+    frozenset({".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv", ".json"})
+    | AUDIO_EXTENSIONS
+)
+WEB_PAGE_EXTENSIONS: frozenset[str] = frozenset({".html", ".htm"})
+SUPPORTED_EXTENSIONS: frozenset[str] = DOCUMENT_EXTENSIONS | WEB_PAGE_EXTENSIONS
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -284,11 +291,12 @@ def extract_text_from_document(
     ocr_corrections: Optional[list] = None,
     *,
     return_meta: bool = False,
+    transcriber=None,
 ):
     """
     Extract text from any supported document format.
 
-    Supports: PDF, DOCX, TXT, XLSX, CSV, DOC, HTML
+    Supports every type in ``SUPPORTED_EXTENSIONS``.
 
     Parameters
     ----------
@@ -301,6 +309,8 @@ def extract_text_from_document(
         applied to OCR-derived PDF text only.
     return_meta : bool
         Return a text/metadata pair with actual PDF scope when True.
+    transcriber : Optional[transcription.Transcriber]
+        Transcribes uncached audio; without one, only cached transcripts.
 
     Returns
     -------
@@ -318,6 +328,10 @@ def extract_text_from_document(
         raise FileNotFoundError(f"File not found: {file_path}")
 
     ext = file_path.suffix.lower()
+    if ext in AUDIO_EXTENSIONS:
+        text = transcript(file_path, transcriber)
+        meta = {"used_ocr": False, "page_range": None, "page_count": None}
+        return (text, meta) if return_meta else text
 
     # Reuse cached full-document text (OCR is expensive; do it once). Only the
     # whole-document extraction is cached — page-range requests bypass it so a
@@ -349,16 +363,8 @@ def extract_text_from_document(
     if ext == ".pdf":
         # Parse/cache raw OCR before applying current corrections.
         text, meta = _extract_from_pdf(file_path, page_range)
-    elif ext in {".docx", ".doc"}:
-        text = _extract_from_docx(file_path)
-    elif ext == ".txt":
-        text = _extract_from_txt(file_path)
-    elif ext == ".xlsx":
-        text = _extract_from_xlsx(file_path)
-    elif ext == ".csv":
-        text = _extract_from_csv(file_path)
-    elif ext in {".html", ".htm"}:
-        text = _extract_from_html(file_path)
+    elif ext in _TEXT_READERS:
+        text = _TEXT_READERS[ext](file_path)
     else:
         raise ValueError(
             f"Unsupported file format: {ext}. "
@@ -490,103 +496,170 @@ def _extract_from_txt(txt_path: Path) -> str:
         raise RuntimeError(f"Failed to extract from TXT {txt_path.name}: {e}")
 
 
-def _extract_from_xlsx(xlsx_path: Path) -> str:
+_NUMERIC_CELL = re.compile(r"[-+$]?[\d,]*\.?\d+%?")
+
+
+def _is_header(cells: list[str]) -> bool:
+    return (
+        len(cells) > 1
+        and all(cells)
+        and len(set(cells)) == len(cells)
+        and not any(_NUMERIC_CELL.fullmatch(cell) for cell in cells)
+    )
+
+
+def _cell(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return json.dumps(value)
+    return " ".join(str(value).split())
+
+
+def _labelled_line(pairs: Iterable[tuple[str, str]]) -> str:
+    """The one tabular row layout: ``name: value`` pairs, empty values dropped."""
+    return " | ".join(f"{name}: {value}" if name else value for name, value in pairs if value)
+
+
+def _table_lines(rows: Iterable[Iterable[Any]]) -> list[str]:
+    """Render one line per row, as ``Header: value`` pairs under a header row.
+
+    Labels keep any excerpt of a large table (roster windows, truncation)
+    self-describing; empty cells are dropped. Leading single-cell rows
+    (titles) stay plain, and a table without a header row keeps positional
+    ``a | b`` rows.
     """
-    Extract text from Excel XLSX file.
+    lines: list[str] = []
+    header: list[str] | None = None
+    decided = False
+    for row in rows:
+        cells = [_cell(cell) for cell in row]
+        while cells and not cells[-1]:
+            cells.pop()
+        if not cells:
+            continue
+        if not decided and sum(map(bool, cells)) > 1:
+            decided = True
+            if _is_header(cells):
+                header = cells
+                continue
+        if header is None:
+            lines.append(" | ".join(cells))
+            continue
+        lines.append(_labelled_line(zip_longest(header, cells, fillvalue="")))
+    return lines
 
-    Parameters
-    ----------
-    xlsx_path : Path
-        Path to XLSX file
 
-    Returns
-    -------
-    str
-        Formatted text with sheet names and cell values
+def _json_pairs(value: Any, key: str = "") -> Iterable[tuple[str, str]]:
+    """Flatten to dotted keys; scalar lists join with ``, ``.
+
+    Arrays of arrays (geometry coordinates) carry no text evidence and
+    are skipped.
+    """
+    if isinstance(value, dict):
+        for name, inner in value.items():
+            yield from _json_pairs(inner, f"{key}.{name}" if key else str(name))
+    elif isinstance(value, list):
+        if any(isinstance(item, list) for item in value):
+            return
+        if any(isinstance(item, dict) for item in value):
+            for index, item in enumerate(value):
+                yield from _json_pairs(item, f"{key}.{index}")
+        else:
+            yield key, ", ".join(filter(None, map(_cell, value)))
+    else:
+        yield key, _cell(value)
+
+
+def _json_lines(data: Any) -> list[str]:
+    """Labelled lines for JSON data exports, or ``[]`` when nothing is tabular.
+
+    Every list of objects outside a record (Socrata rows, ArcGIS ``features``,
+    GeoJSON ``features``, CKAN ``result.records``) renders one record per line;
+    a list of lists renders as table rows; remaining scalars form one leading line.
+    """
+    sections: list[tuple[str, list[str]]] = []
+    scalars: list[tuple[str, str]] = []
+
+    def walk(value: Any, key: str) -> None:
+        if isinstance(value, dict):
+            for name, inner in value.items():
+                walk(inner, f"{key}.{name}" if key else str(name))
+        elif value and isinstance(value, list) and all(isinstance(v, dict) for v in value):
+            sections.append((key, [_labelled_line(_json_pairs(record)) for record in value]))
+        elif value and isinstance(value, list) and all(isinstance(v, list) for v in value):
+            sections.append((key, _table_lines(value)))
+        else:
+            scalars.extend(_json_pairs(value, key))
+
+    walk(data, "")
+    if not sections:
+        return []
+    lines = [line] if (line := _labelled_line(scalars)) else []
+    for key, rows in sections:
+        if key:
+            lines.append(f"\n### {key} ###\n")
+        lines.extend(row for row in rows if row)
+    return lines
+
+
+def _extract_from_json(json_path: Path) -> str:
+    """Extract JSON records as table lines, other JSON as indented text.
+
+    See ``_json_lines`` for how record arrays are found.
     """
     try:
+        data = json.loads(json_path.read_bytes().decode("utf-8-sig"))
+    except Exception as e:
+        message = f"Failed to extract from JSON {json_path.name}: {e}"
+        raise RuntimeError(message) from e
+    lines = _json_lines(data)
+    text = "\n".join(lines) if lines else json.dumps(data, indent=2, ensure_ascii=False)
+    logger.info(f"✓ Extracted {len(text):,} characters from JSON: {json_path.name}")
+    return text
+
+
+def _extract_from_xlsx(xlsx_path: Path) -> str:
+    """Extract every sheet as table lines (see ``_table_lines``)."""
+    try:
         import openpyxl
-    except ImportError:
-        raise RuntimeError(
-            "openpyxl not installed. Install with: pip install openpyxl"
-        )
+    except ImportError as exc:
+        message = "openpyxl not installed. Install with: pip install openpyxl"
+        raise RuntimeError(message) from exc
 
     try:
         wb = openpyxl.load_workbook(xlsx_path, data_only=True)
         text_parts = []
         try:
             for sheet_name in wb.sheetnames:
-                sheet = wb[sheet_name]
                 text_parts.append(f"\n### Sheet: {sheet_name} ###\n")
-
-                for row in sheet.iter_rows(values_only=True):
-                    row_values = [
-                        str(cell) if cell is not None else "" for cell in row
-                    ]
-                    if any(v.strip() for v in row_values):
-                        text_parts.append(" | ".join(row_values))
+                text_parts.extend(
+                    _table_lines(wb[sheet_name].iter_rows(values_only=True))
+                )
         finally:
             wb.close()
-
-        text = "\n".join(text_parts)
-        logger.info(
-            f"✓ Extracted {len(text):,} characters from XLSX: {xlsx_path.name}"
-        )
-        return text
-
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to extract from XLSX {xlsx_path.name}: {e}"
-        )
+        message = f"Failed to extract from XLSX {xlsx_path.name}: {e}"
+        raise RuntimeError(message) from e
+    text = "\n".join(text_parts)
+    logger.info(f"✓ Extracted {len(text):,} characters from XLSX: {xlsx_path.name}")
+    return text
 
 
 def _extract_from_csv(csv_path: Path) -> str:
-    """
-    Extract text from CSV file.
-
-    Parameters
-    ----------
-    csv_path : Path
-        Path to CSV file
-
-    Returns
-    -------
-    str
-        Formatted text with CSV contents
-    """
+    """Extract CSV rows as table lines (see ``_table_lines``)."""
     try:
-        import csv
-
-        text_parts = []
-
-        # Try different encodings
-        encodings = ["utf-8", "latin-1", "cp1252"]
-
-        for encoding in encodings:
-            try:
-                with open(csv_path, "r", encoding=encoding, newline="") as f:
-                    reader = csv.reader(f)
-                    for row in reader:
-                        # Skip empty rows
-                        if any(cell.strip() for cell in row):
-                            text_parts.append(" | ".join(row))
-                break
-            except UnicodeDecodeError:
-                continue
-
-        if not text_parts:
-            raise RuntimeError(
-                "Could not decode CSV file with any supported encoding"
-            )
-
-        text = "\n".join(text_parts)
-        logger.info(
-            f"✓ Extracted {len(text):,} characters from CSV: {csv_path.name}"
-        )
-        return text
-
+        raw = csv_path.read_bytes()
+        try:
+            content = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            content = raw.decode("cp1252", errors="replace")
+        text = "\n".join(_table_lines(csv.reader(io.StringIO(content, newline=""))))
     except Exception as e:
-        raise RuntimeError(f"Failed to extract from CSV {csv_path.name}: {e}")
+        message = f"Failed to extract from CSV {csv_path.name}: {e}"
+        raise RuntimeError(message) from e
+    logger.info(f"✓ Extracted {len(text):,} characters from CSV: {csv_path.name}")
+    return text
 
 
 def _extract_from_html(html_path: Path) -> str:
@@ -676,3 +749,17 @@ def _is_js_rendered_shell(raw_html: str) -> bool:
 
     # If a framework is detected AND text is very short, it's a shell
     return len(text.strip()) < _HTML_MIN_MEANINGFUL_CHARS
+
+
+# Plain-text readers by suffix; PDF (page ranges, OCR) and recordings
+# (transcripts) are read by their own branches.
+_TEXT_READERS = {
+    ".doc": _extract_from_docx,
+    ".docx": _extract_from_docx,
+    ".txt": _extract_from_txt,
+    ".xlsx": _extract_from_xlsx,
+    ".csv": _extract_from_csv,
+    ".json": _extract_from_json,
+    ".html": _extract_from_html,
+    ".htm": _extract_from_html,
+}

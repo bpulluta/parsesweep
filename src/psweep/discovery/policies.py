@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
-from .constants import USER_AGENT
+from .constants import ROBOTS_AGENT, USER_AGENT
 from .network import RateLimiter, send_get, URLGate, NetworkPolicyError
 from .retry import is_transient_error
 
@@ -218,10 +218,9 @@ class DiscoveryPolicyEvaluator:
             result.messages.append(message)
             return result
 
-        user_agent = (request_headers or {}).get(
-            "User-Agent"
-        ) or USER_AGENT
-        if parser.can_fetch(user_agent, url):
+        # Rules are matched on the product token: the browser-compatible
+        # User-Agent starts with "Mozilla", which robots groups never name.
+        if parser.can_fetch(ROBOTS_AGENT, url):
             return result
 
         message = f"robots.txt disallows discovery for '{url}'."

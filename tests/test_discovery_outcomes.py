@@ -21,8 +21,9 @@ from discovery_helpers import FakeResponse, make_candidate
         (
             "partial_failure",
             [{"stage": "discovery.download", "message": "HTTP403"}],
-            1,
+            3,
         ),
+        ("success", [{"stage": "discovery.download", "message": "HTTP403"}], 1),
         ("empty", [], 2),
     ],
 )

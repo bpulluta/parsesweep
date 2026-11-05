@@ -1,4 +1,4 @@
-"""Roster-anchored candidate matching: the single target matcher."""
+"""Roster-anchored candidate matching (the single target matcher) and quote verification."""
 
 from __future__ import annotations
 
@@ -17,11 +17,12 @@ from psweep.extraction.section_locator import split_text_sections
 from psweep.utils.normalizers import US_STATES
 
 WINDOW_CHARS = 2_000
-WINDOW_LINES = 2
+WINDOW_CONTEXT_CHARS = 400
 _PUNCTUATION = re.compile(r"[^\w\s]|_")
 _LINE_HYPHEN = re.compile(r"(\w)[-\u2010\u2011]\s*\n\s*(?=\w)")
 _ADDRESS_STATE = re.compile(r",\s*([A-Z]{2})\b|\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b")
 _STATE_CODES = frozenset(US_STATES.values())
+_ELLIPSIS = re.compile(r"\u2026|\.{3}")
 
 
 def normalize(text: Any) -> str:
@@ -162,6 +163,22 @@ def load_roster(inputs: dict[str, Any], metadata) -> Roster | None:
     return Roster.build(iter_targets(inputs["targets"]), fields)
 
 
+def _reach(lines: Sequence[str], number: int, step: int) -> int:
+    """Farthest line from ``number`` within ``WINDOW_CONTEXT_CHARS`` of non-blank text.
+
+    The nearest non-blank neighbour is always kept, so card layouts (name, then
+    label/value lines) and long table rows both keep their context.
+    """
+    index, used = number, 0
+    while 0 <= index + step < len(lines):
+        size = len(lines[index + step].strip())
+        if used and used + size > WINDOW_CONTEXT_CHARS:
+            break
+        index += step
+        used += size
+    return index
+
+
 def _spans(text: str, roster: Roster):
     """Yield ``(span, [(hits, context), ...])``; each source line is in at most one span."""
     for chunk in split_text_sections(text):
@@ -184,8 +201,7 @@ def _spans(text: str, roster: Roster):
         group: list[tuple[set[str], str]] = []
         start = end = 0
         for number, ids in hits:
-            low = max(0, number - WINDOW_LINES)
-            high = min(len(lines) - 1, number + WINDOW_LINES)
+            low, high = _reach(lines, number, -1), _reach(lines, number, 1)
             if group and low > end + 1:
                 yield "\n".join(lines[start : end + 1]), group
                 group = []
@@ -294,25 +310,95 @@ def _haystacks(source_text: str) -> frozenset[str]:
     )
 
 
+def _in_order(parts: list[str], haystack: str) -> bool:
+    start = 0
+    for part in parts:
+        start = haystack.find(f" {part} ", start)
+        if start < 0:
+            return False
+        start += len(part) + 1
+    return True
+
+
 def quote_present(quote: Any, source_text: str) -> bool:
-    """True when the normalized quote occurs, on word boundaries, in the normalized source."""
-    needle = normalize(quote) if quote is not None else ""
-    return bool(needle) and any(f" {needle} " in haystack for haystack in _haystacks(source_text))
+    """True when the normalized quote occurs, on word boundaries, in the normalized source.
+
+    An elided quote (``head … tail``) matches when its parts occur in order.
+    """
+    if quote is None:
+        return False
+    parts = [part for part in map(normalize, _ELLIPSIS.split(str(quote))) if part]
+    return bool(parts) and any(_in_order(parts, haystack) for haystack in _haystacks(source_text))
 
 
-def verify_quotes(data: dict, paths: Sequence[Sequence[str]], source_text: str) -> list[str]:
-    """Null evidence whose quote is absent from the normalized source; return one warning each."""
-    warnings = []
-    for path in paths:
-        for location, evidence in evidence_nodes(data, path):
-            if not isinstance(evidence, dict):
+@dataclass(frozen=True)
+class QuoteRows:
+    """Rows mode: every compiled row carries its verbatim quote in ``field``.
+
+    A row is an ``array`` item, or the item merged with each
+    ``row_array`` child.
+    """
+
+    array: str
+    row_array: str | None
+    field: str
+
+
+def _rejected(location: str, quote: Any) -> str:
+    shown = json.dumps(quote[:160], ensure_ascii=False) if isinstance(quote, str) else "null"
+    return f"unverified quote at {location}: {shown}"
+
+
+def _drop_unquoted_rows(data: dict, rows: QuoteRows, source_text: str) -> list[str]:
+    """Drop rows whose quote is absent, and items left without rows; one warning per row."""
+    warnings, items = [], []
+    for index, item in enumerate(data.get(rows.array) or []):
+        location = f"{rows.array}[{index}]"
+        children = item.get(rows.row_array) if rows.row_array else None
+        if not children:
+            quote = item.get(rows.field)
+            if quote_present(quote, source_text):
+                items.append(item)
+            else:
+                warnings.append(_rejected(f"{location}.{rows.field}", quote))
+            continue
+        kept = []
+        for number, child in enumerate(children):
+            quote = {**item, **child}.get(rows.field)
+            if quote_present(quote, source_text):
+                kept.append(child)
+            else:
+                where = f"{location}.{rows.row_array}[{number}].{rows.field}"
+                warnings.append(_rejected(where, quote))
+        if kept:
+            items.append({**item, rows.row_array: kept})
+    if rows.array in data:
+        data[rows.array] = items
+    return warnings
+
+
+def verify_quotes(
+    data: dict,
+    source_text: str,
+    *,
+    evidence: Sequence[Sequence[str]] = (),
+    rows: QuoteRows | None = None,
+) -> list[str]:
+    """Drop ``rows`` and null ``evidence`` whose quote is not in the source.
+
+    The one quote check for roster and rows mode. Returns one warning
+    per rejection.
+    """
+    warnings = _drop_unquoted_rows(data, rows, source_text) if rows else []
+    for path in evidence:
+        for location, node in evidence_nodes(data, path):
+            if not isinstance(node, dict):
                 continue
-            quote = evidence.get("quote")
-            if quote is None and evidence.get("value") is None:
+            quote = node.get("quote")
+            if quote is None and node.get("value") is None:
                 continue
             if quote_present(quote, source_text):
                 continue
-            evidence["value"] = evidence["quote"] = None
-            shown = json.dumps(quote[:160], ensure_ascii=False) if quote else "null"
-            warnings.append(f"unverified quote at {location}: {shown}")
+            node["value"] = node["quote"] = None
+            warnings.append(_rejected(location, quote))
     return warnings

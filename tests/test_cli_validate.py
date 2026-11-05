@@ -780,12 +780,36 @@ def test_s5_rows_domain(rows_domain, fake):
 def test_s5b_rows_without_quote_field(rows_domain, fake):
     rows_domain.write()
     fake.verdict = judge_by(set(Q.values()))
+    psweep("validate", "--config", str(rows_domain.config), code=1)  # quote_field: extract policy
+    psweep("extract", "--config", str(rows_domain.config), "-q")
+    psweep("compile", "--config", str(rows_domain.config), "-q")
     psweep("validate", "--config", str(rows_domain.config))
     data = summary("rows")
     pa = data["agreement"]["overall"]["primary|a"]
     assert (pa["matched"], pa["jaccard"]) == (2, 0.4)
     assert (pa["only_a"], pa["only_b"]) == (1, 2)  # r3 on both sides; r5 only in A
     assert data["rows"]["ambiguous"] == {"primary": 2, "a": 2, "H": 0}  # r4: 4 rows, 1 key
+
+
+def test_rows_extraction_drops_unquoted_rows_and_reuses(rows_domain, fake):
+    payload = fake.payloads[("m-p", ROWS_URL)]["data"]["requirements"]
+    payload.append(row("fence", "required", None, None, "Fence", "r5", "The site is walled."))
+    curated = Path("outputs/rows/discovered/curated/lake.txt")
+    curated.write_text(curated.read_text() + "\n")
+    fake.calls.clear()
+    psweep("extract", "--config", str(rows_domain.config), "-q")
+    psweep("extract", "--config", str(rows_domain.config), "-q")
+    assert len(fake.extraction_calls("m-p")) == 1
+    (path,) = Path("outputs/rows/extracted").rglob("lake.json")
+    record = json.loads(path.read_text())
+    assert [r["feature"] for r in record["payload"]["requirements"]] == [
+        "setback", "lot", "noise", "hours", "hours"
+    ]
+    assert record["quality"]["unverified_quotes"] == 1
+    assert (
+        'unverified quote at requirements[5].source_verbatim: "The site is walled."'
+        in record["quality"]["warnings"]
+    )
 
 
 def test_s5c_rows_gate_out_of_scope(rows_domain, fake):

@@ -10,7 +10,7 @@ import requests
 
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 from psweep.discovery.connectors.serpapi_seeker import SerpApiSeeker
-from discovery_helpers import FakeResponse
+from discovery_helpers import FakeResponse, patch_socket_stream
 
 
 DOMAIN_DIR = "outputs/fixture/discovered"
@@ -66,7 +66,7 @@ def test_empty_exhausted_target_is_completed_without_searching_again(
 
 
 def test_file_cap_does_not_checkpoint_truncated_target(monkeypatch, tmp_path):
-    """A successful first download does not finish a two-document target."""
+    """A capped target stays incomplete; the next run fetches only the rest."""
     _fake_search(
         monkeypatch,
         {
@@ -76,14 +76,25 @@ def test_file_cap_does_not_checkpoint_truncated_target(monkeypatch, tmp_path):
             ]
         },
     )
-    monkeypatch.setattr(
-        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
-    )
-    result = DiscoveryEngine().run(_request(tmp_path, max_files=1))
+    fetched = _fetch_by_url(monkeypatch)
+    request = _request(tmp_path, max_files=1)
+    result = DiscoveryEngine().run(request)
     assert result.curated_count == 1
+    notes = json.loads(result.manifest_path.read_text())["notes"]
+    assert "The runtime.max_files budget left 1 candidate(s) undownloaded." in notes
+    assert any(
+        "1 partition(s) still incomplete (budget runtime.max_files=1)" in note
+        for note in notes
+    )
     checkpoint = tmp_path / DOMAIN_DIR / "checkpoint.json"
-    if checkpoint.exists():
-        assert json.loads(checkpoint.read_text())["entries"] == {}
+    (entry,) = json.loads(checkpoint.read_text())["entries"].values()
+    assert entry["incomplete"] and list(entry["outcomes"]) == ["https://example.org/a.pdf"]
+
+    fetched.clear()
+    DiscoveryEngine().run(request)
+    assert fetched == ["https://example.org/b.pdf"]
+    (entry,) = json.loads(checkpoint.read_text())["entries"].values()
+    assert "incomplete" not in entry and entry["download_count"] == 2
 
 
 def test_deleted_curated_file_invalidates_completion(monkeypatch, tmp_path):
@@ -121,7 +132,7 @@ def test_changed_policy_invalidates_completion(monkeypatch, tmp_path):
 
 
 def test_cap_preserves_prior_complete_partition(monkeypatch, tmp_path):
-    """Capped samples stay local rather than replacing prior evidence."""
+    """A capped run adds its documents but never removes prior evidence."""
     _fake_search(
         monkeypatch,
         {
@@ -139,7 +150,8 @@ def test_cap_preserves_prior_complete_partition(monkeypatch, tmp_path):
     previous.write_bytes(b"previous complete evidence")
     DiscoveryEngine().run(_request(tmp_path, max_files=1))
     assert previous.read_bytes() == b"previous complete evidence"
-    assert not (previous.parent / "a.pdf").exists()
+    assert (previous.parent / "a.pdf").exists()
+    assert not (previous.parent / "b.pdf").exists()
 
 
 def test_shared_source_failure_preserves_prior_shared_curation(
@@ -749,3 +761,233 @@ def test_unreadable_search_hit_is_a_skip_not_a_run_error(monkeypatch, tmp_path):
     assert sum("too little text" in note for note in manifest["notes"]) == 1
     assert DiscoveryEngine().run(request).status == "reused"
     assert search.call_count == 1
+
+
+def _listing(monkeypatch, children, *, transient=None, missing=(), trailing=()):
+    """Serve an HTML listing linking ``children``; record every request."""
+    listing = "https://agency.gov/permits"
+    html = " ".join(
+        f'<a href="{url}">{Path(url).stem}</a>' for url in [*children, *trailing]
+    )
+    fetched = []
+
+    def get(url, **_kwargs):
+        fetched.append(url)
+        if (transient or {}).get(url):
+            transient[url] -= 1
+            raise requests.ConnectionError("connection reset")
+        if url in missing:
+            response = requests.Response()
+            response.status_code = 404
+            raise requests.HTTPError("404 Client Error", response=response)
+        if url == listing:
+            return FakeResponse(
+                url=url, content_type="text/html", text=html, chunks=[html.encode()]
+            )
+        return FakeResponse(url=url, chunks=[b"%PDF-1.4\n", url.encode()])
+
+    monkeypatch.setattr("psweep.discovery.network.request_get", get)
+    return listing, fetched
+
+
+def _listing_request(tmp_path, listing, **changes):
+    return _request(
+        tmp_path, targets=None, partition_by=None, sources=[listing], max_depth=1, **changes
+    )
+
+
+def test_capped_listing_converges_across_reruns(monkeypatch, tmp_path):
+    """Each run publishes the next batch, reusing earlier downloads without requests."""
+    children = [f"https://agency.gov/docs/{name}.pdf" for name in "abcde"]
+    listing, fetched = _listing(monkeypatch, children)
+    request = _listing_request(tmp_path, listing, max_files=2)
+    shared = tmp_path / DOMAIN_DIR / "curated/_shared"
+    batches = [
+        ([listing, listing, *children[:2]], "ab"),
+        ([listing, *children[2:4]], "abcd"),
+        ([listing, children[4]], "abcde"),
+    ]
+    for run, (requests_made, published) in enumerate(batches, start=1):
+        fetched.clear()
+        result = DiscoveryEngine().run(request)
+        assert sorted(fetched) == sorted(requests_made), run
+        assert {p.name for p in shared.iterdir() if p.is_file()} == {
+            "permits.html", *(f"{name}.pdf" for name in published)
+        }
+        notes = json.loads(result.manifest_path.read_text())["notes"]
+        if run > 1:
+            reused = 1 + 2 * (run - 1)
+            assert any(
+                f"Resume reused {reused} prior download(s)" in n
+                and f"{len(requests_made) - 1} candidate(s) fetched" in n
+                for n in notes
+            ), notes
+        if run < len(batches):
+            assert any(
+                "partition(s) still incomplete" in n and "runtime.max_files=2" in n
+                for n in notes
+            ), notes
+    rows = _index_rows(tmp_path)
+    assert sorted(row["relative_path"] for row in rows) == sorted(
+        f"_shared/{name}" for name in ["permits.html", *(f"{c}.pdf" for c in "abcde")]
+    )
+    (entry,) = json.loads((tmp_path / DOMAIN_DIR / "checkpoint.json").read_text())[
+        "entries"
+    ].values()
+    assert "incomplete" not in entry and entry["download_count"] == 6
+
+    fetched.clear()
+    assert DiscoveryEngine().run(request).status == "reused"
+    assert fetched == []
+
+
+def test_transient_child_failure_refetches_only_that_child(monkeypatch, tmp_path):
+    """An interrupted target resumes with one request, for the failed child."""
+    _fake_search(monkeypatch, {"organic_results": []})
+    urls = [f"https://agency.gov/{name}.pdf" for name in "abc"]
+    _, fetched = _listing(monkeypatch, [], transient={urls[1]: 1})
+    request = _request(tmp_path, targets=[{"label": "target", "urls": urls}])
+    first = DiscoveryEngine().run(request)
+    assert first.status == "partial_failure"
+    curated = tmp_path / DOMAIN_DIR / "curated/by_label/target"
+    assert {p.name for p in curated.glob("*.pdf")} == {"a.pdf", "c.pdf"}
+
+    fetched.clear()
+    second = DiscoveryEngine().run(request)
+    assert fetched == [urls[1]]
+    assert second.status == "success"
+    assert {p.name for p in curated.glob("*.pdf")} == {"a.pdf", "b.pdf", "c.pdf"}
+    fetched.clear()
+    assert DiscoveryEngine().run(request).status == "reused" and fetched == []
+
+
+@pytest.mark.parametrize("retention", ["curated", "none"])
+def test_rejected_download_of_incomplete_target_is_not_fetched_again(
+    monkeypatch, tmp_path, retention
+):
+    """Retention keeps incomplete work's files, so resume reuses rejected hits."""
+    from psweep.discovery.document_reviewer import DocumentReviewer
+
+    urls = [f"https://a.gov/{name}.pdf" for name in "abc"]
+    _fake_search(monkeypatch, {"organic_results": [{"link": u} for u in urls]})
+    _, fetched = _listing(monkeypatch, [], transient={urls[2]: 1})
+
+    def grade(_self, path, **_kwargs):
+        primary = not path.endswith("a.pdf")
+        return {"is_primary": primary, "relevance": 0.9 if primary else 0.1,
+                "doc_kind": "record", "reason": "ok"}
+
+    monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda _self: object())
+    monkeypatch.setattr(DocumentReviewer, "_grade", grade)
+    request = _request(
+        tmp_path, selection_primary_per_target=3, retention_documents=retention,
+        document_review={"document_description": "records", "keep_top": 3,
+                         "deduplicate_redundant": False},
+    )
+    assert DiscoveryEngine().run(request).status == "partial_failure"
+
+    fetched.clear()
+    assert DiscoveryEngine().run(request).status == "success"
+    assert fetched == [urls[2]]
+    curated = tmp_path / DOMAIN_DIR / "curated/by_label/target"
+    assert {p.name for p in curated.glob("*.pdf")} == {"b.pdf", "c.pdf"}
+    # The resumed run takes over reused files; none stay in the first run.
+    runs = tmp_path / DOMAIN_DIR / "runs"
+    kept = sorted(p.name for p in runs.glob("*/documents/**/*.pdf"))
+    assert kept == (["b.pdf", "c.pdf"] if retention == "curated" else [])
+
+
+def test_terminal_child_outcome_is_not_requested_again(monkeypatch, tmp_path):
+    """A dead link never consumes the file budget of later runs."""
+    children = [f"https://agency.gov/docs/{name}.pdf" for name in "xab"]
+    listing, fetched = _listing(monkeypatch, children, missing={children[0]})
+    request = _listing_request(tmp_path, listing, max_files=1)
+    batches = [[listing, listing, children[0]], [listing, children[1]], [listing, children[2]]]
+    for expected in batches:
+        fetched.clear()
+        DiscoveryEngine().run(request)
+        assert sorted(fetched) == sorted(expected)
+    fetched.clear()
+    assert DiscoveryEngine().run(request).status == "reused" and fetched == []
+
+
+def test_fresh_run_ignores_prior_downloads(monkeypatch, tmp_path):
+    """--fresh re-fetches everything instead of reusing incomplete work."""
+    children = [f"https://agency.gov/docs/{name}.pdf" for name in "abc"]
+    listing, fetched = _listing(monkeypatch, children)
+    request = _listing_request(tmp_path, listing, max_files=2)
+    DiscoveryEngine().run(request)
+    fetched.clear()
+    request.fresh = True
+    DiscoveryEngine().run(request)
+    assert sorted(fetched) == sorted([listing, listing, *children[:2]])
+
+
+def test_prior_download_with_changed_bytes_is_fetched_again(monkeypatch, tmp_path):
+    """Reuse requires the saved file to still match its SHA-256."""
+    children = [f"https://agency.gov/docs/{name}.pdf" for name in "abc"]
+    listing, fetched = _listing(monkeypatch, children)
+    request = _listing_request(tmp_path, listing, max_files=2)
+    DiscoveryEngine().run(request)
+    (entry,) = json.loads((tmp_path / DOMAIN_DIR / "checkpoint.json").read_text())[
+        "entries"
+    ].values()
+    Path(entry["outcomes"][children[0]]["path"]).write_bytes(b"tampered")
+    fetched.clear()
+    DiscoveryEngine().run(request)
+    assert sorted(fetched) == sorted([listing, children[0], children[2]])
+    shared = tmp_path / DOMAIN_DIR / "curated/_shared"
+    assert (shared / "a.pdf").read_bytes().endswith(children[0].encode())
+
+
+def test_file_budget_equal_to_matched_links_completes_the_listing(monkeypatch, tmp_path):
+    """Navigation links after the last document do not leave a listing unfinished."""
+    children = [f"https://agency.gov/docs/{name}.pdf" for name in "ab"]
+    navigation = ["https://agency.gov/about", "https://agency.gov/contact"]
+    listing, fetched = _listing(monkeypatch, children, trailing=navigation)
+    request = _listing_request(tmp_path, listing, max_files=len(children))
+    assert DiscoveryEngine().run(request).status == "success"
+    shared = tmp_path / DOMAIN_DIR / "curated/_shared"
+    assert {p.name for p in shared.iterdir() if p.is_file()} == {
+        "permits.html", "a.pdf", "b.pdf"
+    }
+    (entry,) = json.loads((tmp_path / DOMAIN_DIR / "checkpoint.json").read_text())[
+        "entries"
+    ].values()
+    assert "incomplete" not in entry
+    fetched.clear()
+    assert DiscoveryEngine().run(request).status == "reused" and fetched == []
+
+
+def _download_outcomes(monkeypatch, tmp_path, bodies):
+    _fake_search(monkeypatch, {"organic_results": []})
+    bodies = {"https://agency.gov/ok.pdf": [(0.0, b"%PDF-1.4\n")], **bodies}
+    patch_socket_stream(monkeypatch, bodies)
+    result = DiscoveryEngine().run(
+        _request(tmp_path, targets=[{"label": "target", "urls": list(bodies)}])
+    )
+    manifest = json.loads(result.manifest_path.read_text())
+    return result, manifest, {Path(r["url"]).name: r for r in manifest["downloads"]}
+
+
+def test_oversized_document_is_a_named_failure_not_a_skip(monkeypatch, tmp_path):
+    """A wanted file over the byte limit is lost data: failed, explained, partial_failure."""
+    monkeypatch.setenv("PSWEEP_MAX_RESPONSE_BYTES", "16")
+    big = {"https://agency.gov/big.pdf": [(0.0, b"%PDF-1.4\n"), (0.0, b"0123456789")]}
+    result, manifest, records = _download_outcomes(monkeypatch, tmp_path, big)
+    assert result.status == "partial_failure"
+    assert records["ok.pdf"]["status"] == "downloaded"
+    record = records["big.pdf"]
+    assert record["status"] == "failed" and record["retryable"] is False
+    assert "16 bytes" in record["error"] and "PSWEEP_MAX_RESPONSE_BYTES" in record["error"]
+    assert [error["retryable"] for error in manifest["errors"]] == [False]
+    assert not list((tmp_path / DOMAIN_DIR).rglob("big.pdf"))
+
+
+def test_policy_denial_stays_a_selection_skip(monkeypatch, tmp_path):
+    """Real policy refusals (a private destination) are skips, not run errors."""
+    private = {"https://127.0.0.1/a.pdf": []}
+    result, manifest, records = _download_outcomes(monkeypatch, tmp_path, private)
+    assert result.status == "success" and manifest["errors"] == []
+    assert records["a.pdf"]["status"] == "skipped_selection_filter"
+    assert "non-public" in records["a.pdf"]["reason"]

@@ -72,8 +72,9 @@ Open the run manifest and documents under
 `outputs/my_domain/discovered/curated/`.
 
 Discovery exit codes are the same in quiet, default, and verbose modes:
-`success`/`dry_run`/validated `reused` = **0**; `failed`/`partial_failure` = **1**
-(including failures with zero downloads); genuinely `empty` results = **2**.
+`success`/`dry_run`/validated `reused` = **0**; `failed` = **1** (including
+failures with zero downloads); genuinely `empty` results = **2**;
+`partial_failure` (usable results plus errors) = **3**, which `run` continues past.
 Inspect the manifest status/errors, not only the file count.
 
 The small setup uses these defaults:

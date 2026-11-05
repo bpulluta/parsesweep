@@ -35,6 +35,21 @@ class TestContentSamplerTextExtraction:
         assert "information" in text.lower()
         assert len(text) > 50
 
+    def test_json_uses_the_shared_document_extractor(self, tmp_path, monkeypatch):
+        """Sampling/review read JSON exports as extraction renders them."""
+        import psweep.extraction.document_utils as document_utils
+
+        export = tmp_path / "permits.json"
+        export.write_text('{"rows": []}', encoding="utf-8")
+        seen = []
+        monkeypatch.setattr(
+            document_utils,
+            "extract_text_from_document",
+            lambda path: seen.append(path) or "rendered rows",
+        )
+        assert ContentSampler.extract_text(str(export)) == "rendered rows"
+        assert seen == [export]
+
     def test_extract_text_unsupported_format_raises_error(self):
         """Test that unsupported formats raise ValueError."""
         with pytest.raises(ValueError):

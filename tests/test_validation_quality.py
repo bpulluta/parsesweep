@@ -225,6 +225,24 @@ def test_rows_fidelity_reads_the_extraction_text(tmp_path):
     ] == [None, None, None, None]
 
 
+def test_rows_dropped_at_extraction_count_as_unverified(tmp_path):
+    metadata = _metadata(tmp_path, ROWS_SCHEMA)
+    native = tmp_path / "native.txt"
+    native.write_text("Permits expire after 180 days unless renewed.", encoding="utf-8")
+    rule = {"feature": "expiry", "value": "180", "units": None,
+            "source_verbatim": "expire after 180 days"}
+    extracted = tmp_path / "extracted"
+    _record(
+        extracted, "native", {"rules": [rule]},
+        quality={"unverified_quotes": 2}, source_path=native,
+    )
+    quality = model_quality(
+        {"m": extracted}, metadata, quote_field="source_verbatim", focus=["value"]
+    )["m"]
+    assert (quality["quotes_verified"], quality["quotes_unverified"]) == (1, 2)
+    assert quality["quote_fidelity"] == pytest.approx(1 / 3)
+
+
 def test_contenders_share_one_text_read_per_document(tmp_path, monkeypatch):
     metadata = _metadata(tmp_path, ROWS_SCHEMA)
     native = tmp_path / "native.txt"
