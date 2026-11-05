@@ -42,8 +42,8 @@ from .text_processor import find_data_arrays
 logger = logging.getLogger(__name__)
 
 
-# Substring markers that identify "reasoning" models — those that reject the
-# temperature / response_format params. Provider-neutral defaults; a deployment
+# Substring markers that identify "reasoning" models — those that reject a
+# non-default temperature. Provider-neutral defaults; a deployment
 # can extend this via the top-level ``reasoning_models`` run.yaml list (unioned
 # with these defaults) so a new reasoning model works without a code change.
 DEFAULT_REASONING_MODEL_MARKERS: tuple[str, ...] = (
@@ -450,26 +450,19 @@ class LLMClient:
 
         self._validate_context_budget(messages)
 
-        # Reasoning models reject temperature/response_format.
+        # Reasoning models reject a non-default temperature; JSON mode stays on
+        # for every model (LiteLLM's drop_params removes it where unsupported).
         is_reasoning_model = any(x in self.model.lower() for x in self.reasoning_model_markers)
-        params: dict[str, Any] = {}
+        params: dict[str, Any] = {"response_format": self._response_format(schema)}
         if not is_reasoning_model:
             params["temperature"] = 0
-            # response_format is a standard OpenAI-compatible parameter.
-            # Always send it for non-reasoning models — LiteLLM proxies translate
-            # it to each backend's native JSON mode, and litellm.drop_params=True
-            # silently drops it for backends that don't support it.
-            # Diagnostic confirmed: proxies forward this correctly.
-            params["response_format"] = self._response_format(schema)
-            # Inject a JSON instruction when the messages don't already mention JSON.
-            # Required by Azure's json_object mode; also reinforces intent for
-            # models that add markdown fences or preamble despite response_format.
-            all_content = " ".join(m["content"] for m in messages)
-            if "json" not in all_content.lower():
-                messages[-1]["content"] += (
-                    "\n\nRespond with ONLY a raw JSON object. "
-                    "No markdown, no code fences, no explanation."
-                )
+        # Azure's json_object mode requires the word JSON in the messages.
+        all_content = " ".join(m["content"] for m in messages)
+        if "json" not in all_content.lower():
+            messages[-1]["content"] += (
+                "\n\nRespond with ONLY a raw JSON object. "
+                "No markdown, no code fences, no explanation."
+            )
 
         reply = self.complete(messages, **params)
         measured = reply.usage

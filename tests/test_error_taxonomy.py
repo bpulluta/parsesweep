@@ -1,5 +1,10 @@
 """Tests for canonical runtime error taxonomy helpers."""
 
+import pytest
+import requests
+
+from psweep.discovery.browser import BrowserDownloadError
+from psweep.exceptions import ExtractionError
 from psweep.utils.error_taxonomy import build_error_record, summarize_error_records
 
 
@@ -82,3 +87,48 @@ def test_error_taxonomy_has_one_retry_classifier() -> None:
     assert not hasattr(taxonomy, "_is_retryable")
     assert not hasattr(retry, "error_record")
     assert taxonomy.is_transient_error is retry.is_transient_error
+
+
+def _http_error(status: int) -> requests.exceptions.HTTPError:
+    response = requests.Response()
+    response.status_code = status
+    return requests.exceptions.HTTPError(f"{status} Client Error", response=response)
+
+
+@pytest.mark.parametrize(("status", "retryable"), [(403, False), (404, False), (503, True)])
+def test_build_error_record_labels_http_status(status: int, retryable: bool) -> None:
+    error = build_error_record(_http_error(status), stage="discovery.download", provider="http")
+
+    assert error["category"] == "network"
+    assert error["code"] == f"http_{status}"
+    assert error["retryable"] is retryable
+
+
+def test_build_error_record_labels_status_carrying_browser_error() -> None:
+    error = build_error_record(
+        BrowserDownloadError("fetch failed", status_code=410), stage="discovery.download"
+    )
+
+    assert (error["category"], error["code"]) == ("network", "http_410")
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        requests.exceptions.ConnectionError("reset"),
+        requests.exceptions.Timeout("slow"),
+        TimeoutError(),
+    ],
+)
+def test_build_error_record_labels_connection_failures(exc: BaseException) -> None:
+    error = build_error_record(exc, stage="discovery.download", provider="http")
+
+    assert (error["category"], error["code"]) == ("network", "network_error")
+    assert error["retryable"] is True
+
+
+def test_extraction_error_keeps_its_category_when_it_carries_a_status() -> None:
+    exc = ExtractionError("provider refused")
+    exc.status_code = 429
+
+    assert build_error_record(exc, stage="extract")["category"] == "extraction"

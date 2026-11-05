@@ -47,7 +47,7 @@ pixi run psweep discover --config config/<domain>/run.yaml --show-effective-conf
 | `schema` | `schema.json` beside the config | Extraction schema path. |
 | `models` | — | Alias → model-name map. Stages reference aliases (`primary`, `secondary`, …) so a model is changed in one place. |
 | `model_context_windows` | — | Model name → context window (positive integer) for models the runtime does not know. |
-| `reasoning_models` | — | Model names to treat as reasoning models (no `temperature` / `response_format`). |
+| `reasoning_models` | — | Model names to treat as reasoning models (sent without `temperature`; JSON mode stays on). |
 | `discovery` | — | [Discovery](#discovery). |
 | `extraction` | — | [Extraction](#extraction). |
 | `compilation` | — | [Compilation](#compilation). |
