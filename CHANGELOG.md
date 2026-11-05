@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with its own timer, and each finished document's line shows its time.
 - `--debug` raises only ParseSweep's own loggers to DEBUG; third-party
   libraries stay at warnings.
+- `discovered_page_ranges.csv` (`pages.auto_locate.save_discovered`) lists the
+  page range behind every current record. It was rewritten with only the
+  documents located in the latest run, so reused records lost their ranges,
+  and a run that located nothing left removed documents listed.
 - Reasoning models (`gpt-5*`, o-series, `reasoning_models`) get JSON mode like
   every other model; only `temperature` is withheld. Without it, review,
   extraction and judge replies intermittently came back as malformed JSON.

@@ -1,5 +1,6 @@
 """Regression gates for independent Phase 2 integration findings."""
 
+import csv
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -229,6 +230,56 @@ def test_locator_routing_change_invalidates_record_reuse(reviewed_inputs, monkey
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://second.openai.azure.com")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 2
+
+
+def test_saved_page_ranges_cover_reused_records(reviewed_inputs, monkeypatch):
+    """The review file lists the range behind every current record, reused or new."""
+    inputs, provider = reviewed_inputs
+    root = Path(inputs["path"])
+    (root / "doc.txt").unlink()
+    inputs["page_targeting"] = {
+        "enabled": True,
+        "section_description": "evidence",
+        "save_discovered": True,
+    }
+    found = {"a.pdf": (3, 4), "b.pdf": (7, 9), "c.pdf": None}
+    located = []
+
+    def locate(_self, doc):
+        located.append(doc.name)
+        return found[doc.name]
+
+    def parse(_doc, page_range=None, **_kwargs):
+        first, last = page_range or (1, 9)
+        return "Source evidence", {
+            "page_count": 9,
+            "page_range": (first, last),
+            "extracted_pages": list(range(first, last + 1)),
+        }
+
+    monkeypatch.setattr("psweep.extraction.page_locator.PageLocator.locate", locate)
+    monkeypatch.setattr("psweep.extraction.document_utils.extract_text_from_document", parse)
+    saved = Path(inputs["output"]) / "discovered_page_ranges.csv"
+
+    def run():
+        assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+        with saved.open(encoding="utf-8", newline="") as handle:
+            return {
+                Path(row["file_path"]).name: (int(row["start_page"]), int(row["end_page"]))
+                for row in csv.DictReader(handle)
+            }
+
+    (root / "a.pdf").write_bytes(b"first")
+    assert run() == {"a.pdf": (3, 4)}
+    (root / "b.pdf").write_bytes(b"second")
+    assert run() == {"a.pdf": (3, 4), "b.pdf": (7, 9)}
+    (root / "b.pdf").unlink()
+    assert run() == {"a.pdf": (3, 4)}
+    (root / "a.pdf").unlink()
+    (root / "c.pdf").write_bytes(b"third")
+    assert run() == {}
+    assert located == ["a.pdf", "b.pdf", "c.pdf"]
+    assert provider.call_count == 3
 
 
 def test_skipped_ocr_pages_survive_record_and_do_not_reuse(reviewed_inputs, monkeypatch):
