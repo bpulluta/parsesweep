@@ -1,7 +1,9 @@
+import pytest
 from pathlib import Path
 import re
 import json
-import csv
+import sys
+from unittest.mock import Mock
 
 from psweep.discovery import (
     DiscoveryCandidate,
@@ -10,9 +12,15 @@ from psweep.discovery import (
     DiscoveryRequest,
     CandidateScore,
 )
+from psweep.workspace import Workspace
 
 from discovery_helpers import FakeResponse as _FakeResponse
 from discovery_helpers import patch_requests_get as _patch_requests_get
+
+
+@pytest.fixture(autouse=True)
+def _outputs_in_tmp(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
 
 
 def test_candidate_score_weighted_total_and_classification():
@@ -59,11 +67,7 @@ def test_engine_run_emits_scaffold_candidates(tmp_path: Path):
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/seed-a", "https://example.org/seed-b"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/seed-a", "https://example.org/seed-b"],
         dry_run=True,
     )
 
@@ -71,21 +75,19 @@ def test_engine_run_emits_scaffold_candidates(tmp_path: Path):
     payload = result.manifest_path.read_text(encoding="utf-8")
 
     assert result.manifest_path.exists()
-    assert result.documents_dir.exists()
+    assert not result.documents_dir.exists()
     assert '"status": "dry_run"' in payload
     assert '"acceptance_class"' in payload
-    assert payload.count('"source": "seed_url"') == 2
+    assert payload.count('"source": "configured"') == 2
 
 
-def test_engine_run_uses_deterministic_default_paths_and_lineage():
+def test_engine_run_uses_deterministic_default_paths_and_lineage(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/seed-a"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=None,
-        output_manifest=None,
+        sources=["https://example.org/seed-a"],
+        queries=["geothermal ordinance"],
         dry_run=True,
     )
 
@@ -93,64 +95,55 @@ def test_engine_run_uses_deterministic_default_paths_and_lineage():
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
     assert re.match(
-        r"^acq-geothermal-ordinances-\d{8}T\d{12}Z-[0-9a-f]{8}$",
+        r"^acq-geothermal-ordinances-\d{8}T\d{12}Z$",
         result.run_id,
     )
     # Each run is one self-contained folder: documents/ lives under the run dir.
-    assert result.documents_dir.as_posix().endswith(
-        f"/runs/{result.run_id}/documents"
+    assert result.documents_dir == (
+        Workspace("geothermal_ordinances").discovered.resolve()
+        / "runs"
+        / result.run_id
+        / "documents"
     )
-    assert (
-        result.manifest_path.parent.as_posix()
-        == result.documents_dir.parent.as_posix()
-    )
+    assert result.manifest_path.parent.as_posix() == result.documents_dir.parent.as_posix()
     assert payload["lineage"]["run_id"] == result.run_id
     assert payload["lineage"]["documents_dir"] == result.documents_dir.as_posix()
     assert payload["lineage"]["manifest_path"] == result.manifest_path.as_posix()
 
 
-def test_engine_run_emits_taxonomy_aligned_structured_errors_for_invalid_seeds(tmp_path: Path):
-    engine = DiscoveryEngine()
+def test_engine_run_records_invalid_direct_sources_as_skipped(tmp_path: Path):
+    """Direct API callers bypass config validation; bad URLs are skipped, not fetched."""
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["not-a-url", "https://example.org/valid", "ftp://bad"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=True,
+        sources=["not-a-url", "ftp://bad"],
+        dry_run=False,
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
     )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert payload["status"] == "partial_failure"
-    assert payload["input"]["seed_urls"] == ["https://example.org/valid"]
-    assert len(payload["candidates"]) == 1
-
-    summary = payload["error_summary"]
-    assert summary["total_errors"] == 2
-    assert summary["by_category"]["input_validation"] == 2
-    assert summary["by_code"]["invalid_input"] == 2
-
-    records = payload["errors"]
-    assert len(records) == 2
-    assert all(record["stage"] == "discovery.seed_validation" for record in records)
-    assert all(record["category"] == "input_validation" for record in records)
-    assert all(record["code"] == "invalid_input" for record in records)
+    payload = json.loads(DiscoveryEngine().run(request).manifest_path.read_text(encoding="utf-8"))
+    assert [d["status"] for d in payload["downloads"]] == ["skipped_invalid_url"] * 2
 
 
-def test_engine_run_emits_structured_error_when_serpapi_dependency_missing(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("importlib.util.find_spec", lambda _: None)
+def test_engine_search_uses_http_without_serpapi_sdk(tmp_path: Path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "serpapi", None)
+    monkeypatch.setenv("SERPAPI_API_KEY", "synthetic-search-key")
+    response = Mock(status_code=200, headers={}, url="https://serpapi.com/search.json")
+    response.json.return_value = {
+        "organic_results": [
+            {
+                "link": "https://example.org/ordinance.pdf",
+                "title": "Geothermal ordinance",
+            }
+        ]
+    }
+    request_get = Mock(return_value=response)
+    monkeypatch.setattr("psweep.discovery.network.request_get", request_get)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/valid"],
-        query="geothermal ordinance",
-        enable_serpapi=True,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=[],
+        queries=["geothermal ordinance"],
         dry_run=True,
     )
 
@@ -159,24 +152,22 @@ def test_engine_run_emits_structured_error_when_serpapi_dependency_missing(tmp_p
 
     assert payload["lineage"]["seeker"]["provider"] == "serpapi"
     assert payload["lineage"]["seeker"]["enabled"] is True
-    assert payload["lineage"]["seeker"]["available"] is False
-    assert payload["error_summary"]["total_errors"] == 1
-    assert payload["errors"][0]["stage"] == "discovery.seeker_init"
+    assert payload["lineage"]["seeker"]["available"] is True
+    assert payload["status"] == "dry_run", payload["errors"]
+    assert payload["error_summary"]["total_errors"] == 0
+    assert payload["candidates"][0]["url"] == "https://example.org/ordinance.pdf"
+    request_get.assert_called_once()
+    response.close.assert_called_once()
 
 
 def test_engine_run_emits_structured_error_when_serpapi_key_missing(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("importlib.util.find_spec", lambda _: object())
     monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
-    monkeypatch.delenv("SERPAPI_KEY", raising=False)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/valid"],
-        query="geothermal ordinance",
-        enable_serpapi=True,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/valid"],
+        queries=["geothermal ordinance"],
         dry_run=True,
     )
 
@@ -206,11 +197,7 @@ def test_engine_run_downloads_supported_candidate_for_non_dry_run(tmp_path: Path
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/docs/test-ordinance.pdf"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/docs/test-ordinance.pdf"],
         dry_run=False,
     )
 
@@ -220,13 +207,45 @@ def test_engine_run_downloads_supported_candidate_for_non_dry_run(tmp_path: Path
     assert payload["error_summary"]["total_errors"] == 0
     assert len(payload["downloads"]) == 1
     assert payload["downloads"][0]["status"] == "downloaded"
-    assert payload["downloads"][0]["partition_mode"] == "host"
-    assert payload["downloads"][0]["source_host"] == "example.org"
-    assert payload["downloads"][0]["relative_path"].startswith("by_host/example.org/")
+    assert payload["downloads"][0]["source_scope"] == "shared"
+    assert payload["downloads"][0]["target_id"] is None
+    assert payload["downloads"][0]["relative_path"].startswith("_shared/")
     downloaded_path = Path(payload["downloads"][0]["path"])
     assert downloaded_path.exists()
     assert downloaded_path.suffix.lower() == ".pdf"
     assert downloaded_path.read_bytes().startswith(b"%PDF-1.4")
+
+
+@pytest.mark.parametrize(
+    "url, content_type",
+    [
+        (
+            "https://gis.example.gov/arcgis/rest/services/P/FeatureServer/0/query?where=1%3D1&f=json",
+            "application/json; charset=utf-8",
+        ),
+        ("https://data.example.gov/resource/abcd-1234.json", "application/json"),
+        ("https://data.example.gov/api/permits?format=geojson", "application/geo+json"),
+    ],
+)
+def test_engine_run_downloads_json_data_exports(tmp_path: Path, monkeypatch, url, content_type):
+    """Public-database JSON APIs are documents, typed by Content-Type."""
+    _patch_requests_get(
+        monkeypatch,
+        url=url,
+        content_type=content_type,
+        chunks=[b'{"features": []}'],
+    )
+    request = DiscoveryRequest(
+        domain="public_data",
+        sources=[url],
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
+    )
+    payload = json.loads(DiscoveryEngine().run(request).manifest_path.read_text(encoding="utf-8"))
+    (download,) = payload["downloads"]
+    assert download["status"] == "downloaded"
+    assert Path(download["path"]).suffix == ".json"
+    assert Path(download["path"]).read_bytes() == b'{"features": []}'
 
 
 def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Path, monkeypatch):
@@ -248,11 +267,7 @@ def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Pat
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="tariffs",
-        seed_urls=["https://example.org/landing-page"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/landing-page"],
         dry_run=False,
         min_request_interval_ms=0,
         robots_policy_mode="ignore",
@@ -268,7 +283,9 @@ def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Pat
     assert payload["downloads"][0]["path"].endswith(".html")
 
 
-def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path: Path, monkeypatch):
+def test_engine_run_download_stage_skips_rejected_discovered_candidates(
+    tmp_path: Path, monkeypatch
+):
     def fake_resolve_serpapi_state(_request: DiscoveryRequest):
         return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
 
@@ -278,12 +295,16 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
                 DiscoveryCandidate(
                     url="https://example.org/rejected.pdf",
                     source="serpapi_google",
-                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                    score=CandidateScore(
+                        url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1
+                    ),
                 ),
                 DiscoveryCandidate(
                     url="https://example.org/review.pdf",
                     source="serpapi_google",
-                    score=CandidateScore(url_signal=1.0, anchor_signal=1.0, content_signal=0.0, trust_signal=1.0),
+                    score=CandidateScore(
+                        url_signal=1.0, anchor_signal=1.0, content_signal=0.0, trust_signal=1.0
+                    ),
                 ),
             ],
             notes,
@@ -296,18 +317,19 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
             0,
         )
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
-    monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
+    monkeypatch.setattr(
+        "psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url)
+    )
+    monkeypatch.setattr(
+        DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state)
+    )
     monkeypatch.setattr(DiscoveryEngine, "_run_seeker", staticmethod(fake_run_seeker))
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=[],
-        query="geothermal ordinance",
-        enable_serpapi=True,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=[],
+        queries=["geothermal ordinance"],
         dry_run=False,
     )
 
@@ -317,10 +339,15 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
     assert payload["candidate_summary"]["total"] == 2
     assert len(payload["downloads"]) == 1
     assert payload["downloads"][0]["url"] == "https://example.org/review.pdf"
-    assert any("Download simplification skipped 1 rejected discovered candidate" in note for note in payload["notes"])
+    assert any(
+        "Download simplification skipped 1 rejected discovered candidate" in note
+        for note in payload["notes"]
+    )
 
 
-def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_candidates(tmp_path: Path, monkeypatch):
+def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_candidates(
+    tmp_path: Path, monkeypatch
+):
     def fake_resolve_serpapi_state(_request: DiscoveryRequest):
         return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
 
@@ -330,12 +357,16 @@ def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_
                 DiscoveryCandidate(
                     url="https://example.org/ordinance-a.pdf",
                     source="serpapi_google",
-                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                    score=CandidateScore(
+                        url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1
+                    ),
                 ),
                 DiscoveryCandidate(
                     url="https://example.org/ordinance-b.pdf",
                     source="serpapi_google",
-                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                    score=CandidateScore(
+                        url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1
+                    ),
                 ),
             ],
             notes,
@@ -348,18 +379,19 @@ def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_
             0,
         )
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
-    monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
+    monkeypatch.setattr(
+        "psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url)
+    )
+    monkeypatch.setattr(
+        DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state)
+    )
     monkeypatch.setattr(DiscoveryEngine, "_run_seeker", staticmethod(fake_run_seeker))
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=[],
-        query="geothermal ordinance",
-        enable_serpapi=True,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=[],
+        queries=["geothermal ordinance"],
         dry_run=False,
     )
 
@@ -379,16 +411,12 @@ def test_engine_run_retries_transient_download_failure_then_succeeds(tmp_path: P
             raise RuntimeError("temporary timeout")
         return _FakeResponse(url="https://example.org/docs/retry-ordinance.pdf")
 
-    monkeypatch.setattr("requests.get", flaky_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", flaky_get)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/docs/retry-ordinance.pdf"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/docs/retry-ordinance.pdf"],
         dry_run=False,
         # This test isolates download-retry behavior; keep policy checks off so
         # the mocked requests.get counts only download attempts, not the
@@ -419,11 +447,7 @@ def test_engine_run_includes_rate_limit_and_concurrency_constraints(tmp_path: Pa
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/docs/test-ordinance.pdf"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/docs/test-ordinance.pdf"],
         dry_run=False,
         max_concurrent_downloads=4,
         min_request_interval_ms=125,
@@ -444,16 +468,12 @@ def test_engine_run_enforces_tos_acknowledgement_for_downloads(tmp_path: Path, m
         request_urls.append(url)
         raise AssertionError("download request should not be attempted when ToS policy blocks it")
 
-    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fake_get)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/docs/policy-test.pdf"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/docs/policy-test.pdf"],
         dry_run=False,
         tos_policy_mode="enforce",
     )
@@ -481,16 +501,12 @@ def test_engine_run_enforces_robots_policy_for_downloads(tmp_path: Path, monkeyp
             text=text,
         )
 
-    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fake_get)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/docs/blocked.pdf"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/docs/blocked.pdf"],
         dry_run=False,
         robots_policy_mode="enforce",
         tos_policy_mode="ignore",
@@ -510,21 +526,19 @@ def test_engine_run_applies_request_rate_limiter_for_downloads(tmp_path: Path, m
     sleep_calls: list[float] = []
     monotonic_values = iter([0.0, 0.0, 0.03, 0.03, 0.05, 0.05, 0.10, 0.10])
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
-    monkeypatch.setattr("time.sleep", lambda seconds: sleep_calls.append(seconds))
+    monkeypatch.setattr(
+        "psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url)
+    )
+    monkeypatch.setattr("time.sleep", sleep_calls.append)
     monkeypatch.setattr("time.monotonic", lambda: next(monotonic_values, 0.10))
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=[
+        sources=[
             "https://example.org/docs/a.pdf",
             "https://example.org/docs/b.pdf",
         ],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
         dry_run=False,
         max_concurrent_downloads=1,
         min_request_interval_ms=80,
@@ -547,17 +561,13 @@ def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path
             chunks=[b"<html><body><h1>Apple filing summary</h1></body></html>"],
         )
 
-    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fake_get)
     monkeypatch.setattr("time.sleep", lambda *_args, **_kwargs: None)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="apple_sec_filings",
-        seed_urls=["https://example.org/docs/test-filing.html"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/docs/test-filing.html"],
         dry_run=False,
         min_request_interval_ms=0,
         robots_policy_mode="ignore",
@@ -578,131 +588,12 @@ def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path
     assert captured_headers[0]["Accept-Language"] == "en-US,en;q=0.9"
 
 
-def test_engine_run_routes_centralized_topology_via_http_digger_live_hub_page(tmp_path: Path, monkeypatch):
-    _patch_requests_get(
-        monkeypatch,
-        url="https://county.gov/index.html",
-        content_type="text/html; charset=utf-8",
-        text=(
-            '<html><body>'
-            '<a href="/docs/geothermal-ordinance.pdf">Geothermal Ordinance</a>'
-            '<a href="/docs/notice.html">Notice</a>'
-            '</body></html>'
-        ),
-    )
-
-    engine = DiscoveryEngine()
-    request = DiscoveryRequest(
-        domain="geothermal_ordinances",
-        seed_urls=["https://county.gov/fallback.pdf"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=True,
-        topology_mode="centralized",
-        digger_provider="http",
-        hub_pages=["https://county.gov/index.html"],
-        allowed_domains=["county.gov"],
-        include_url_patterns=[r"\.pdf$"],
-        include_link_text_patterns=[r"ordinance"],
-    )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert payload["lineage"]["routing"]["connector"] == "http"
-    assert payload["lineage"]["routing"]["artifact_count"] >= 1
-    assert payload["candidates"][0]["url"] == "https://county.gov/docs/geothermal-ordinance.pdf"
-    assert payload["lineage"]["routing"]["discovery_modes"] == ["centralized_index_sweep"]
-
-
-def test_engine_run_downloads_partitioned_by_explicit_jurisdiction(tmp_path: Path, monkeypatch):
-    _patch_requests_get(
-        monkeypatch,
-        url="https://example.org/docs/geothermal.pdf",
-        chunks=[b"%PDF-1.4\n", b"jurisdiction-layout"],
-    )
-
-    engine = DiscoveryEngine()
-    request = DiscoveryRequest(
-        domain="geothermal_ordinances",
-        seed_urls=["https://example.org/docs/geothermal.pdf"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=False,
-        state="California",
-        jurisdiction="Imperial County",
-        jurisdiction_aliases={"california": "ca"},
-        partition_mode="jurisdiction",
-    )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert payload["error_summary"]["total_errors"] == 0
-    record = payload["downloads"][0]
-    assert record["partition_mode"] == "jurisdiction"
-    assert record["source_state"] == "ca"
-    assert record["source_jurisdiction"] == "imperial-county"
-    assert record["relative_path"].startswith("by_jurisdiction/ca/imperial-county/")
-    index_path = Path(payload["lineage"]["download_index_csv"])
-    assert index_path.exists()
-    with index_path.open(encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
-    assert len(rows) == 1
-    assert rows[0]["run_id"] == result.run_id
-    assert rows[0]["domain"] == "geothermal_ordinances"
-    assert rows[0]["partition_mode"] == "jurisdiction"
-    assert rows[0]["source_state"] == "ca"
-    assert rows[0]["source_jurisdiction"] == "imperial-county"
-
-
-def test_engine_run_auto_partition_does_not_infer_geography_from_query(
-    tmp_path: Path,
-    monkeypatch,
-):
-    """Queries stay search hints rather than becoming geographic identity."""
-    _patch_requests_get(
-        monkeypatch,
-        url="https://www.chaffeecounty.org/documents/53007.pdf",
-        chunks=[b"%PDF-1.4\n", b"query-inference"],
-    )
-
-    engine = DiscoveryEngine()
-    request = DiscoveryRequest(
-        domain="geothermal_ordinances",
-        seed_urls=["https://www.chaffeecounty.org/documents/53007.pdf"],
-        query="Chaffee County Colorado geothermal ordinance pdf",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=False,
-        partition_mode="auto",
-    )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert payload["error_summary"]["total_errors"] == 0
-    record = payload["downloads"][0]
-    assert record["partition_mode"] == "host"
-    assert "source_state" not in record
-    assert "source_jurisdiction" not in record
-    assert record["relative_path"].startswith("by_host/www.chaffeecounty.org/")
-
-
 def test_engine_run_dry_run_has_no_download_index(tmp_path: Path):
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/seed-a"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/seed-a"],
+        queries=["geothermal ordinance"],
         dry_run=True,
     )
 
@@ -713,314 +604,45 @@ def test_engine_run_dry_run_has_no_download_index(tmp_path: Path):
     assert payload["lineage"]["download_index_csv"] is None
 
 
-def test_engine_run_routes_distributed_topology_through_digger_filters(tmp_path: Path):
-    engine = DiscoveryEngine()
-    request = DiscoveryRequest(
-        domain="geothermal_ordinances",
-        seed_urls=[
-            "https://county.gov/ordinance.pdf",
-            "https://external.org/ordinance.pdf",
-        ],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=True,
-        topology_mode="distributed",
-        allowed_domains=["county.gov"],
-        include_url_patterns=[r"\.pdf$"],
-        max_depth=4,
-        max_pages=25,
-        max_files=8,
-        timeout_seconds=12,
-    )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert payload["constraints"]["topology_mode"] == "distributed"
-    assert payload["constraints"]["allowed_domains"] == ["county.gov"]
-    assert payload["constraints"]["max_depth"] == 4
-    # PDF seeds bypass routing (go directly to download) — routing only
-    # activates for crawlable HTML pages from code-hosting domains.
-    # external.org is excluded by allowed_domains.
-    assert len(payload["candidates"]) == 1
-    assert payload["candidates"][0]["url"] == "https://county.gov/ordinance.pdf"
-    assert payload["lineage"]["routing"]["mode"] == "distributed"
-    # Routing was not applied because all candidates are PDFs
-    assert payload["lineage"]["routing"]["applied"] is False
-    assert any(
-        "no crawlable HTML pages" in note
-        for note in payload["notes"]
-    )
-
-
-def test_engine_run_routes_centralized_topology_through_hub_sweep(tmp_path: Path):
-    engine = DiscoveryEngine()
-    request = DiscoveryRequest(
-        domain="geothermal_ordinances",
-        seed_urls=["https://seed.example.org/fallback"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=True,
-        topology_mode="centralized",
-        hub_pages=["https://docs.county.gov/index.html"],
-        include_url_patterns=[r"\.pdf$"],
-        include_link_text_patterns=[r"geothermal|ordinance"],
-        index_links=[
-            {
-                "url": "https://docs.county.gov/geothermal-ordinance.pdf",
-                "text": "Geothermal Ordinance",
-            },
-            {
-                "url": "https://docs.county.gov/general-notice.html",
-                "text": "General Notice",
-            },
-        ],
-        max_depth=3,
-        max_pages=20,
-        max_files=10,
-        timeout_seconds=15,
-    )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert payload["constraints"]["topology_mode"] == "centralized"
-    assert payload["constraints"]["hub_pages"] == ["https://docs.county.gov/index.html"]
-    assert payload["constraints"]["index_link_count"] == 2
-    assert len(payload["candidates"]) == 1
-    assert payload["candidates"][0]["url"] == "https://docs.county.gov/geothermal-ordinance.pdf"
-    assert "Routed via centralized hub sweep" in payload["candidates"][0]["reasons"]
-    assert payload["lineage"]["routing"]["mode"] == "centralized"
-    assert payload["lineage"]["routing"]["applied"] is True
-    assert payload["lineage"]["routing"]["artifact_count"] == 1
-    assert payload["lineage"]["routing"]["hub_page_count"] == 1
-    assert payload["lineage"]["routing"]["index_link_count"] == 2
-    assert payload["lineage"]["routing"]["discovery_modes"] == ["centralized_index_sweep"]
-    centralized_metrics = payload["stage_summaries"]["acceptance_metrics"]["centralized_page_sweep"]
-    assert centralized_metrics["applicable"] is True
-    assert centralized_metrics["measurement_mode"] == "seeded_index_links"
-    assert centralized_metrics["qualifying_link_count"] == 1
-    assert centralized_metrics["recovered_link_count"] == 1
-    assert centralized_metrics["recovery_rate"] == 1.0
-    assert centralized_metrics["meets_coverage_threshold"] is True
-    assert any(
-        note == "Centralized routing staged 1 candidate(s) through hub sweep."
-        for note in payload["notes"]
-    )
-
-
-def test_engine_run_centralized_routing_falls_back_when_no_sweep_matches(tmp_path: Path):
-    engine = DiscoveryEngine()
-    request = DiscoveryRequest(
-        domain="geothermal_ordinances",
-        seed_urls=["https://seed.example.org/fallback"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=True,
-        topology_mode="centralized",
-        hub_pages=["https://docs.county.gov/index.html"],
-        include_url_patterns=[r"\.pdf$"],
-        include_link_text_patterns=[r"geothermal|ordinance"],
-        index_links=[
-            {
-                "url": "https://docs.county.gov/general-notice.html",
-                "text": "General Notice",
-            }
-        ],
-    )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert payload["candidates"] == []
-    # Explicit PDF rules must not restore an out-of-scope fallback seed.
-    assert all(c["url"].endswith(".pdf") for c in payload["candidates"])
-    assert payload["lineage"]["routing"]["mode"] == "centralized"
-    assert payload["lineage"]["routing"]["applied"] is True
-    assert payload["lineage"]["routing"]["artifact_count"] == 0
-    assert any(
-        note == "Centralized routing produced no sweep artifacts; falling back to unrouted candidates."
-        for note in payload["notes"]
-    )
-
-
-def test_engine_run_routes_hybrid_topology_with_centralized_then_distributed(tmp_path: Path):
-    engine = DiscoveryEngine()
-    request = DiscoveryRequest(
-        domain="geothermal_ordinances",
-        seed_urls=[
-            "https://county.gov/distributed-ordinance.pdf",
-            "https://external.org/outside.pdf",
-        ],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=True,
-        topology_mode="hybrid",
-        hub_pages=["https://docs.county.gov/index.html"],
-        allowed_domains=["county.gov", "docs.county.gov"],
-        include_url_patterns=[r"\.pdf$"],
-        include_link_text_patterns=[r"geothermal|ordinance"],
-        index_links=[
-            {
-                "url": "https://docs.county.gov/hub-geothermal-ordinance.pdf",
-                "text": "Geothermal Ordinance",
-            },
-            {
-                "url": "https://docs.county.gov/general-notice.html",
-                "text": "General Notice",
-            },
-        ],
-    )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert payload["constraints"]["topology_mode"] == "hybrid"
-    assert len(payload["candidates"]) == 2
-    urls = [candidate["url"] for candidate in payload["candidates"]]
-    # Centralized finds the hub-linked PDF; distributed preserves the
-    # original PDF seed from an allowed domain (external.org is excluded
-    # by allowed_domains).
-    assert "https://docs.county.gov/hub-geothermal-ordinance.pdf" in urls
-    assert "https://county.gov/distributed-ordinance.pdf" in urls
-    assert "https://external.org/outside.pdf" not in urls
-    centralized_candidate = next(
-        c for c in payload["candidates"]
-        if c["url"] == "https://docs.county.gov/hub-geothermal-ordinance.pdf"
-    )
-    assert "Routed via centralized hub sweep" in centralized_candidate["reasons"]
-    assert payload["lineage"]["routing"]["mode"] == "hybrid"
-    assert payload["lineage"]["routing"]["centralized_candidate_count"] == 1
-    assert payload["lineage"]["routing"]["distributed_candidate_count"] == 1
-    assert payload["lineage"]["routing"]["final_candidate_count"] == 2
-    assert len(payload["lineage"]["routing"]["stages"]) == 2
-    hybrid_metrics = payload["stage_summaries"]["acceptance_metrics"]["hybrid_mixed_source_resolution"]
-    assert hybrid_metrics["applicable"] is True
-    assert hybrid_metrics["centralized_candidate_count"] == 1
-    # Distributed preserved the PDF fallback but didn't produce new crawled
-    # artifacts — the metric correctly reports only centralized resolved.
-    assert hybrid_metrics["distributed_candidate_count"] == 0
-    assert hybrid_metrics["both_paths_resolved"] is False
-    assert any(
-        note == "Hybrid routing produced 2 candidate(s) after centralized-plus-distributed sequencing."
-        for note in payload["notes"]
-    )
-
-
-def test_engine_run_hybrid_routing_falls_back_to_distributed_when_hub_empty(tmp_path: Path):
-    engine = DiscoveryEngine()
-    request = DiscoveryRequest(
-        domain="geothermal_ordinances",
-        seed_urls=[
-            "https://county.gov/distributed-ordinance.pdf",
-            "https://external.org/outside.pdf",
-        ],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
-        dry_run=True,
-        topology_mode="hybrid",
-        hub_pages=["https://docs.county.gov/index.html"],
-        allowed_domains=["county.gov", "docs.county.gov"],
-        include_url_patterns=[r"\.pdf$"],
-        include_link_text_patterns=[r"geothermal|ordinance"],
-        index_links=[
-            {
-                "url": "https://docs.county.gov/general-notice.html",
-                "text": "General Notice",
-            }
-        ],
-    )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    assert len(payload["candidates"]) == 1
-    assert payload["candidates"][0]["url"] == "https://county.gov/distributed-ordinance.pdf"
-    assert payload["lineage"]["routing"]["mode"] == "hybrid"
-    assert payload["lineage"]["routing"]["centralized_candidate_count"] == 0
-    assert payload["lineage"]["routing"]["distributed_candidate_count"] == 1
-    assert payload["lineage"]["routing"]["final_candidate_count"] == 1
-    assert any(
-        note == "Centralized routing produced no sweep artifacts; falling back to unrouted candidates."
-        for note in payload["notes"]
-    )
-    assert any(
-        note == "Distributed routing skipped: no crawlable HTML pages from allowed domains."
-        for note in payload["notes"]
-    )
-
-
-def test_engine_builds_seeker_inputs_from_targets_and_query_family():
+def test_engine_builds_seeker_inputs_from_targets():
+    """Row ``query`` overrides ``queries``; ``urls`` never reach the template context."""
     request = DiscoveryRequest(
         domain="generator_manuals",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=True,
-        output_documents=None,
-        output_manifest=None,
+        queries=["{manufacturer} {power_class_kw} kW generator spec pdf"],
         dry_run=True,
         targets=[
             {
                 "manufacturer": "Generac",
                 "power_class_kw": "200-300",
+                "urls": ["https://generac.com/a.pdf"],
             },
-            {
-                "manufacturer": "John Deere",
-                "power_class_kw": "200-300",
-            },
+            {"manufacturer": "John Deere", "query": "deere manual"},
         ],
-        query_families={
-            "generator_similar_power": [
-                "{manufacturer} {power_class_kw} kW generator spec pdf",
-            ]
-        },
-        use_query_family="generator_similar_power",
         seeker_max_results=8,
     )
 
     seeker_inputs = DiscoveryEngine._build_seeker_inputs(request)
 
-    assert len(seeker_inputs) == 2
-    assert all(item.query == "" for item in seeker_inputs)
+    assert [item.queries for item in seeker_inputs] == [
+        ["{manufacturer} {power_class_kw} kW generator spec pdf"],
+        ["deere manual"],
+    ]
     assert all(item.max_results == 8 for item in seeker_inputs)
-    assert seeker_inputs[0].extra_params["template_context"]["manufacturer"] == "Generac"
-    assert seeker_inputs[1].extra_params["template_context"]["manufacturer"] == "John Deere"
-    assert seeker_inputs[0].extra_params["use_query_family"] == "generator_similar_power"
+    assert seeker_inputs[0].context == {"manufacturer": "Generac", "power_class_kw": "200-300"}
+    assert seeker_inputs[1].context == {"manufacturer": "John Deere"}
 
 
-def test_engine_run_records_targeted_query_constraints(tmp_path: Path):
-    engine = DiscoveryEngine()
+def test_engine_run_records_input_constraints(tmp_path: Path):
     request = DiscoveryRequest(
         domain="generator_manuals",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/a.pdf"],
         dry_run=True,
-        targets=[{"manufacturer": "Generac", "power_class_kw": "200-300"}],
-        query_templates=["{manufacturer} {power_class_kw} generator pdf"],
-        query_families={"generator_similar_power": ["{manufacturer} generator"]},
-        use_query_family="generator_similar_power",
+        targets=[{"manufacturer": "Generac", "urls": ["https://generac.com/a.pdf"]}],
     )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
+    payload = json.loads(DiscoveryEngine().run(request).manifest_path.read_text(encoding="utf-8"))
     assert payload["constraints"]["target_count"] == 1
-    assert payload["constraints"]["query_template_count"] == 1
-    assert payload["constraints"]["query_family_count"] == 1
-    assert payload["constraints"]["use_query_family"] == "generator_similar_power"
+    assert payload["constraints"]["source_count"] == 1
+    assert "query_count" not in payload["constraints"]
 
 
 # ---------------------------------------------------------------------------
@@ -1047,11 +669,8 @@ def test_engine_run_emits_timing_fields(tmp_path: Path):
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/seed-a"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/seed-a"],
+        queries=["geothermal ordinance"],
         dry_run=True,
     )
 
@@ -1071,11 +690,7 @@ def test_engine_run_emits_stage_summaries_seeker_section(tmp_path: Path):
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/seed-a", "https://example.org/seed-b"],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/seed-a", "https://example.org/seed-b"],
         dry_run=True,
         link_prioritization_mode="heuristic",
         link_top_k=3,
@@ -1148,11 +763,8 @@ def test_engine_run_seeker_applies_prioritization_and_emits_lineage(tmp_path: Pa
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="generator_manuals",
-        seed_urls=[],
-        query="250kW generator manual",
-        enable_serpapi=True,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=[],
+        queries=["250kW generator manual"],
         dry_run=True,
         link_prioritization_mode="heuristic",
         link_top_k=2,
@@ -1178,9 +790,7 @@ def test_engine_run_seeker_applies_prioritization_and_emits_lineage(tmp_path: Pa
         for candidate in payload["lineage"]["link_prioritization"]["candidates"]
     ) == [0, 1, 2, 3]
     assert any(
-        "Link prioritizer (heuristic) ranked 4 candidate(s)"
-        in note
-        for note in payload["notes"]
+        "Link prioritizer (heuristic) ranked 4 candidate(s)" in note for note in payload["notes"]
     )
 
 
@@ -1191,8 +801,7 @@ def test_engine_run_emits_unknown_target_acceptance_metrics(tmp_path: Path, monk
             self.queries_run = 0
 
         def discover(self, seeker_input):
-            template_context = seeker_input.extra_params.get("template_context") or {}
-            jurisdiction = template_context.get("jurisdiction")
+            jurisdiction = (seeker_input.context or {}).get("jurisdiction")
             if jurisdiction == "Imperial County":
                 return [
                     {
@@ -1221,24 +830,22 @@ def test_engine_run_emits_unknown_target_acceptance_metrics(tmp_path: Path, monk
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=[],
-        query="geothermal ordinance pdf",
-        enable_serpapi=True,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=[],
+        queries=["{jurisdiction} {state} geothermal ordinance pdf"],
         dry_run=True,
         targets=[
             {"jurisdiction": "Imperial County", "state": "California"},
             {"jurisdiction": "Mono County", "state": "California"},
         ],
-        query_templates=["{jurisdiction} {state} geothermal ordinance pdf"],
         link_prioritization_mode="off",
     )
 
     result = engine.run(request)
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
-    unknown_target_metrics = payload["stage_summaries"]["acceptance_metrics"]["unknown_target_discovery"]
+    unknown_target_metrics = payload["stage_summaries"]["acceptance_metrics"][
+        "unknown_target_discovery"
+    ]
     assert unknown_target_metrics["applicable"] is True
     assert unknown_target_metrics["measurement_mode"] == "target_matrix"
     assert unknown_target_metrics["target_count"] == 2
@@ -1248,34 +855,20 @@ def test_engine_run_emits_unknown_target_acceptance_metrics(tmp_path: Path, monk
     assert len(unknown_target_metrics["targets"]) == 2
 
 
-def test_engine_run_emits_stage_summaries_routing_section(tmp_path: Path):
-    """stage_summaries.routing must reflect mode, applied flag, and candidate flow counts."""
-    engine = DiscoveryEngine()
+def test_engine_run_emits_stage_summaries_crawl_section(tmp_path: Path):
+    """stage_summaries.crawl reports provider, depth, and candidate flow."""
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=[
-            "https://county.gov/ordinance.pdf",
-            "https://external.org/other.pdf",
-        ],
-        query="geothermal ordinance",
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://county.gov/ordinance.pdf"],
         dry_run=True,
-        topology_mode="distributed",
-        allowed_domains=["county.gov"],
-        include_url_patterns=[r"\.pdf$"],
+        max_depth=2,
     )
-
-    result = engine.run(request)
-    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    routing = payload["stage_summaries"]["routing"]
-    assert routing["mode"] == "distributed"
-    assert routing["applied"] is False
-    assert isinstance(routing["candidates_in"], int)
-    assert isinstance(routing["candidates_out"], int)
-    assert routing["candidates_out"] <= routing["candidates_in"]
+    payload = json.loads(DiscoveryEngine().run(request).manifest_path.read_text(encoding="utf-8"))
+    crawl = payload["stage_summaries"]["crawl"]
+    assert crawl["provider"] == "http"
+    assert crawl["max_depth"] == 2
+    assert crawl["applied"] is False
+    assert crawl["candidates_in"] == crawl["candidates_out"] == 1
 
 
 def test_engine_run_emits_stage_summaries_downloads_section_dry_run(tmp_path: Path):
@@ -1283,11 +876,7 @@ def test_engine_run_emits_stage_summaries_downloads_section_dry_run(tmp_path: Pa
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/seed-a"],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
+        sources=["https://example.org/seed-a"],
         dry_run=True,
     )
 
@@ -1306,15 +895,11 @@ def test_engine_run_emits_candidate_summary_by_acceptance_class(tmp_path: Path):
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=[
+        sources=[
             "https://example.org/seed-a",
             "https://example.org/seed-b",
             "https://example.org/seed-c",
         ],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "docs",
-        output_manifest=tmp_path / "manifest.json",
         dry_run=True,
     )
 
@@ -1325,8 +910,7 @@ def test_engine_run_emits_candidate_summary_by_acceptance_class(tmp_path: Path):
     assert summary["total"] == 3
     assert isinstance(summary["by_acceptance_class"], dict)
     assert isinstance(summary["by_source"], dict)
-    # All seed_url candidates must appear under seed_url source key
-    assert summary["by_source"].get("seed_url", 0) == 3
+    assert summary["by_source"].get("configured", 0) == 3
     # All acceptance classes must be valid
     for cls in summary["by_acceptance_class"]:
         assert cls in {"accepted", "needs_review", "rejected"}
@@ -1350,6 +934,24 @@ def test_build_download_summary_aggregates_status_counts():
     assert summary["total_bytes"] == 3072
     assert summary["by_status"]["downloaded"] == 2
     assert summary["by_status"]["failed"] == 1
+    assert summary["reused"] == 0
+
+
+def test_build_download_summary_counts_reused_outcomes_apart():
+    """Reused prior outcomes cost no request, so they never inflate totals."""
+    from psweep.discovery.engine import REUSED_DOWNLOAD_METHOD
+
+    reused = {"download_method": REUSED_DOWNLOAD_METHOD}
+    records = [
+        {"status": "downloaded", "bytes": 100, "download_method": "requests"},
+        {"status": "downloaded", "bytes": 900, **reused},
+        {"status": "skipped_http_404", **reused},
+    ]
+    summary = DiscoveryEngine._build_download_summary(records)
+
+    assert (summary["total"], summary["downloaded"], summary["skipped"]) == (1, 1, 0)
+    assert summary["total_bytes"] == 100
+    assert summary["reused"] == 2
 
 
 def test_build_candidate_summary_counts_by_acceptance_class_and_source():

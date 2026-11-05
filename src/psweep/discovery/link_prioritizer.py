@@ -97,6 +97,29 @@ class PrioritizedCandidate:
         }
 
 
+def domain_score_patterns(
+    domain_scores: dict[str, float] | None,
+) -> list[tuple[str, float]]:
+    """Normalize ``link_prioritization.domain_scores`` into ``(pattern, score)``."""
+    return [
+        (key.lower().strip().rstrip("."), float(score))
+        for key, score in (domain_scores or {}).items()
+        if key.strip().rstrip(".")
+    ]
+
+
+def host_matches_domain_pattern(host: str, pattern: str) -> bool:
+    """Match a host against a normalized ``domain_scores`` pattern.
+
+    Leading-dot patterns match hostname suffixes; host patterns match the host
+    itself or any of its subdomains.
+    """
+    host = host.lower().rstrip(".")
+    if pattern.startswith("."):
+        return host.endswith(pattern)
+    return host == pattern or host.endswith("." + pattern)
+
+
 # ---------------------------------------------------------------------------
 # LinkPrioritizer
 # ---------------------------------------------------------------------------
@@ -135,21 +158,13 @@ class LinkPrioritizer:
         top_k: int | None = 5,
         shopping_path_keywords: list[str] | None = None,
     ) -> None:
-        self._keywords: list[str] = [
-            k.lower().strip() for k in (keywords or []) if k.strip()
-        ]
-        self._authority_patterns: list[tuple[str, float]] = [
-            (k.lower().strip().rstrip("."), float(v))
-            for k, v in (domain_authority_overrides or {}).items()
-            if k.strip().rstrip(".")
-        ]
+        self._keywords: list[str] = [k.lower().strip() for k in (keywords or []) if k.strip()]
+        self._authority_patterns = domain_score_patterns(domain_authority_overrides)
         self._top_k = top_k
         self._shopping_patterns: list[tuple[str, re.Pattern[str]]] = [
             (term, re.compile(rf"(?<![^\W_]){re.escape(term)}(?![^\W_])"))
             for term in dict.fromkeys(
-                k.lower().strip()
-                for k in (shopping_path_keywords or [])
-                if k.strip()
+                k.lower().strip() for k in (shopping_path_keywords or []) if k.strip()
             )
         ]
 
@@ -194,17 +209,13 @@ class LinkPrioritizer:
             )
 
         # Stable sort: highest confidence first; ties preserve original order
-        prioritized.sort(
-            key=lambda p: p.priority_score.confidence, reverse=True
-        )
+        prioritized.sort(key=lambda p: p.priority_score.confidence, reverse=True)
 
         # Build lineage before slicing
         lineage = [p.to_lineage_dict() for p in prioritized]
 
         # Slice top-K
-        top_slice = (
-            prioritized if self._top_k is None else prioritized[: self._top_k]
-        )
+        top_slice = prioritized if self._top_k is None else prioritized[: self._top_k]
 
         # Propagate heuristic signals back into candidate's CandidateScore.
         # Ranking order is driven by priority_score.confidence (above), so
@@ -222,8 +233,7 @@ class LinkPrioritizer:
                     1.0,
                     max(
                         c.score.url_signal,
-                        pc.priority_score.file_type_score
-                        + pc.priority_score.keyword_score * 0.5,
+                        pc.priority_score.file_type_score + pc.priority_score.keyword_score * 0.5,
                     ),
                 ),
             )
@@ -238,16 +248,13 @@ class LinkPrioritizer:
                     0.0,
                     min(
                         1.0,
-                        c.score.trust_signal
-                        + pc.priority_score.domain_authority_score * 0.5,
+                        c.score.trust_signal + pc.priority_score.domain_authority_score * 0.5,
                     ),
                 ),
                 weights=c.score.weights,
             )
             updated_reasons = list(c.reasons) + pc.priority_reasons
-            ranked_top_k.append(
-                replace(c, score=updated_score, reasons=updated_reasons)
-            )
+            ranked_top_k.append(replace(c, score=updated_score, reasons=updated_reasons))
 
         return ranked_top_k, lineage
 
@@ -255,9 +262,7 @@ class LinkPrioritizer:
     # Scoring internals
     # ------------------------------------------------------------------
 
-    def _score(
-        self, candidate: DiscoveryCandidate
-    ) -> tuple[PriorityScore, list[str]]:
+    def _score(self, candidate: DiscoveryCandidate) -> tuple[PriorityScore, list[str]]:
         url = candidate.url or ""
         # Reasons hold query/heuristic notes, not source evidence.
         # Ranking on them would reward every result for its query.
@@ -272,11 +277,7 @@ class LinkPrioritizer:
 
         # Weighted aggregate before normalisation. Weights keep their relative
         # importance (file type dominates, then authority and keywords equally).
-        raw = (
-            file_type_score * 0.35
-            + domain_authority_score * 0.25
-            + keyword_score * 0.25
-        )
+        raw = file_type_score * 0.35 + domain_authority_score * 0.25 + keyword_score * 0.25
         confidence = max(0.0, min(1.0, 0.5 + raw))
 
         ps = PriorityScore(
@@ -287,9 +288,7 @@ class LinkPrioritizer:
         )
         return ps, reasons
 
-    def _score_file_type(
-        self, url: str, anchor: str, reasons: list[str]
-    ) -> float:
+    def _score_file_type(self, url: str, anchor: str, reasons: list[str]) -> float:
         """Return file type signal in [-1, 1] range."""
         lower_url = url.lower()
 
@@ -307,9 +306,7 @@ class LinkPrioritizer:
         for ext_hint, score in _FILE_TYPE_SCORES.items():
             if ext_hint.lstrip(".") in anchor:
                 if score > 0:
-                    reasons.append(
-                        f"file_type:anchor_hint={ext_hint} (+{score:.2f})"
-                    )
+                    reasons.append(f"file_type:anchor_hint={ext_hint} (+{score:.2f})")
                 return score
 
         # Match path tokens, not host/query text.
@@ -322,8 +319,7 @@ class LinkPrioritizer:
         for term, pattern in self._shopping_patterns:
             if pattern.search(path):
                 reasons.append(
-                    f"file_type:shopping_path_keyword={term} "
-                    f"({_SHOPPING_PATH_PENALTY:.2f})"
+                    f"file_type:shopping_path_keyword={term} ({_SHOPPING_PATH_PENALTY:.2f})"
                 )
                 return _SHOPPING_PATH_PENALTY
 
@@ -340,12 +336,7 @@ class LinkPrioritizer:
         matched: list[str] = []
 
         for pattern, adj in self._authority_patterns:
-            matches = (
-                host.endswith(pattern)
-                if pattern.startswith(".")
-                else host == pattern or host.endswith("." + pattern)
-            )
-            if matches:
+            if host_matches_domain_pattern(host, pattern):
                 total += adj
                 matched.append(f"{pattern}={adj:+.2f}")
 
@@ -354,9 +345,7 @@ class LinkPrioritizer:
             reasons.append(f"domain_authority:{','.join(matched)}")
         return clamped
 
-    def _score_keywords(
-        self, url: str, anchor: str, reasons: list[str]
-    ) -> float:
+    def _score_keywords(self, url: str, anchor: str, reasons: list[str]) -> float:
         """Score source evidence with keywords or a generic fallback."""
         active_keywords = self._keywords or _DOCUMENT_PATH_KEYWORDS
         combined = unquote(url).lower() + " " + anchor
@@ -380,6 +369,6 @@ class LinkPrioritizer:
                 ext = "." + part.split("?")[0].split("#")[0]
                 if 2 <= len(ext) <= 6:
                     return ext
-        except Exception:
+        except ValueError:
             pass
         return None

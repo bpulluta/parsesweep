@@ -1,0 +1,149 @@
+{
+ "https://bouldercounty.gov/property-and-land/land-use/building/building-publications/b46-solar-photovoltaic-systems-checklist/": {
+  "cost": 0.016199,
+  "data": {
+   "jurisdictions": [
+    {
+     "ahj": "Boulder County",
+     "electrical_stamp": {
+      "quote": null,
+      "value": null
+     },
+     "fire_review": {
+      "quote": null,
+      "value": null
+     },
+     "online_instant_permitting": {
+      "quote": null,
+      "value": null
+     },
+     "online_permitting": {
+      "quote": "All construction drawings must be submitted in PDF format at the time of your online building permit application Boulder County Permit Records & Online Application Submittals.",
+      "value": "Yes"
+     },
+     "rough_in": {
+      "quote": null,
+      "value": null
+     },
+     "solsmart_awardee": {
+      "quote": null,
+      "value": null
+     },
+     "state": "CO",
+     "structural_stamp": {
+      "quote": null,
+      "value": null
+     },
+     "third_party_permitting": {
+      "quote": null,
+      "value": null
+     },
+     "virtual_inspections": {
+      "quote": null,
+      "value": null
+     }
+    }
+   ]
+  },
+  "input_tokens": 4996,
+  "output_tokens": 371
+ },
+ "https://content.civicplus.com/api/assets/c4c73baf-77f7-4aac-bf3b-de6b139e88c2": {
+  "cost": 0.011629,
+  "data": {
+   "jurisdictions": [
+    {
+     "ahj": "Pima County",
+     "electrical_stamp": {
+      "quote": null,
+      "value": null
+     },
+     "fire_review": {
+      "quote": null,
+      "value": null
+     },
+     "online_instant_permitting": {
+      "quote": "By providing instantaneous review, the SolarAPP+ reduced the average permit review time to less than one day across all five jurisdictions.",
+      "value": "Yes (SolarAPP+)"
+     },
+     "online_permitting": {
+      "quote": "The Department of Energy released the results of the pilot project this month in a technical report entitled SolarAPP+ Pilot Analysis: Performance and Impact of Instant, Online Solar Permitting.",
+      "value": "Yes"
+     },
+     "rough_in": {
+      "quote": null,
+      "value": null
+     },
+     "solsmart_awardee": {
+      "quote": null,
+      "value": null
+     },
+     "state": "AZ",
+     "structural_stamp": {
+      "quote": null,
+      "value": null
+     },
+     "third_party_permitting": {
+      "quote": null,
+      "value": null
+     },
+     "virtual_inspections": {
+      "quote": "SolarApp+ generates a precise list of inspection items simplifying remote inspections for our inspectors and the installers.",
+      "value": "Yes"
+     }
+    }
+   ]
+  },
+  "input_tokens": 2732,
+  "output_tokens": 480
+ },
+ "https://www.maricopa.gov/6714/Residential-Solar-Permits": {
+  "cost": 0.011149,
+  "data": {
+   "jurisdictions": [
+    {
+     "ahj": "Maricopa County",
+     "electrical_stamp": {
+      "quote": null,
+      "value": null
+     },
+     "fire_review": {
+      "quote": null,
+      "value": null
+     },
+     "online_instant_permitting": {
+      "quote": null,
+      "value": null
+     },
+     "online_permitting": {
+      "quote": "Apply for your permit . Log into Permit Center Account Permits: Residential Rooftop Solar: SolarAPP+ Click Apply. Include your approved set of documents and your SolarAPP approval number to proceed.",
+      "value": "Yes"
+     },
+     "rough_in": {
+      "quote": null,
+      "value": null
+     },
+     "solsmart_awardee": {
+      "quote": null,
+      "value": null
+     },
+     "state": "AZ",
+     "structural_stamp": {
+      "quote": null,
+      "value": null
+     },
+     "third_party_permitting": {
+      "quote": "SolarAPP+ is a third-party software program that can be used to verify code compliance for residential photovoltaic (PV) projects. Maricopa County Planning and Development department (PND) will accept SolarAPP+ approved designs for application and permitting of residential photovoltaic projects for unincorporated Maricopa County.",
+      "value": "Yes"
+     },
+     "virtual_inspections": {
+      "quote": null,
+      "value": null
+     }
+    }
+   ]
+  },
+  "input_tokens": 2768,
+  "output_tokens": 423
+ }
+}

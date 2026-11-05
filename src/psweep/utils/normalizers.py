@@ -5,7 +5,6 @@ Data normalization utilities for consistent outputs.
 Provides standardization functions for common fields like US states.
 """
 
-from typing import Optional
 import csv
 import functools
 import re
@@ -139,7 +138,7 @@ US_STATES = {
 }
 
 
-def normalize_state(state: Optional[str]) -> Optional[str]:
+def normalize_state(state: str | None) -> str | None:
     """
     Normalize US state name to 2-letter abbreviation.
 
@@ -190,11 +189,11 @@ def normalize_state(state: Optional[str]) -> Optional[str]:
         return normalized
 
     # Not found - return original with warning
-    logger.warning(f"Unknown state value '{state}' - keeping as-is")
+    logger.warning("Unknown state value '%s' - keeping as-is", state)
     return state
 
 
-def normalize_state_column(df, column_name: str = "State") -> None:
+def normalize_state_column(df, column_name: str) -> None:
     """
     Normalize state column in-place in a DataFrame.
 
@@ -226,7 +225,7 @@ def normalize_state_column(df, column_name: str = "State") -> None:
     # Log stats
     unique_states = df[column_name].nunique()
     logger.debug(
-        f"Normalized {column_name}: {unique_states} unique states across {original_count} rows"
+        "Normalized %s: %s unique states across %s rows", column_name, unique_states, original_count
     )
 
 
@@ -276,9 +275,7 @@ def _county_fips_lookup() -> dict:
     return lookup
 
 
-def county_to_fips(
-    state: Optional[str], county: Optional[str]
-) -> Optional[str]:
+def county_to_fips(state: str | None, county: str | None) -> str | None:
     """Return the 5-digit county FIPS (GEOID) for a state + county, or None.
 
     Domain-agnostic geographic enrichment: matching is suffix-insensitive and
@@ -293,9 +290,7 @@ def county_to_fips(
     state_abbr = normalize_state(state)
     if not isinstance(state_abbr, str):
         return None
-    return _county_fips_lookup().get(
-        (state_abbr.strip().upper(), _county_key(county))
-    )
+    return _county_fips_lookup().get((state_abbr.strip().upper(), _county_key(county)))
 
 
 def add_county_fips_column(
@@ -313,73 +308,5 @@ def add_county_fips_column(
     if state_column not in df.columns or county_column not in df.columns:
         return
     df[fips_column] = [
-        county_to_fips(s, c)
-        for s, c in zip(df[state_column], df[county_column])
+        county_to_fips(s, c) for s, c in zip(df[state_column], df[county_column], strict=True)
     ]
-
-
-def _split_camel_case(name: str) -> str:
-    """Insert spaces at camelCase boundaries, leaving all other characters intact.
-
-    Shared splitting core for :func:`humanize_field_name` and
-    :func:`camel_to_title`; each applies its own separator/casing policy on top.
-    """
-    return "".join(" " + c if c.isupper() else c for c in name).strip()
-
-
-def humanize_field_name(field_name: str) -> str:
-    """
-    Convert any naming style to clean Title Case.
-
-    Handles snake_case, camelCase, and mixed formats, replacing underscores
-    with spaces and splitting camelCase boundaries before capitalizing each
-    word. This is the canonical column-label humanizer.
-
-    Parameters
-    ----------
-    field_name : str
-        Raw field name
-
-    Returns
-    -------
-    str
-        Clean Title Case column name
-
-    Examples
-    --------
-    >>> humanize_field_name("charge_type")
-    'Charge Type'
-    >>> humanize_field_name("annualConsumption")
-    'Annual Consumption'
-    """
-    name = _split_camel_case(field_name.replace("_", " "))
-    return " ".join(word.capitalize() for word in name.split())
-
-
-def camel_to_title(name: str) -> str:
-    """
-    Split camelCase boundaries and Title Case the result, preserving any
-    existing separators (e.g. underscores) untouched.
-
-    Unlike :func:`humanize_field_name`, this does not rewrite underscores;
-    it is used where established display keys must keep their literal
-    separators.
-
-    Parameters
-    ----------
-    name : str
-        Raw field name
-
-    Returns
-    -------
-    str
-        Title-cased name with spaces inserted at camelCase boundaries
-
-    Examples
-    --------
-    >>> camel_to_title("facilityName")
-    'Facility Name'
-    >>> camel_to_title("utility_name")
-    'Utility_Name'
-    """
-    return _split_camel_case(name).title()

@@ -62,9 +62,7 @@ class TestFormatterOverrides:
 
     def test_empty_list_disables_name_based_centering(self):
         df = pd.DataFrame({"state": ["s" * 80, "s" * 80]})
-        cols = ExcelFormatter()._identify_center_aligned_columns(
-            df, center_align_columns=[]
-        )
+        cols = ExcelFormatter()._identify_center_aligned_columns(df, center_align_columns=[])
         assert cols == []
 
     def test_case_insensitive_name_match(self):
@@ -91,7 +89,6 @@ def _schema(output_block):
         "$metadata": {
             "extraction": {
                 "main_data_array": "items",
-                "identifier_fields": ["id"],
             },
             "compilation": {"output": output_block},
         },
@@ -131,9 +128,7 @@ class TestSchemaMetadataCenterAlign:
             json.dumps(_schema({"center_align_columns": "region"})),
             encoding="utf-8",
         )
-        with pytest.raises(
-            SchemaMetadataError, match="center_align_columns"
-        ):
+        with pytest.raises(SchemaMetadataError, match="center_align_columns"):
             SchemaMetadata(path)
 
     def test_negative_max_length_raises(self, tmp_path):
@@ -142,9 +137,7 @@ class TestSchemaMetadataCenterAlign:
             json.dumps(_schema({"center_align_max_length": -5})),
             encoding="utf-8",
         )
-        with pytest.raises(
-            SchemaMetadataError, match="center_align_max_length"
-        ):
+        with pytest.raises(SchemaMetadataError, match="center_align_max_length"):
             SchemaMetadata(path)
 
     def test_bool_max_length_raises(self, tmp_path):
@@ -153,7 +146,5 @@ class TestSchemaMetadataCenterAlign:
             json.dumps(_schema({"center_align_max_length": True})),
             encoding="utf-8",
         )
-        with pytest.raises(
-            SchemaMetadataError, match="center_align_max_length"
-        ):
+        with pytest.raises(SchemaMetadataError, match="center_align_max_length"):
             SchemaMetadata(path)

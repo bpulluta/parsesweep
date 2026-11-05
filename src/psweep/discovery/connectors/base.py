@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -11,9 +11,10 @@ from typing import Any
 class SeekerInput:
     """Normalized input for seeker stage discovery."""
 
-    query: str
+    queries: list[str]
     max_results: int = 10
-    extra_params: dict[str, Any] | None = None
+    context: dict[str, Any] | None = None
+    params: dict[str, Any] | None = None
 
 
 class BaseSeekerConnector(ABC):
@@ -49,22 +50,20 @@ class BaseSeekerConnector(ABC):
         ValueError
             If the query is invalid.
         """
-        pass
 
     @abstractmethod
     def supports_provider(self, provider: str) -> bool:
         """Check if this connector supports the given provider name."""
-        pass
 
 
 @dataclass(slots=True)
 class DiggerInput:
     """Normalized input for digger stage link/document discovery."""
 
-    seed_urls: list[str]
-    max_depth: int = 2
-    max_pages: int = 50
-    max_files: int = 20
+    sources: list[str]
+    max_depth: int
+    max_pages: int
+    max_files: int | None = None
     timeout_seconds: int = 30
     allowed_domains: list[str] | None = None
     include_url_patterns: list[str] | None = None
@@ -95,6 +94,20 @@ class DiggerArtifact:
         }
 
 
+@dataclass(slots=True)
+class CrawlResult:
+    """Crawl outcome: linked artifacts plus sources whose crawl is unfinished.
+
+    ``incomplete_sources`` are source pages whose crawl hit a retryable fetch
+    failure or ran out of the ``max_pages``/``max_files`` budget, so they must
+    be crawled again on a later run.
+    """
+
+    artifacts: list[DiggerArtifact]
+    incomplete_sources: set[str] = field(default_factory=set)
+    pages_fetched: int = 0
+
+
 class BaseDiggerConnector(ABC):
     """
     Abstract interface for bounded crawl/download discovery (digger stage).
@@ -103,17 +116,15 @@ class BaseDiggerConnector(ABC):
     """
 
     @abstractmethod
-    def discover(self, digger_input: DiggerInput) -> list[DiggerArtifact]:
+    def discover(self, digger_input: DiggerInput) -> CrawlResult:
         """
-        Discover candidate artifacts from seed pages within crawl budgets.
+        Discover candidate artifacts linked from source pages within crawl budgets.
 
         Returns
         -------
-            Normalized digger artifacts for downstream validation/scoring.
+            Normalized digger artifacts and the sources left incomplete.
         """
-        pass
 
     @abstractmethod
     def supports_provider(self, provider: str) -> bool:
         """Check if this connector supports the given provider name."""
-        pass

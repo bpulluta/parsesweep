@@ -1,12 +1,7 @@
-"""Shared URL helpers for the discovery module.
+"""Shared discovery URL helpers: parse, match, canonicalize, redact.
 
-These were previously duplicated (byte-for-byte in some cases) across the
-engine and the candidate selector. Centralizing them removes the drift risk.
-
-Note: the link prioritizer keeps its own length-guarded extension parser
-(a scoring heuristic) and the engine keeps its MIME-aware extension resolver
-(download gating) — those serve different purposes and are intentionally
-not folded in here.
+The link prioritizer (scoring) and the engine (MIME-aware download
+gating) keep their own extension parsers on purpose.
 """
 
 from __future__ import annotations
@@ -15,7 +10,15 @@ import re
 from functools import lru_cache
 from html import unescape
 from pathlib import Path
-from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
+from urllib.parse import (
+    parse_qsl,
+    unquote,
+    urlencode,
+    urlparse,
+    urlsplit,
+    urlunparse,
+    urlunsplit,
+)
 
 _SEPARATOR_RE = re.compile(r"[_\-/]")
 
@@ -70,7 +73,8 @@ def matches_allowed_domain(url: str, allowed_domains: list[str] | None) -> bool:
     host = url_host(decode_discovery_url(url))
     return any(
         host == domain.strip().lower() or host.endswith("." + domain.strip().lower())
-        for domain in allowed_domains if domain and domain.strip()
+        for domain in allowed_domains
+        if domain and domain.strip()
     )
 
 
@@ -86,14 +90,47 @@ def redact_url(url: str) -> str:
     try:
         parsed = urlparse(decode_discovery_url(url))
         host = parsed.netloc.rsplit("@", 1)[-1]
-        query = urlencode([
-            (key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-            if not _SECRET_PARAMETER_RE.search(key)
-        ])
+        query = urlencode(
+            [
+                (key, value)
+                for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if not _SECRET_PARAMETER_RE.search(key)
+            ]
+        )
         # Fragments are never sent to the server and may contain OAuth tokens.
         return urlunparse(parsed._replace(netloc=host, query=query, fragment=""))
     except ValueError:
         return "[invalid URL]"
+
+
+_TRACKING_PARAMETER_RE = re.compile(
+    r"^(?:utm_.*|gclid|gclsrc|dclid|gbraid|wbraid|fbclid|msclkid|yclid|igshid|"
+    r"mc_cid|mc_eid|_ga|_gl|srsltid)$",
+    re.IGNORECASE,
+)
+
+
+def canonical_url(url: str) -> str:
+    """Drop click-tracking query parameters, keeping every other byte.
+
+    Other parameters can identify the document (``?bidId=``,
+    ``?fileID=``, ``?<id>_page=N``), so only known tracking keys go.
+    """
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return url
+    if not parsed.query:
+        return url
+    segments = parsed.query.split("&")
+    kept = [
+        segment
+        for segment in segments
+        if not _TRACKING_PARAMETER_RE.match(unquote(segment.split("=", 1)[0]))
+    ]
+    if len(kept) == len(segments):
+        return url
+    return urlunsplit(parsed._replace(query="&".join(kept)))
 
 
 def redact_urls_in_text(text: str) -> str:
@@ -110,7 +147,7 @@ def url_host(url: str) -> str:
     """Return the lowercase hostname of *url*, or ``""`` if unparseable."""
     try:
         return (urlparse(url).hostname or "").lower()
-    except Exception:
+    except Exception:  # noqa: BLE001 - unparseable input means no host
         return ""
 
 
@@ -118,6 +155,17 @@ def url_extension(url: str) -> str:
     """Return the lowercase file extension of the URL path (``""`` if none)."""
     try:
         path = urlparse(url).path.lower()
-    except Exception:
+    except Exception:  # noqa: BLE001 - unparseable input falls back to the raw string
         path = (url or "").lower()
     return Path(path).suffix.lower()
+
+
+def is_http_url(url: object) -> bool:
+    """Return True for an absolute http(s) URL with a host."""
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return False
+    return parsed.scheme in {"http", "https"} and bool(parsed.hostname)

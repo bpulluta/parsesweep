@@ -6,11 +6,11 @@ Intelligently removes truly duplicate rows while preserving unique data.
 """
 
 import pandas as pd
-from typing import Any, Dict, List, Optional
+from typing import Any
 import logging
 
-from ..exceptions import SchemaMetadataError
-from ..utils.item_matcher import map_key_fields_to_columns
+from psweep.exceptions import SchemaMetadataError
+from psweep.utils.item_matcher import map_key_fields_to_columns
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,7 @@ class Deduplicator:
                 "Schema metadata is required as of ParseSweep v2.0."
             )
         self.schema_metadata = schema_metadata
-        self.field_severity_hints = (
-            schema_metadata.get_compilation_field_severity_hints()
-        )
+        self.field_severity_hints = schema_metadata.get_compilation_field_severity_hints()
         # Name-heuristic fallback token sets (built-in defaults unioned with any
         # config-supplied compilation.severity_tokens). Used only when the
         # schema-derived per-field hints above do not classify a conflict.
@@ -79,12 +77,8 @@ class Deduplicator:
         )
         # Annotation column: configurable via compilation.output.annotation_column,
         # defaults to "Notes" which is the ParseSweep framework standard.
-        output_cfg = schema_metadata.metadata.get("compilation", {}).get(
-            "output", {}
-        )
-        self._annotation_col: str = output_cfg.get(
-            "annotation_column", "Notes"
-        )
+        output_cfg = schema_metadata.metadata.get("compilation", {}).get("output", {})
+        self._annotation_col: str = output_cfg.get("annotation_column", "Notes")
 
     def deduplicate(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -123,9 +117,7 @@ class Deduplicator:
         key_fields = self.schema_metadata.get_deduplication_key_fields()
 
         if not key_fields:
-            print(
-                "  ⚠ No key_fields defined in schema - skipping deduplication"
-            )
+            print("  ⚠ No key_fields defined in schema - skipping deduplication")
             return df
 
         self._validate_identity_columns(df)
@@ -140,23 +132,24 @@ class Deduplicator:
         df = df.drop(index=rows_to_drop)
 
         # Apply semantic dedup: remove approval cross-feature redundancies
-        # (e.g., zoning_districts row when permit_approval row exists for same applies_to+obligation)
+        # (e.g., zoning_districts row when permit_approval row exists for the same
+        # applies_to+obligation)
         semantic_drops = self._deduplicate_approval_redundancy(df)
         if semantic_drops:
             df = df.drop(index=semantic_drops)
             total_dropped = len(rows_to_drop) + len(semantic_drops)
             print(
-                f"  ✓ Removed {len(rows_to_drop)} key-field duplicates + {len(semantic_drops)} approval redundancies ({total_dropped} total)"
+                f"  ✓ Removed {len(rows_to_drop)} key-field duplicates + "
+                f"{len(semantic_drops)} approval redundancies ({total_dropped} total)"
             )
+        elif rows_to_drop:
+            print(f"  ✓ Removed {len(rows_to_drop)} duplicate entries")
         else:
-            if rows_to_drop:
-                print(f"  ✓ Removed {len(rows_to_drop)} duplicate entries")
-            else:
-                print("  ✓ No duplicates found")
+            print("  ✓ No duplicates found")
 
         return df
 
-    def preview_deduplication(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def preview_deduplication(self, df: pd.DataFrame) -> dict[str, Any]:
         """Preview deduplication effects without mutating or writing outputs."""
         preview_df = df.copy(deep=True)
         if self._annotation_col not in preview_df.columns:
@@ -174,15 +167,9 @@ class Deduplicator:
 
         self._validate_identity_columns(preview_df)
         compare_cols = map_key_fields_to_columns(preview_df, key_fields)
-        duplicate_groups = self._collect_duplicate_groups(
-            preview_df, compare_cols
-        )
-        duplicates_removed = sum(
-            len(group["drop_indices"]) for group in duplicate_groups
-        )
-        excluded_columns = self._get_preview_excluded_columns(
-            preview_df, compare_cols
-        )
+        duplicate_groups = self._collect_duplicate_groups(preview_df, compare_cols)
+        duplicates_removed = sum(len(group["drop_indices"]) for group in duplicate_groups)
+        excluded_columns = self._get_preview_excluded_columns(preview_df, compare_cols)
         suspicious_groups = []
         severity_counts = {"high": 0, "medium": 0, "low": 0}
 
@@ -207,9 +194,7 @@ class Deduplicator:
             }
             for col in compare_cols:
                 if col in preview_df.columns:
-                    group_preview["sample_values"][col] = preview_df.at[
-                        group["keep_idx"], col
-                    ]
+                    group_preview["sample_values"][col] = preview_df.at[group["keep_idx"], col]
             preview_groups.append(group_preview)
 
             if conflicts:
@@ -228,7 +213,8 @@ class Deduplicator:
         if suspicious_groups:
             warnings.append(
                 "Potentially unsafe deduplication: "
-                f"{len(suspicious_groups)} duplicate group(s) matched on key_fields but disagree on other populated columns"
+                f"{len(suspicious_groups)} duplicate group(s) matched "
+                "on key_fields but disagree on other populated columns"
             )
 
         return {
@@ -244,15 +230,11 @@ class Deduplicator:
 
     def _classify_conflict_severity(self, conflicting_columns) -> str:
         """Rank suspicious conflicts so schema authors can prioritize fixes."""
-        schema_derived_severity = self._classify_schema_derived_severity(
-            conflicting_columns
-        )
+        schema_derived_severity = self._classify_schema_derived_severity(conflicting_columns)
         if schema_derived_severity:
             return schema_derived_severity
 
-        normalized_columns = {
-            column.lower().replace("_", " ") for column in conflicting_columns
-        }
+        normalized_columns = {column.lower().replace("_", " ") for column in conflicting_columns}
 
         if any(
             any(token in column for token in self._high_severity_tokens)
@@ -268,12 +250,10 @@ class Deduplicator:
 
         return "low"
 
-    def _classify_schema_derived_severity(
-        self, conflicting_columns
-    ) -> Optional[str]:
+    def _classify_schema_derived_severity(self, conflicting_columns) -> str | None:
         """Use schema field definitions to rank conflicts before falling back to name heuristics."""
         severity_order = {"low": 0, "medium": 1, "high": 2}
-        highest_severity: Optional[str] = None
+        highest_severity: str | None = None
 
         for column in conflicting_columns:
             normalized_column = column.lower().replace(" ", "_")
@@ -283,37 +263,27 @@ class Deduplicator:
 
             if (
                 highest_severity is None
-                or severity_order[hinted_severity]
-                > severity_order[highest_severity]
+                or severity_order[hinted_severity] > severity_order[highest_severity]
             ):
                 highest_severity = hinted_severity
 
         return highest_severity
 
-    def _get_preview_excluded_columns(
-        self, df: pd.DataFrame, compare_cols: List[str]
-    ) -> set[str]:
+    def _get_preview_excluded_columns(self, df: pd.DataFrame, compare_cols: list[str]) -> set[str]:
         """Return columns that should not trigger suspicious dedup warnings."""
         excluded_columns = set(compare_cols)
         excluded_columns.update(PROVENANCE_COLUMNS)
         excluded_columns.update(self._get_metadata_columns(df))
-
-        identifier_fields = self.schema_metadata.get_identifier_fields()
-        excluded_columns.update(
-            map_key_fields_to_columns(
-                df, identifier_fields, warn_on_missing=False
-            )
-        )
         return excluded_columns
 
     def _collect_conflicting_columns(
         self,
         df: pd.DataFrame,
-        row_indices: List[int],
+        row_indices: list[int],
         excluded_columns: set[str],
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """Find populated non-key columns whose values disagree across a duplicate group."""
-        conflicts: Dict[str, List[str]] = {}
+        conflicts: dict[str, list[str]] = {}
 
         for column in df.columns:
             if column in excluded_columns:
@@ -337,7 +307,7 @@ class Deduplicator:
 
         return conflicts
 
-    def _get_metadata_columns(self, df: pd.DataFrame) -> List[str]:
+    def _get_metadata_columns(self, df: pd.DataFrame) -> list[str]:
         """
         Identify metadata columns that should be excluded from duplicate detection.
 
@@ -354,9 +324,7 @@ class Deduplicator:
             List of column names that are metadata
         """
         # Use metadata-specified ignore fields (required in v2.0+)
-        ignore_fields = set(
-            self.schema_metadata.get_deduplication_ignore_fields()
-        )
+        ignore_fields = set(self.schema_metadata.get_deduplication_ignore_fields())
 
         # Match column names using normalized token equality (not substring containment).
         # Substring matching causes false positives: e.g. "type" would exclude "Rate Type".
@@ -364,11 +332,7 @@ class Deduplicator:
             return name.lower().replace(" ", "_").replace("-", "_")
 
         ignore_keys = {_col_key(f) for f in ignore_fields}
-        exclude_cols = [
-            col for col in df.columns if _col_key(col) in ignore_keys
-        ]
-
-        return exclude_cols
+        return [col for col in df.columns if _col_key(col) in ignore_keys]
 
     def _validate_identity_columns(self, df):
         """Never silently weaken configured identity to its available subset."""
@@ -379,20 +343,15 @@ class Deduplicator:
         missing = [
             field
             for field in fields
-            if not map_key_fields_to_columns(
-                df, [field], warn_on_missing=False
-            )
+            if not map_key_fields_to_columns(df, [field], warn_on_missing=False)
         ]
         if missing:
-            message = (
-                "Deduplication identity columns are missing: "
-                + ", ".join(missing)
-            )
+            message = "Deduplication identity columns are missing: " + ", ".join(missing)
             raise ValueError(message)
 
     def _collect_duplicate_groups(
-        self, df: pd.DataFrame, compare_cols: List[str]
-    ) -> List[Dict[str, Any]]:
+        self, df: pd.DataFrame, compare_cols: list[str]
+    ) -> list[dict[str, Any]]:
         """
         Find duplicate row groups using schema-driven matching.
 
@@ -418,46 +377,30 @@ class Deduplicator:
         List[Dict[str, Any]]
             Duplicate groups with keep/drop indices and merge metadata
         """
-        duplicate_groups: List[Dict[str, Any]] = []
+        duplicate_groups: list[dict[str, Any]] = []
 
         # --- Schema-driven field classification ---
         # Fuzzy fields: schema declares which key fields use empty-as-wildcard matching.
         # All other compare_cols are required (exact case-insensitive match via groupby).
         raw_fuzzy = self.schema_metadata.get_deduplication_fuzzy_fields()
-        fuzzy_field_cfg = (
-            self.schema_metadata.get_deduplication_fuzzy_field_config()
-        )
-        fuzzy_col_names = (
-            map_key_fields_to_columns(df, raw_fuzzy) if raw_fuzzy else []
-        )
+        fuzzy_field_cfg = self.schema_metadata.get_deduplication_fuzzy_field_config()
+        fuzzy_col_names = map_key_fields_to_columns(df, raw_fuzzy) if raw_fuzzy else []
         fuzzy_col_cfg = {
             column: config
             for field, config in fuzzy_field_cfg.items()
-            for column in map_key_fields_to_columns(
-                df, [field], warn_on_missing=False
-            )
+            for column in map_key_fields_to_columns(df, [field], warn_on_missing=False)
         }
         fuzzy_col_set = set(fuzzy_col_names)
         fuzzy_cols = [col for col in compare_cols if col in fuzzy_col_set]
-        required_cols = [
-            col for col in compare_cols if col not in fuzzy_col_set
-        ]
+        required_cols = [col for col in compare_cols if col not in fuzzy_col_set]
 
         # --- Schema-driven partition fields ---
         # Rows in different partitions are never merged (e.g. different counties).
         # Partitioning is explicit and schema-driven via
         # identity.deduplication.partition_fields.
-        raw_partition = (
-            self.schema_metadata.get_deduplication_partition_fields()
-        )
-        partition_col_names = (
-            map_key_fields_to_columns(df, raw_partition)
-            if raw_partition
-            else []
-        )
-        partition_cols = [
-            col for col in partition_col_names if col in df.columns
-        ]
+        raw_partition = self.schema_metadata.get_deduplication_partition_fields()
+        partition_col_names = map_key_fields_to_columns(df, raw_partition) if raw_partition else []
+        partition_cols = [col for col in partition_col_names if col in df.columns]
 
         # Group on partition + required fields; schema URI values retain case.
         grouping_cols = list(dict.fromkeys(partition_cols + required_cols))
@@ -465,20 +408,14 @@ class Deduplicator:
             return duplicate_groups
 
         case_sensitive_columns = set()
-        for field in (
-            self.schema_metadata.get_deduplication_key_fields() + raw_partition
-        ):
+        for field in self.schema_metadata.get_deduplication_key_fields() + raw_partition:
             try:
-                _, field_schema = self.schema_metadata.resolve_schema_field(
-                    field
-                )
+                _, field_schema = self.schema_metadata.resolve_schema_field(field)
             except SchemaMetadataError:
                 continue
             if field_schema.get("format") in {"uri", "uri-reference"}:
                 case_sensitive_columns.update(
-                    map_key_fields_to_columns(
-                        df, [field], warn_on_missing=False
-                    )
+                    map_key_fields_to_columns(df, [field], warn_on_missing=False)
                 )
 
         df_norm = df.copy(deep=False)
@@ -487,11 +424,7 @@ class Deduplicator:
                 preserve_case = col in case_sensitive_columns
                 df_norm[col] = df_norm[col].map(
                     lambda value, preserve_case=preserve_case: (
-                        (
-                            str(value).strip()
-                            if preserve_case
-                            else str(value).strip().lower()
-                        )
+                        (str(value).strip() if preserve_case else str(value).strip().lower())
                         if pd.notna(value)
                         else ""
                     )
@@ -507,21 +440,15 @@ class Deduplicator:
                 if len(duplicate_group) <= 1:
                     continue
                 completeness = {
-                    index: sum(
-                        pd.notna(value) and bool(str(value).strip())
-                        for value in row
-                    )
+                    index: sum(pd.notna(value) and bool(str(value).strip()) for value in row)
                     for index, row in zip(
                         duplicate_group,
-                        df.loc[duplicate_group].itertuples(
-                            index=False, name=None
-                        ),
+                        df.loc[duplicate_group].itertuples(index=False, name=None),
+                        strict=True,
                     )
                 }
                 keep_idx = max(completeness, key=completeness.get)
-                drop_indices = [
-                    idx for idx in duplicate_group if idx != keep_idx
-                ]
+                drop_indices = [idx for idx in duplicate_group if idx != keep_idx]
                 note = self._generate_merge_note(
                     df, keep_idx, duplicate_group, required_cols, fuzzy_cols
                 )
@@ -545,9 +472,7 @@ class Deduplicator:
             return
         values = {
             index: tuple(
-                self._normalize_fuzzy_value(
-                    df.at[index, column], fuzzy_config.get(column, {})
-                )
+                self._normalize_fuzzy_value(df.at[index, column], fuzzy_config.get(column, {}))
                 for column in fuzzy_cols
             )
             for index in indices
@@ -571,8 +496,7 @@ class Deduplicator:
             if key not in active:
                 continue
             constraints = [
-                postings[position].get(value, set())
-                | postings[position].get(None, set())
+                postings[position].get(value, set()) | postings[position].get(None, set())
                 for position, value in enumerate(key)
                 if value is not None
             ]
@@ -602,9 +526,7 @@ class Deduplicator:
         return normalized
 
     # Stop-words stripped when comparing fuzzy key-field *values* under the
-    # "words" normalize mode (e.g. duplicate hour ranges). Deliberately narrow
-    # and distinct from item_matcher.STOP_WORDS (name-token matching) and
-    # value_normalizer._UNIT_STOPWORDS (measurement-unit relational words):
+    # "words" normalize mode (e.g. duplicate hour ranges). Deliberately narrow:
     # widening it would silently merge rows that differ in meaningful content.
     _WORDS_NORMALIZE_STOPWORDS = frozenset(
         {
@@ -625,10 +547,13 @@ class Deduplicator:
     def _apply_duplicate_groups(
         self,
         df: pd.DataFrame,
-        duplicate_groups: List[Dict[str, Any]],
-    ) -> List[int]:
-        """Apply duplicate groups to a DataFrame, annotating kept rows and returning dropped indices."""
-        rows_to_drop: List[int] = []
+        duplicate_groups: list[dict[str, Any]],
+    ) -> list[int]:
+        """Apply duplicate groups to a DataFrame.
+
+        Annotates kept rows and returns the dropped indices.
+        """
+        rows_to_drop: list[int] = []
         for group in duplicate_groups:
             keep_idx = group["keep_idx"]
             drop_indices = group["drop_indices"]
@@ -646,9 +571,9 @@ class Deduplicator:
         self,
         df: pd.DataFrame,
         keep_idx: int,
-        duplicate_indices: List[int],
-        required_cols: List[str],
-        fuzzy_cols: List[str],
+        duplicate_indices: list[int],
+        required_cols: list[str],
+        fuzzy_cols: list[str],
     ) -> str:
         """
         Generate detailed merge note showing which fields matched.
@@ -684,9 +609,7 @@ class Deduplicator:
                     val_str = val_str[:27] + "..."
                 field_parts.append(f"{col}='{val_str}'")
 
-        fields_str = (
-            ", ".join(field_parts) if field_parts else "all key fields"
-        )
+        fields_str = ", ".join(field_parts) if field_parts else "all key fields"
 
         # Check if fuzzy matching occurred (any duplicate had different fuzzy field values)
         fuzzy_used = False
@@ -697,12 +620,12 @@ class Deduplicator:
                     val = df.at[idx, col]
                     if pd.notna(val) and str(val).strip():
                         values.add(str(val))
-                # Fuzzy matching occurred if we have multiple non-empty values OR mix of empty/non-empty
+                # Fuzzy matching occurred if we have multiple non-empty values OR a mix
+                # of empty/non-empty
                 if len(values) > 1 or (
                     len(values) == 1
                     and any(
-                        pd.isna(df.at[idx, col])
-                        or str(df.at[idx, col]).strip() == ""
+                        pd.isna(df.at[idx, col]) or not str(df.at[idx, col]).strip()
                         for idx in duplicate_indices
                     )
                 ):
@@ -711,11 +634,13 @@ class Deduplicator:
 
         # Format note
         if fuzzy_used:
-            return f"Merged {num_merged} duplicate(s) on: {fields_str} [fuzzy: {', '.join(fuzzy_cols)}]"
-        else:
-            return f"Merged {num_merged} duplicate(s) on: {fields_str}"
+            return (
+                f"Merged {num_merged} duplicate(s) on: "
+                f"{fields_str} [fuzzy: {', '.join(fuzzy_cols)}]"
+            )
+        return f"Merged {num_merged} duplicate(s) on: {fields_str}"
 
-    def _deduplicate_approval_redundancy(self, df: pd.DataFrame) -> List[int]:
+    def _deduplicate_approval_redundancy(self, df: pd.DataFrame) -> list[int]:
         """
         Semantic dedup: remove cross-feature redundancies (schema-driven).
 
@@ -741,7 +666,7 @@ class Deduplicator:
         List[int]
             Indices of rows to drop
         """
-        rows_to_drop: List[int] = []
+        rows_to_drop: list[int] = []
 
         cfg = self.schema_metadata.get_cross_feature_redundancy_config()
         if not cfg:
@@ -759,38 +684,24 @@ class Deduplicator:
             return rows_to_drop
 
         def _authority_rank(feature: str) -> int:
-            return (
-                authority.index(feature)
-                if feature in authority
-                else len(authority)
-            )
+            return authority.index(feature) if feature in authority else len(authority)
 
         # Group once; iterate the grouped indices directly (no per-group mask
         # recompute over the full frame).
-        for group_indices in df.groupby(
-            group_by, dropna=False
-        ).groups.values():
-            group_indices = list(group_indices)
+        for raw_indices in df.groupby(group_by, dropna=False).groups.values():
+            group_indices = list(raw_indices)
             if len(group_indices) <= 1:
                 continue
 
-            features_in_group = (
-                df.loc[group_indices, feature_field].dropna().unique()
-            )
-            redundant_present = [
-                f for f in features_in_group if f in redundant
-            ]
+            features_in_group = df.loc[group_indices, feature_field].dropna().unique()
+            redundant_present = [f for f in features_in_group if f in redundant]
             if len(redundant_present) < 2:
                 continue
 
             sorted_features = sorted(redundant_present, key=_authority_rank)
             keep_feature = sorted_features[0]
             group_features = df.loc[group_indices, feature_field]
-            keep_indices = [
-                idx
-                for idx in group_indices
-                if group_features.at[idx] == keep_feature
-            ]
+            keep_indices = [idx for idx in group_indices if group_features.at[idx] == keep_feature]
             if not keep_indices:
                 continue
             keep_idx = keep_indices[0]
@@ -808,9 +719,7 @@ class Deduplicator:
                         f"(kept more authoritative '{keep_feature}')"
                     )
                     df.at[keep_idx, self._annotation_col] = (
-                        f"{current_note}; {annotation}"
-                        if current_note
-                        else annotation
+                        f"{current_note}; {annotation}" if current_note else annotation
                     )
 
         return rows_to_drop

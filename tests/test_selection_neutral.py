@@ -27,15 +27,11 @@ from discovery_helpers import make_candidate
         "archived",
     ],
 )
-def test_default_and_empty_patterns_do_not_exclude_semantic_terms(
-    patterns, signal
-):
+def test_default_and_empty_patterns_do_not_exclude_semantic_terms(patterns, signal):
     """No draft vocabulary is imposed when the domain supplies no patterns."""
     candidate = make_candidate(f"https://example.com/{signal}_2026.pdf")
     selector = CandidateSelector(exclude_draft=True, draft_patterns=patterns)
-    selected, notes, metrics = selector.select(
-        [[candidate]], include_metrics=True
-    )
+    selected, notes, metrics = selector.select([[candidate]], include_metrics=True)
     assert selected == [candidate]
     assert not any("draft filter excluded" in note for note in notes)
     assert metrics[0]["outcome"] == "selected"
@@ -60,11 +56,7 @@ def test_explicit_draft_pattern_filters_source_evidence(field):
         "title": None,
         "snippet": None,
     }
-    fields[field] = (
-        "https://example.com/draft_copy.pdf"
-        if field == "url"
-        else "Draft copy"
-    )
+    fields[field] = "https://example.com/draft_copy.pdf" if field == "url" else "Draft copy"
     candidate = make_candidate(**fields)
     selector = CandidateSelector(draft_patterns=[r"\bdraft\b"])
     selected, _, metrics = selector.select([[candidate]], include_metrics=True)
@@ -74,12 +66,8 @@ def test_explicit_draft_pattern_filters_source_evidence(field):
 
 def test_explicit_draft_pattern_does_not_filter_reason_only_query():
     """Rendered query metadata is not source evidence for exclusion."""
-    candidate = make_candidate(
-        "https://example.com/a.pdf", reasons=["query: proposed draft copy"]
-    )
-    selected, _ = CandidateSelector(draft_patterns=[r"\bdraft\b"]).select(
-        [[candidate]]
-    )
+    candidate = make_candidate("https://example.com/a.pdf", reasons=["query: proposed draft copy"])
+    selected, _ = CandidateSelector(draft_patterns=[r"\bdraft\b"]).select([[candidate]])
     assert selected == [candidate]
 
 
@@ -89,26 +77,24 @@ def test_only_supplied_draft_patterns_apply():
         "https://example.com/proposed_model-ordinance.pdf",
         title="Proposed template",
     )
-    selected, _ = CandidateSelector(draft_patterns=[r"\bdraft\b"]).select(
-        [[candidate]]
-    )
+    selected, _ = CandidateSelector(draft_patterns=[r"\bdraft\b"]).select([[candidate]])
     assert selected == [candidate]
 
 
 def test_exclude_draft_false_disables_explicit_patterns():
     """The existing enable switch still disables a domain-provided policy."""
     candidate = make_candidate("https://example.com/draft_copy.pdf")
-    selected, _ = CandidateSelector(
-        exclude_draft=False, draft_patterns=[r"\bdraft\b"]
-    ).select([[candidate]])
+    selected, _ = CandidateSelector(exclude_draft=False, draft_patterns=[r"\bdraft\b"]).select(
+        [[candidate]]
+    )
     assert selected == [candidate]
 
 
-def test_marker_gate_has_no_builtin_legal_vocabulary():
-    """The existing optional marker gate works with non-legal domain terms."""
+def test_require_any_has_no_builtin_legal_vocabulary():
+    """The require_any gate works with non-legal domain terms."""
     sensor = make_candidate("https://example.com/sensor.pdf")
     ordinance = make_candidate("https://example.com/ordinance.pdf")
-    selected, _ = CandidateSelector(
-        relevance_require_legal_marker_terms=["sensor"]
-    ).select([[ordinance, sensor]], primary_per_target=2)
+    selected, _ = CandidateSelector(relevance_require_any_terms=["sensor"]).select(
+        [[ordinance, sensor]], primary_per_target=2
+    )
     assert selected == [sensor]

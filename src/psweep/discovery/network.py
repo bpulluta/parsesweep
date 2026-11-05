@@ -7,7 +7,13 @@ from collections.abc import Callable
 from typing import Any, Protocol
 from urllib.parse import urljoin, urlparse
 
-from .retry import compute_backoff, is_transient_error
+from psweep.utils.retry import compute_backoff, may_retry_in_run
+from .transport import (
+    MAX_PAGE_BYTES,
+    NetworkPolicyError,
+    request_get,
+    validate_public_url,
+)
 
 URLGate = Callable[[str], object]
 RetryConfig = tuple[int, float, float]
@@ -21,16 +27,6 @@ class RateLimiter(Protocol):
     def wait(self) -> None:
         """Wait until the next outbound request may start."""
         ...
-
-
-class NetworkPolicyError(RuntimeError):
-    """A URL gate denied acquisition or could not be evaluated."""
-
-    def __init__(self, url: str, reason: str, result: object = None) -> None:
-        self.url = url
-        self.result = result
-        self.blocking_code = getattr(result, "blocking_code", None)
-        super().__init__(f"Discovery acquisition denied for '{url}': {reason}")
 
 
 def check_url(url: str, gate: URLGate | None) -> None:
@@ -71,11 +67,7 @@ def _redirect_headers(
         following.netloc,
     ):
         return headers
-    return {
-        name: value
-        for name, value in headers.items()
-        if name.lower() not in _ORIGIN_HEADERS
-    }
+    return {name: value for name, value in headers.items() if name.lower() not in _ORIGIN_HEADERS}
 
 
 def _get_redirect_chain(
@@ -88,9 +80,10 @@ def _get_redirect_chain(
     gate: URLGate | None,
     response_url_gate: URLGate | None,
     limiter: RateLimiter | None,
+    max_bytes: int,
 ) -> Any:
     """Check each target before following a bounded redirect chain."""
-    import requests  # noqa: PLC0415 - dependency is optional at import time
+    import requests
 
     current_url = url
     current_headers = headers
@@ -102,17 +95,19 @@ def _get_redirect_chain(
         # Requests removes dot segments and decodes unreserved escapes.
         # Gate the actual serialized URL before any request is sent.
         current_url = str(requests.Request("GET", current_url).prepare().url)
+        validate_public_url(current_url)
         check_url(current_url, gate)
         if limiter is not None:
             limiter.wait()
         cookie_options = {"cookies": cookies} if cookies else {}
-        response = requests.get(
+        response = request_get(
             current_url,
             headers=current_headers,
             timeout=timeout,
             verify=verify,
             stream=stream,
             allow_redirects=False,
+            max_bytes=max_bytes,
             **cookie_options,
         )
         try:
@@ -126,7 +121,7 @@ def _get_redirect_chain(
                     cookies.update(response_cookies)
                 if hop >= requests.sessions.DEFAULT_REDIRECT_LIMIT:
                     message = "Discovery redirect limit exceeded"
-                    raise requests.TooManyRedirects(  # noqa: TRY301
+                    raise requests.TooManyRedirects(
                         message,
                         response=response,
                     )
@@ -160,17 +155,23 @@ def send_get(
     limiter: RateLimiter | None = None,
     retry: RetryConfig = (1, 0.0, 0.0),
     raise_for_status: bool = True,
+    max_bytes: int = MAX_PAGE_BYTES,
 ) -> tuple[Any, int]:
     """Return a response and attempt count through the GET boundary.
 
     All GETs, including redirects and retries, check ``gate`` and wait
     on ``limiter``. ``response_url_gate`` checks the final URL before
     callers use the body. Redirect/error responses are closed; callers
-    own and must close successful responses. Status errors are retried
-    with discovery backoff. Robots lookup disables ``raise_for_status``
-    to interpret missing rules without invoking a recursive gate.
+    own and must close successful responses. ``may_retry_in_run``
+    errors are retried with discovery backoff. Robots lookup disables
+    ``raise_for_status`` to interpret missing rules without invoking a
+    recursive gate.
+    ``max_bytes`` and ``stream`` bound the body (see ``request_get``).
     """
     max_attempts, initial_backoff, max_backoff = retry
+    from psweep.security import resolve_tls_verification
+
+    verify = resolve_tls_verification("PSWEEP_SSL_VERIFY", verify)
     for attempt in range(1, max(1, max_attempts) + 1):
         response = None
         try:
@@ -183,6 +184,7 @@ def send_get(
                 gate=gate,
                 response_url_gate=response_url_gate,
                 limiter=limiter,
+                max_bytes=max_bytes,
             )
             if raise_for_status:
                 response.raise_for_status()
@@ -193,7 +195,7 @@ def send_get(
                 not isinstance(exc, Exception)
                 or isinstance(exc, NetworkPolicyError)
                 or attempt >= max_attempts
-                or not is_transient_error(exc)
+                or not may_retry_in_run(exc)
             ):
                 raise
             delay = compute_backoff(

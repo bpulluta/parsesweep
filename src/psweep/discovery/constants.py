@@ -1,14 +1,16 @@
-"""Shared constants for the discovery module.
-
-Single source of truth for file-type sets, MIME mapping, and the routing-reason
-string literals that are produced in one place and matched by equality in
-another. Centralizing these removes the historical duplication/drift across
-engine, selector, prioritizer, and connectors.
-"""
+"""Shared constants for the discovery module."""
 
 from __future__ import annotations
 
+from psweep._version import __version__
+from psweep.extraction import document_utils
+
 DEFAULT_MAX_CONCURRENT_DOWNLOADS = 2
+# robots.txt product token, and the one HTTP/browser User-Agent built from it.
+# The "compatible" form passes WAFs that reject non-browser agents or agents
+# carrying URLs/words like "discovery", without claiming a browser build.
+ROBOTS_AGENT = "ParseSweep"
+USER_AGENT = f"Mozilla/5.0 (compatible; {ROBOTS_AGENT}/{__version__})"
 RESERVED_SEARCH_PARAMS = frozenset({"q", "num", "api_key"})
 
 
@@ -16,15 +18,11 @@ RESERVED_SEARCH_PARAMS = frozenset({"q", "num", "api_key"})
 # File types
 # ---------------------------------------------------------------------------
 
-# Real, extractable document files (what a "supported document" means).
-DOCUMENT_EXTENSIONS: frozenset[str] = frozenset(
-    {".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv"}
-)
-
-# Everything the downloader/crawler may fetch — documents plus web pages.
-DOWNLOADABLE_EXTENSIONS: frozenset[str] = DOCUMENT_EXTENSIONS | frozenset(
-    {".html", ".htm"}
-)
+# Real documents (what a "supported document" means) and everything the
+# downloader/crawler may fetch (documents plus web pages): extraction's
+# one file-type definition.
+DOCUMENT_EXTENSIONS: frozenset[str] = document_utils.DOCUMENT_EXTENSIONS
+DOWNLOADABLE_EXTENSIONS: frozenset[str] = document_utils.SUPPORTED_EXTENSIONS
 
 # Content-Type (MIME) → canonical extension.
 MIME_TO_EXTENSION: dict[str, str] = {
@@ -37,16 +35,29 @@ MIME_TO_EXTENSION: dict[str, str] = {
     "application/csv": ".csv",
     "application/vnd.ms-excel": ".xlsx",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/json": ".json",
+    "application/geo+json": ".json",
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/x-m4a": ".m4a",
+    "audio/wav": ".wav",
+    "audio/wave": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/ogg": ".ogg",
+    "audio/flac": ".flac",
+    "audio/x-flac": ".flac",
 }
 
 
 # ---------------------------------------------------------------------------
-# Routing reason strings — produced in one method, matched by equality in the
-# metrics builders. Kept here so producer and matcher can never drift apart.
+# Candidate provenance markers
 # ---------------------------------------------------------------------------
 
-ROUTE_REASON_DISTRIBUTED = "Routed via distributed digger path"
-ROUTE_REASON_CENTRALIZED = "Routed via centralized hub sweep"
+# Candidate source for explicitly configured URLs (target ``urls`` and shared
+# ``sources``): always downloaded and kept, exempt from selection/review caps.
+CONFIGURED_SOURCE = "configured"
+ROUTE_REASON_CRAWLED = "Linked from a crawled source page"
 
 
 # ---------------------------------------------------------------------------

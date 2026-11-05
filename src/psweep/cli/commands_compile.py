@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import click
 
@@ -27,20 +27,20 @@ from psweep.compilation.input_provenance import (
     list_compile_record_files,
 )
 from psweep.config import RuntimeConfigError
-from psweep.pipeline import resolve_compile_output_dir
+from psweep.utils.file_io import artifact_sha256
+from psweep.workspace import Workspace
 from psweep.compilation.accounting import (
-    _build_pipeline_accounting,
-    _write_compilation_run_manifest,
+    build_pipeline_accounting,
+    write_compilation_run_manifest,
 )
-from psweep.utils.config import get_config
 
 
 def _build_dedup_preview_report(
     *,
-    schema_info: Dict[str, Any],
-    dedup_preview: Dict[str, Any],
+    schema_info: dict[str, Any],
+    dedup_preview: dict[str, Any],
     rows_before_dedup: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a stable dry-run report payload for machine-readable output."""
     return {
         "schema_type": schema_info["type"],
@@ -52,9 +52,7 @@ def _build_dedup_preview_report(
         "compare_columns": dedup_preview["compare_columns"],
         "warnings": dedup_preview.get("warnings") or [],
         "suspicious_groups_count": dedup_preview.get("suspicious_groups_count", 0),
-        "suspicious_groups_by_severity": dedup_preview.get(
-            "suspicious_groups_by_severity"
-        )
+        "suspicious_groups_by_severity": dedup_preview.get("suspicious_groups_by_severity")
         or {
             "high": 0,
             "medium": 0,
@@ -66,7 +64,7 @@ def _build_dedup_preview_report(
 
 
 def _should_fail_on_suspicious(
-    preview_report: Dict[str, Any],
+    preview_report: dict[str, Any],
     threshold: str,
 ) -> bool:
     """Return whether suspicious-group counts meet or exceed the requested threshold."""
@@ -77,10 +75,7 @@ def _should_fail_on_suspicious(
     if threshold == "high":
         return severity_counts.get("high", 0) > 0
     if threshold == "medium":
-        return (
-            severity_counts.get("high", 0) > 0
-            or severity_counts.get("medium", 0) > 0
-        )
+        return severity_counts.get("high", 0) > 0 or severity_counts.get("medium", 0) > 0
     if threshold == "low":
         return preview_report.get("suspicious_groups_count", 0) > 0
 
@@ -90,10 +85,12 @@ def _should_fail_on_suspicious(
 def _should_fail_on_provenance(
     *,
     provenance_policy: str,
-    provenance_warnings: List[str],
+    provenance_warnings: list[str],
 ) -> bool:
     """Return whether provenance warnings should hard-fail compilation."""
-    return provenance_policy == "fail" and bool(provenance_warnings)
+    from psweep.security import protected_mode
+
+    return (protected_mode() or provenance_policy == "fail") and bool(provenance_warnings)
 
 
 @click.command()
@@ -103,7 +100,7 @@ def _should_fail_on_provenance(
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Domain run config file (RECOMMENDED — compile input, schema, and output paths)",
+    help="Domain run config file (RECOMMENDED — schema and paths derive from it)",
 )
 @click.option(
     "--show-effective-config",
@@ -117,11 +114,6 @@ def _should_fail_on_provenance(
     help="Validate resolved command inputs and exit without compiling",
 )
 @click.option(
-    "--config-strict",
-    is_flag=True,
-    help="Fail on unknown keys in runtime config sections",
-)
-@click.option(
     "--schema",
     "-s",
     type=click.Path(exists=True),
@@ -132,7 +124,7 @@ def _should_fail_on_provenance(
     "--output",
     "-o",
     type=click.Path(),
-    help="Output directory (auto-detected if not specified)",
+    help="Output directory (default: outputs/<domain>/compiled)",
 )
 @click.option(
     "--dry-run",
@@ -151,7 +143,10 @@ def _should_fail_on_provenance(
     type=click.Choice(["none", "high", "medium", "low"], case_sensitive=False),
     default="none",
     show_default=True,
-    help="With --dry-run, exit non-zero when suspicious duplicate groups meet this severity threshold",
+    help=(
+        "With --dry-run, exit non-zero when suspicious "
+        "duplicate groups meet this severity threshold"
+    ),
 )
 @click.option(
     "--provenance-policy",
@@ -167,19 +162,21 @@ def _should_fail_on_provenance(
     "--fresh",
     is_flag=True,
     default=False,
-    help="Clear the compiled output directory (stale CSV/XLSX) before writing new results. Pair with 'extract --fresh' for a guaranteed clean pipeline.",
+    help=(
+        "Clear the compiled output directory (stale CSV/XLSX) before writing new "
+        "results. Pair with 'extract --fresh' for a guaranteed clean pipeline."
+    ),
 )
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output (machine-readable)")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output with statistics")
 @click.option("--debug", is_flag=True, help="Debug mode with full logs")
-def compile(
-    extracted_dir: Optional[str],
-    config_path: Optional[str],
+def compile(  # noqa: A001 - public CLI command name
+    extracted_dir: str | None,
+    config_path: str | None,
     show_effective_config: bool,
     validate_config_only: bool,
-    config_strict: bool,
-    schema: Optional[str],
-    output: Optional[str],
+    schema: str | None,
+    output: str | None,
     dry_run: bool,
     report_format: str,
     fail_on_suspicious: str,
@@ -191,8 +188,8 @@ def compile(
 ) -> None:
     """Compile extracted JSON files into clean Excel/CSV output.
 
-    Reads per-document JSON files from EXTRACTED_DIR (or the configured
-    input_dir), deduplicates records using the schema's identity rules, and
+    Reads per-document JSON files from EXTRACTED_DIR (default:
+    outputs/<domain>/extracted), deduplicates records using the schema's identity rules, and
     writes a consolidated Excel and/or CSV file to the output directory.
 
     Use --fresh to clear the compiled output directory (stale CSV/XLSX) before
@@ -205,8 +202,8 @@ def compile(
     ::
 
         psweep compile --config config/my_domain/run.yaml
-        psweep compile extracted/my_domain/ --schema schemas/my_schema.json
-        psweep compile extracted/ --schema s.json --dry-run --verbose
+        psweep compile outputs/my_domain/extracted --schema config/my_domain/schema.json
+        psweep compile outputs/my_domain/extracted --schema s.json --dry-run --verbose
     """
     from psweep.cli.commands import (
         _explicit_cli_overrides,
@@ -234,7 +231,6 @@ def compile(
         resolved_inputs = _resolve_runtime_command_inputs(
             command_name="compile",
             config_path=config_path,
-            strict=config_strict,
             cli_values=cli_overrides,
         )
         from psweep.config.runtime_config_loader import resolve_compilation_metadata
@@ -243,9 +239,6 @@ def compile(
     except RuntimeConfigError as exc:
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
-
-    warnings = resolved_inputs.get("_config_warnings", [])
-    view.warnings(warnings)
 
     if show_effective_config and not get_verbosity().is_quiet:
         _print_effective_config("compile", resolved_inputs)
@@ -274,20 +267,12 @@ def compile(
 
     extracted_dir = resolved_inputs["extracted_dir"]
     schema = resolved_inputs["schema"]
-    output = resolved_inputs.get("output", output)
+    output = resolved_inputs["output"]
     dry_run = resolved_inputs.get("dry_run", dry_run)
     report_format = resolved_inputs.get("report_format", report_format)
-    fail_on_suspicious = resolved_inputs.get(
-        "fail_on_suspicious", fail_on_suspicious
-    )
-    provenance_policy = str(
-        resolved_inputs.get("provenance_policy", provenance_policy)
-    ).strip().lower()
-    synthesis_cfg = resolved_inputs["_schema_metadata"].metadata.get(
-        "compilation", {}
-    ).get("synthesis")
-    synthesis_active = isinstance(synthesis_cfg, dict) and bool(
-        synthesis_cfg.get("enabled")
+    fail_on_suspicious = resolved_inputs.get("fail_on_suspicious", fail_on_suspicious)
+    provenance_policy = (
+        str(resolved_inputs.get("provenance_policy", provenance_policy)).strip().lower()
     )
 
     input_dir = Path(extracted_dir)
@@ -295,13 +280,13 @@ def compile(
         print_error("Input directory not found", input_dir.as_posix())
         sys.exit(1)
 
-    if output:
-        output_dir = Path(output)
-    else:
-        output_dir = resolve_compile_output_dir(input_dir)
+    output_dir = Path(output)
+    base_name = Workspace(resolved_inputs["domain"]).compiled_name
 
     emit_json_report = dry_run and report_format.lower() == "json"
     record_json_files = list_compile_record_files(input_dir)
+    if not record_json_files:
+        raise click.ClickException(f"No extraction records found in {input_dir}")
 
     if fail_on_suspicious != "none" and not dry_run:
         print_error(
@@ -310,7 +295,10 @@ def compile(
         )
         sys.exit(1)
 
-    input_provenance_warnings = analyze_compile_input_provenance(input_dir)
+    try:
+        input_provenance_warnings = analyze_compile_input_provenance(input_dir)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     would_fail_on_provenance = _should_fail_on_provenance(
         provenance_policy=provenance_policy,
         provenance_warnings=input_provenance_warnings,
@@ -326,22 +314,23 @@ def compile(
 
     schema_metadata = resolved_inputs["_schema_metadata"]
     if not emit_json_report and not view.is_quiet:
-        view.config({
-            "Input": str(input_dir),
-            "Output": str(output_dir),
-            "Schema": str(matched_schema),
-        })
+        view.config(
+            {
+                "Input": str(input_dir),
+                "Output": str(output_dir),
+                "Schema": str(matched_schema),
+            }
+        )
 
     if not emit_json_report:
         view.phase("Analyzing schema structure")
     compiler = DataCompiler(
         schema_metadata=schema_metadata,
+        inputs=resolved_inputs,
         verbose=view.verbosity.shows_detail,
         debug=view.verbosity is Verbosity.DEBUG,
     )
-    synth_client = None
-    synthesizer = None
-    compile_started_at = datetime.now(timezone.utc)
+    compile_started_at = datetime.now(UTC)
     if would_fail_on_provenance and emit_json_report:
         click.echo(
             json.dumps(
@@ -365,69 +354,19 @@ def compile(
         sys.exit(2)
 
     try:
-        if synthesis_active:
-            from psweep.compilation.synthesizer import Synthesizer
-            from psweep.extraction.llm_factory import build_llm_client
-
-            synth_model = synthesis_cfg.get("model")
-            env_model = get_config().llm_config.get("model")
-            if not synth_model and not resolved_inputs.get("models") and not env_model:
-                raise click.UsageError(
-                    "No model configured for the compilation synthesis stage. "
-                    "Add 'model: primary' under 'compilation.synthesis:' "
-                    "in your run config, or set AZURE_OPENAI_MODEL in your .env file."
-                )
-            synth_client = build_llm_client(
-                synth_model,
-                models=resolved_inputs.get("models"),
+        quiet = emit_json_report or view.is_quiet
+        if not quiet:
+            view.phase(f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}")
+        build_fingerprint = None if dry_run else compiler.fingerprint(input_dir)
+        with with_status("Loading extracted JSON files...", quiet=quiet):
+            df, schema_info = compiler.compile_from_directory(
+                input_dir,
+                apply_deduplication=not dry_run,
             )
-            if not emit_json_report:
-                view.phase(
-                    "Synthesizing one record per entity "
-                    f"(model={synth_client.raw_model})"
-                )
-            synthesizer = Synthesizer(
-                schema_metadata=schema_metadata,
-                config=synthesis_cfg,
-                llm_client=synth_client,
-                verbose=view.verbosity.shows_detail,
-            )
-            quiet = emit_json_report or view.is_quiet
-            with with_status(
-                f"Synthesizing with {synth_client.raw_model}...", quiet=quiet
-            ):
-                df = synthesizer.synthesize_from_directory(input_dir)
-            if not emit_json_report:
-                total_rows = synthesizer.llm_calls + synthesizer.deterministic_rows
-                view.status(
-                    "info",
-                    f"Synthesis: {synthesizer.llm_calls} LLM reconciliation "
-                    f"call(s), {synthesizer.deterministic_rows} resolved "
-                    f"deterministically (no API) of {total_rows} synthesized row(s)",
-                )
-            schema_info = {
-                "type": f"Synthesized: {schema_metadata.get_main_data_array()}",
-                "main_array_key": (synthesis_cfg.get("group_by") or ["entity"])[0],
-            }
-        else:
-            quiet = emit_json_report or view.is_quiet
-            if not quiet:
-                view.phase(
-                    f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}"
-                )
-            with with_status("Loading extracted JSON files...", quiet=quiet):
-                df, schema_info = compiler.compile_from_directory(
-                    input_dir,
-                    apply_deduplication=not dry_run,
-                )
 
         if input_provenance_warnings and not emit_json_report:
             view.warnings(input_provenance_warnings)
-        if df.empty:
-            if fresh and not dry_run and output_dir.exists():
-                import shutil
-
-                shutil.rmtree(output_dir)
+        if df.empty and dry_run:
             if input_provenance_warnings and emit_json_report:
                 click.echo(
                     json.dumps(
@@ -439,10 +378,14 @@ def compile(
                 return
             print_warning("No data found to compile")
             return
+        if df.empty:
+            print_warning("No data found to compile; publishing an empty table")
 
         if not emit_json_report:
-            view.success(f"Schema detected: {schema_info['type']}")
-            view.status("info", f"Main entity: {schema_info['main_array_key']}")
+            view.status(
+                "info",
+                f"{schema_info['type']}: {schema_info['main_array_key']} ({compiler.mode} mode)",
+            )
 
         if dry_run:
             from contextlib import redirect_stdout
@@ -450,16 +393,28 @@ def compile(
 
             with redirect_stdout(StringIO()):
                 export_df = (
-                    df if synthesis_active
+                    df
+                    if compiler.mode == "roster"
                     else compiler.deduplicator.deduplicate(df.copy())
                 )
-            output_frame = compiler._prepare_output_dataframe(export_df)
+            output_frame = compiler._prepare_output_dataframe(export_df)  # noqa: SLF001 - package-internal helper
             compiler.validate_export(output_frame, schema_metadata.get_output_formats())
 
-        if dry_run and synthesis_active:
-            print_info(
-                f"Dry run: synthesized {len(df)} entity row(s); no files written."
-            )
+        if dry_run and compiler.mode == "roster":
+            if emit_json_report or view.is_quiet:
+                roster_report = {
+                    "mode": compiler.mode,
+                    "schema_type": schema_info["type"],
+                    "main_array_key": schema_info["main_array_key"],
+                    "rows": len(df),
+                    **compiler.roster_stats,
+                    "warnings": input_provenance_warnings,
+                    "provenance_policy": provenance_policy,
+                    "would_fail_on_provenance": would_fail_on_provenance,
+                }
+                click.echo(json.dumps(roster_report, indent=2, sort_keys=True))
+            else:
+                print_info(f"Dry run: {len(df)} roster row(s); no files written.")
             return
 
         if dry_run:
@@ -469,6 +424,7 @@ def compile(
                 dedup_preview=dedup_preview,
                 rows_before_dedup=len(df),
             )
+            preview_report["mode"] = compiler.mode
             if input_provenance_warnings:
                 preview_report["warnings"] = [
                     *(preview_report.get("warnings") or []),
@@ -502,8 +458,7 @@ def compile(
                     or "none",
                     "Fail Threshold": preview_report["fail_on_suspicious"],
                     "Key Fields": ", ".join(preview_report["key_fields"]) or "none",
-                    "Compare Columns": ", ".join(preview_report["compare_columns"])
-                    or "none",
+                    "Compare Columns": ", ".join(preview_report["compare_columns"]) or "none",
                 }
                 view.summary(preview_stats, title="Deduplication Preview")
 
@@ -518,7 +473,7 @@ def compile(
                         ", ".join(
                             f"{field}={value}"
                             for field, value in group["sample_values"].items()
-                            if value not in (None, "")
+                            if value not in (None, "")  # noqa: PLR6201 - cells may be unhashable
                         )
                         or "no populated key values"
                     )
@@ -561,28 +516,25 @@ def compile(
                     if preview_report["would_fail_on_provenance"]:
                         view.error(
                             "Compile input provenance checks failed",
-                            "Dry-run found provenance warnings while "
-                            "provenance_policy='fail'",
+                            "Dry-run found provenance warnings while provenance_policy='fail'",
                         )
                 sys.exit(2)
             return
 
         view.phase("Creating outputs")
-        base_name = input_dir.name.replace("_", "-")
         output_formats = schema_metadata.get_output_formats()
         emitted_paths, output_frame = compiler.export(
             df, output_dir, base_name, output_formats, fresh=fresh
         )
         output_column_count = len(output_frame.columns)
+        csv_table = output_dir / f"{base_name}.csv"
 
         if "csv" in output_formats:
             csv_path = output_dir / f"{base_name}.csv"
             csv_size_mb = csv_path.stat().st_size / (1024 * 1024)
 
             if view.verbosity.shows_detail:
-                view.success(
-                    f"CSV saved: {csv_path.name} ({csv_size_mb:.2f} MB, {len(df)} rows)"
-                )
+                view.success(f"CSV saved: {csv_path.name} ({csv_size_mb:.2f} MB, {len(df)} rows)")
             else:
                 view.success(f"CSV saved ({len(df)} rows)")
 
@@ -604,27 +556,10 @@ def compile(
                 "Columns": str(output_column_count),
                 "Outputs": ", ".join(output_formats),
             }
-            if not synthesis_active and compiler.duplicates_removed > 0:
+            if compiler.duplicates_removed > 0:
                 summary_stats["Duplicates Removed"] = str(compiler.duplicates_removed)
-            if synthesis_active:
-                summary_stats["Model"] = synth_client.raw_model
-
-            if schema_info.get("category_field"):
-                from psweep.utils.normalizers import camel_to_title
-
-                category_display = camel_to_title(
-                    schema_info.get("category_field", "")
-                )
-                if category_display and category_display in df.columns:
-                    top_categories = df[category_display].value_counts().head(5)
-                    if not top_categories.empty:
-                        top_cat_str = ", ".join(
-                            [
-                                f"{cat} ({count})"
-                                for cat, count in list(top_categories.items())[:3]
-                            ]
-                        )
-                        summary_stats[f"Top {category_display}s"] = top_cat_str
+            for key, value in (compiler.roster_stats or {}).items():
+                summary_stats[key.replace("_", " ").title()] = str(value)
 
             view.summary(summary_stats, title="Compilation Summary")
             view.outputs(
@@ -639,34 +574,30 @@ def compile(
         # Run accounting — always written regardless of verbosity / quiet mode.
         # This is a structured record of costs, not presentation output.
         # ------------------------------------------------------------------
-        _summary_stats_for_acct = {
+        compile_stats = {
             "records": len(df),
             "columns": output_column_count,
             "duplicates_removed": compiler.duplicates_removed,
-            "output_format": ", ".join(output_formats),
+            "output_formats": output_formats,
+            **(compiler.roster_stats or {}),
         }
-        _write_compilation_run_manifest(
+        write_compilation_run_manifest(
             output_dir=output_dir,
             schema_id=str(matched_schema),
-            synthesis_active=synthesis_active,
-            synthesis_model=(getattr(synth_client, "raw_model", None) if synth_client else None),
-            synthesis_provider=(getattr(synth_client, "provider", None) if synth_client else None),
-            synthesis_llm_calls=(int(getattr(synthesizer, "llm_calls", 0)) if synthesizer else 0),
-            records=len(df),
-            columns=output_column_count,
-            duplicates_removed=compiler.duplicates_removed,
-            output_formats=output_formats,
+            mode=compiler.mode,
+            stats=compile_stats,
             started_at=compile_started_at,
+            build_fingerprint=build_fingerprint,
+            table_sha256=artifact_sha256(csv_table) if csv_table.is_file() else None,
         )
 
         acct_path = output_dir / "run_accounting.json"
         try:
-            accounting = _build_pipeline_accounting(
-                domain=resolved_inputs.get("domain", input_dir.name),
+            accounting = build_pipeline_accounting(
+                domain=resolved_inputs["domain"],
                 extraction_dir=input_dir,
                 output_dir=output_dir,
-                compilation_stats=_summary_stats_for_acct,
-                discovery_input_dir=resolved_inputs.get("_extraction_input_dir"),
+                compilation_stats=compile_stats,
             )
             acct_path.write_text(
                 json.dumps(accounting, indent=2) + "\n",
@@ -675,15 +606,13 @@ def compile(
             if not get_verbosity().is_quiet:
                 view.outputs({"Accounting": str(acct_path.absolute())})
         except (OSError, ValueError) as exc:
-            logging.getLogger(__name__).warning(
-                "run_accounting.json could not be written: %s", exc
-            )
+            logging.getLogger(__name__).warning("run_accounting.json could not be written: %s", exc)
 
         if get_verbosity().is_quiet:
             for emitted_path in emitted_paths:
                 console.print(str(emitted_path.absolute()))
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: report any failure, then exit non-zero
         view.error("Compilation failed", str(exc))
         if view.verbosity is Verbosity.DEBUG:
             import traceback

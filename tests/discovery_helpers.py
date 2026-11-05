@@ -11,6 +11,8 @@ test modules belong here.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from psweep.discovery.models import CandidateScore, DiscoveryCandidate
 
 
@@ -69,8 +71,7 @@ class FakeResponse:
 
     def iter_content(self, chunk_size: int = 65536):
         del chunk_size
-        for chunk in self._chunks:
-            yield chunk
+        yield from self._chunks
 
 
 def patch_requests_get(
@@ -83,7 +84,7 @@ def patch_requests_get(
 ) -> None:
     """Patch ``requests.get`` to return a single :class:`FakeResponse`."""
     monkeypatch.setattr(
-        "requests.get",
+        "psweep.discovery.network.request_get",
         lambda *_args, **_kwargs: FakeResponse(
             url=url,
             content_type=content_type,
@@ -91,3 +92,41 @@ def patch_requests_get(
             text=text,
         ),
     )
+
+
+def patch_socket_stream(
+    monkeypatch,
+    bodies: dict[str, list[tuple[float, bytes]]],
+    *,
+    content_type: str = "application/pdf",
+) -> None:
+    """Serve each URL's ``(seconds, chunk)`` reads through the real bounded transport.
+
+    Each read advances a fake monotonic clock by its seconds, so deadlines
+    are exercised without sleeping.
+    """
+    from psweep.discovery import transport
+
+    now = [0.0]
+    monkeypatch.setattr(transport, "time", SimpleNamespace(monotonic=lambda: now[0]))
+
+    def get(_session, url, **_kwargs):
+        pending = iter(bodies[url])
+
+        def read1(_size, decode_content=True):
+            seconds, chunk = next(pending, (0.0, b""))
+            now[0] += seconds
+            return chunk
+
+        return SimpleNamespace(
+            raw=SimpleNamespace(read1=read1),
+            status_code=200,
+            headers={"Content-Type": content_type},
+            url=url,
+            cookies={},
+            encoding=None,
+            close=lambda: None,
+            raise_for_status=lambda: None,
+        )
+
+    monkeypatch.setattr(transport.requests.Session, "get", get)

@@ -24,7 +24,6 @@ from psweep.cli.run_view import RunView
 from psweep.cli.dashboard import (
     DiscoveryDashboard,
     create_discovery_live_dashboard,
-    create_live_dashboard,
 )
 import psweep.cli.ui as ui_module
 
@@ -127,14 +126,8 @@ class TestLiveDashboard:
         )
         assert live.console is ui_module.console
 
-    def test_extraction_live_bound_to_shared_console(self):
-        live, _ = create_live_dashboard(total_documents=3)
-        assert live.console is ui_module.console
-
     def test_push_event_dedupes_consecutive_duplicates(self):
-        dash = DiscoveryDashboard(
-            domain="x", mode="run", total_targets=3, seeker_enabled=True
-        )
+        dash = DiscoveryDashboard(domain="x", mode="run", total_targets=3, seeker_enabled=True)
         dash.push_event("seeker 1/3: searching A | query=q")
         dash.push_event("seeker 1/3: searching A | query=q")
         dash.push_event("seeker 1/3: A -> 5 candidate(s)")
@@ -145,7 +138,7 @@ class TestLiveDashboard:
 class TestNoAdHocMarkupInCommands:
     """Command modules must render through the design system, not raw markup."""
 
-    _COLOR = re.compile(r'console\.print\([^)]*\[(bold )?(red|green|yellow|cyan|magenta|dim)\]')
+    _COLOR = re.compile(r"console\.print\([^)]*\[(bold )?(red|green|yellow|cyan|magenta|dim)\]")
     _DIVIDER = re.compile(r'"[─=-]" \* \d+')
 
     def _src(self, name: str) -> str:

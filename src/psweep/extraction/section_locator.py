@@ -120,12 +120,57 @@ def _table_to_markdown(table) -> str:
     """
     rows: list[str] = []
     for tr in table.find_all("tr"):
-        cells = [
-            td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])
-        ]
+        cells = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])]
         if cells:
             rows.append(_pipe_row(cells))
     return "\n".join(rows)
+
+
+def split_text_sections(text: str) -> list[_Chunk]:
+    """Split plain text by section markers or blank-line paragraphs."""
+    # Try explicit section markers first.
+    marker_positions = [m.start() for m in _SECTION_MARKER_RE.finditer(text)]
+    if len(marker_positions) > 1:
+        chunks: list[_Chunk] = []
+        # Preamble before first marker
+        preamble = text[: marker_positions[0]].strip()
+        if preamble:
+            chunks.append(_Chunk("", preamble))
+        for i, pos in enumerate(marker_positions):
+            end = marker_positions[i + 1] if i + 1 < len(marker_positions) else len(text)
+            block = text[pos:end]
+            first_nl = block.find("\n")
+            if first_nl == -1:
+                heading = block.strip()
+                body = ""
+            else:
+                heading = block[:first_nl].strip()
+                body = block[first_nl:].strip()
+            if heading or body:
+                chunks.append(_Chunk(heading, body))
+        return [c for c in chunks if c.text.strip()]
+
+    # Fall back: split by blank lines and group into ~_TXT_CHUNK_CHARS chunks.
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paragraphs) <= 1:
+        return [_Chunk("", text.strip())] if text.strip() else []
+
+    chunks = []
+    cur_parts: list[str] = []
+    cur_len = 0
+    section_num = 0
+    for para in paragraphs:
+        cur_parts.append(para)
+        cur_len += len(para)
+        if cur_len >= _TXT_CHUNK_CHARS:
+            section_num += 1
+            chunks.append(_Chunk(f"Part {section_num}", "\n\n".join(cur_parts)))
+            cur_parts = []
+            cur_len = 0
+    if cur_parts:
+        section_num += 1
+        chunks.append(_Chunk(f"Part {section_num}", "\n\n".join(cur_parts)))
+    return chunks
 
 
 class SectionLocator(_BaseLocator):
@@ -174,8 +219,8 @@ class SectionLocator(_BaseLocator):
         for tag in soup.find_all(["script", "style", "nav", "noscript"]):
             tag.decompose()
 
-        _BREAK = "\x00BREAK\x00"
-        HEADING_TAGS = {"h1", "h2", "h3", "h4"}
+        break_marker = "\x00BREAK\x00"
+        heading_tags = {"h1", "h2", "h3", "h4"}
 
         # Replace tables with markdown in-place before heading processing.
         for table in list(soup.find_all("table")):
@@ -186,12 +231,12 @@ class SectionLocator(_BaseLocator):
                 table.decompose()
 
         # Replace heading elements with sentinel-prefixed text.
-        for hx in list(soup.find_all(list(HEADING_TAGS))):
+        for hx in list(soup.find_all(list(heading_tags))):
             heading_text = hx.get_text(" ", strip=True)
-            hx.replace_with(soup.new_string(f"\n{_BREAK}{heading_text}\n"))
+            hx.replace_with(soup.new_string(f"\n{break_marker}{heading_text}\n"))
 
         full_text = (soup.body or soup).get_text("\n")
-        parts = full_text.split(_BREAK)
+        parts = full_text.split(break_marker)
 
         chunks: list[_Chunk] = []
         for i, part in enumerate(parts):
@@ -217,45 +262,41 @@ class SectionLocator(_BaseLocator):
         try:
             import docx as _docx  # lazy import for optional dep
         except ImportError:
-            logger.debug(
-                "python-docx not available; DOCX section splitting skipped"
-            )
+            logger.debug("python-docx not available; DOCX section splitting skipped")
             return []
 
         try:
             doc = _docx.Document(str(docx_path))
-        except Exception as exc:
-            logger.debug(f"Failed to open DOCX {docx_path.name}: {exc}")
+        except Exception as exc:  # noqa: BLE001 - fall back to no targeting
+            logger.debug("Failed to open DOCX %s: %s", docx_path.name, exc)
             return []
 
-        _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
         def _local(tag: str) -> str:
-            return tag.split("}")[-1] if "}" in tag else tag
+            return tag.rsplit("}", maxsplit=1)[-1] if "}" in tag else tag
 
         def _para_text(elem) -> str:
-            return "".join(t.text or "" for t in elem.iter(f"{{{_W}}}t"))
+            return "".join(t.text or "" for t in elem.iter(f"{{{w_ns}}}t"))
 
         def _para_style(elem) -> str:
-            pPr = elem.find(f"{{{_W}}}pPr")
-            if pPr is None:
+            p_pr = elem.find(f"{{{w_ns}}}pPr")
+            if p_pr is None:
                 return ""
-            pStyle = pPr.find(f"{{{_W}}}pStyle")
-            if pStyle is None:
+            p_style = p_pr.find(f"{{{w_ns}}}pStyle")
+            if p_style is None:
                 return ""
-            return pStyle.get(f"{{{_W}}}val", "")
+            return p_style.get(f"{{{w_ns}}}val", "")
 
         def _table_md(tbl_elem) -> str:
             # Same bordered `| a | b |` row format as `_table_to_markdown`
             # (both call `_pipe_row`), but here rows whose cells are ALL blank
             # are dropped (`any(cells)`), whereas the bs4 path keeps them.
             rows: list[str] = []
-            for tr in tbl_elem.iter(f"{{{_W}}}tr"):
+            for tr in tbl_elem.iter(f"{{{w_ns}}}tr"):
                 cells = [
-                    "".join(
-                        t.text or "" for t in tc.iter(f"{{{_W}}}t")
-                    ).strip()
-                    for tc in tr.findall(f"{{{_W}}}tc")
+                    "".join(t.text or "" for t in tc.iter(f"{{{w_ns}}}t")).strip()
+                    for tc in tr.findall(f"{{{w_ns}}}tc")
                 ]
                 if any(cells):
                     rows.append(_pipe_row(cells))
@@ -272,9 +313,7 @@ class SectionLocator(_BaseLocator):
                 text = _para_text(child).strip()
                 if style.startswith("heading") and text:
                     if cur_parts:
-                        chunks.append(
-                            _Chunk(cur_heading, "\n".join(cur_parts))
-                        )
+                        chunks.append(_Chunk(cur_heading, "\n".join(cur_parts)))
                     cur_heading = text
                     cur_parts = []
                 elif text:
@@ -289,69 +328,9 @@ class SectionLocator(_BaseLocator):
 
         return [c for c in chunks if c.text.strip()]
 
-    def _split_txt_sections(self, text: str) -> list[_Chunk]:
-        """Split plain text by section markers or blank-line paragraphs."""
-        # Try explicit section markers first.
-        marker_positions = [
-            m.start() for m in _SECTION_MARKER_RE.finditer(text)
-        ]
-        if len(marker_positions) > 1:
-            chunks: list[_Chunk] = []
-            # Preamble before first marker
-            preamble = text[: marker_positions[0]].strip()
-            if preamble:
-                chunks.append(_Chunk("", preamble))
-            for i, pos in enumerate(marker_positions):
-                end = (
-                    marker_positions[i + 1]
-                    if i + 1 < len(marker_positions)
-                    else len(text)
-                )
-                block = text[pos:end]
-                first_nl = block.find("\n")
-                if first_nl == -1:
-                    heading = block.strip()
-                    body = ""
-                else:
-                    heading = block[:first_nl].strip()
-                    body = block[first_nl:].strip()
-                if heading or body:
-                    chunks.append(_Chunk(heading, body))
-            return [c for c in chunks if c.text.strip()]
-
-        # Fall back: split by blank lines and group into ~_TXT_CHUNK_CHARS chunks.
-        paragraphs = [
-            p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()
-        ]
-        if len(paragraphs) <= 1:
-            return [_Chunk("", text.strip())] if text.strip() else []
-
-        chunks = []
-        cur_parts: list[str] = []
-        cur_len = 0
-        section_num = 0
-        for para in paragraphs:
-            cur_parts.append(para)
-            cur_len += len(para)
-            if cur_len >= _TXT_CHUNK_CHARS:
-                section_num += 1
-                chunks.append(
-                    _Chunk(f"Part {section_num}", "\n\n".join(cur_parts))
-                )
-                cur_parts = []
-                cur_len = 0
-        if cur_parts:
-            section_num += 1
-            chunks.append(
-                _Chunk(f"Part {section_num}", "\n\n".join(cur_parts))
-            )
-        return chunks
-
     # -- LLM confirmation --------------------------------------------------
 
-    def _confirm_with_llm(
-        self, chunks: list[_Chunk], candidates: list[int]
-    ) -> list[int] | None:
+    def _confirm_with_llm(self, chunks: list[_Chunk], candidates: list[int]) -> list[int] | None:
         """Ask the LLM which candidate section indices (0-indexed) are relevant."""
         index_lines = []
         for idx in candidates:
@@ -379,21 +358,15 @@ class SectionLocator(_BaseLocator):
             )
         except APIKeyError:
             raise
-        except Exception as exc:  # noqa: BLE001 - fall back to no targeting
-            logger.debug(f"Section locator LLM call failed: {exc}")
+        except Exception as exc:  # noqa: BLE001 - fall back to full extraction
+            logger.debug("Section locator LLM call failed: %s", exc)
             return None
 
         data = result.get("data") if isinstance(result, dict) else None
-        section_nums = (
-            data.get("relevant_sections") if isinstance(data, dict) else None
-        )
+        section_nums = data.get("relevant_sections") if isinstance(data, dict) else None
         if not isinstance(section_nums, list):
             return None
-        return [
-            n - 1
-            for n in section_nums
-            if type(n) is int and 1 <= n <= len(chunks)
-        ] or None
+        return [n - 1 for n in section_nums if type(n) is int and 1 <= n <= len(chunks)] or None
 
     # -- cache -------------------------------------------------------------
 
@@ -415,10 +388,7 @@ class SectionLocator(_BaseLocator):
             if not self._cache_matches(file_path, meta):
                 return None
             text_bytes = text_path.read_bytes()
-            if (
-                meta.get("text_sha256")
-                != hashlib.sha256(text_bytes).hexdigest()
-            ):
+            if meta.get("text_sha256") != hashlib.sha256(text_bytes).hexdigest():
                 return None
             return text_bytes.decode("utf-8")
         except Exception:  # noqa: BLE001 - a bad cache must never break extraction
@@ -440,9 +410,7 @@ class SectionLocator(_BaseLocator):
                 ]
             )
         except (OSError, TypeError, ValueError):
-            logger.debug(
-                "Section cache write failed for %s", file_path, exc_info=True
-            )
+            logger.debug("Section cache write failed for %s", file_path, exc_info=True)
 
     def locate_cached(self, file_path: str | Path) -> str | None:
         """Return verified section text without document parsing."""
@@ -495,25 +463,19 @@ class SectionLocator(_BaseLocator):
         # Split into chunks.
         try:
             if ext in {".html", ".htm"}:
-                raw_text = file_path.read_text(
-                    encoding="utf-8", errors="ignore"
-                )
+                raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
                 if len(raw_text) <= self.trigger_chars:
                     return None
                 chunks = self._split_html_sections(raw_text)
             elif ext in {".docx", ".doc"}:
                 chunks = self._split_docx_sections(file_path)
             else:  # .txt
-                raw_text = file_path.read_text(
-                    encoding="utf-8", errors="ignore"
-                )
+                raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
                 if len(raw_text) <= self.trigger_chars:
                     return None
-                chunks = self._split_txt_sections(raw_text)
+                chunks = split_text_sections(raw_text)
         except Exception as exc:  # noqa: BLE001 - fall back to full extraction
-            logger.debug(
-                "Section splitting failed for %s: %s", file_path.name, exc
-            )
+            logger.debug("Section splitting failed for %s: %s", file_path.name, exc)
             return None
 
         if not chunks:
@@ -521,9 +483,7 @@ class SectionLocator(_BaseLocator):
 
         candidates = self._candidate_chunks(chunks)
         if not candidates:
-            logger.debug(
-                f"Section targeting: no candidate sections for {file_path.name}"
-            )
+            logger.debug("Section targeting: no candidate sections for %s", file_path.name)
             return None
 
         relevant_indices = self._confirm_with_llm(chunks, candidates)
@@ -531,9 +491,7 @@ class SectionLocator(_BaseLocator):
         if not relevant_indices:
             return None
 
-        filtered_text = "\n\n".join(
-            chunks[i].to_text() for i in sorted(set(relevant_indices))
-        )
+        filtered_text = "\n\n".join(chunks[i].to_text() for i in sorted(set(relevant_indices)))
 
         self._write_cache(file_path, filtered_text)
         return filtered_text

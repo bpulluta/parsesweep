@@ -32,9 +32,7 @@ class TestClassifierWarnMode:
         )
         cfg = {"required_keywords": ["ordinance"], "min_required_matches": 1}
 
-        downloads, notes = DiscoveryEngine._run_post_download_classifier(
-            [_record(path)], cfg, []
-        )
+        downloads, notes = DiscoveryEngine._run_post_download_classifier([_record(path)], cfg, [])
 
         assert downloads[0]["classification_passed"] is True
         assert downloads[0]["status"] == "downloaded"
@@ -52,9 +50,7 @@ class TestClassifierWarnMode:
             "action": "warn",
         }
 
-        downloads, _ = DiscoveryEngine._run_post_download_classifier(
-            [_record(path)], cfg, []
-        )
+        downloads, _ = DiscoveryEngine._run_post_download_classifier([_record(path)], cfg, [])
 
         assert downloads[0]["classification_passed"] is False
         assert downloads[0]["status"] == "downloaded"  # warn keeps it
@@ -73,9 +69,7 @@ class TestClassifierFilterMode:
             "action": "filter",
         }
 
-        downloads, _ = DiscoveryEngine._run_post_download_classifier(
-            [_record(path)], cfg, []
-        )
+        downloads, _ = DiscoveryEngine._run_post_download_classifier([_record(path)], cfg, [])
 
         assert downloads[0]["classification_passed"] is False
         assert downloads[0]["status"] == "rejected_classifier"

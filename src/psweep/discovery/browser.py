@@ -17,93 +17,59 @@ Selenium/Chrome are optional; :func:`browser_available` reports readiness and
 
 from __future__ import annotations
 
-import subprocess
+import contextlib
 import time
-from typing import Any
+import os
+import re
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any, Self
+
+from requests.structures import CaseInsensitiveDict
+
+from psweep.security import protected_mode
+
+from .constants import USER_AGENT
 
 
 class BrowserUnavailableError(RuntimeError):
     """Raised when Selenium or a usable Chrome/driver is not available."""
 
 
-_DEFAULT_UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-)
+class BrowserDownloadError(RuntimeError):
+    """An in-browser ``fetch()`` failed; ``status_code`` is None when it rejected."""
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class BrowserNavigationError(RuntimeError):
+    """Chrome showed its error page; the message carries the ``net::ERR_*``
+    code so retry classification matches Selenium navigation errors.
+    """
+
+
+_CHROME_ERROR_CODE = re.compile(r"\bERR_[A-Z_]+\b")
 
 
 def browser_available() -> bool:
     """Return True if Selenium is importable (Chrome resolved lazily)."""
     try:
-        import selenium  # noqa: F401
+        import selenium  # noqa: F401 - availability probe
     except ImportError:
         return False
     return True
 
 
-def _detect_chrome_version() -> str | None:
-    """Return the installed Chrome major version, if detectable."""
-    import re
-    import shutil
-
-    candidates = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        shutil.which("google-chrome"),
-        shutil.which("google-chrome-stable"),
-        shutil.which("chromium"),
-        shutil.which("chromium-browser"),
-    ]
-    for binary in candidates:
-        if not binary:
-            continue
-        try:
-            out = subprocess.run(
-                [binary, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=False,
-            ).stdout
-        except Exception:  # noqa: BLE001
-            continue
-        match = re.search(r"(\d+)\.\d+\.\d+", out or "")
-        if match:
-            return match.group(1)
-    return None
-
-
 def _resolve_chrome_service() -> Any:
-    """Build a Chrome ``Service`` with a driver matching the installed Chrome.
-
-    Selenium Manager normally auto-resolves the driver, but a stale
-    ``chromedriver`` on PATH can shadow it with a mismatched version. We ask
-    Selenium Manager for a driver matching the *detected* browser version and
-    pin the Service to it; on any failure we fall back to default resolution.
-    """
-    import json
-
+    """Require a pre-provisioned driver; never download executable code at runtime."""
     from selenium.webdriver.chrome.service import Service
 
-    try:
-        from selenium.webdriver.common.selenium_manager import (
-            SeleniumManager,
-        )
-
-        binary = SeleniumManager()._get_binary()  # noqa: SLF001
-        cmd = [str(binary), "--browser", "chrome", "--output", "json"]
-        version = _detect_chrome_version()
-        if version:
-            cmd += ["--browser-version", version]
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=180, check=False
-        )
-        payload = json.loads(result.stdout or "{}").get("result", {})
-        driver_path = payload.get("driver_path")
-        if driver_path:
-            return Service(driver_path)
-    except Exception:  # noqa: BLE001 - fall back to default resolution
-        pass
-    return Service()
+    driver = os.environ.get("PSWEEP_CHROMEDRIVER", "")
+    if not driver or not Path(driver).is_file() or not os.access(driver, os.X_OK):
+        raise BrowserUnavailableError("PSWEEP_CHROMEDRIVER must name an installed executable")
+    return Service(driver)
 
 
 class BrowserSession:
@@ -113,15 +79,17 @@ class BrowserSession:
         self,
         *,
         headless: bool = True,
-        user_agent: str = _DEFAULT_UA,
+        request_headers: Mapping[str, str] | None = None,
         page_load_timeout: int = 45,
     ) -> None:
-        self.user_agent = user_agent
+        # Chrome can only override the User-Agent; it follows the HTTP fetches.
+        headers = CaseInsensitiveDict(request_headers or {})
+        self.user_agent = headers.get("User-Agent") or USER_AGENT
         self._headless = headless
         self._page_load_timeout = page_load_timeout
         self._driver: Any = None
 
-    def __enter__(self) -> BrowserSession:
+    def __enter__(self) -> Self:
         self._start()
         return self
 
@@ -129,6 +97,11 @@ class BrowserSession:
         self.close()
 
     def _start(self) -> None:
+        if protected_mode() or os.environ.get("PSWEEP_BROWSER_ISOLATED") != "1":
+            raise BrowserUnavailableError(
+                "Browser discovery requires public mode and PSWEEP_BROWSER_ISOLATED=1 "
+                "in an externally network-isolated sandbox; it is forbidden in protected mode"
+            )
         if not browser_available():
             msg = (
                 "Selenium is required for browser-based discovery. "
@@ -143,37 +116,28 @@ class BrowserSession:
         if self._headless:
             opts.add_argument("--headless=new")
         for arg in (
-            "--no-sandbox",
             "--disable-dev-shm-usage",
             "--disable-blink-features=AutomationControlled",
             "--window-size=1400,1000",
             f"user-agent={self.user_agent}",
         ):
             opts.add_argument(arg)
-        opts.add_experimental_option(
-            "excludeSwitches", ["enable-automation"]
-        )
+        opts.add_experimental_option("excludeSwitches", ["enable-automation"])
         opts.add_experimental_option("useAutomationExtension", False)
 
         try:
-            self._driver = webdriver.Chrome(
-                service=_resolve_chrome_service(), options=opts
-            )
+            self._driver = webdriver.Chrome(service=_resolve_chrome_service(), options=opts)
         except Exception as exc:
             msg = f"Failed to start Chrome for browser discovery: {exc}"
             raise BrowserUnavailableError(msg) from exc
 
         # Hide the webdriver flag some bot managers check.
-        try:
+        # Non-fatal hardening: any failure leaves the driver usable.
+        with contextlib.suppress(Exception):
             self._driver.execute_cdp_cmd(
                 "Page.addScriptToEvaluateOnNewDocument",
-                {
-                    "source": "Object.defineProperty(navigator,"
-                    "'webdriver',{get:()=>undefined})"
-                },
+                {"source": "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"},
             )
-        except Exception:  # noqa: BLE001 - non-fatal hardening
-            pass
         self._driver.set_page_load_timeout(self._page_load_timeout)
 
     @property
@@ -186,7 +150,7 @@ class BrowserSession:
         if self._driver is None:
             msg = "BrowserSession used outside its context manager."
             raise BrowserUnavailableError(msg)
-        self._driver.get(url)
+        self._navigate(url)
         if settle_seconds > 0:
             time.sleep(settle_seconds)
         return self._driver.page_source or ""
@@ -200,10 +164,8 @@ class BrowserSession:
             try:
                 href = anchor.get_attribute("href") or ""
                 if href:
-                    links.append(
-                        {"url": href, "text": (anchor.text or "").strip()}
-                    )
-            except Exception:  # noqa: BLE001 - stale element, skip
+                    links.append({"url": href, "text": (anchor.text or "").strip()})
+            except Exception:  # noqa: BLE001, S112 - stale element, skip
                 continue
         return links
 
@@ -228,7 +190,7 @@ class BrowserSession:
         origin = f"{parsed.scheme}://{parsed.netloc}/"
         current = self._driver.current_url or ""
         if not current.startswith(f"{parsed.scheme}://{parsed.netloc}"):
-            self._driver.get(origin)
+            self._navigate(origin)
             time.sleep(2)
 
         self._driver.set_script_timeout(timeout_seconds + 5)
@@ -258,20 +220,28 @@ class BrowserSession:
         raw = self._driver.execute_async_script(script, url)
         payload = json.loads(raw) if raw else {}
         if not payload.get("ok"):
-            detail = payload.get("error") or f"HTTP {payload.get('status')}"
+            status = payload.get("status")
+            detail = payload.get("error") or f"HTTP {status}"
             msg = f"Browser download failed for {url}: {detail}"
-            raise RuntimeError(msg)
+            raise BrowserDownloadError(msg, status_code=int(status) if status else None)
         return (
             base64.b64decode(payload.get("data") or ""),
             payload.get("ct"),
             str(payload.get("url") or ""),
         )
 
+    def _navigate(self, url: str) -> None:
+        """Load *url*, raising when Chrome lands on its network error page."""
+        self._driver.get(url)
+        if str(self._driver.current_url or "").startswith("chrome-error://"):
+            match = _CHROME_ERROR_CODE.search(self._driver.page_source or "")
+            code = f"net::{match.group()}" if match else "chrome error page"
+            raise BrowserNavigationError(f"Browser navigation failed for {url}: {code}")
+
     def close(self) -> None:
         """Quit the underlying browser driver and release its resources."""
         if self._driver is not None:
-            try:
+            # Driver quit is best-effort cleanup.
+            with contextlib.suppress(Exception):
                 self._driver.quit()
-            except Exception:  # noqa: BLE001
-                pass
             self._driver = None

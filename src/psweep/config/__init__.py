@@ -15,21 +15,23 @@ from .runtime_config_loader import (
     VARIABLE_CATALOG,
     build_model_registry,
     catalog_for_command,
+    config_key_paths,
     load_runtime_config_file,
     resolve_command_config,
 )
 
 __all__ = [
-    "load_config_file",
-    "load_json_file",
-    "load_yaml_file",
+    "VARIABLE_CATALOG",
     "ModelDefinition",
     "ModelRegistry",
     "ModelRegistryError",
     "RuntimeConfigError",
-    "VARIABLE_CATALOG",
     "build_model_registry",
     "catalog_for_command",
+    "config_key_paths",
+    "load_config_file",
+    "load_json_file",
     "load_runtime_config_file",
+    "load_yaml_file",
     "resolve_command_config",
 ]

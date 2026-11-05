@@ -8,7 +8,7 @@ deduplication, and automated data compilation.
 Programmatic API — engine level:
     >>> from psweep import DocumentExtractor, load_schema
     >>> extractor = DocumentExtractor(model="gpt-4o-mini")
-    >>> schema = load_schema("schemas/personal/my_schema.json")
+    >>> schema = load_schema("config/my_domain/schema.json")
     >>> result = extractor.extract(document_text, schema)
     >>> print(result.data)
 
@@ -16,7 +16,7 @@ Programmatic API — pipeline level (recommended for batch use):
     >>> from psweep.pipeline import extract_documents, compile_extractions
     >>> result = extract_documents(
     ...     "documents/my_domain/",
-    ...     schema="schemas/personal/my_schema.json",
+    ...     schema="config/my_domain/schema.json",
     ... )
     >>> print(f"Extracted {result.successful}/{result.total} documents")
     >>> compiled = compile_extractions(result.output_dir, schema=result.schema_path)
@@ -27,19 +27,13 @@ For document discovery:
     >>> engine = DiscoveryEngine()
     >>> request = DiscoveryRequest(
     ...     domain="my-domain",
-    ...     seed_urls=["https://example.com"],
-    ...     query="geothermal ordinance",
-    ...     enable_serpapi=False,
-    ...     output_documents=None,
-    ...     output_manifest=None,
+    ...     sources=["https://example.com/ordinance.pdf"],
     ...     dry_run=True,
     ... )
     >>> result = engine.run(request)
 """
 
-__version__ = "2.0.1"
-__author__ = "ParseSweep Team"
-__license__ = "MIT"
+from psweep._version import __version__
 
 from pathlib import Path
 
@@ -47,7 +41,7 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 
-# Core extraction API  # noqa: E402
+# Core extraction API
 from psweep.extraction import (  # noqa: E402
     DocumentExtractor,
     ExtractionResult,
@@ -87,38 +81,36 @@ from psweep.exceptions import (  # noqa: E402
 )
 
 __all__ = [
-    # Version metadata
-    "__version__",
-    "__author__",
-    "__license__",
     # Paths
     "PACKAGE_ROOT",
     "PROJECT_ROOT",
-    # Extraction engine
-    "DocumentExtractor",
-    "ExtractionResult",
-    "load_schema",
-    "extract_text_from_document",
+    "APIKeyError",
+    "CompilationError",
+    "CompilationResult",
+    "ConfigurationError",
     # Discovery engine
     "DiscoveryEngine",
+    "DiscoveryError",
     "DiscoveryRequest",
     "DiscoveryResult",
-    # Pipeline API
-    "extract_documents",
-    "compile_extractions",
-    "run_pipeline",
+    # Extraction engine
+    "DocumentExtractor",
+    "ExtractionError",
+    "ExtractionResult",
     "ExtractionRunResult",
-    "CompilationResult",
-    "PipelineResult",
     # Exceptions
     "ParseSweepError",
-    "ConfigurationError",
+    "PipelineError",
+    "PipelineResult",
     "SchemaError",
     "SchemaMetadataError",
     "SchemaValidationError",
-    "ExtractionError",
-    "CompilationError",
-    "DiscoveryError",
-    "PipelineError",
-    "APIKeyError",
+    # Version metadata
+    "__version__",
+    "compile_extractions",
+    # Pipeline API
+    "extract_documents",
+    "extract_text_from_document",
+    "load_schema",
+    "run_pipeline",
 ]

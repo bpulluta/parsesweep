@@ -121,9 +121,12 @@ class TestTextCache:
         text_path, meta_path = text_cache_paths(source)
         meta = json.loads(meta_path.read_text())
         assert meta["source_sha256"] == hashlib.sha256(b"source").hexdigest()
-        assert meta["text_sha256"] == hashlib.sha256(
-            b"cached text",
-        ).hexdigest()
+        assert (
+            meta["text_sha256"]
+            == hashlib.sha256(
+                b"cached text",
+            ).hexdigest()
+        )
         text_path.write_text("altered txt")  # same length, different digest
         assert read_text_cache(source) is None
 
@@ -136,7 +139,9 @@ class TestTextCache:
         assert read_text_cache(source) is None
 
     def test_metadata_replaced_last_and_intermediate_pair_is_a_miss(
-        self, tmp_path, monkeypatch,
+        self,
+        tmp_path,
+        monkeypatch,
     ):
         source = tmp_path / "report.pdf"
         source.write_bytes(b"source")
@@ -161,7 +166,10 @@ class TestTextCache:
 
     @pytest.mark.parametrize("failed_index", [0, 1])
     def test_interrupted_replace_never_serves_mismatched_pair(
-        self, tmp_path, monkeypatch, failed_index,
+        self,
+        tmp_path,
+        monkeypatch,
+        failed_index,
     ):
         source = tmp_path / "report.pdf"
         source.write_bytes(b"source")
@@ -203,9 +211,7 @@ class TestTextCache:
 
 
 class TestRawOcrCache:
-    def test_current_corrections_apply_without_repeating_ocr(
-        self, tmp_path, monkeypatch
-    ):
+    def test_current_corrections_apply_without_repeating_ocr(self, tmp_path, monkeypatch):
         pdf = tmp_path / "scan.pdf"
         pdf.write_bytes(b"fake")
         calls = []
@@ -214,15 +220,11 @@ class TestRawOcrCache:
             calls.append(kwargs)
             return "RAW text", {"used_ocr": True, "raw_ocr_text": "RAW text"}
 
-        monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_text_from_pdf", fake
-        )
+        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_text_from_pdf", fake)
         for replacement in ("first", "second"):
             text = extract_text_from_document(
                 pdf,
-                ocr_corrections=[
-                    {"pattern": "RAW", "replacement": replacement}
-                ],
+                ocr_corrections=[{"pattern": "RAW", "replacement": replacement}],
             )
             assert text == f"{replacement} text"
         assert len(calls) == 1
@@ -245,9 +247,7 @@ class TestRawOcrCache:
         assert read_text_cache(html) == "API text"
         assert extract_text_from_document(html) == "API text"
 
-    def test_partial_ocr_does_not_write_full_document_cache(
-        self, tmp_path, monkeypatch
-    ):
+    def test_partial_ocr_does_not_write_full_document_cache(self, tmp_path, monkeypatch):
         pdf = tmp_path / "scan.pdf"
         pdf.write_bytes(b"fake")
         monkeypatch.setattr(
@@ -316,7 +316,8 @@ class TestMaterializeCurated:
         assert read_text_cache(curated_dir / "co/scan.pdf") == "OCR TEXT"
 
     def test_same_stem_cache_pairs_are_carried_without_collision(
-        self, tmp_path,
+        self,
+        tmp_path,
     ):
         docs = tmp_path / "documents"
         pdf = self._record(docs, "co/report.pdf", True)
@@ -325,7 +326,8 @@ class TestMaterializeCurated:
         write_text_cache(Path(html["path"]), "HTML TEXT")
 
         curated, count, _ = DiscoveryEngine._materialize_curated(
-            documents_dir=docs, download_records=[pdf, html],
+            documents_dir=docs,
+            download_records=[pdf, html],
         )
         assert count == 2
         assert read_text_cache(curated / "co/report.pdf") == "PDF TEXT"

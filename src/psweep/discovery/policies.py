@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
-from .network import RateLimiter, send_get
+from .constants import ROBOTS_AGENT, USER_AGENT
+from .network import RateLimiter, send_get, URLGate, NetworkPolicyError
+from psweep.utils.retry import is_transient_error
 
 # Single source of truth for the user-facing policy defaults. Referenced by the
 # ``DiscoveryRequest`` dataclass, the CLI options, the CLI resolution fallbacks,
@@ -22,6 +24,7 @@ class PolicyCheckResult:
 
     allowed: bool = True
     blocking_code: str | None = None
+    retryable: bool = False
     warning_codes: list[str] = field(default_factory=list)
     messages: list[str] = field(default_factory=list)
 
@@ -29,11 +32,9 @@ class PolicyCheckResult:
 class DiscoveryPolicyEvaluator:
     """Evaluate robots.txt and manual ToS acknowledgement policy controls."""
 
-    DEFAULT_USER_AGENT = "ParseSweep/2.0 (+discovery)"
-
     def __init__(self) -> None:
         self._robots_cache: dict[
-            tuple[str, str, bool], tuple[RobotFileParser | None, str | None]
+            tuple[str, str, bool], tuple[RobotFileParser | None, Exception | None]
         ] = {}
 
     @staticmethod
@@ -57,10 +58,7 @@ class DiscoveryPolicyEvaluator:
         host_lower = (host or "").strip().lower()
         if not host_lower:
             return False
-        return any(
-            host_lower == domain or host_lower.endswith("." + domain)
-            for domain in domains
-        )
+        return any(host_lower == domain or host_lower.endswith("." + domain) for domain in domains)
 
     def _load_robots_parser(
         self,
@@ -70,11 +68,16 @@ class DiscoveryPolicyEvaluator:
         request_headers: dict[str, str] | None,
         timeout_seconds: float = 15,
         rate_limiter: RateLimiter | None = None,
-    ) -> tuple[RobotFileParser | None, str | None]:
-        """Load robots rules without recursively invoking a gate."""
+        source_gate: URLGate | None = None,
+    ) -> tuple[RobotFileParser | None, Exception | None]:
+        """Load robots rules without recursively invoking a gate.
+
+        Outcomes are cached per host for the run, including transient load
+        errors, so one unreachable host is not re-probed for every URL.
+        """
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
-            return None, "invalid URL for robots evaluation"
+            return None, ValueError("invalid URL for robots evaluation")
 
         cache_key = (
             parsed.scheme.lower(),
@@ -92,10 +95,10 @@ class DiscoveryPolicyEvaluator:
                 robots_url,
                 timeout=timeout_seconds,
                 verify=ssl_verify,
-                headers=request_headers
-                or {"User-Agent": self.DEFAULT_USER_AGENT},
+                headers=request_headers or {"User-Agent": USER_AGENT},
                 limiter=rate_limiter,
                 raise_for_status=False,
+                gate=source_gate,
             )
             status_code = int(getattr(response, "status_code", 200) or 200)
             if status_code == 404:
@@ -110,10 +113,13 @@ class DiscoveryPolicyEvaluator:
             parser.parse((getattr(response, "text", "") or "").splitlines())
             result = (parser, None)
             self._robots_cache[cache_key] = result
-            return result
+        except NetworkPolicyError:
+            raise
         except Exception as exc:  # noqa: BLE001 - record unavailable robots rules
-            result = (None, str(exc))
+            result = (None, exc)
             self._robots_cache[cache_key] = result
+            return result
+        else:
             return result
         finally:
             if response is not None:
@@ -130,6 +136,7 @@ class DiscoveryPolicyEvaluator:
         acknowledged_tos_domains: list[str] | None = None,
         timeout_seconds: float = 15,
         rate_limiter: RateLimiter | None = None,
+        source_gate: URLGate | None = None,
     ) -> PolicyCheckResult:
         """Evaluate robots.txt and ToS-acknowledgement policy for a URL.
 
@@ -165,9 +172,7 @@ class DiscoveryPolicyEvaluator:
         host = (parsed.hostname or "").strip().lower()
 
         normalized_tos_mode = self._normalize_mode(tos_policy_mode)
-        normalized_ack_domains = self._normalize_domains(
-            acknowledged_tos_domains
-        )
+        normalized_ack_domains = self._normalize_domains(acknowledged_tos_domains)
         if normalized_tos_mode != "ignore" and not self._host_matches_domains(
             host, normalized_ack_domains
         ):
@@ -190,25 +195,26 @@ class DiscoveryPolicyEvaluator:
             request_headers=request_headers,
             timeout_seconds=timeout_seconds,
             rate_limiter=rate_limiter,
+            source_gate=source_gate,
         )
         if parser is None:
             message = (
                 f"robots.txt could not be evaluated for host '{host or 'unknown-host'}': "
-                f"{load_error or 'unknown error'}."
+                f"{load_error}."
             )
             if normalized_robots_mode == "enforce":
                 result.allowed = False
                 result.blocking_code = "robots_unavailable"
+                result.retryable = is_transient_error(load_error)
                 result.messages.append(message)
                 return result
             result.warning_codes.append("robots_unavailable")
             result.messages.append(message)
             return result
 
-        user_agent = (request_headers or {}).get(
-            "User-Agent"
-        ) or self.DEFAULT_USER_AGENT
-        if parser.can_fetch(user_agent, url):
+        # Rules are matched on the product token: the browser-compatible
+        # User-Agent starts with "Mozilla", which robots groups never name.
+        if parser.can_fetch(ROBOTS_AGENT, url):
             return result
 
         message = f"robots.txt disallows discovery for '{url}'."

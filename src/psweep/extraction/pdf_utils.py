@@ -5,7 +5,6 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional
 
 try:
     import pymupdf
@@ -40,7 +39,7 @@ def _validate_page_range(page_range: tuple) -> None:
         raise ValueError(message)
 
 
-def _selected_pages(page_count: int, page_range: Optional[tuple]) -> range:
+def _selected_pages(page_count: int, page_range: tuple | None) -> range:
     """Return one bounded selection for every PDF parser."""
     if page_range is None:
         return range(page_count)
@@ -97,7 +96,7 @@ def _quiet_tesseract():
 
 def _extract_with_ocr(
     pdf_path: Path,
-    page_range: Optional[tuple] = None,
+    page_range: tuple | None = None,
     return_meta: bool = False,
 ):
     """Extract raw OCR text from the selected pages, best-effort."""
@@ -125,7 +124,7 @@ def _extract_with_ocr(
                             (page.get_text(textpage=textpage) or "") + "\n",
                         )
                         extracted.append(page_num + 1)
-                except AttributeError:  # noqa: PERF203 - isolate per-page OCR failures
+                except AttributeError:
                     logger.warning("PyMuPDF OCR requires Tesseract")
                     break
                 except (OSError, RuntimeError, ValueError) as exc:
@@ -141,7 +140,7 @@ def _extract_with_ocr(
 
 def _extract_native(
     pdf_path: Path,
-    page_range: Optional[tuple],
+    page_range: tuple | None,
     *,
     use_pypdf: bool = False,
 ) -> tuple[str, dict]:
@@ -159,30 +158,20 @@ def _extract_native(
         selected = _selected_pages(len(pages), page_range)
         try:
             text = "".join(
-                (
-                    (
-                        pages[n].extract_text()
-                        if use_pypdf
-                        else pages[n].get_text()
-                    )
-                    or ""
-                )
-                + "\n"
+                ((pages[n].extract_text() if use_pypdf else pages[n].get_text()) or "") + "\n"
                 for n in selected
             )
         except Exception:
-            logger.exception(
-                "Error extracting native PDF text from %s", pdf_path
-            )
+            logger.exception("Error extracting native PDF text from %s", pdf_path)
             return "", _scope_meta(len(pages), [])
         return text, _scope_meta(len(pages), [n + 1 for n in selected])
 
 
 def extract_text_from_pdf(
     pdf_path: Path,
-    page_range: Optional[tuple] = None,
+    page_range: tuple | None = None,
     return_meta: bool = False,
-    ocr_corrections: Optional[list] = None,
+    ocr_corrections: list | None = None,
 ):
     """Extract selected pages with native, pypdf, then OCR fallbacks.
 
@@ -236,7 +225,7 @@ def extract_pages_text(pdf_path: Path) -> list[str]:
         return []
 
 
-def _cleanup_ocr_errors(text: str, rules: Optional[list] = None) -> str:
+def _cleanup_ocr_errors(text: str, rules: list | None = None) -> str:
     """Apply ordered configured corrections to OCR text only."""
     for rule in rules or []:
         flags = re.IGNORECASE if rule.get("ignore_case") else 0

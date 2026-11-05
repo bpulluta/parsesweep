@@ -8,6 +8,7 @@ import pytest
 
 from psweep.exceptions import SchemaValidationError
 from psweep.extraction.document_extractor import DocumentExtractor
+from psweep.extraction.schema_utils import build_schema_validator
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.pipeline import _extract_one_document
@@ -16,12 +17,17 @@ from psweep.pipeline import _extract_one_document
 @pytest.fixture(autouse=True)
 def controlled_configuration(monkeypatch):
     """Never consult the project's real .env while exercising extraction."""
-    config = SimpleNamespace(llm_config={
-        "provider": "openai", "model": "gpt-4o-mini", "api_key": "fixture-key",
-    })
+    config = SimpleNamespace(
+        llm_config={
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "api_key": "fixture-key",
+        }
+    )
     monkeypatch.setattr("psweep.utils.config._global_config", config)
     monkeypatch.setattr(
-        "psweep.cli.commands_extract.load_dotenv", lambda: None,
+        "psweep.cli.commands_extract.load_dotenv",
+        lambda: None,
     )
 
 
@@ -29,10 +35,12 @@ def controlled_configuration(monkeypatch):
 def schema():
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "$metadata": {"extraction": {
-            "main_data_array": "items", "context_objects": ["source"],
-            "identifier_fields": ["source.id"],
-        }},
+        "$metadata": {
+            "extraction": {
+                "main_data_array": "items",
+                "context_objects": ["source"],
+            }
+        },
         "type": "object",
         "required": ["source", "items"],
         "properties": {
@@ -68,13 +76,52 @@ def payload():
     return {"source": {"id": "one"}, "items": [{"quote": "Quoted evidence", "locator": "Page 1"}]}
 
 
+NULLABLE = ("applies_to", "source_verbatim")
+
+
+@pytest.mark.parametrize("field", NULLABLE)
+def test_required_nullable_fields_keep_pattern_exclusions(field):
+    validator = build_schema_validator(
+        {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": list(NULLABLE),
+            "properties": {name: {"type": ["string", "null"]} for name in NULLABLE},
+            "not": {
+                "anyOf": [
+                    {"properties": {name: {"type": "string", "pattern": r"(?i)\bdrilling\b"}}}
+                    for name in NULLABLE
+                ]
+            },
+        }
+    )
+    row = {"applies_to": "compressor station", "source_verbatim": None}
+    validator.validate(row)
+    del row[field]
+    assert any(error.validator == "required" for error in validator.iter_errors(row))
+    row[field] = None
+    validator.validate(row)
+    row[field] = "Drilling"
+    assert any(error.validator == "not" for error in validator.iter_errors(row))
+
+
 def extract_reply(schema, payload):
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
     with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}):
         return extractor.extract("sample document", schema)
 
 
-@pytest.mark.parametrize("change", ["missing_required", "wrong_type", "blank_quote", "blank_locator", "invalid_date", "non_object"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "missing_required",
+        "wrong_type",
+        "blank_quote",
+        "blank_locator",
+        "invalid_date",
+        "non_object",
+    ],
+)
 def test_contract_invalid_llm_payload_fails_before_success(schema, payload, change):
     if change == "missing_required":
         del payload["items"][0]["quote"]
@@ -105,6 +152,19 @@ def test_optional_missing_fields_respect_schema_nullability(schema, payload):
     assert "count" not in result.data["items"][0]
 
 
+def test_invalid_record_is_not_copied_into_schema_error_or_traceback(schema, payload):
+    import traceback
+
+    marker = "SYNTHETIC PRIVATE EVIDENCE"
+    payload["items"][0]["count"] = marker
+    with pytest.raises(SchemaValidationError) as error:
+        extract_reply(schema, payload)
+    diagnostic = "".join(traceback.format_exception(error.value))
+    assert marker not in diagnostic
+    assert "count.type" in str(error.value)
+    assert "rule: type" in str(error.value)
+
+
 def test_normalization_cannot_invalidate_success(schema, payload):
     schema["properties"]["source"]["properties"]["id"] = {"const": "A  B"}
     payload["source"]["id"] = "A  B"
@@ -114,9 +174,11 @@ def test_normalization_cannot_invalidate_success(schema, payload):
 
 def test_invalid_schema_fails_before_llm_call(payload):
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
-    with patch.object(extractor.client, "extract") as client:
-        with pytest.raises(SchemaValidationError):
-            extractor.extract("document", {"type": "invented"})
+    with (
+        patch.object(extractor.client, "extract") as client,
+        pytest.raises(SchemaValidationError),
+    ):
+        extractor.extract("document", {"type": "invented"})
     client.assert_not_called()
 
 
@@ -124,9 +186,11 @@ def test_resolved_schema_not_metadata_schema_controls_validation(schema, payload
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
     extractor.schema_metadata = type("Metadata", (), {"schema": {"type": "object"}})()
     del payload["source"]
-    with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}):
-        with pytest.raises(SchemaValidationError):
-            extractor.extract("sample document", schema)
+    with (
+        patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}),
+        pytest.raises(SchemaValidationError),
+    ):
+        extractor.extract("sample document", schema)
 
 
 def test_valid_date_and_empty_array_are_allowed(schema, payload):
@@ -154,8 +218,30 @@ def test_nullable_reference_is_filled_without_inventing_nonnullable_values(schem
     assert "nonnullable_ref" not in result.data["items"][0]
 
 
+def _plan(tmp_path, document, schema, schema_path, metadata):
+    return {
+        "llm": {"model": "gpt-4o-mini", "provider": "openai"},
+        "inputs": {},
+        "outputs": {document: tmp_path / "document.json"},
+        "roster": None,
+        "candidates": {},
+        "anchors": {},
+        "roster_errors": {},
+        "context": {},
+        "root": tmp_path,
+        "schema": schema,
+        "schema_path": schema_path,
+        "metadata": metadata,
+        "evidence_paths": [],
+        "quote_rows": None,
+        "fingerprints": {document: "a" * 64},
+    }
+
+
 def test_workflow_document_failure_keeps_contract_taxonomy_and_no_record(
-    tmp_path, schema, payload,
+    tmp_path,
+    schema,
+    payload,
 ):
     """The shared worker never publishes contract-invalid payloads."""
     document = tmp_path / "document.txt"
@@ -167,11 +253,10 @@ def test_workflow_document_failure_keeps_contract_taxonomy_and_no_record(
     del payload["items"][0]["quote"]
     with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}):
         result = _extract_one_document(
-            document, extractor=extractor, loaded_schema=schema,
-            schema_metadata=metadata, schema_path=schema_path,
-            output_path=tmp_path / "document.json", model="gpt-4o-mini",
-            run_id="run://contract", provider="openai",
-            input_fingerprint="a" * 64,
+            document,
+            _plan(tmp_path, document, schema, schema_path, metadata),
+            extractor=extractor,
+            run_id="run://contract",
         )
     assert result["success"] is False
     assert result["errors"][0]["category"] == "schema_contract"
@@ -198,9 +283,19 @@ def test_invalid_schema_preflight_preserves_fresh_output(tmp_path, schema, comma
     sentinel = output / "keep.json"
     sentinel.write_text("preserve previous output")
     config = tmp_path / "run.yaml"
-    config.write_text(yaml.safe_dump({"domain": "synthetic", "extraction": {
-        "schema": str(path), "input_dir": str(tmp_path / "missing"), "output_dir": str(output),
-    }, "compilation": {"schema": str(valid_compile_schema), "input_dir": str(output)}}))
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "domain": "synthetic",
+                "extraction": {
+                    "schema": str(path),
+                    "input_dir": str(tmp_path / "missing"),
+                    "output_dir": str(output),
+                },
+                "compilation": {"schema": str(valid_compile_schema), "input_dir": str(output)},
+            }
+        )
+    )
     provider = Mock(side_effect=AssertionError("must not contact provider"))
     monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", provider)
     result = CliRunner().invoke(cli, [command, "--config", str(config), "--fresh"])
@@ -216,7 +311,9 @@ def test_context_truncation_survives_canonical_record(tmp_path, schema, payload)
     from psweep.extraction.record_writer import build_extraction_record
 
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini", max_context_chars=5)
-    with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}) as client:
+    with patch.object(
+        extractor.client, "extract", return_value={"data": payload, "cost": 0.0}
+    ) as client:
         result = extractor.extract("long source text", schema)
     assert client.call_args.args[0] == "long "
     assert any("truncated" in note for note in result.validation_notes)
@@ -225,13 +322,18 @@ def test_context_truncation_survives_canonical_record(tmp_path, schema, payload)
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema))
     record, count = build_extraction_record(
-        doc_path=document, result=result, model="gpt-4o-mini",
+        doc_path=document,
+        source_document_id="doc.txt",
+        result=result,
+        model="gpt-4o-mini",
         provider="openai",
         schema_metadata=SchemaMetadata(schema_path),
     )
     assert count == record["item_count"] == 1
     assert record["processing_metrics"]["coverage"] == {
-        "input_characters": 16, "extracted_characters": 5, "context_truncated": True,
+        "input_characters": 16,
+        "extracted_characters": 5,
+        "context_truncated": True,
     }
     assert any("truncated" in note for note in record["quality"]["warnings"])
 
@@ -249,34 +351,57 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
         domain_schema = synthetic_evidence_schema()
         data = {
             "source": {"url": "https://example.org/statement", "record_kind": "statement"},
-            "comments": [{
-                "type": "statement", "summary": "Asks about timing.",
-                "evidence_quote": "When will it begin?", "evidence_locator": "Page 5",
-                "project_name": "Example Project", "topics": ["timing"],
-                "sentiment": "not_stated",
-            }],
+            "comments": [
+                {
+                    "type": "statement",
+                    "summary": "Asks about timing.",
+                    "evidence_quote": "When will it begin?",
+                    "evidence_locator": "Page 5",
+                    "project_name": "Example Project",
+                    "topics": ["timing"],
+                    "sentiment": "not_stated",
+                }
+            ],
         }
     else:
         domain_schema = {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "$metadata": {
-                "extraction": {"main_data_array": "observations", "context_objects": ["catalog"], "identifier_fields": ["catalog.url"]},
-                "identity": {"deduplication": {"key_fields": ["serial"], "partition_fields": ["catalog.url"]}},
+                "extraction": {"main_data_array": "observations", "context_objects": ["catalog"]},
+                "identity": {
+                    "deduplication": {"key_fields": ["serial"], "partition_fields": ["catalog.url"]}
+                },
             },
             "type": "object",
             "properties": {
                 "catalog": {"type": "object", "properties": {"url": {"type": "string"}}},
-                "observations": {"type": "array", "items": {"type": "object", "properties": {
-                    "serial": {"type": "string"}, "kind": {"type": "string"},
-                    "summary": {"type": "string"}, "quotation": {"type": "string"},
-                    "measurements": {"type": "array", "items": {"type": "number"}},
-                }}},
+                "observations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "serial": {"type": "string"},
+                            "kind": {"type": "string"},
+                            "summary": {"type": "string"},
+                            "quotation": {"type": "string"},
+                            "measurements": {"type": "array", "items": {"type": "number"}},
+                        },
+                    },
+                },
             },
         }
-        data = {"catalog": {"url": "https://example.org/catalog"}, "observations": [{
-            "serial": "eq-01", "kind": "equipment", "summary": "Observed equipment.",
-            "quotation": "Serial eq-01", "measurements": [2.5, 3.5],
-        }]}
+        data = {
+            "catalog": {"url": "https://example.org/catalog"},
+            "observations": [
+                {
+                    "serial": "eq-01",
+                    "kind": "equipment",
+                    "summary": "Observed equipment.",
+                    "quotation": "Serial eq-01",
+                    "measurements": [2.5, 3.5],
+                }
+            ],
+        }
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(domain_schema))
     documents = tmp_path / "documents"
@@ -296,16 +421,27 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
         "psweep.extraction.document_utils.extract_text_from_document",
         parse_document,
     )
-    monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", lambda *args: {"data": deepcopy(data), "cost": 0.0})
-    run = extract_documents(documents, schema_path, output_dir=extracted, provider="openai", pages_csv=pages_csv)
+    monkeypatch.setattr(
+        "psweep.extraction.llm_client.LLMClient.extract",
+        lambda *args: {"data": deepcopy(data), "cost": 0.0},
+    )
+    run = extract_documents(
+        documents, schema_path, output_dir=extracted, provider="openai", pages_csv=pages_csv
+    )
     assert run.successful == 1 and run.failed == 0
     assert seen == [(5, 9)]
     record = json.loads((extracted / "document.json").read_text())
     assert record["processing_metrics"]["coverage"]["selected_page_range"] == [5, 9]
-    compiled = compile_extractions(extracted, schema_path, output_dir=tmp_path / "compiled", report_format="both")
+    compiled = compile_extractions(
+        extracted, schema_path, output_dir=tmp_path / "compiled", report_format="both"
+    )
     assert len(compiled.output_files) == 2
-    frame = pd.read_csv(next(path for path in compiled.output_files if path.suffix == ".csv"), dtype=str)
-    workbook = pd.read_excel(next(path for path in compiled.output_files if path.suffix == ".xlsx"), dtype=str)
+    frame = pd.read_csv(
+        next(path for path in compiled.output_files if path.suffix == ".csv"), dtype=str
+    )
+    workbook = pd.read_excel(
+        next(path for path in compiled.output_files if path.suffix == ".xlsx"), dtype=str
+    )
     assert len(frame) == 1
     assert frame.columns.tolist() == workbook.columns.tolist()
     assert any("selected pages 5-9" in warning for warning in record["quality"]["warnings"])
@@ -321,7 +457,10 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
 
 @pytest.mark.parametrize("scope", ["pages", "sections"])
 def test_workflow_selected_input_scope_survives_record(
-    tmp_path, schema, payload, scope,
+    tmp_path,
+    schema,
+    payload,
+    scope,
 ):
     """Selected pages and sections retain limitations and source text."""
     document = tmp_path / "document.txt"
@@ -331,22 +470,19 @@ def test_workflow_selected_input_scope_survives_record(
     metadata = SchemaMetadata(schema_path)
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
     with patch.object(
-        extractor.client, "extract",
+        extractor.client,
+        "extract",
         return_value={"data": payload, "cost": 0.0},
     ) as client:
         result = _extract_one_document(
-            document, extractor=extractor, loaded_schema=schema,
-            schema_metadata=metadata, schema_path=schema_path,
-            output_path=tmp_path / "document.json", model="gpt-4o-mini",
-            run_id="run://contract", provider="openai",
-            input_fingerprint="a" * 64,
+            document,
+            _plan(tmp_path, document, schema, schema_path, metadata),
+            extractor=extractor,
+            run_id="run://contract",
             page_range=(5, 9) if scope == "pages" else None,
             section_text="Selected section" if scope == "sections" else None,
         )
-    expected_text = (
-        "Selected section" if scope == "sections"
-        else "Complete source document"
-    )
+    expected_text = "Selected section" if scope == "sections" else "Complete source document"
     assert client.call_args.args[0] == expected_text
     assert result["success"] is True
     record = json.loads((tmp_path / "document.json").read_text())
@@ -362,14 +498,17 @@ def test_workflow_selected_input_scope_survives_record(
 def test_pipeline_does_not_write_invalid_extraction(tmp_path, monkeypatch, schema):
     from psweep.pipeline import extract_documents
 
-    schema["$metadata"] = {"extraction": {"main_data_array": "items", "identifier_fields": ["source.id"]}}
+    schema["$metadata"] = {"extraction": {"main_data_array": "items"}}
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema))
     documents = tmp_path / "documents"
     documents.mkdir()
     (documents / "doc.txt").write_text("Source text")
     output = tmp_path / "output"
-    monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", lambda *args: {"data": {"items": []}, "cost": 0.0})
+    monkeypatch.setattr(
+        "psweep.extraction.llm_client.LLMClient.extract",
+        lambda *args: {"data": {"items": []}, "cost": 0.0},
+    )
     result = extract_documents(documents, schema_path, output_dir=output, provider="openai")
     assert result.failed == 1
     assert result.successful == 0

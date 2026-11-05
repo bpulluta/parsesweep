@@ -122,12 +122,8 @@ class TestPerTargetSelection:
 
     def test_recency_prefers_later_date(self):
         sel = CandidateSelector(exclude_draft=False)
-        april = _candidate(
-            "https://example.com/Electric_Summation_Sheet_04.01.2024_FINAL.pdf"
-        )
-        may = _candidate(
-            "https://example.com/Electric_Summation_Sheet_05.01.2024.pdf"
-        )
+        april = _candidate("https://example.com/Electric_Summation_Sheet_04.01.2024_FINAL.pdf")
+        may = _candidate("https://example.com/Electric_Summation_Sheet_05.01.2024.pdf")
         selected, notes = sel.select([[april, may]], primary_per_target=1)
         assert selected == [may]
         assert any("2024-05-01" in n for n in notes)
@@ -156,9 +152,7 @@ class TestPerTargetSelection:
             ],
         )
         draft = _candidate("https://example.com/proposed_ordinance_2025.pdf")
-        enacted = _candidate(
-            "https://example.com/geothermal_ordinance_2023.pdf"
-        )
+        enacted = _candidate("https://example.com/geothermal_ordinance_2023.pdf")
         selected, notes = sel.select([[draft, enacted]], primary_per_target=1)
         # draft excluded → enacted selected even though 2025 > 2023
         assert selected == [enacted]
@@ -202,13 +196,9 @@ class TestPerTargetSelection:
 
     def test_supported_document_preferred_over_newer_unsupported_page(self):
         sel = CandidateSelector(exclude_draft=False)
-        unsupported_newer = _candidate(
-            "https://example.com/ordinance_page_2026"
-        )
+        unsupported_newer = _candidate("https://example.com/ordinance_page_2026")
         supported_older = _candidate("https://example.com/ordinance_2024.pdf")
-        selected, _ = sel.select(
-            [[unsupported_newer, supported_older]], primary_per_target=1
-        )
+        selected, _ = sel.select([[unsupported_newer, supported_older]], primary_per_target=1)
         assert selected == [supported_older]
 
     def test_multiple_targets_independent_selection(self):
@@ -229,9 +219,7 @@ class TestPerTargetSelection:
         # Target 1: Xcel — one draft, one real
         t1 = [
             _candidate("https://xcel.com/proposed_rate_book_2025.pdf"),
-            _candidate(
-                "https://xcel.com/Electric_Summation_Sheet_05.01.2024.pdf"
-            ),
+            _candidate("https://xcel.com/Electric_Summation_Sheet_05.01.2024.pdf"),
         ]
         # Target 2: empty
         t2: list[DiscoveryCandidate] = []
@@ -261,12 +249,13 @@ class TestPerTargetSelection:
         reason_only = _candidate(
             "https://example.com/random-brand-landing",
             reasons=[
-                "SerpApi result rank 1 for query 'Keller Texas natural gas compressor station ordinance'"
+                (
+                    "SerpApi result rank 1 for query "
+                    "'Keller Texas natural gas compressor station ordinance'"
+                )
             ],
         )
-        real_match = _candidate(
-            "https://example.com/weatherford-compressor-ordinance.pdf"
-        )
+        real_match = _candidate("https://example.com/weatherford-compressor-ordinance.pdf")
         selected, notes = sel.select([[reason_only, real_match]], primary_per_target=1)
         assert selected == [real_match]
         assert any("relevance filter excluded" in n for n in notes)
@@ -321,30 +310,45 @@ class TestPerTargetSelection:
         selected, _ = sel.select([[private, mirror, keep]], primary_per_target=3)
         assert selected == [keep]
 
-    def test_relevance_legal_marker_gate_requires_structural_legal_terms(self):
+    @pytest.mark.parametrize("field", ["title", "snippet"])
+    def test_require_any_accepts_source_metadata_on_opaque_urls(self, field):
         sel = CandidateSelector(
             exclude_draft=False,
-            relevance_require_any_terms=["geothermal", "permit"],
-            relevance_require_legal_marker_terms=["ordinance", "code", "chapter", "title", "section"],
+            relevance_require_any_terms=["ordinance"],
         )
-        non_structural = _candidate("https://example.com/geothermal-permit-guidance-2025.pdf")
-        structural = _candidate("https://example.com/title-9-chapter-22-geothermal-code.pdf")
-        selected, notes = sel.select([[non_structural, structural]], primary_per_target=1)
-        assert selected == [structural]
-        assert any("relevance filter excluded" in n for n in notes)
+        document = _candidate(
+            "https://unfamiliar.example/download/12345",
+            **{field: "Adopted geothermal ordinance"},
+        )
+        selected, _ = sel.select([[document]])
+        assert selected == [document]
 
-    def test_relevance_legal_marker_must_exist_in_url_not_only_reason(self):
+    def test_source_type_gate_scales_without_known_hosts_or_seed_urls(self):
         sel = CandidateSelector(
             exclude_draft=False,
-            relevance_require_legal_marker_terms=["ordinance"],
+            relevance_require_any_terms=["ordinance", "zoning"],
         )
-        reason_only = _candidate(
-            "https://example.com/geothermal-update-2025.pdf",
-            reasons=["County ordinance update"],
-        )
-        url_marker = _candidate("https://example.com/geothermal-ordinance-2025.pdf")
-        selected, _ = sel.select([[reason_only, url_marker]], primary_per_target=1)
-        assert selected == [url_marker]
+        documents = [
+            _candidate(
+                f"https://county-{index}.example/download/{index}",
+                title=f"County {index} geothermal zoning ordinance",
+            )
+            for index in range(1000)
+        ]
+        pools = [
+            [
+                _candidate(
+                    f"https://news-{index}.example/item/{index}",
+                    title="Geothermal drilling investment update",
+                ),
+                document,
+            ]
+            for index, document in enumerate(documents)
+        ]
+        selected, _, metrics = sel.select(pools, primary_per_target=1, include_metrics=True)
+        assert selected == documents
+        assert len(metrics) == 1000
+        assert all(metric["selected_candidates"] == 1 for metric in metrics)
 
     def test_allowed_domain_no_longer_hard_filters_in_selector(self):
         # Recall-first: allowed-domain preference is now a soft ranking boost in
@@ -361,9 +365,7 @@ class TestPerTargetSelection:
         pdf = _candidate("https://example.com/ordinance/chapter-9.pdf")
         selected, notes = sel.select([[page, pdf]], primary_per_target=1)
         assert selected == [pdf]
-        assert not any(
-            "supported-document filter excluded" in n for n in notes
-        )
+        assert not any("supported-document filter excluded" in n for n in notes)
 
     def test_require_supported_document_accepts_extensionless_web(self):
         sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
@@ -372,10 +374,44 @@ class TestPerTargetSelection:
         assert selected == [page]
         assert not any("unsupported document type" in n for n in notes)
 
-    def test_target_identity_require_any_templates_matches_jurisdiction(self):
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://www.gilacountyaz.gov/documents/building_safety_docs.php",
+            "https://a.gov/bids.aspx?bidId=4",
+            "https://a.gov/index.cfm?page=solar",
+            "https://a.gov/codes.nsf/view/solar",
+            "https://a.gov/code/Title.Nine",
+        ],
+    )
+    def test_require_supported_document_keeps_server_routes(self, url):
+        # Unrecognised suffixes are routes whose type GET/MIME decides.
+        sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
+        page = _candidate(url)
+        selected, notes = sel.select([[page]], primary_per_target=1)
+        assert selected == [page]
+        assert not any("unsupported document type" in n for n in notes)
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://a.gov/site-plan.jpg",
+            "https://a.gov/gis.zip",
+            "https://a.gov/x.xls",
+            "https://a.gov/zoning.gz",
+            "https://a.gov/dump.bz2",
+        ],
+    )
+    def test_require_supported_document_rejects_known_unreadable_files(self, url):
+        sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
+        selected, notes = sel.select([[_candidate(url)]], primary_per_target=1)
+        assert selected == []
+        assert any("unsupported document type" in n for n in notes)
+
+    def test_target_require_any_matches_jurisdiction(self):
         sel = CandidateSelector(
             exclude_draft=False,
-            target_identity_require_any_templates=["{jurisdiction}", "{state}"],
+            target_require_any=["{jurisdiction}", "{state}"],
         )
         off_target = _candidate("https://example.com/inyo-county-geothermal-ordinance.pdf")
         on_target = _candidate("https://example.com/mono-county-title-19-geothermal-ordinance.pdf")
@@ -387,10 +423,10 @@ class TestPerTargetSelection:
         assert selected == [on_target]
         assert any("identity filter excluded" in n for n in notes)
 
-    def test_target_identity_require_all_templates_matches_utility_and_sector(self):
+    def test_target_require_all_matches_utility_and_sector(self):
         sel = CandidateSelector(
             exclude_draft=False,
-            target_identity_require_all_templates=["{utility}", "{sector}"],
+            target_require_all=["{utility}", "{sector}"],
         )
         utility_only = _candidate("https://example.com/pge-rate-schedule-master.pdf")
         full_match = _candidate("https://example.com/pge-residential-rate-schedule-e1.pdf")
@@ -401,11 +437,11 @@ class TestPerTargetSelection:
         )
         assert selected == [full_match]
 
-    def test_target_identity_exclude_any_templates_blocks_wrong_brand(self):
+    def test_target_exclude_blocks_wrong_brand(self):
         sel = CandidateSelector(
             exclude_draft=False,
-            target_identity_require_any_templates=["{manufacturer}"],
-            target_identity_exclude_any_templates=["manual template", "sample"],
+            target_require_any=["{manufacturer}"],
+            target_exclude=["manual template", "sample"],
         )
         blocked = _candidate("https://example.com/generac-manual-template-sample.pdf")
         keep = _candidate("https://example.com/generac-200kw-operator-manual.pdf")
@@ -490,15 +526,15 @@ class TestSelectionConfigMapping:
         assert "selection_primary_per_target" not in resolved
         assert "selection_exclude_draft" not in resolved
 
-    def test_selection_block_maps_target_identity_templates(self):
+    def test_selection_block_maps_target_rules(self):
         from psweep.config.runtime_config_loader import resolve_command_config
 
         config = {
             "discovery": {
                 "selection": {
-                    "target_identity_require_any_templates": ["{jurisdiction}", "{state}"],
-                    "target_identity_require_all_templates": ["{utility}", "{sector}"],
-                    "target_identity_exclude_any_templates": ["draft", "template"],
+                    "target_require_any": ["{jurisdiction}", "{state}"],
+                    "target_require_all": ["{utility}", "{sector}"],
+                    "target_exclude": ["draft", "template"],
                 }
             }
         }
@@ -507,9 +543,9 @@ class TestSelectionConfigMapping:
             cli_values={},
             config_data=config,
         )
-        assert resolved["selection_target_identity_require_any_templates"] == ["{jurisdiction}", "{state}"]
-        assert resolved["selection_target_identity_require_all_templates"] == ["{utility}", "{sector}"]
-        assert resolved["selection_target_identity_exclude_any_templates"] == ["draft", "template"]
+        assert resolved["selection_target_require_any"] == ["{jurisdiction}", "{state}"]
+        assert resolved["selection_target_require_all"] == ["{utility}", "{sector}"]
+        assert resolved["selection_target_exclude"] == ["draft", "template"]
 
     def test_selection_block_maps_max_per_host_per_target(self):
         from psweep.config.runtime_config_loader import resolve_command_config
@@ -527,3 +563,14 @@ class TestSelectionConfigMapping:
             config_data=config,
         )
         assert resolved["selection_max_per_host_per_target"] == 2
+
+
+def test_selection_notes_name_targets_by_label():
+    _, notes = CandidateSelector().select(
+        [[_candidate("https://a.gov/permit.pdf")], []],
+        labels=["AZ, Pima County", "CO, Boulder County"],
+    )
+    assert any(note.startswith("AZ, Pima County: selected") for note in notes)
+    assert any(note.startswith("CO, Boulder County: seeker returned 0") for note in notes)
+    _, default_notes = CandidateSelector().select([[]])
+    assert default_notes[0].startswith("#1: ")

@@ -1,20 +1,23 @@
 """Schema-driven extraction with measured usage and scope limits.
 
-Regular extraction is single-model. Multi-model QA/QC runs separately.
 Structural validation does not certify source grounding or accuracy.
 """
 
 import logging
 import time
-from typing import Dict, Any, List, Optional
+from typing import Any
 from dataclasses import dataclass
 
 from jsonschema import ValidationError
 
-from ..exceptions import SchemaValidationError
+from psweep.exceptions import SchemaValidationError
 from .llm_client import LLMClient
 from .llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
-from .text_processor import TextProcessor
+from .text_processor import (
+    calculate_completeness,
+    normalize_string_fields,
+    normalize_with_schema,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,34 +26,22 @@ logger = logging.getLogger(__name__)
 class ExtractionResult:
     """Result from document extraction."""
 
-    data: Dict[str, Any]
+    data: dict[str, Any]
     completeness_score: float  # 0-1 score based on fields populated
     cost: float | None
     processing_time: float
-    validation_notes: List[str]
-    validation_report: Optional[Any] = None  # Optional QA/QC validation report
-    input_tokens: Optional[int] = None  # Prompt tokens (from provider usage)
-    output_tokens: Optional[int] = (
-        None  # Completion tokens (from provider usage)
-    )
-    coverage: Optional[Dict[str, Any]] = None
+    validation_notes: list[str]
+    input_tokens: int | None = None  # Prompt tokens (from provider usage)
+    output_tokens: int | None = None  # Completion tokens (from provider usage)
+    coverage: dict[str, Any] | None = None
+    status: str = "extracted"
+    unverified_quotes: int = 0
+    off_candidate_items: int = 0
 
 
 class DocumentExtractor:
     """
-    Universal document extractor with traceability and configurable context.
-
-    Architecture:
-
-    1. LLM Structured Extraction: Fast extraction with schema-driven parsing
-    2. Multi-Model QA/QC: Validates via multiple models (run separately via `psweep validate`)
-
-    Works with any document type and JSON schema - fully domain-agnostic.
-
-    Architecture:
-
-    - LLMClient: Handles all API calls via LiteLLM (100+ providers)
-    - TextProcessor: Optimizes text and normalizes output
+    Domain-agnostic, schema-driven document extractor (LLM calls via LiteLLM).
 
     Examples
     --------
@@ -62,17 +53,16 @@ class DocumentExtractor:
 
     def __init__(
         self,
-        api_key: str = None,
+        api_key: str | None = None,
         model: str = DEFAULT_MODEL,
         max_context_chars: int = DEFAULT_MAX_CONTEXT,
-        schema_metadata=None,
-        provider: str = None,
-        azure_endpoint: str = None,
-        azure_api_version: str = None,
-        context_windows: Optional[Dict[str, int]] = None,
-        base_url: Optional[str] = None,
-        timeout: Optional[int] = None,
-        reasoning_models: Optional[List[str]] = None,
+        provider: str | None = None,
+        azure_endpoint: str | None = None,
+        azure_api_version: str | None = None,
+        context_windows: dict[str, int] | None = None,
+        base_url: str | None = None,
+        timeout: int | None = None,
+        reasoning_models: list[str] | None = None,
     ):
         """
         Initialize document extractor.
@@ -85,8 +75,6 @@ class DocumentExtractor:
             Model to use (default: gpt-4o-mini)
         max_context_chars : int
             Maximum characters to extract from document (default: 400000)
-        schema_metadata
-            Optional SchemaMetadata for metadata-driven processing
         provider : str
             LLM provider ("openai", "azure", "anthropic", "gemini", etc.)
         azure_endpoint : str
@@ -112,7 +100,6 @@ class DocumentExtractor:
         self.api_key = api_key
         self.model = model
         self.max_context_chars = max_context_chars
-        self.schema_metadata = schema_metadata
 
         # Initialize LLM client with multi-provider support
         self.client = LLMClient(
@@ -127,19 +114,14 @@ class DocumentExtractor:
             reasoning_models=reasoning_models,
         )
 
-        # Initialize text processor
-        self.processor = TextProcessor(max_chars=max_context_chars)
-
-    def extract(self, text: str, schema: Dict[str, Any]) -> ExtractionResult:
+    def extract(self, text: str, schema: dict[str, Any]) -> ExtractionResult:
         """
         Extract structured data from document.
 
         This method orchestrates:
 
         1. LLM Structured Extraction - Fast, schema-driven parsing
-        2. Post-processing - Normalization and sanity checks
-
-        For multi-model QA/QC validation, use the CLI validate stage.
+        2. Post-processing - Normalization
 
         Parameters
         ----------
@@ -158,7 +140,6 @@ class DocumentExtractor:
             - cost: Total API cost in USD
             - processing_time: Total time in seconds
             - validation_notes: List of warnings/insights
-            - validation_report: Reserved for future use
 
         Examples
         --------
@@ -168,11 +149,11 @@ class DocumentExtractor:
         """
         start_time = time.time()
         validation_notes = []
-        excerpt, truncated = self.processor.optimize(text)
+        excerpt = text[: self.max_context_chars]
         coverage = {
             "input_characters": len(text),
             "extracted_characters": len(excerpt),
-            "context_truncated": truncated,
+            "context_truncated": len(excerpt) < len(text),
         }
         if coverage["context_truncated"]:
             validation_notes.append(
@@ -193,29 +174,20 @@ class DocumentExtractor:
             # Validate before normalization hides contract violations.
             self._validate_payload(validated_data, validator)
 
-            # Stage 2: Post-extraction sanity checks and normalization
-            validated_data = self.processor.normalize_with_schema(
-                validated_data, schema, validator=validator
-            )
-            validated_data = self.processor.normalize_string_fields(
-                validated_data
-            )
+            # Stage 2: Post-extraction normalization
+            validated_data = normalize_with_schema(validated_data, schema, validator=validator)
+            validated_data = normalize_string_fields(validated_data)
             self._validate_payload(validated_data, validator)
-            sanity_warnings = self.processor.run_sanity_checks(
-                validated_data, schema_metadata=self.schema_metadata
-            )
-            validation_notes.extend(sanity_warnings)
 
         except Exception as exc:
             exc.usage = {
-                key: extraction.get(key)
-                for key in ("cost", "input_tokens", "output_tokens")
+                key: extraction.get(key) for key in ("cost", "input_tokens", "output_tokens")
             }
             raise
 
         processing_time = time.time() - start_time
 
-        completeness = self.processor.calculate_completeness(validated_data)
+        completeness = calculate_completeness(validated_data)
 
         return ExtractionResult(
             data=validated_data,
@@ -223,7 +195,6 @@ class DocumentExtractor:
             cost=extraction.get("cost"),
             processing_time=processing_time,
             validation_notes=validation_notes,
-            validation_report=None,
             input_tokens=extraction.get("input_tokens"),
             output_tokens=extraction.get("output_tokens"),
             coverage=coverage,
@@ -235,8 +206,8 @@ class DocumentExtractor:
         try:
             validator.validate(data)
         except ValidationError as exc:
-            path = ".".join(map(str, exc.absolute_path)) or "payload"
+            path = ".".join(map(str, exc.absolute_schema_path)) or "schema"
             message = (
-                f"Extraction schema validation failed at {path}: {exc.message}"
+                f"Extraction schema validation failed at schema {path} (rule: {exc.validator})"
             )
-            raise SchemaValidationError(message) from exc
+            raise SchemaValidationError(message) from None

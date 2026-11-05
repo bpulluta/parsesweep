@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import multiprocessing
+import os
 from pathlib import Path
 
 import pytest
@@ -13,9 +14,7 @@ from psweep.discovery import publication as pub
 from psweep.discovery.engine import DiscoveryEngine
 
 
-def _record(
-    documents: Path, relative: str = "county/report.pdf", **extra
-) -> dict:
+def _record(documents: Path, relative: str = "county/report.pdf", **extra) -> dict:
     source = documents / relative
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(b"new report")
@@ -30,9 +29,7 @@ def _record(
 def _index(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        pub.csv_content(
-            ["relative_path", "path", "url", "review_selected"], rows
-        ),
+        pub.csv_content(["relative_path", "path", "url", "review_selected"], rows),
         encoding="utf-8",
     )
 
@@ -62,16 +59,12 @@ def test_resolve_default_external_documents_and_flat_locations(tmp_path):
     domain = tmp_path / "domain"
     run = domain / "runs/r1"
     documents = tmp_path / "external/documents"
-    paths = pub.resolve_publication_paths(
-        documents, run / "manifest.json", "example"
-    )
+    paths = pub.resolve_publication_paths(documents, run / "manifest.json", "example")
     assert paths.domain_dir == domain
     assert paths.run_curated_dir == documents.parent / "curated"
     assert paths.run_index == run / "download_index.csv"
     flat = tmp_path / "flat"
-    paths = pub.resolve_publication_paths(
-        flat / "documents", flat / "manifest.json", "example"
-    )
+    paths = pub.resolve_publication_paths(flat / "documents", flat / "manifest.json", "example")
     assert paths.domain_dir == flat
     assert paths.run_curated_dir == flat / "run-curated"
     assert paths.run_index == flat / "run-download_index.csv"
@@ -111,9 +104,7 @@ def test_prepared_journal_before_any_swap_keeps_prior_files(tmp_path):
     assert not stage.exists()
 
 
-def test_crash_during_rollback_is_recovered_next_invocation(
-    tmp_path, monkeypatch
-):
+def test_crash_during_rollback_is_recovered_next_invocation(tmp_path, monkeypatch):
     """Crash during rollback is recovered next invocation."""
     root = tmp_path / "domain"
     root.mkdir()
@@ -151,9 +142,7 @@ def test_committed_journal_cleanup_keeps_successful_publication(tmp_path):
     assert not stage.exists()
 
 
-@pytest.mark.parametrize(
-    "relative", ["../escape.pdf", "/escape.pdf", "", ".review/report.pdf"]
-)
+@pytest.mark.parametrize("relative", ["../escape.pdf", "/escape.pdf", "", ".review/report.pdf"])
 def test_unsafe_selected_path_preserves_old_curation(tmp_path, relative):
     """Unsafe selected path preserves old curation."""
     documents = tmp_path / "documents"
@@ -163,28 +152,20 @@ def test_unsafe_selected_path_preserves_old_curation(tmp_path, relative):
     (old / "prior.pdf").write_bytes(b"prior")
     record["relative_path"] = relative
     with pytest.raises(pub.PublicationError):
-        DiscoveryEngine._materialize_curated(
-            documents_dir=documents, download_records=[record]
-        )
+        DiscoveryEngine._materialize_curated(documents_dir=documents, download_records=[record])
     assert (old / "prior.pdf").read_bytes() == b"prior"
     assert not list(tmp_path.glob(".discovery-stage-*"))
 
 
-def test_missing_source_and_copy_failure_preserve_old_curation(
-    tmp_path, monkeypatch
-):
+def test_missing_source_and_copy_failure_preserve_old_curation(tmp_path, monkeypatch):
     """Missing source and copy failure preserve old curation."""
     documents = tmp_path / "documents"
     record = _record(documents)
-    curated, _, _ = pub.materialize_curated(
-        documents_dir=documents, download_records=[record]
-    )
+    curated, _, _ = pub.materialize_curated(documents_dir=documents, download_records=[record])
     before = (curated / record["relative_path"]).read_bytes()
     Path(record["path"]).unlink()
     with pytest.raises(pub.PublicationError, match="source missing"):
-        pub.materialize_curated(
-            documents_dir=documents, download_records=[record]
-        )
+        pub.materialize_curated(documents_dir=documents, download_records=[record])
     assert (curated / record["relative_path"]).read_bytes() == before
     Path(record["path"]).write_bytes(b"replacement")
     monkeypatch.setattr(
@@ -198,72 +179,50 @@ def test_missing_source_and_copy_failure_preserve_old_curation(
         lambda *_: (_ for _ in ()).throw(OSError("copy failure")),
     )
     with pytest.raises(OSError, match="copy failure"):
-        pub.materialize_curated(
-            documents_dir=documents, download_records=[record]
-        )
+        pub.materialize_curated(documents_dir=documents, download_records=[record])
     assert (curated / record["relative_path"]).read_bytes() == before
 
 
-def test_materialization_carries_text_and_full_filename_review_sidecars(
-    tmp_path,
-):
-    """Materialization carries text and full filename review
-    sidecars.
-    """
+def test_materialization_carries_full_filename_text_caches(tmp_path):
+    """Materialization carries full-filename text caches."""
     documents = tmp_path / "documents"
     record = _record(documents)
     source = Path(record["path"])
     (source.parent / ".text").mkdir()
     (source.parent / ".text/report.pdf.txt").write_text("extracted")
     (source.parent / ".text/report.pdf.meta.json").write_text("{}")
-    (source.parent / ".review").mkdir()
-    (source.parent / ".review/report.pdf.json").write_text(
-        '{"cache_key":"identity"}'
-    )
     curated, count, errors = pub.materialize_curated(
         documents_dir=documents, download_records=[record]
     )
     assert count == 1 and errors == 0
     assert (curated / "county/.text/report.pdf.txt").read_text() == "extracted"
     assert (curated / "county/.text/report.pdf.meta.json").exists()
-    assert (curated / "county/.review/report.pdf.json").exists()
 
 
 def test_explicit_index_provenance_is_promoted_and_fields_unioned(tmp_path):
     """Explicit index provenance is promoted and fields unioned."""
     domain, run = _corpus(tmp_path)
     explicit = tmp_path / "outside/actual-index.csv"
-    _index(
-        explicit, [{"relative_path": "county/new.pdf", "url": "actual-origin"}]
-    )
+    _index(explicit, [{"relative_path": "county/new.pdf", "url": "actual-origin"}])
     (domain / "download_index.csv").write_text(
         "relative_path,url,prior_only\nother/stay.pdf,old-origin,retained\n"
     )
-    pub.promote_curated(
-        run_curated_dir=run / "curated", domain_dir=domain, run_index=explicit
-    )
+    pub.promote_curated(run_curated_dir=run / "curated", domain_dir=domain, run_index=explicit)
     with (domain / "download_index.csv").open() as handle:
         rows = {row["relative_path"]: row for row in csv.DictReader(handle)}
     assert rows["county/new.pdf"]["url"] == "actual-origin"
-    assert rows["county/new.pdf"]["path"] == str(
-        domain / "curated/county/new.pdf"
-    )
+    assert rows["county/new.pdf"]["path"] == str(domain / "curated/county/new.pdf")
     assert rows["other/stay.pdf"]["prior_only"] == "retained"
 
 
-def test_index_replace_failure_rolls_back_all_partitions_and_index(
-    tmp_path, monkeypatch
-):
+def test_index_replace_failure_rolls_back_all_partitions_and_index(tmp_path, monkeypatch):
     """Index replace failure rolls back all partitions and index."""
     domain, run = _corpus(tmp_path)
     before = (domain / "download_index.csv").read_bytes()
     replace = Path.replace
 
     def fail_index(source, destination):
-        if (
-            source.name.startswith("new-")
-            and Path(destination) == domain / "download_index.csv"
-        ):
+        if source.name.startswith("new-") and Path(destination) == domain / "download_index.csv":
             raise OSError("index publication failed")
         return replace(source, destination)
 
@@ -293,10 +252,9 @@ def test_missing_provenance_does_not_swap_files(tmp_path):
     assert (domain / "curated/county/old.pdf").exists()
 
 
-def test_blocked_partition_keeps_prior_files_and_index(tmp_path):
-    """Blocked partition keeps prior files and index."""
+def test_blocked_partition_publishes_additively(tmp_path):
+    """An incomplete partition adds its files but never replaces or withdraws."""
     domain, run = _corpus(tmp_path)
-    before = (domain / "download_index.csv").read_bytes()
     pub.promote_curated(
         run_curated_dir=run / "curated",
         domain_dir=domain,
@@ -304,10 +262,38 @@ def test_blocked_partition_keeps_prior_files_and_index(tmp_path):
         attempted_partitions={Path("county")},
         run_index=run / "download_index.csv",
     )
-    assert (domain / "curated/county/old.pdf").exists()
+    assert (domain / "curated/county/old.pdf").read_bytes() == b"old"
+    assert (domain / "curated/county/new.pdf").read_bytes() == b"new"
     with (domain / "download_index.csv").open() as handle:
-        assert next(csv.DictReader(handle))["url"] == "old-url"
-    assert before  # Header may acquire incoming fields; provenance stays old.
+        assert [row["url"] for row in csv.DictReader(handle)] == ["old-url", "new-url"]
+
+
+@pytest.mark.parametrize("fresh", [True, False])
+def test_republished_identical_file_keeps_its_text_cache(tmp_path, fresh):
+    """OCR/transcript text survives republication of the same bytes only."""
+    from psweep.extraction.document_utils import read_text_cache, write_text_cache
+
+    domain, run = tmp_path / "domain", tmp_path / "domain/runs/r1"
+    old, new = domain / "curated/county", run / "curated/county"
+    old.mkdir(parents=True)
+    new.mkdir(parents=True)
+    for name, before, after in (("same.mp3", b"audio", b"audio"), ("changed.pdf", b"v1", b"v2")):
+        (old / name).write_bytes(before)
+        write_text_cache(old / name, f"text of {name}", method="transcript", page_count=4)
+        (new / name).write_bytes(after)
+        os.utime(new / name, ns=(1, 1))
+    rows = [{"relative_path": f"county/{n}", "url": n} for n in ("same.mp3", "changed.pdf")]
+    _index(domain / "download_index.csv", rows)
+    _index(run / "download_index.csv", rows)
+    pub.promote_curated(
+        run_curated_dir=run / "curated",
+        domain_dir=domain,
+        attempted_partitions={Path("county")} if fresh else None,
+        run_index=run / "download_index.csv",
+    )
+    text, meta = read_text_cache(old / "same.mp3", return_meta=True)
+    assert (text, meta["method"], meta["page_count"]) == ("text of same.mp3", "transcript", 4)
+    assert read_text_cache(old / "changed.pdf") is None
 
 
 def _interrupted_plan(domain: Path):
@@ -355,9 +341,7 @@ def test_next_invocation_recovers_interrupted_swap_and_dead_owner(tmp_path):
     assert not (domain / ".discovery-publication.json").exists()
 
 
-@pytest.mark.parametrize(
-    "corruption", ["json", "token", "destination", "backup"]
-)
+@pytest.mark.parametrize("corruption", ["json", "token", "destination", "backup"])
 def test_corrupt_recovery_plan_fails_without_overwriting(tmp_path, corruption):
     """Corrupt recovery plan fails without overwriting."""
     domain = tmp_path / "domain"
@@ -425,9 +409,7 @@ def test_separate_process_lock_rejects_active_and_releases_after_exit(
         child.close()
 
 
-def test_latest_pointer_atomic_and_flat_does_not_write_ancestors(
-    tmp_path, monkeypatch
-):
+def test_latest_pointer_atomic_and_flat_does_not_write_ancestors(tmp_path, monkeypatch):
     """Latest pointer atomic and flat does not write ancestors."""
     flat = tmp_path / "flat"
     flat.mkdir()
@@ -438,9 +420,7 @@ def test_latest_pointer_atomic_and_flat_does_not_write_ancestors(
     monkeypatch.setattr(
         pub.os,
         "symlink",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            OSError("no symlinks")
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("no symlinks")),
     )
     pub.refresh_latest_pointer(flat, domain_dir=flat)
     assert (flat / "latest.txt").read_text().strip() == str(flat)
@@ -460,3 +440,63 @@ def test_atomic_json_failure_keeps_prior_bytes(tmp_path, monkeypatch):
         pub.atomic_json(path, {"new": True})
     assert path.read_bytes() == before
     assert not list(tmp_path.glob(".manifest.json-*"))
+
+
+@pytest.mark.parametrize("blocked", [False, True])
+def test_merged_index_keeps_one_path_per_owner(tmp_path, blocked):
+    """Renamed and unselected owners lose their old path whatever its name,
+    except in blocked partitions.
+    """
+    index = tmp_path / "download_index.csv"
+    index.write_text(
+        "relative_path,target_id,url\n"
+        "p/old-slug.pdf,t,https://a.gov/doc\n"
+        "p/held.pdf,t,https://a.gov/rejected\n"
+        "p/other.pdf,u,https://b.gov/other\n"
+    )
+    content, removed = pub._merged_index(
+        run_index=None,
+        domain_index=index,
+        promoted_paths=set() if blocked else {"p/new-slug.pdf"},
+        replaced_partitions=set(),
+        withdrawn={("t", "https://a.gov/rejected")},
+        is_blocked=lambda _part: blocked,
+        run_content="relative_path,target_id,url\np/new-slug.pdf,t,https://a.gov/doc\n",
+    )
+    paths = {row.split(",")[0] for row in content.splitlines()[1:]}
+    if blocked:
+        assert not removed and paths == {"p/old-slug.pdf", "p/held.pdf", "p/other.pdf"}
+    else:
+        assert removed == {"p/old-slug.pdf", "p/held.pdf"}
+        assert paths == {"p/new-slug.pdf", "p/other.pdf"}
+
+
+def test_query_variants_of_one_shared_page_get_distinct_stable_names(tmp_path):
+    """Pagination pages share a basename; each keeps its own published name."""
+    listing = "https://site.org/where-is-it-available"
+    urls = [listing, *(f"{listing}?p_page={n}" for n in (2, 3, 4))]
+
+    def records(order):
+        return [
+            {
+                "status": "downloaded",
+                "relative_path": "_shared/where-is-it-available.html",
+                "url": urls[n],
+                "source_url": listing,
+            }
+            for n in order
+        ]
+
+    first = records([0, 1, 2, 3])
+    index = tmp_path / "index.csv"
+    pub.assign_document_names(first, index, set())
+    names = {r["url"]: r["relative_path"] for r in first}
+    assert len(set(names.values())) == len(urls)
+    assert names[listing] == "_shared/where-is-it-available.html"
+    index.write_text(
+        pub.csv_content(["relative_path", "url", "source_url"], first),
+        encoding="utf-8",
+    )
+    rerun = records([3, 1, 0, 2])
+    pub.assign_document_names(rerun, index, set())
+    assert {r["url"]: r["relative_path"] for r in rerun} == names

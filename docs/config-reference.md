@@ -1,356 +1,471 @@
 # Configuration Reference
 
-A ParseSweep run is driven by a YAML config containing any subset of
-`extraction`, `compilation`, `discovery`, and `validation`. Loading validates
-all supplied sections; each command executes only its own section. Only the
-explicitly selected config file is loaded. Adjacent section override files
-beside `run.yaml`, `run.yml`, or `run.json` are retired: move their settings into
-the corresponding sections of the run config and remove those adjacent files,
-or load a section-wrapped config explicitly with `--config`. The loader names
-the files to migrate rather than silently ignoring them.
+This page is the single reference for `run.yaml`. Every key, default and rule
+below is taken from the loaders that enforce them; the
+[Command Reference](commands/index.md) renders every CLI option from the live
+command definitions.
 
-## Start small, add as you need
+## The run config
 
-Discovery alone needs no schema or LLM configuration:
+A domain lives in `config/<domain>/`:
 
-```yaml
-domain: my_domain
-discovery:
-  queries:
-    - "industrial pump installation manual filetype:pdf"
+```text
+config/<domain>/
+├── run.yaml       # this file: runtime behavior for every stage
+├── schema.json    # extraction contract (see Schema Authoring)
+├── targets.csv    # optional roster: one row per target
+└── samples/       # optional human reference sheets for validation
 ```
 
-Set `SERPAPI_API_KEY` in the environment or `.env`, then run
-`pixi run psweep discover --config config/my_domain/run.yaml`.
-`discovery.queries` auto-enables SerpApi when search is omitted; explicit
-`search.enabled: false` wins over inference.
-Seed-only input does not auto-enable search. Replace `queries` with
-`seeds: [https://example.org/documents/manual.pdf]` for known document URLs.
+Only the config passed with `--config` is loaded. Each command runs its own
+section and validates all supplied sections. Loading is strict at every level:
+unknown keys fail with a did-you-mean suggestion naming the file and key path;
+quoted booleans (`"false"`), invalid regexes, non-http(s) URLs and out-of-range
+limits fail before any work starts. Relative `targets`, `pages.csv` and
+`validation.references` paths resolve against the config directory. Credentials never go in YAML; set them in the environment or `.env`
+(see [Environment variables](#environment-variables)).
 
-Start from `config/TEMPLATE.yaml`; use `config/ADVANCED.yaml` for expanded
-stage settings. The existing `init-domain-schema` scaffold creates a schema,
-not a discovery wizard or a new config mode.
+Check a config without network calls or run artifacts:
 
-Once you have suitable documents, only two keys are required to extract —
-`schema` and `input_dir`:
-
-```yaml
-extraction:
-  schema: schemas/personal/my_schema.json
-  input_dir: discovered/my_domain/curated
+```bash
+pixi run psweep run --config config/<domain>/run.yaml --validate-config
+pixi run psweep discover --config config/<domain>/run.yaml --show-effective-config
 ```
 
-Extraction requires LLM credentials; discovery does not unless you explicitly
-configure paid `document_review`. Add a setting only when you have a reason
-to change its default. The [Getting Started guide](getting-started.md) walks
-through discovery first, and [Tuning & Iteration](tuning.md) covers later tuning.
-
-## Defaults at a glance
-
-These are the values that apply when you omit a key. Defaults come from
-shared runtime definitions; templates show explicit choices separately.
-
-| Setting | Section | Default | Change it when… |
-|---------|---------|---------|-----------------|
-| `search.enabled` | discovery | Inferred for `queries`; off for seed-only input | Explicitly enable/disable search |
-| `search.max_results` | discovery | `10` unique candidates per query | Change the candidate budget, not the download count |
-| `search.cache` | discovery | `false` | Opt into search-result caching |
-| `selection.max_per_target` | discovery | `1` | Acquire more candidates per target |
-| `follow_links` | discovery | `false` (direct acquisition) | Explicitly enable crawling |
-| `runtime.max_concurrent_downloads` | discovery | `2` | Change download concurrency |
-| `retry_policy.max_attempts` | discovery | `3` total attempts | Change the retry budget |
-| `browser_mode` | discovery | `false` | Explicitly use headless-browser downloads |
-| `browser_escalation.enabled` | discovery | `false` | Opt into thin/JS-shell browser recovery |
-| `code_host_adapters.enabled` | discovery | `false` | Opt into supported code-host API recovery |
-| `document_review` | discovery | Not configured (no LLM review) | Add explicit paid model-based curation |
-| `partition_mode` | discovery | `auto` | You need a specific output layout |
-| `policy.robots_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
-| `policy.tos_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
-| `model` | extraction | `.env` model → `gpt-4o-mini` | You want a stronger/cheaper tier |
-| `max_context` | extraction | `600000` | Output is truncated on large docs |
-| `output_dir` | extraction | `extracted/<domain>` | You want a custom location |
-| `skip_existing` | extraction | `true` | Validated record reuse; `--fresh` resets whole output after preflight |
-| `timeout_seconds` | extraction | `120` (`LLM_TIMEOUT` env) | Very large docs time out |
-| `provider` | extraction | `auto` | Auto-detection picks the wrong one |
-| `pages.auto_locate.trigger_chars` | extraction | `200000` | Target only docs above a size |
-| `pages.auto_locate.max_selected_pages` | extraction | `30` | Sections span more/fewer pages |
-| `output.default_format` | compilation | `both` when unset | You want only `csv` or `excel` |
-| `synthesis.min_sources_for_llm` | compilation | `2` | Tune when the LLM reconciler runs |
-| dedup `key_fields` | schema `$metadata.identity.deduplication` | none | Compiled sheet has duplicate rows |
-
-The [Command Reference](commands/index.md) also renders every CLI option's
-default directly from the live command definitions.
-
-## Discovery budgets, scope, and review
-
-`search.max_results` caps **unique candidates per rendered query**, locally,
-across live/cached results and enabled news results. Provider `num` is a request
-hint, not an authoritative limit. There is no hidden pagination or refill.
-`selection.max_per_target` is the **acquisition count per target**, after scope
-and candidate selection; it is separate from `document_review.keep_top`, which
-controls optional post-acquisition LLM curation. Neither cap guarantees that
-many successful downloads or establishes search recall.
-
-Search cache is off by default. With `search.cache: true`, a cache hit makes
-zero live search calls. Browser recovery also remains off until explicitly
-enabled, including when threshold settings are supplied:
-
-```yaml
-discovery:
-  browser_escalation:
-    enabled: true
-    min_shell_chars: 8000
-  code_host_adapters:
-    enabled: true
-```
-
-HTML/HTM and extensionless HTTP(S) URLs are provisionally eligible with the
-default `selection.require_supported_document`; you do not need to set it to
-`false` to discover web documents. Known non-document binaries are excluded;
-GET/MIME checks verify ambiguous candidates. PDF candidates are preferred to
-web pages when present. Ranking and MIME validation do not certify document
-relevance or semantic accuracy.
-
-For strict sources, combine `allowed_domains` with a URL-path regex:
-
-```yaml
-discovery:
-  queries:
-    - "site:example.org installation manual filetype:pdf"
-  allowed_domains: [example.org]
-  discovery_rules:
-    include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
-```
-
-Scope applies before top-one selection and to final redirects. Search `site:`
-and `filetype:` hints are not scope/type guarantees.
-`selection.relevance_allowed_domain_patterns` is a ranking boost, not a host
-allowlist. `selection.exclude_url_patterns` is a case-insensitive regex guard
-on URLs, not a substitute for positive source scope. Concrete provider/vendor
-source filters belong in domain configs; a document parser does not configure
-them automatically.
-
-Selection uses `require_any` and `exclude` for literal relevance terms, and
-`exclude_text_patterns` for candidate-text regex guards. Domain-authored
-`draft_patterns` with `exclude_draft: true` express draft filtering; there is
-no built-in legal draft list. Ranking has no built-in vendor/government
-authority table or shopping-path list: configure `link_prioritization.domain_scores`
-and `shopping_path_keywords` when needed. Configured ranking `keywords`
-replace the generic `document`/`download`/`guide`/`report` fallback.
-
-Geographic partitioning uses explicit `state` and `jurisdiction` request/target
-fields, not inference from query text. `jurisdiction_aliases` supplies only
-configured aliases; there is no built-in US discovery alias table. Use
-`partition_by` for arbitrary metadata layouts.
-
-`document_review` is never enabled by query inference or model aliases. Add an
-explicit `document_description` and `model`, and configure LLM credentials,
-only when you want paid model-based curation. Without it, acquisition uses
-heuristics; inspect the files before extraction. Run-scoped selected files are
-under `discovered/<domain>/runs/<run_id>/curated`; the consolidated downstream
-folder is `discovered/<domain>/curated`.
-
-Credentials belong only in environment variables or `.env`, not YAML.
-`SERPAPI_SSL_VERIFY` and `DISCOVERY_SSL_VERIFY` retain their default `false`;
-set them explicitly to choose TLS verification. `REQUESTS_CA_BUNDLE` selects
-a Requests CA bundle. These options do not change what config validation checks.
-
-## Discovery configuration validation
-
-Discovery validates consumed nested blocks even without `--config-strict`:
-unknown options, quoted booleans such as `"false"`, invalid regular expressions,
-and invalid resource limits fail before acquisition. Use unquoted YAML
-`true`/`false`, actual integers for count limits, and finite non-negative numbers
-for delays. `runtime.max_depth: 0` disables descent; concurrency, result counts,
-page/file budgets, timeouts, and per-target selection counts must be positive.
-Host-diversity caps and request intervals may be zero.
-
-### Canonical YAML migration
-
-Retired aliases fail with a replacement-key error, even without strict mode
-and even if a canonical key is also supplied. They are not merged:
-
-| Retired key | Use instead |
-|-------------|-------------|
-| `discovery.seeker` | `discovery.search` (including `use_query_family`) |
-| `discovery.browser` | `discovery.browser_mode` |
-| `discovery.search.max_results_per_query` | `discovery.search.max_results` |
-| `discovery.selection.primary_per_target` | `discovery.selection.max_per_target` |
-| `discovery.selection.relevance_require_any_terms` | `discovery.selection.require_any` |
-| `discovery.selection.relevance_exclude_any_terms` | `discovery.selection.exclude` |
-
-The unused `pipeline`, `scoring`, `dedupe`, `file_filters`, and
-`keyword_validation` discovery blocks are rejected. Remove these no-op blocks;
-use `selection`, `link_prioritization`, `discovery_rules`, and
-`document_classifier` for supported behavior. Provider-specific
-`search.serpapi_params` and target metadata remain open maps, except reserved
-`q`, `num`, and `api_key` request controls cannot be overridden.
-
-`discover --validate-config` uses the same normalized input-plan check as
-execution, without invoking the engine, contacting providers, or writing run
-artifacts. It requires seeds, a query, targets, hub pages, or enabled search
-with usable templates. Quiet output includes normalized defaults and the
-applied target limit. The `run` CLI and Python `run_pipeline` perform this check
-before starting discovery; invalid run configs never fall back to raw YAML.
-Validation does not establish provider availability, credentials, or live
-network reliability.
-
-`discovery.request_headers` reaches the engine's HTTP requests. Set public
-headers such as `User-Agent` here; do not store secrets in configs or print
-secret-bearing headers with effective-config/validation output. Browser requests
-have their own header behavior. Explicit CLI options override config values,
-including the domain. Within a config, explicit `search.enabled: false`
-disables search even if `enable_serpapi` was true.
-
-Strict robots/ToS enforcement is available for HTTP acquisition. It cannot
-certify browser redirects or subresource requests and therefore fails before
-unsupported browser navigation, including escalation. Keep HTTP acquisition
-when enforcement is required; browser opt-in is not enforcement support.
-
-### Outcomes, resume, and discovery publication
-
-Outcome and exit code do not depend on quiet/default/verbose rendering:
-
-| Manifest status | Exit code | Meaning |
-|-----------------|-----------|---------|
-| `success`, `dry_run`, `reused` | `0` | Successful acquisition, valid plan, or validated reuse with no errors. |
-| `failed`, `partial_failure` | `1` | Acquisition failed wholly or partly; zero downloads caused by failure are not an empty success. |
-| `empty` | `2` | No usable results and no acquisition failure. |
-
-Checkpoint **v2** requires the effective discovery config fingerprint and
-SHA-256 artifact evidence, including curated files, to match before reuse.
-Config changes, missing/changed artifacts, and old v1 entries cause
-reacquisition. Search-result caching remains a separate opt-in mechanism.
-
-Corpus publication rejects concurrent writers with a lock and journals the
-known curated/provenance swaps. The next writer recovers an interrupted
-publication; corrupt recovery evidence fails closed rather than overwriting
-prior files. This is a small discovery-specific protocol, not a general
-pipeline or output transaction.
-
-OCR pairs use `.text/<filename>.txt` and `.text/<filename>.meta.json`, so
-`report.pdf` and `report.html` do not share a cache. Readers verify source
-size/mtime and source SHA-256 plus cached-text SHA-256. Partial/stale/mismatched
-pairs are misses; temporary-file replacement publishes metadata last. Old
-stem-only pairs are not reused. LLM reviewer sidecars use
-`.review/<filename>.json`; curation carries these full-name sidecars with
-selected documents. OCR caches now hold raw text, applying current corrections
-on consumption; older corrected entries invalidate rather than silently reuse.
-Page/section products fingerprint source content and resolved model/settings;
-section cache pairs use full filenames, text digests, and metadata-last staging.
-Native, pypdf, and OCR paths honor selected page bounds and retain actual scope.
-
-Extraction reuses records only when source/schema/settings and record-byte
-evidence match. Missing proof or invalid JSON triggers re-extraction, without a
-new resume setting. Valid reuse needs no provider credentials or calls. `--fresh`
-resets the whole resolved output after successful preflight; filtered/limited
-fresh runs rebuild only that subset. Overlapping output/input paths are rejected.
-Exit 0 means success/reuse (including valid zero-item payloads); exit 1 includes
-partial failure; empty selection exits 2. Pipeline drivers halt downstream work.
-Atomic per-file record/manifest replacement is not a whole-run transaction or
-concurrent-writer certification. Inert category/profile settings and YAML schema
-pack unwrapping are retired; use direct JSON schemas and supported string aliases.
-
-### Advanced: column-flattening overrides
-
-When compiling nested records into flat spreadsheet columns, ParseSweep uses a
-set of heuristic field-name defaults (which fields name a *type*, hold a
-*value*, carry a *unit*, and so on). These ship tuned for tabular/rate-style
-data; if your domain names fields differently, override them per-schema in the
-schema's `$metadata.compilation.flattening` block (e.g. `type_fields`,
-`value_fields`, `unit_fields`, `skip_fields`) — no code changes needed. Every
-knob falls back to the built-in default when omitted.
-
-## Schema-driven compilation
-
-Output columns come from the domain schema, not a fixed opinion, project, or
-geographic record layout. A manual can declare numeric measurements and units;
-a regulation can declare requirements; a public-comment schema can declare
-sentiment and evidence. Fields absent from that domain are not invented as
-empty consumer columns.
-
-Use the existing `compilation.output` settings to rename, prioritize, or exclude
-columns. For example, a measurement schema declaring `manufacturer`,
-`rated_power_kw`, and `measurement_quote` can use:
-
-```yaml
-compilation:
-  output:
-    default_format: csv
-    column_renames:
-      Manufacturer: manufacturer
-      Rated Power Kw: rated_power_kw
-      Measurement Quote: evidence
-    column_order: [manufacturer, rated_power_kw, evidence]
-```
-
-`column_order` is a priority prefix, not an exact column selection; remaining
-schema fields are retained. `exclude_fields` removes unwanted fields. Nested
-flattening uses the schema's existing `compilation.flattening` settings.
-Canonical extraction JSON remains the source for lossless arrays/objects,
-quality warnings, coverage, document identity, and lineage. Spreadsheet output
-is a presentation, not a replacement for that record.
-
-Runtime compilation settings override schema `$metadata.compilation` settings.
-With no format setting, CLI and Python API emit CSV and Excel. Compilation and
-`run --validate-config` validate the merged contract before scanning records,
-calling synthesis models, or clearing outputs with `--fresh`. Excel batches
-above 1,048,575 data rows or with cells over 32,767 characters fail before
-either export; select CSV to preserve full evidence. Requested files are written
-to staging before publication; caught writer/publication failures restore prior
-output where possible. If restoration fails, recoverable backups are retained
-and their paths appear in the error. This is not a crash-safe multi-file
-transaction: do not run concurrent writers into the same output directory.
-
-Semantic summaries and classifications belong in the extraction schema's
-instructions and constraints. Existing `compilation.synthesis` handles
-cross-document reconciliation. Deterministic code validates structure,
-provenance, identity, and export contracts; JSON Schema validation, including
-declared calendar-date formats, does **not** certify quotation authenticity,
-sentiment, or geographical support. US county-FIPS derivation remains an
-explicit, optional wide-output normalization, not a requirement of any domain.
-
-Page/section selection and context truncation are preserved as limitations in
-canonical records and extraction manifests. Incomplete searches do not replace
-previous good curated partitions. A seeded or capped sample is not a recall or
-population estimate.
-
-### Scale boundary
-
-The compiler prepares one export frame for CSV/Excel, but global identity and
-deduplication still require an in-memory frame. Complete exact/fuzzy keys use
-indexed grouping rather than pairwise scans. Null-as-wildcard fuzzy matching
-also uses indexed candidates while preserving ordered matching semantics;
-highly ambiguous multidimensional identity buckets can still be expensive.
-Prefer CSV for large batches; benchmark representative record sizes and
-duplicate distributions before scaling. Schemas without
-identity keys do not deduplicate; choose domain-appropriate keys explicitly
-rather than inferring them in core code. Configured keys missing from both the
-schema and compiled columns fail instead of silently deduplicating on fewer
-fields. Atomic checkpoint snapshots avoid repeated whole-file writes, and
-review caches avoid repeated parsing/model calls when grading inputs are
-unchanged. Neither feature bounds acquisition latency or whole-pipeline
-memory. Synthetic record, checkpoint, and mocked timeout tests do not establish
-100,000-target, large-document, fuzzy-dedup, or live-API readiness.
-
-## Minimal discovery template
-
-Copy this short template to `config/<your_domain>/run.yaml`. Only discovery is
-active; common choices and minimal later extraction/compilation blocks are
-commented out. The active starter remains just `domain` and `discovery.queries`.
+`config/TEMPLATE.yaml` is a valid starting point covering all four stages:
 
 ```{literalinclude} ../config/TEMPLATE.yaml
 :language: yaml
 :caption: config/TEMPLATE.yaml
 ```
 
-## Advanced annotated reference
+`config/example/` is the smallest runnable domain: three targets with known
+`urls`, so it needs no search key.
+[Getting Started](getting-started.md#3-run-the-example) runs it.
 
-The expanded reference retains the original extraction, compilation, discovery,
-model, page-targeting, and QA/QC examples. Copy only the sections you need;
-placeholder models and schema paths must be replaced before those stages run.
+### Top-level keys
 
-```{literalinclude} ../config/ADVANCED.yaml
-:language: yaml
-:caption: config/ADVANCED.yaml
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `domain` | required | Names the run; every output is derived under `outputs/<domain>/`. |
+| `schema` | `schema.json` beside the config | Extraction schema path. |
+| `models` | — | Alias → model-name map. Stages reference aliases (`primary`, `secondary`, …) so a model is changed in one place. |
+| `model_context_windows` | — | Model name → context window (positive integer) for models the runtime does not know. |
+| `reasoning_models` | — | Model names to treat as reasoning models (sent without `temperature`; JSON mode stays on). |
+| `discovery` | — | [Discovery](#discovery). |
+| `extraction` | — | [Extraction](#extraction). |
+| `compilation` | — | [Compilation](#compilation). |
+| `validation` | — | [Validation](#validation); `run` adds the validate stage when present. |
+
+## Discovery
+
+Discovery finds, downloads and curates documents. It needs no schema and no
+LLM credentials unless `document_review` is configured; search needs
+`SERPAPI_API_KEY`.
+
+### Inputs
+
+| Key | Meaning |
+|-----|---------|
+| `targets` | `.csv`/`.json` path, inline list of rows, or `{cross_product: {dimensions: [...]}}`. |
+| `sources` | Shared http(s) URLs downloaded for every run and always kept (saved under `_shared/`). |
+| `queries` | Search templates: `{field}` is required, `{field?}` optional. Search runs only when `queries` or a target `query` is set. |
+| `partition_by` | Target fields that lay out curated output as `by_<f1>/<v1>/by_<f2>/<v2>/`. Without it a target's files go under `_targets/<id>/`. |
+
+Each target row is one target. Every column except `urls` and `query` is
+metadata: it fills query templates, partitions output and is recorded as
+provenance. `urls` lists the target's own documents or pages (a list, or `a|b`
+in a CSV cell) and is always downloaded and kept; `query` replaces `queries`
+for that row. Discovery never infers geography from query text. CSV headers
+may carry a UTF-8 BOM.
+
+A target's identity is its `partition_by` values (every metadata column when
+`partition_by` is unset). Identity names the target in checkpoints, review
+prompts and curated ownership, so it must be unique: duplicate rows fail with
+both row locations. `--target-limit/-n N` runs only the first N targets.
+
+```yaml
+discovery:
+  targets:
+    - {jurisdiction: Chaffee County, state: CO,
+       urls: [https://www.chaffeecounty.org/land_use_code.pdf]}
+    - {manufacturer: Generac, query: "Generac 250kW generator manual pdf"}
+  # or: targets: targets.csv
+  # or: targets: {cross_product: {dimensions: [
+  #       {name: state, values: [CO, NM]},
+  #       {name: county, dataset: counties.csv, column: county}]}}
+  queries:
+    - "{jurisdiction} {state} geothermal ordinance pdf"
 ```
+
+### `search`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `max_results` | `10` | Unique candidates kept **per rendered query** (live, cached and news results together). No hidden pagination or refill. |
+| `cache` | `false` | Cache results on disk; a hit makes no live call. |
+| `cache_ttl_minutes` | `0` | Cache expiry; `0` never expires. |
+| `params` | — | Extra SerpApi parameters sent verbatim (`{engine: bing}`, `{tbm: nws}`); `q`, `num`, `api_key` are reserved. |
+
+For Google, `params: {udm: web}` (the "Web" tab) is recommended: without it
+Google often ignores quoted names and `site:`. `site:`/`filetype:` are hints,
+not guarantees. Tracking parameters (`utm_*`, `gclid`, `srsltid`, …) are
+dropped from candidate URLs.
+
+### `crawl`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `provider` | `http` | `http` or `selenium` (needs Chrome; see [Security](security.md)). |
+| `max_depth` | `0` | Link depth from each HTML candidate; `0` disables crawling. |
+| `max_pages` | `50` | HTML pages fetched for the **whole run**. |
+| `allowed_domains` | source hosts | Host scope for crawled links and downloads. |
+| `include_url_patterns` | — | Regexes; matching links are treated as documents. |
+| `include_link_text_patterns` | — | Regexes on link text; when set, only matching links are followed and each matching page is kept. |
+| `browser_downloads` | `false` | Download through headless Chrome. |
+| `browser_escalation` | off | `true` or `{enabled, settle_seconds, min_shell_chars, min_rendered_chars}`: re-fetch JS shells and refused (401/403/429/451) pages and downloads in a browser. Thresholds alone do not enable it. |
+| `code_host_adapters` | off | `true` or `{enabled: true}`: fetch code-host content (Municode) through its API. |
+| `request_headers` | — | Extra HTTP headers on every request (pages, robots.txt, APIs). Never credentials. |
+
+When `max_depth > 0`, every HTML candidate (configured URL or search result) is
+fetched once to look for links; crawled links are ordinary candidates, except
+query variants of a configured page (its pagination), which belong to that page.
+
+### `runtime` and `retry_policy`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `runtime.max_files` | unbounded | Download budget per run; configured URLs never count. |
+| `runtime.timeout_seconds` | engine default | Request timeout, and the stall limit (time without data) for file downloads. |
+| `runtime.max_concurrent_downloads` | `2` | Parallel downloads. |
+| `runtime.min_request_interval_ms` | `0` | Minimum delay between outbound requests. |
+| `retry_policy.max_attempts` | `3` | Total attempts per request. |
+| `retry_policy.initial_backoff_seconds` | `1.0` | Attempt N waits `initial · 2^(N−2)` … |
+| `retry_policy.max_backoff_seconds` | `8.0` | … capped here. |
+
+### `selection` and `link_prioritization`
+
+Selection decides which search results and crawled links are downloaded.
+Configured URLs (`sources`, target `urls`) bypass it and never count against a
+target's caps.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `max_per_target` | `1` | Acquisition count per target. Must be ≥ `document_review.keep_top`. |
+| `max_per_host_per_target` | `0` (off) | Host-diversity cap per target. |
+| `require_any` | — | Candidate text must contain one of these terms. |
+| `exclude` | — | Terms that disqualify a candidate (also checked on the final URL at download). |
+| `exclude_url_patterns` | — | Case-insensitive regexes on the URL. |
+| `exclude_text_patterns` | — | Case-insensitive regexes on candidate text. |
+| `exclude_draft` | `true` | Apply `draft_patterns`. |
+| `draft_patterns` | — | Domain-authored draft/non-final regexes (there is no built-in list). |
+| `require_supported_document` | `true` | Keep only [eligible URLs](#document-types-and-limits). |
+| `target_require_any` | — | Templates rendered per target (`"{jurisdiction}"`); the candidate must match one. |
+| `target_require_all` | — | Rendered templates the candidate must all match. |
+| `target_exclude` | — | Rendered templates that disqualify a candidate. |
+
+| `link_prioritization` key | Default | Meaning |
+|-----|---------|---------|
+| `mode` | `heuristic` | `heuristic` ranks candidates before download; `off` disables ranking. |
+| `top_k` | `0` (no cap) | Optional global ranking cap. |
+| `keywords` | `document`, `download`, `guide`, `report` | Terms that raise a candidate's score; replace the fallback. |
+| `domain_scores` | — | Domain → score adjustment (`{"municode.com": 0.2, ".gov": 0.15}`). A hostname matches itself and its subdomains; a leading-dot suffix matches every host ending in it; negative scores demote. |
+| `shopping_path_keywords` | — | URL path terms that lower a candidate's score. |
+
+The heuristic score weighs file type (35%), `domain_scores` (25%) and keywords
+(25%); PDFs are preferred to web pages. Ranking is a boost, never a scope: for
+strict sources combine `crawl.allowed_domains` with `include_url_patterns`.
+Positive hostname entries (not `.gov`-style suffixes) also name the code hosts
+for the two post-review retries of targets left without a curated document: a
+SerpApi `site:` search under the code-host path already found, and a browser
+crawl of JavaScript-shell code-host pages. Both run only with
+`document_review` and `document_classifier.nice_to_have_keywords`; the browser
+crawl also needs a browser (`crawl.browser_escalation` or
+`crawl.browser_downloads`).
+
+### `document_classifier`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `required_keywords` | — | Terms looked for in the first pages of each download. |
+| `nice_to_have_keywords` | — | Terms that raise the score; also the default `document_review.keywords`. |
+| `min_required_matches` | `1` | Required terms that must appear. |
+| `action` | `warn` | `warn` records the result; `filter` rejects failing downloads (never configured URLs). |
+
+### `document_review`
+
+Optional, paid LLM curation; it runs only when `document_description` is set.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `document_description` | — | What a correct document is; may use `{field}` target templates. |
+| `model` | [default model](#environment-variables) | `models:` alias or model name. |
+| `keep_top` | `1` | Primary documents kept per target. |
+| `max_chars` | `12000` | Text sent per document. |
+| `keywords` | classifier keywords | Terms used to pick the excerpt sent for review. |
+| `deduplicate_redundant` | `true` | Drop redundant copies before keeping the top ones. |
+| `deduplication.key_fields` | — | Fields that identify redundant copies (e.g. `[path_basename, review_doc_kind]`). |
+
+The reviewer grades each document 0–4 against an anchored rubric. In
+`review.csv`, `relevance` = grade / 4 and `llm_is_primary` = grade ≥ 3;
+selection keeps the top `keep_top` non-redundant primaries per target, ranked by
+relevance. Grades are cached by content and grading inputs in
+`discovered/.review_cache/` and reused across runs. Recordings are graded on
+their transcript: a run's copy inherits the curated copy's transcript (matched
+by SHA-256) before review. A recording not yet transcribed (first run) is kept
+without review and transcribed at extraction. Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
+`psweep curate --config …` to republish the curated selection.
+
+### `policy` and `retention`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `policy.robots_mode` | `warn` | `ignore`, `warn` or `enforce` robots.txt (matched on the `ParseSweep` token). |
+| `policy.tos_mode` | `warn` | `ignore`, `warn` or `enforce` terms-of-service checks. |
+| `policy.acknowledged_tos_domains` | — | Hosts whose terms you have reviewed. |
+| `retention.documents` | `all` | `all` keeps every download; `curated` deletes the run's non-curated downloads; `none` also deletes the run's documents and curated copy (rejected by `run` when extraction follows). |
+
+`curated` and `none` keep the files and text caches of incomplete targets and
+sources, which the next run resumes from, and remove superseded run files once
+the checkpoint is written. Fully reused runs delete nothing.
+
+Strict robots/ToS enforcement covers HTTP acquisition only and fails before any
+browser navigation. The default `User-Agent` is
+`Mozilla/5.0 (compatible; ParseSweep/<version>)`.
+
+## Extraction
+
+Extraction reads `outputs/<domain>/discovered/curated/` (or a path passed
+positionally) and writes one JSON record per document to
+`outputs/<domain>/extracted/`. It needs LLM credentials.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `model` | [default model](#environment-variables) | `models:` alias or model name. |
+| `provider` | `auto` | `openai`, `azure`, `anthropic`, `gemini` or `auto`. |
+| `transcription_model` | — | `models:` alias that transcribes audio; required when audio is present. |
+| `limit` | — | Process only the first N documents. |
+| `skip_existing` | `true` | Reuse verified records (see [Reuse](#runs-reuse-and-exit-codes)). |
+| `max_context` | `600000` | Characters of document text sent per call. |
+| `max_concurrent` | `4` | Documents extracted in parallel (also concurrent transcription chunks). |
+| `timeout_seconds` | `120` (`LLM_TIMEOUT`) | Per-request LLM timeout. |
+| `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR text only. |
+| `pages` | — | Page selection for large documents (below). |
+
+### Page selection
+
+```yaml
+extraction:
+  pages:
+    csv: page_ranges.csv          # file_path,start_page,end_page (1-based, inclusive)
+    auto_locate:                  # LLM fallback for documents the CSV does not cover
+      section_description: "the residential rate schedules"
+      trigger_chars: 200000       # default; only larger documents are targeted
+      max_selected_pages: 30      # default
+      keywords: [rate schedule]   # optional cheap pre-filter
+      model: secondary            # optional locator model
+      save_discovered: true       # write found ranges for review
+```
+
+`pages` accepts only `csv`, `auto_locate` and `range`, and `auto_locate` only
+the keys shown plus `enabled`; anything else fails validation. `pages.csv`
+resolves against the config folder (the `--pages-csv` CLI flag against the
+working directory). A row's `file_path` matches a document by path, by path
+relative to the input folder, or by file name. CSV rows win; leave both pages
+empty to force the full document. `pages.range`
+(or `--pages 615-759`) selects one range for a single file. Located ranges are
+cached in `.pages/` beside the document; any failure falls back to the full
+document.
+
+### LLM calls
+
+Every transient provider failure — HTTP 408, 429 and 5xx, timeouts and dropped
+connections — is retried up to 4 attempts in total with exponential backoff
+(2 s, capped at 30 s). TLS failures and other 4xx errors are terminal.
+
+### Roster-anchored extraction
+
+When the schema's `identity.deduplication.key_fields` equal
+`discovery.partition_by`, extraction runs in roster mode: entity names in the
+text are matched exactly (after normalization) against the roster's last
+`partition_by` field. A name shared by targets in different states is assigned
+by state evidence near the match, falling back to the whole document:
+addresses (`, AZ` or `AZ 85001`), full state names, state-labelled table cells
+(`State: CA`), or a state code alone on the line after a line that is exactly a
+roster name. Without evidence every candidate is kept. Names unique to one
+target are never dropped. Partial overlap between `key_fields` and
+`partition_by` is an error.
+
+### Audio
+
+Recordings (`.mp3 .m4a .wav .ogg .flac`) are documents. Set
+`extraction.transcription_model` to a `models:` alias of a transcription
+model. ffmpeg (installed by pixi) transcodes each recording to mono 16 kHz MP3
+and splits it into ~5-minute chunks cut at the quietest point; chunks are
+transcribed in parallel and each starts with an exact `[hh:mm:ss]` offset.
+Measured cost is about **$0.22 per audio hour**. Transcripts are cached beside
+the recording in `.text/<filename>.txt` (with `.meta.json`), like OCR text, so
+each file is transcribed once.
+
+## Compilation
+
+Compilation merges `outputs/<domain>/extracted/` into
+`outputs/<domain>/compiled/<domain>.csv` / `.xlsx` and makes no LLM calls.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `output.default_format` | `both` | `csv`, `excel` or `both`. Validation needs a CSV. |
+| `output.column_order` | — | Priority prefix of output headers; other columns follow. |
+| `output.exclude_fields` | — | Headers to drop. |
+| `output.freeze_columns` | — | Excel frozen columns. |
+| `output.auto_width` | — | Excel column auto-width. |
+| `output.annotation_column` | `Notes` | Column that deduplication annotates. |
+| `output.center_align_columns` / `center_align_max_length` | — | Excel centering. |
+| `normalization.state_column` | — | Field normalized to a state abbreviation. |
+| `normalization.county_fips` | — | `{state, county}` fields used to add a county FIPS code. |
+| `severity_tokens` | — | `{high: [...], medium: [...]}` field-name tokens that rank suspicious dedup groups. |
+| `dry_run` | `false` | Preview deduplication without writing. |
+| `report_format` | `text` | Dry-run report: `text` or `json`. |
+| `fail_on_suspicious` | `none` | `low`, `medium` or `high`: fail the dry run at this severity. |
+| `provenance_policy` | `warn` | `warn` or `fail` on provenance warnings. |
+
+Headers are the schema field's `title` (or its name); unknown headers fail.
+Row shape (`$metadata.compilation.flattening`) and deduplication keys belong in
+the schema — see [Schema Authoring](schemas/best-practices.md).
+
+**Roster mode.** When `discovery` declares `targets` and `partition_by`,
+compile emits one row per target in roster order. Agreeing values win; conflicts
+prefer target-scoped sources, then the value backed by most sources; missing
+values (null, blank, or an empty list or object) are `NA`. A list of primitives
+becomes one comma-joined cell; other lists and objects become compact JSON.
+Extra target columns pass through, plus `sources`, `confidence` (`high` ≥ 2
+agreeing sources, `medium`, `low` on conflict, `none`) and `evidence`
+(`{field: {value, url}}`, adding the `quote` of each
+[evidence field](schemas/best-practices.md#evidence-fields) and
+`conflict: true` when sources disagree).
+
+Excel batches above 1,048,575 rows or with cells over 32,767 characters fail
+before export; use CSV for large outputs.
+
+## Validation
+
+`validate` scores the primary table (from `extraction.model`) against
+contender models and human reference sheets. `run` adds it when a
+`validation:` block exists.
+
+| Key | Meaning |
+|-----|---------|
+| `models` | Contender `models:` aliases, extracted and compiled into `validated/<alias>/`; must differ from `extraction.model` and each other. |
+| `references` | 0..N human CSV sheets (config-relative) whose headers are compiled titles; labelled by file stem. |
+| `judge` | `models:` alias that rules on disputed cells only; omit to skip judging. |
+| `fields` | Scored subset (default: every scorable field). |
+| `min_accuracy` | Gate in (0, 1]: exit 1 when the primary falls below it against any reference. Needs `references`. |
+| `key_fields`, `quote_field` | Rows mode (no roster) only: row identity (required there) and each row's verbatim quote. |
+
+At least one of `models` or `references` is required. Cells where every
+contender agrees are not judged; the judge sees only disagreements, checking
+each candidate against its quote. Misses are labelled `no_docs` (no curated
+document) or `extraction`. Accuracy carries a 95% Wilson interval.
+`validate --sample N [--seed S]` writes a blank, seeded labelling sheet with no
+LLM calls. Outputs in `outputs/<domain>/validated/`: `cells.csv`,
+`summary.csv`, `summary.json`.
+
+## Document types and limits
+
+Supported inputs (discovery downloads exactly these; extraction reads them):
+
+| Kind | Extensions | Read as |
+|------|-----------|---------|
+| Documents | `.pdf` `.doc` `.docx` `.txt` | Text, with OCR for scanned PDFs |
+| Web pages | `.html` `.htm` | Main text |
+| Data | `.csv` `.xlsx` `.json` | One `Header: value \| …` line per record (CSV, each sheet, JSON record arrays such as Socrata/ArcGIS/GeoJSON/CKAN); other JSON as indented text |
+| Audio | `.mp3` `.m4a` `.wav` `.ogg` `.flac` | Transcript ([Audio](#audio)) |
+
+**URL eligibility** (`selection.require_supported_document`): a URL with a
+supported extension, no extension, or a suffix unknown to Python's MIME table
+(`.php`, `.aspx`, `.cfm`, …) is eligible — the response MIME type decides what
+it is. A suffix of a known unsupported type or encoding (`.jpg`, `.zip`, `.gz`)
+is rejected before download.
+
+**Byte limits.** Files streamed to disk stop at 1 GiB decoded
+(`PSWEEP_MAX_RESPONSE_BYTES` overrides it) and abort after
+`runtime.timeout_seconds` without data. Pages, search and API responses read
+into memory stop at 50 MiB and must finish within the timeout. An oversized
+response is a failed download (`partial_failure`), never retried; raise the
+limit and rediscover with `--fresh`.
+
+## Runs, reuse and exit codes
+
+| Status | Exit | Meaning |
+|--------|------|---------|
+| `success`, `reused`, `dry_run` | `0` | Done, verified reuse, or a valid plan. |
+| `failed` | `1` | The stage failed. |
+| `empty` | `2` | Nothing usable and no failure. |
+| `partial_failure` | `3` | Usable output plus recorded errors. |
+
+`run` stops at 1 or 2, continues past 3, and exits 3 at the end when any stage
+was partial. Exit codes do not depend on `-q`/`-v`.
+
+**Discovery resume.** The checkpoint (`discovered/checkpoint.json`) records
+each target and shared source separately, keyed by the effective config
+fingerprint and SHA-256 evidence of its files. Adding a target fetches only
+that target; changing a target's `urls` or rendered queries re-runs it.
+
+- A **complete** item makes no requests on the next run.
+- An item left **incomplete** — transient failure, unfinished crawl or
+  search, `max_pages` or `max_files` reached — publishes what it has
+  additively, and the next run re-fetches the listing, reuses every earlier
+  download whose SHA-256 still matches (no request, no `max_files` slot),
+  skips terminal outcomes (e.g. 404) and fetches only the rest. A capped
+  listing converges batch by batch.
+- **Transient** failures (timeouts, connection errors, truncated streams, HTTP
+  408/429/5xx) are retried in the run and leave the item incomplete. **Bot
+  challenges** (429/5xx with `cf-mitigated`, `x-vercel-mitigated` or
+  `x-amzn-waf-action`) are retried in the run but are final across runs. TLS
+  errors and other 4xx responses are terminal.
+- `discover --fresh` ignores the checkpoint and search cache, re-checks
+  completed listings (new children of a completed listing need it), and
+  replaces the curated partitions of the targets it processes.
+
+**Extraction reuse.** A record is reused only when source, schema, resolved
+model and settings, and record bytes still match; otherwise it is re-extracted.
+Reuse needs no credentials. `extract --fresh` resets the output after a
+successful preflight. `compile --fresh` clears stale compiled files;
+`validate --fresh` clears `validated/`. `run --fresh` passes `--fresh` to every
+stage.
+
+**Caches.** OCR text and transcripts: `.text/<filename>.txt` + `.meta.json`
+beside the document, verified by size, mtime and SHA-256 and carried to a
+re-downloaded file with the same SHA-256. Page/section targeting: `.pages/`,
+`.sections/`. Review grades: `discovered/.review_cache/`. Delete a cache
+directory to force that work again.
+
+### Outputs
+
+```text
+outputs/<domain>/
+├── discovered/
+│   ├── checkpoint.json
+│   ├── curated/                 # consolidated input to extraction
+│   └── runs/<run_id>/           # manifest.json, download_index.csv, review.csv,
+│                                # documents/, curated/ (latest -> newest run)
+├── extracted/                   # one JSON record per document + manifests
+├── compiled/                    # <domain>.csv/.xlsx, run_accounting.json
+└── validated/                   # cells.csv, summary.csv, summary.json, <alias>/
+```
+
+## Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `SERPAPI_API_KEY` | Search. |
+| `LLM_BASE_URL` + `LLM_API_KEY` | Any OpenAI-compatible endpoint (highest priority). |
+| `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` | Azure OpenAI. |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Direct providers. |
+| `LLM_MODEL` (with `LLM_BASE_URL`), `AZURE_OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL` | The active provider's default model, used when the config names none. If unset, Anthropic uses `claude-3.5-sonnet`, Gemini `gemini-1.5-pro`, and every other provider `gpt-4o-mini`. |
+| `LLM_TIMEOUT` | LLM request timeout (seconds). |
+| `PSWEEP_MAX_RESPONSE_BYTES` | Streamed-download byte limit. |
+| `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` | Approved CA roots. |
+
+TLS verification is always on by default; the `*_SSL_VERIFY`, protected-mode
+and browser variables are described in [Security](security.md).

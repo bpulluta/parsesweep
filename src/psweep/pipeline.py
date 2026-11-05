@@ -10,7 +10,7 @@ Quick start:
     >>> from psweep.pipeline import extract_documents, compile_extractions
     >>> result = extract_documents(
     ...     "documents/my_domain/",
-    ...     schema="schemas/personal/my_schema.json",
+    ...     schema="config/my_domain/schema.json",
     ... )
     >>> print(f"Extracted {result.successful}/{result.total} documents")
     >>> compiled = compile_extractions(result.output_dir, schema=result.schema_path)
@@ -18,7 +18,7 @@ Quick start:
 
 For full config-driven runs (recommended for complex domains):
     >>> from psweep.pipeline import run_pipeline
-    >>> run_pipeline("config/my_domain/my_domain.yaml")
+    >>> run_pipeline("config/my_domain/run.yaml")
 """
 
 from __future__ import annotations
@@ -27,16 +27,17 @@ import csv
 import hashlib
 import json
 import logging
-import os
-import re
 import io
 import shutil
-import subprocess
+import subprocess  # noqa: S404 - runs psweep stage subprocesses, no shell
 import sys
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, UTC
+from uuid import uuid4
 from pathlib import Path
-from typing import Optional, Sequence
+from collections.abc import Callable, Sequence
 
 from psweep.config import load_runtime_config_file, resolve_command_config
 from psweep.config.runtime_config_loader import resolve_compilation_metadata
@@ -44,15 +45,13 @@ from psweep.compilation.input_provenance import (
     analyze_compile_input_provenance,
     INTERNAL_RECORD_DIRS,
 )
-from psweep.discovery.request_inputs import (
-    normalize_discover_inputs,
-    validate_discover_plan,
-)
+from psweep.discovery.request_inputs import discovery_request_fields
 from jsonschema import ValidationError
 
-from psweep.exceptions import APIKeyError
+from psweep.exceptions import APIKeyError, PipelineError
+from psweep.outcomes import EXIT_PARTIAL, exit_code
 from psweep import extraction as extraction_api
-from psweep.extraction import document_utils
+from psweep.extraction import document_utils, transcription
 from psweep.extraction.page_locator import (
     PageLocator,
     DEFAULT_PAGE_TRIGGER_CHARS,
@@ -61,86 +60,43 @@ from psweep.extraction.page_locator import (
 from psweep.extraction.section_locator import SectionLocator
 from psweep.extraction.pdf_utils import validate_pdf_scope
 from psweep.extraction.llm_factory import (
+    DEFAULT_MAX_CONCURRENT,
     DEFAULT_MAX_CONTEXT,
     resolve_llm_kwargs,
 )
 from psweep.extraction.provenance import (
     build_source_context_map,
     prepend_source_context,
+    source_context,
     build_run_manifest,
-    generate_run_id,
 )
 from psweep.extraction.record_writer import (
+    CONTRACT_VERSION,
     record_extraction_scope,
     write_extraction_record,
 )
+from psweep.extraction.roster import (
+    QuoteRows,
+    batch,
+    candidate_hash,
+    candidates_block,
+    load_roster,
+    scan_candidates,
+    verify_quotes,
+)
 from psweep.extraction.schema_utils import (
     build_schema_validator,
+    evidence_paths,
     record_validator,
 )
+from psweep.extraction.text_processor import calculate_completeness
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.file_io import artifact_sha256, atomic_json, atomic_write
 from psweep.utils.page_range import load_pages_csv, parse_page_range
 from psweep.utils.schema_metadata import SchemaMetadata
+from psweep.workspace import Workspace, infer_domain
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Path-layout helpers
-#
-# Single source of truth for the documents -> extracted -> compiled directory
-# layout and the discovered/<domain>/... convention shared by the CLI commands.
-# ---------------------------------------------------------------------------
-
-
-def discover_domain(path: Path) -> Optional[str]:
-    """Return ``<domain>`` for a ``discovered/<domain>/...`` path, else ``None``.
-
-    The path is resolved first so the convention holds regardless of how the
-    input was spelled (relative, symlinked, or absolute).
-    """
-    resolved_parts = list(Path(path).resolve().parts)
-    if "discovered" in resolved_parts:
-        i = resolved_parts.index("discovered")
-        if i + 1 < len(resolved_parts):
-            return resolved_parts[i + 1]
-    return None
-
-
-def swap_layout_component(path: Path, source: str, target: str) -> Path:
-    """Swap the first ``source`` path component for ``target``.
-
-    Falls back to ``Path.cwd() / target / path.name`` when ``path`` has no
-    ``source`` component. This is the shared documents->extracted->compiled
-    directory swap.
-    """
-    path = Path(path)
-    parts = list(path.parts)
-    if source in parts:
-        parts[parts.index(source)] = target
-        return Path(*parts)
-    return Path.cwd() / target / path.name
-
-
-def resolve_extract_output_dir(input_path: Path, *, is_dir: bool) -> Path:
-    """Default ``extracted/...`` output dir for an extract input path.
-
-    ``discovered/<domain>/...`` inputs map to ``extracted/<domain>``; otherwise a
-    ``documents`` component is swapped to ``extracted``; otherwise
-    ``extracted/<name>``.
-    """
-    input_path = Path(input_path)
-    probe = input_path if is_dir else input_path.parent
-    domain = discover_domain(probe)
-    if domain:
-        return Path.cwd() / "extracted" / domain
-    return swap_layout_component(probe, "documents", "extracted")
-
-
-def resolve_compile_output_dir(input_dir: Path) -> Path:
-    """Default ``compiled/...`` output dir for a compile input directory."""
-    return swap_layout_component(Path(input_dir), "extracted", "compiled")
 
 
 # ---------------------------------------------------------------------------
@@ -168,9 +124,7 @@ class ExtractionRunResult:
     @property
     def exit_code(self) -> int:
         """Return the subprocess outcome without importing CLI code."""
-        if self.status in {"failed", "partial_failure"}:
-            return 1
-        return 2 if self.status == "empty" else 0
+        return exit_code(self.status)
 
     @property
     def success_rate(self) -> float:
@@ -197,12 +151,13 @@ class CompilationResult:
 
 @dataclass
 class PipelineResult:
-    """Combined result from a full discover → extract → [validate] → compile run."""
+    """Combined result from a full discover → extract → compile run."""
 
     domain: str
     stages_run: list[str]
-    extraction: Optional[ExtractionRunResult] = None
-    compilation: Optional[CompilationResult] = None
+    partial_stages: list[str] = field(default_factory=list)
+    extraction: ExtractionRunResult | None = None
+    compilation: CompilationResult | None = None
 
 
 def _read_config_dict(config_path: str | Path) -> dict:
@@ -210,34 +165,16 @@ def _read_config_dict(config_path: str | Path) -> dict:
     return load_runtime_config_file(Path(config_path))
 
 
-def resolve_run_validation(config_path: str | Path) -> Optional[dict]:
-    """Resolve QA/QC orchestration settings from a domain run config.
-
-    QA/QC is enabled for ``run`` when the top-level ``validation.models`` list is
-    present. Returns ``None`` when absent, otherwise a dict describing validate
-    stage inputs.
-    """
-    cfg = _read_config_dict(config_path)
-    validation_section = cfg.get("validation") or {}
-    models = validation_section.get("models") or []
-    if len(models) < 2:
-        return None
-
-    domain = cfg.get("domain", Path(config_path).parent.name)
-    extraction = cfg.get("extraction") or {}
-    output_dir = Path(extraction.get("output_dir", f"extracted/{domain}"))
-    return {
-        "schema": extraction.get("schema"),
-        "validation_dir": output_dir / "validation",
-        "models": models,
-    }
-
-
 def resolve_run_discovery_enabled(config_path: str | Path) -> bool:
     """Return True when discovery is configured for the run config."""
     cfg = _read_config_dict(config_path)
     discovery_section = cfg.get("discovery")
     return isinstance(discovery_section, dict) and bool(discovery_section)
+
+
+def run_validation_enabled(config_path: str | Path) -> bool:
+    """Return True when the run config has a ``validation:`` section."""
+    return bool(_read_config_dict(config_path).get("validation"))
 
 
 def build_run_stage_commands(
@@ -249,7 +186,6 @@ def build_run_stage_commands(
     discovery_enabled: bool | None = None,
     fresh: bool = False,
     target_limit: int | None = None,
-    retention_documents: str | None = None,
     extract_input_path: str | Path | None = None,
     extra_flags: Sequence[str] = (),
 ) -> list[tuple[str, list[str]]]:
@@ -259,9 +195,6 @@ def build_run_stage_commands(
     checkpoint and refresh the search cache), extract (re-extract already-
     processed documents), and compile (clear compiled outputs before writing),
     giving ``run --fresh`` a fully clean pipeline across all stages.
-
-    When the config enables multi-model QA/QC, an explicit ``validate`` stage
-    is appended after extraction.
     """
     cfg_path = Path(config_path)
     stage_cmds: list[tuple[str, list[str]]] = []
@@ -269,16 +202,10 @@ def build_run_stage_commands(
     if discovery_enabled is None:
         discovery_enabled = resolve_run_discovery_enabled(cfg_path)
 
-    validation = resolve_run_validation(cfg_path)
-
     if not skip_discover and discovery_enabled:
         discover_flags = [*extra_flags]
         if target_limit is not None:
             discover_flags.extend(["--target-limit", str(target_limit)])
-        if retention_documents is not None:
-            discover_flags.extend(
-                ["--retention-documents", str(retention_documents)]
-            )
         if fresh:
             discover_flags.append("--fresh")
         stage_cmds.append(
@@ -307,22 +234,6 @@ def build_run_stage_commands(
                 extract_cmd,
             )
         )
-    if validation and not skip_extract:
-        validate_flags = [*extra_flags]
-        if fresh:
-            validate_flags.append("--fresh")
-        stage_cmds.append(
-            (
-                "validate",
-                [
-                    *base_cmd,
-                    "validate",
-                    "--config",
-                    str(cfg_path),
-                    *validate_flags,
-                ],
-            )
-        )
     compile_flags = [*extra_flags]
     if fresh:
         compile_flags.append("--fresh")
@@ -332,28 +243,24 @@ def build_run_stage_commands(
             [*base_cmd, "compile", "--config", str(cfg_path), *compile_flags],
         )
     )
+    if not skip_extract and run_validation_enabled(cfg_path):
+        validate_flags = [*extra_flags, *(["--fresh"] if fresh else [])]
+        stage_cmds.append(
+            ("validate", [*base_cmd, "validate", "--config", str(cfg_path), *validate_flags])
+        )
     return stage_cmds
 
 
 # ---------------------------------------------------------------------------
 # Run-command on-disk helpers
 #
-# Pure, UI-free logic shared by the CLI ``run`` driver: artifact counting,
-# checkpoint inspection, and the extraction-output layout. Keeping these here
-# (rather than inline in app.py) makes ``run`` a thin driver and the logic
-# unit-testable without spawning the CLI.
+# UI-free artifact counting shared by the CLI ``run`` driver.
 # ---------------------------------------------------------------------------
 
 
 def count_curated_documents(curated_dir: Path) -> int:
-    """Count curated docs, skipping ``.text`` sidecars and ``.json``."""
-    if not curated_dir.exists():
-        return 0
-    return sum(
-        1
-        for f in curated_dir.rglob("*")
-        if f.is_file() and ".text" not in str(f) and f.suffix != ".json"
-    )
+    """Count the documents extraction would read."""
+    return len(_input_documents(curated_dir, required=False)[0])
 
 
 def count_extracted_documents(extraction_dir: Path) -> int:
@@ -362,22 +269,8 @@ def count_extracted_documents(extraction_dir: Path) -> int:
         return 0
     manifests_dir = extraction_dir / "run_manifests"
     all_json = sum(1 for _ in extraction_dir.rglob("*.json"))
-    manifest_json = (
-        sum(1 for _ in manifests_dir.rglob("*.json"))
-        if manifests_dir.exists()
-        else 0
-    )
+    manifest_json = sum(1 for _ in manifests_dir.rglob("*.json")) if manifests_dir.exists() else 0
     return all_json - manifest_json
-
-
-def resolve_run_extraction_dir(cfg: dict, domain: str) -> Path:
-    """Resolve the extraction output dir for a run config.
-
-    Uses ``extraction.output_dir`` when set, else the ``extracted/<domain>``
-    convention.
-    """
-    extraction_cfg = cfg.get("extraction") or {}
-    return Path(extraction_cfg.get("output_dir", f"extracted/{domain}"))
 
 
 # ---------------------------------------------------------------------------
@@ -390,112 +283,35 @@ def _document_eligible(path: Path, root: Path) -> bool:
     return (
         path.is_file()
         and document_utils.is_supported_document(path)
-        and not any(
-            part.startswith(".") for part in path.relative_to(root).parts
-        )
+        and not any(part.startswith(".") for part in path.relative_to(root).parts)
         and not path.name.endswith(".section_target.txt")
     )
 
 
-def _input_documents(path: Path, index: str | None, filters: Sequence[str]):
+def _input_documents(path: Path, *, required: bool = True):
     """Resolve authoritative documents and their common input root."""
-    if index is not None:
-        return _index_documents(Path(index), filters)
     if not path.exists():
+        if not required:
+            return [], path
         message = f"Documents path not found: {path}"
         raise FileNotFoundError(message)
     root = path if path.is_dir() else path.parent
     documents = sorted(
-        p
-        for p in (root.rglob("*") if path.is_dir() else [path])
-        if _document_eligible(p, root)
+        p for p in (root.rglob("*") if path.is_dir() else [path]) if _document_eligible(p, root)
     )
     return documents, root
-
-
-def _indexed_source(row: dict, index: Path) -> tuple[Path, Path]:
-    """Resolve an indexed document and its declared corpus root."""
-    source = Path(row["path"])
-    document = (
-        source
-        if source.is_absolute() or source.is_file()
-        else index.parent / source
-    ).resolve()
-    relative = Path(row.get("relative_path") or document.name)
-    if relative.is_absolute() or ".." in relative.parts:
-        message = "Download index relative_path must stay inside its corpus"
-        raise ValueError(message)
-    corpus = document.parent
-    if tuple(document.parts[-len(relative.parts) :]) == relative.parts:
-        for _ in relative.parts[1:]:
-            corpus = corpus.parent
-    return document, corpus
-
-
-def _index_filter_value(value) -> str:
-    """Normalize index filters for punctuation-insensitive matching."""
-    return re.sub(r"[^a-z0-9]+", "-", str(value).lower()).strip("-")
-
-
-def _index_documents(index: Path, filters: Sequence[str]):
-    """Read explicit index scope without falling back to scanning."""
-    parsed_filters = []
-    for value in filters:
-        key, separator, term = value.partition("=")
-        if not separator or not key.strip():
-            message = "Index filters require column=value"
-            raise ValueError(message)
-        parsed_filters.append((key.strip(), term))
-
-    documents, roots = [], []
-    with Path(index).open(encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        required = {"status", "path", *(key for key, _ in parsed_filters)}
-        if not required.issubset(reader.fieldnames or []):
-            message = "Download index is missing required columns"
-            raise ValueError(message)
-        for row in reader:
-            if None in row or None in row.values():
-                message = "Download index has malformed rows"
-                raise ValueError(message)
-            if row["status"] != "downloaded":
-                continue
-            doc, corpus = _indexed_source(row, index)
-            roots.append(corpus)
-            if any(
-                _index_filter_value(row[key]) != _index_filter_value(term)
-                for key, term in parsed_filters
-            ):
-                continue
-            if not doc.is_file():
-                message = f"Selected index document is missing: {doc}"
-                raise FileNotFoundError(message)
-            if _document_eligible(doc, doc.parent):
-                documents.append(doc)
-    root = Path(
-        os.path.commonpath(
-            [str(root) for root in roots] or [str(index.parent)]
-        )
-    )
-    return sorted(set(documents)), root
 
 
 def _validate_extract_paths(
     output: Path,
     root: Path,
     protected: Sequence[Path],
-    *,
-    inventory: bool = True,
 ):
     """Reject destructive or self-inventoried output overlaps."""
     if output == Path(output.anchor):
         message = "Extraction output cannot be a filesystem root"
         raise ValueError(message)
-    if (
-        output == root
-        or output in root.parents
-        or (inventory and root.is_dir() and root in output.parents)
-    ):
+    if output == root or output in root.parents or (root.is_dir() and root in output.parents):
         message = "Extraction input/output overlap is not allowed"
         raise ValueError(message)
     for path in protected:
@@ -514,7 +330,7 @@ def _reuse_evidence(output: Path) -> dict:
             for record, value in manifest.get("reuse", {}).items():
                 if isinstance(value, dict):
                     evidence.setdefault(record, []).append(value)
-        except (OSError, ValueError, TypeError, AttributeError):  # noqa: PERF203 - corrupt manifests invalidate only their own evidence
+        except (OSError, ValueError, TypeError, AttributeError):
             continue
     return evidence
 
@@ -534,17 +350,13 @@ def _reusable_record(path: Path, fingerprint: str, evidence: dict, validator):
             return None
         record = json.loads(path.read_text(encoding="utf-8"))
         if (
-            record["contract_version"] != "1.0.0"
+            record["contract_version"] != CONTRACT_VERSION
             or record["lineage"].get("input_fingerprint") != fingerprint
         ):
             return None
         record_validator().validate(record)
         validator.validate(record["payload"])
-        if (
-            record.get("processing_metrics", {})
-            .get("coverage", {})
-            .get("parser_partial")
-        ):
+        if record.get("processing_metrics", {}).get("coverage", {}).get("parser_partial"):
             return None
     except (
         OSError,
@@ -573,9 +385,7 @@ def _manual_ranges(inputs: dict, documents: list[Path], root: Path) -> dict:
     pages_csv = inputs.get("pages_csv")
     if pages_csv:
         mappings = load_pages_csv(Path(pages_csv))
-        canonical = {
-            Path(key).resolve(): value for key, value in mappings.items()
-        }
+        canonical = {Path(key).resolve(): value for key, value in mappings.items()}
         for doc in documents:
             if doc.resolve() in canonical:
                 ranges[doc] = canonical[doc.resolve()]
@@ -593,7 +403,16 @@ def _manual_ranges(inputs: dict, documents: list[Path], root: Path) -> dict:
 
 
 def _extraction_fingerprints(
-    inputs, llm, locator, schema_path, documents, ranges, context
+    inputs,
+    llm,
+    locator,
+    schema_path,
+    documents,
+    ranges,
+    context,
+    roster,
+    anchors,
+    transcriber=None,
 ):
     """Bind reused records to effective behavior and source bytes."""
     targeting = inputs.get("page_targeting") or {}
@@ -604,6 +423,7 @@ def _extraction_fingerprints(
             "reasoning_models",
             "ocr_corrections",
             "timeout_seconds",
+            "quote_field",
         )
     }
     policy.update(
@@ -615,6 +435,7 @@ def _extraction_fingerprints(
             "max_context": inputs.get("max_context", DEFAULT_MAX_CONTEXT),
             "schema_sha256": artifact_sha256(schema_path),
             "page_targeting": targeting,
+            "roster_fields": roster.fields if roster else None,
             "locator": {
                 key: (locator or {}).get(key)
                 for key in (
@@ -629,26 +450,31 @@ def _extraction_fingerprints(
     )
     fingerprints = {}
     for doc in documents:
+        info = source_context(doc, context)
         cached = document_utils.read_text_cache(doc, return_meta=True)
+        audio = transcription.is_audio(doc)
         data = {
             **policy,
             "effective_text": (
                 {key: cached[1].get(key) for key in ("method", "text_sha256")}
-                if cached and cached[1].get("method") != "ocr"
+                if cached and cached[1].get("method") != "ocr" and not audio
                 else None
             ),
+            "table_layout": document_utils.TABLE_TEXT_LAYOUT.get(doc.suffix.lower()),
             "source": str(doc),
             "source_sha256": artifact_sha256(doc),
             "manual_pages": ranges.get(doc),
-            "context": context.get(str(doc), context.get(doc.name)),
+            "context": asdict(info) if info else None,
+            "candidates": (candidate_hash(roster, anchors[doc]) if doc in anchors else None),
         }
-        fingerprints[doc] = hashlib.sha256(
-            json.dumps(data, sort_keys=True).encode()
-        ).hexdigest()
+        if audio:
+            # A transcript derives from source bytes and this identity.
+            data["transcription"] = getattr(transcriber, "identity", None)
+        fingerprints[doc] = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
     return fingerprints
 
 
-def _extraction_layout(inputs, from_index, index_filters, config_path):
+def _extraction_layout(inputs, config_path, *, validate_only=False):
     """Resolve schema, documents, outputs, and protected paths once."""
     schema_path = Path(inputs["schema"]).resolve()
     metadata = SchemaMetadata(schema_path)
@@ -661,61 +487,32 @@ def _extraction_layout(inputs, from_index, index_filters, config_path):
             and types != "array"
             and not (isinstance(types, list) and "array" in types)
         ):
-            message = (
-                f"Extraction main_data_array must resolve to an array: {array}"
-            )
+            message = f"Extraction main_data_array must resolve to an array: {array}"
             raise ValueError(message)
     path = Path(inputs["path"]).resolve()
-    output = Path(
-        inputs.get("output")
-        or resolve_extract_output_dir(path, is_dir=path.is_dir())
-    ).resolve()
-    documents, root = _input_documents(path, from_index, index_filters)
+    output = Path(inputs["output"]).resolve()
+    documents, root = _input_documents(path, required=not validate_only)
     root = root.resolve()
     protected = [
         schema_path,
-        *(
-            Path(value)
-            for value in (config_path, from_index, inputs.get("pages_csv"))
-            if value
-        ),
+        *(Path(value) for value in (config_path, inputs.get("pages_csv")) if value),
     ]
-    inventory_root = root if from_index and documents else path
-
-    _validate_extract_paths(
-        output,
-        inventory_root,
-        [*protected, *documents],
-        inventory=not from_index,
-    )
-    outputs = {
-        doc: output / doc.relative_to(root).with_suffix(".json")
-        for doc in documents
-    }
+    _validate_extract_paths(output, path, [*protected, *documents])
+    outputs = {doc: output / doc.relative_to(root).with_suffix(".json") for doc in documents}
     if any(
-        INTERNAL_RECORD_DIRS.intersection(
-            target.relative_to(output).parts[:-1]
-        )
+        INTERNAL_RECORD_DIRS.intersection(target.relative_to(output).parts[:-1])
         for target in outputs.values()
     ):
-        message = (
-            "Extraction output partition uses a reserved internal "
-            "record directory"
-        )
+        message = "Extraction output partition uses a reserved internal record directory"
         raise ValueError(message)
     protected = {path.resolve() for path in [*protected, *documents]}
     for target in outputs.values():
         resolved = target.resolve()
         if output not in resolved.parents or resolved in protected:
-            message = (
-                "Extraction output destination escapes or overlaps inputs: "
-                f"{target}"
-            )
+            message = f"Extraction output destination escapes or overlaps inputs: {target}"
             raise ValueError(message)
     if len({target.resolve() for target in outputs.values()}) != len(outputs):
-        message = (
-            "Extraction output filename collision; rename or partition sources"
-        )
+        message = "Extraction output filename collision; rename or partition sources"
         raise ValueError(message)
     return {
         "schema_path": schema_path,
@@ -746,8 +543,7 @@ def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
     targeting = inputs.get("page_targeting") or {}
     keywords = targeting.get("keywords")
     if keywords is not None and (
-        not isinstance(keywords, list)
-        or any(not isinstance(keyword, str) for keyword in keywords)
+        not isinstance(keywords, list) or any(not isinstance(keyword, str) for keyword in keywords)
     ):
         message = "pages.auto_locate.keywords must be a list of strings"
         raise ValueError(message)
@@ -769,13 +565,11 @@ def _prepare_extraction(
     inputs: dict,
     *,
     fresh: bool = False,
-    from_index: str | None = None,
-    index_filters: Sequence[str] = (),
     config_path: str | None = None,
     validate_only: bool = False,
 ):
     """Verify work before output mutation or provider calls."""
-    plan = _extraction_layout(inputs, from_index, index_filters, config_path)
+    plan = _extraction_layout(inputs, config_path, validate_only=validate_only)
     documents = plan["documents"]
     ranges = _manual_ranges(inputs, documents, plan["root"])
     llm = resolve_llm_kwargs(
@@ -785,8 +579,13 @@ def _prepare_extraction(
         llm_config=inputs.get("llm_config"),
     )
     locator = _extraction_locator_config(inputs, llm)
-    context = build_source_context_map(
-        Path(inputs["path"]).resolve(), from_index
+    transcriber = transcription.build_transcriber(inputs)
+    context = build_source_context_map(Path(inputs["path"]).resolve())
+    roster = load_roster(inputs, plan["metadata"])
+    candidates, anchors, roster_errors = (
+        _roster_plan(documents, plan["root"], context, roster, inputs, transcriber)
+        if roster and not validate_only
+        else ({}, {}, {})
     )
     fingerprints = _extraction_fingerprints(
         inputs,
@@ -796,43 +595,57 @@ def _prepare_extraction(
         documents,
         ranges,
         context,
+        roster,
+        anchors,
+        transcriber,
     )
     if fresh and not validate_only:
         for doc, selected in ranges.items():
             if selected is not None and doc.suffix.lower() == ".pdf":
                 validate_pdf_scope(doc, selected)
     evidence = (
-        _reuse_evidence(plan["output"])
-        if not fresh and inputs.get("skip_existing", True)
-        else {}
+        _reuse_evidence(plan["output"]) if not fresh and inputs.get("skip_existing", True) else {}
     )
     validator = build_schema_validator(plan["schema"])
     reused = {}
     for doc in documents:
-        record = _reusable_record(
-            plan["outputs"][doc], fingerprints[doc], evidence, validator
-        )
+        if doc in roster_errors:
+            continue
+        record = _reusable_record(plan["outputs"][doc], fingerprints[doc], evidence, validator)
         if record is not None:
             reused[doc] = record
     pending = [doc for doc in documents if doc not in reused]
     if inputs.get("limit"):
         pending = pending[: inputs["limit"]]
-    if pending and not validate_only:
-        _require_extraction_credentials(llm, None)
     return {
         **plan,
         "pending": pending,
         "reused": reused,
         "llm": llm,
+        "transcriber": transcriber,
         "ranges": ranges,
         "context": context,
+        "roster": roster,
+        "candidates": candidates,
+        "anchors": anchors,
+        "roster_errors": roster_errors,
+        "evidence_paths": evidence_paths(plan["schema"]),
+        "quote_rows": (
+            QuoteRows(
+                plan["metadata"].get_main_data_array(),
+                plan["metadata"].get_row_array(),
+                inputs["quote_field"],
+            )
+            if inputs.get("quote_field")
+            else None
+        ),
         "fingerprints": fingerprints,
         "inputs": inputs,
         "fresh": fresh,
     }
 
 
-def _document_text(doc_path, page_range, section_text, corrections):
+def _document_text(doc_path, page_range, section_text, corrections, transcriber=None):
     """Prepare text and effective scope for one document."""
     scope = {}
     if section_text is not None:
@@ -847,7 +660,7 @@ def _document_text(doc_path, page_range, section_text, corrections):
         effective = scope.get("page_range") if page_range is not None else None
     else:
         text = document_utils.extract_text_from_document(
-            doc_path, page_range=page_range
+            doc_path, page_range=page_range, transcriber=transcriber
         )
         effective = page_range
     if not text.strip():
@@ -856,51 +669,164 @@ def _document_text(doc_path, page_range, section_text, corrections):
     return text, effective, scope
 
 
-def _extract_one_document(  # noqa: PLR0913 - explicit per-document scope and lineage
-    doc_path: Path,
-    *,
-    extractor,
-    loaded_schema: dict,
-    schema_metadata,
-    schema_path: Path,
-    output_path: Path,
-    model: str,
-    provider: str,
-    run_id: str,
-    input_fingerprint: str,
-    page_range=None,
-    section_text=None,
-    source_context_map=None,
-    ocr_corrections=None,
+def _roster_plan(documents, root, context, roster, inputs, transcriber=None):
+    """Anchor every document to roster targets before any provider call."""
+    candidates, anchors, errors = {}, {}, {}
+    for doc in documents:
+        info = source_context(doc, context)
+        if info is None:
+            errors[doc] = (
+                "No download_index row for "
+                f"{doc.relative_to(root).as_posix()}; roster extraction "
+                "needs discovery source context"
+            )
+        elif info.scope == "shared":
+            try:
+                text = _document_text(doc, None, None, inputs.get("ocr_corrections"), transcriber)[
+                    0
+                ]
+            except Exception as exc:  # noqa: BLE001 - isolate unreadable documents
+                errors[doc] = f"Roster candidate scan failed: {exc}"
+                continue
+            candidates[doc] = scan_candidates(text, roster)
+            anchors[doc] = set().union(*(ids for _, ids in candidates[doc]))
+        else:
+            anchors[doc] = {info.target_id} & roster.targets.keys()
+    return candidates, anchors, errors
+
+
+def _no_roster_match(array):
+    return extraction_api.ExtractionResult(
+        data={array: []},
+        completeness_score=0.0,
+        cost=0.0,
+        processing_time=0.0,
+        validation_notes=[],
+        status="no_roster_match",
+    )
+
+
+def _keep_roster_items(data, array, roster, target_ids) -> int:
+    """Keep only items naming one of ``target_ids``; return the dropped count."""
+    allowed = {roster.key(roster.targets[target_id]) for target_id in target_ids}
+    items = data.get(array) or []
+    data[array] = [item for item in items if roster.key(item) in allowed]
+    return len(items) - len(data[array])
+
+
+def _roster_extract(extractor, schema, array, roster, candidates, budget, info):
+    """Extract shared-document candidate windows and drop off-roster items."""
+    budget -= len(candidates_block(roster, set().union(*(ids for _, ids in candidates)))) + len(
+        prepend_source_context("", info)
+    )
+    results, items, dropped = [], [], 0
+    for text, target_ids in batch(candidates, max(budget, 1)):
+        result = extractor.extract(
+            candidates_block(roster, target_ids) + prepend_source_context(text, info),
+            schema,
+        )
+        dropped += _keep_roster_items(result.data, array, roster, target_ids)
+        items.extend(result.data[array])
+        results.append(result)
+    data = {**results[0].data, array: items}
+    costs = [result.cost for result in results]
+
+    def total(name):
+        values = [getattr(result, name) for result in results]
+        return None if None in values else sum(values)
+
+    return extraction_api.ExtractionResult(
+        data=data,
+        completeness_score=calculate_completeness(data),
+        cost=None if None in costs else sum(costs),
+        processing_time=sum(result.processing_time for result in results),
+        validation_notes=[note for result in results for note in result.validation_notes],
+        input_tokens=total("input_tokens"),
+        output_tokens=total("output_tokens"),
+        coverage={
+            "input_characters": sum(r.coverage["input_characters"] for r in results),
+            "extracted_characters": sum(r.coverage["extracted_characters"] for r in results),
+            "context_truncated": any(r.coverage["context_truncated"] for r in results),
+        },
+        off_candidate_items=dropped,
+    )
+
+
+def _extract_one_document(
+    doc_path: Path, plan: dict, *, extractor, run_id, page_range=None, section_text=None
 ) -> dict:
     """Extract and persist one record without UI or batch decisions."""
     result = None
+    llm, inputs = plan["llm"], plan["inputs"]
+    model, provider = llm["model"], llm["provider"]
+    output_path = plan["outputs"][doc_path]
+    roster = plan["roster"]
+    array = plan["metadata"].get_main_data_array()
+    info = source_context(doc_path, plan["context"])
+    anchors = plan["anchors"].get(doc_path)
     try:
-        text, effective_range, parser_scope = _document_text(
-            doc_path,
-            page_range,
-            section_text,
-            ocr_corrections,
+        if doc_path in plan["roster_errors"]:
+            raise ValueError(plan["roster_errors"][doc_path])
+        if anchors == set():
+            text, result = "", _no_roster_match(array)
+        elif doc_path in plan["candidates"]:
+            text = _document_text(
+                doc_path,
+                None,
+                None,
+                inputs.get("ocr_corrections"),
+                plan.get("transcriber"),
+            )[0]
+            result = _roster_extract(
+                extractor,
+                plan["schema"],
+                array,
+                roster,
+                plan["candidates"][doc_path],
+                inputs.get("max_context", DEFAULT_MAX_CONTEXT),
+                info,
+            )
+        else:
+            text, effective_range, parser_scope = _document_text(
+                doc_path,
+                page_range,
+                section_text,
+                inputs.get("ocr_corrections"),
+                plan.get("transcriber"),
+            )
+            prompt = prepend_source_context(text, info)
+            if anchors:
+                prompt = candidates_block(roster, anchors) + prompt
+            result = extractor.extract(prompt, plan["schema"])
+            record_extraction_scope(
+                result,
+                page_range=effective_range,
+                section_filtered=section_text is not None,
+                parser_scope=parser_scope,
+            )
+            if anchors:
+                result.off_candidate_items = _keep_roster_items(result.data, array, roster, anchors)
+        rejected = verify_quotes(
+            result.data,
+            text,
+            evidence=plan["evidence_paths"],
+            rows=plan["quote_rows"],
         )
-        text = prepend_source_context(text, doc_path, source_context_map or {})
-        result = extractor.extract(text, loaded_schema)
-        record_extraction_scope(
-            result,
-            page_range=effective_range,
-            section_filtered=section_text is not None,
-            parser_scope=parser_scope,
-        )
+        result.unverified_quotes = len(rejected)
+        result.validation_notes = [*(result.validation_notes or []), *rejected]
         output_path.parent.mkdir(parents=True, exist_ok=True)
         count = write_extraction_record(
             output_path,
             doc_path=doc_path,
+            source_document_id=doc_path.relative_to(plan["root"]).as_posix(),
+            source=info,
             result=result,
             model=model,
             provider=provider,
             run_id=run_id,
-            schema_id=str(schema_path),
-            schema_metadata=schema_metadata,
-            input_fingerprint=input_fingerprint,
+            schema_id=str(plan["schema_path"]),
+            schema_metadata=plan["metadata"],
+            input_fingerprint=plan["fingerprints"][doc_path],
         )
         return {
             "file": doc_path.name,
@@ -913,7 +839,7 @@ def _extract_one_document(  # noqa: PLR0913 - explicit per-document scope and li
             "output_path": str(output_path),
             "coverage": getattr(result, "coverage", {}),
         }
-    except Exception as exc:  # noqa: BLE001 - isolate attempted-document failures
+    except Exception as exc:
         logger.debug(
             "Document extraction failed for %s",
             doc_path,
@@ -934,19 +860,21 @@ def _extract_one_document(  # noqa: PLR0913 - explicit per-document scope and li
                 )
             ],
             "cost": getattr(result, "cost", usage.get("cost")),
-            "input_tokens": getattr(
-                result, "input_tokens", usage.get("input_tokens")
-            ),
-            "output_tokens": getattr(
-                result, "output_tokens", usage.get("output_tokens")
-            ),
+            "input_tokens": getattr(result, "input_tokens", usage.get("input_tokens")),
+            "output_tokens": getattr(result, "output_tokens", usage.get("output_tokens")),
         }
 
 
 def _target_extraction_inputs(plan: dict):
     """Resolve optional targeting once for planned documents only."""
     inputs, llm = plan["inputs"], plan["llm"]
-    pending = plan["pending"]
+    pending = [
+        doc
+        for doc in plan["pending"]
+        if doc not in plan["candidates"]
+        and doc not in plan["roster_errors"]
+        and plan["anchors"].get(doc) != set()
+    ]
     plan["targeting_incomplete"] = set()
     ranges = dict(plan["ranges"])
     sections = {}
@@ -957,24 +885,16 @@ def _target_extraction_inputs(plan: dict):
             "model": targeting.get("model"),
             "models": inputs.get("models"),
             "default_model": llm["model"],
-            "llm_config": (
-                inputs.get("llm_config") if targeting.get("model") else llm
-            ),
+            "llm_config": (inputs.get("llm_config") if targeting.get("model") else llm),
             "keywords": targeting.get("keywords"),
-            "trigger_chars": targeting.get(
-                "trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS
-            ),
+            "trigger_chars": targeting.get("trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS),
         }
         page_locator = PageLocator(
             targeting["section_description"],
-            max_selected_pages=targeting.get(
-                "max_selected_pages", DEFAULT_MAX_SELECTED_PAGES
-            ),
+            max_selected_pages=targeting.get("max_selected_pages", DEFAULT_MAX_SELECTED_PAGES),
             **options,
         )
-        section_locator = SectionLocator(
-            targeting["section_description"], **options
-        )
+        section_locator = SectionLocator(targeting["section_description"], **options)
         for doc in pending:
             if doc.suffix.lower() == ".pdf" and doc not in ranges:
                 page_locator.incomplete = False
@@ -1000,9 +920,7 @@ def _target_extraction_inputs(plan: dict):
     return ranges, sections, locator_clients
 
 
-def _complete_extraction(
-    plan, results, extractor, locator_clients, run_id, started
-):
+def _complete_extraction(plan, results, extractor, locator_clients, run_id, started):
     """Aggregate outcomes and publish immutable run evidence."""
     output = plan["output"]
     pending = plan["pending"]
@@ -1021,43 +939,35 @@ def _complete_extraction(
         else "empty"
     )
     main_usage = getattr(getattr(extractor, "client", None), "usage", None)
-    returned_usage = any(
-        result.get("input_tokens") is not None for result in results
-    )
+    returned_usage = any(result.get("input_tokens") is not None for result in results)
     if main_usage is not None and (main_usage["calls"] or not returned_usage):
         measured = dict(main_usage)
     else:
         measured = {
             "calls": len(pending),
             "cost": sum(result.get("cost") or 0 for result in results),
-            "input_tokens": sum(
-                result.get("input_tokens") or 0 for result in results
-            ),
-            "output_tokens": sum(
-                result.get("output_tokens") or 0 for result in results
-            ),
-            "unknown_cost_calls": sum(
-                result.get("cost") is None for result in results
-            ),
+            "input_tokens": sum(result.get("input_tokens") or 0 for result in results),
+            "output_tokens": sum(result.get("output_tokens") or 0 for result in results),
+            "unknown_cost_calls": sum(result.get("cost") is None for result in results),
         }
-    for client in locator_clients:
+    spent = {llm["model"]} if measured["calls"] else set()
+    for client in (*locator_clients, plan.get("transcriber")):
         usage = getattr(client, "usage", {})
+        if usage.get("calls"):
+            spent.add(client.model)
         for key in measured:
             measured[key] += usage.get(key, 0)
     total_cost = measured["cost"]
     manifest = build_run_manifest(
         run_id=run_id,
-        mode="single_model",
         schema_path=plan["schema_path"],
         provider=llm["provider"],
         model=llm["model"],
         runtime_artifact=None,
         doc_files=[*plan["reused"], *pending],
-        successful_output_paths=[
-            Path(result["output_path"]) for result in successes
-        ],
+        successful_output_paths=[Path(result["output_path"]) for result in successes],
         started_at=started,
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(UTC).isoformat(),
         total_processed=len(results),
         successful_count=len(successes),
         failed_count=len(failed),
@@ -1069,14 +979,12 @@ def _complete_extraction(
             "llm_calls": measured["calls"],
             "unknown_cost_calls": measured["unknown_cost_calls"],
             "documents_billed": len(pending),
-            "model": llm["model"],
+            "models": sorted(spent),
         },
     )
     manifest["status"]["result"] = status
     manifest["coverage"] = {
-        result["output_path"]: result["coverage"]
-        for result in successes
-        if result.get("coverage")
+        result["output_path"]: result["coverage"] for result in successes if result.get("coverage")
     }
     successful_paths = {result["output_path"] for result in successes}
     manifest["reuse"] = {
@@ -1089,11 +997,7 @@ def _complete_extraction(
         and doc not in plan.get("targeting_incomplete", set())
         and str(plan["outputs"][doc]) in successful_paths
     }
-    manifest_path = (
-        output
-        / "run_manifests"
-        / f"{run_id.removeprefix('run://')}.manifest.json"
-    )
+    manifest_path = output / "run_manifests" / f"{run_id.removeprefix('run://')}.manifest.json"
     atomic_json(manifest_path, manifest)
     return ExtractionRunResult(
         total=len(results),
@@ -1111,31 +1015,22 @@ def _complete_extraction(
     )
 
 
-def _execute_extraction(
-    plan: dict, *, on_progress=None
-) -> ExtractionRunResult:
+def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     """Execute the plan once and publish its measured outcome."""
     output, pending = plan["output"], plan["pending"]
     inputs, llm = plan["inputs"], plan["llm"]
     extractor = None
     if pending:
+        _require_extraction_credentials(llm, None)
         extractor = extraction_api.DocumentExtractor(
             **llm,
-            schema_metadata=plan["metadata"],
             max_context_chars=inputs.get("max_context", DEFAULT_MAX_CONTEXT),
             context_windows=inputs.get("model_context_windows"),
             reasoning_models=inputs.get("reasoning_models"),
             timeout=inputs.get("timeout_seconds"),
         )
-    run_id = generate_run_id(
-        schema_path=plan["schema_path"],
-        provider=llm["provider"],
-        model=llm["model"],
-        enable_validation=False,
-        doc_files=plan["documents"],
-        artifact_id=None,
-    )
-    started = datetime.now(timezone.utc).isoformat()
+    run_id = f"run://{uuid4().hex}"
+    started = datetime.now(UTC).isoformat()
     ranges, sections, locator_clients = _target_extraction_inputs(plan)
     if plan["fresh"] and output.exists() and plan["documents"]:
         shutil.rmtree(output)
@@ -1146,12 +1041,8 @@ def _execute_extraction(
             buffer = io.StringIO(newline="")
             writer = csv.writer(buffer)
             writer.writerow(["file_path", "start_page", "end_page"])
-            writer.writerows(
-                (str(doc), *rng) for doc, rng in ranges.items() if rng
-            )
-            atomic_write(
-                output / "discovered_page_ranges.csv", buffer.getvalue()
-            )
+            writer.writerows((str(doc), *rng) for doc, rng in ranges.items() if rng)
+            atomic_write(output / "discovered_page_ranges.csv", buffer.getvalue())
     results = []
     for doc, record in plan["reused"].items():
         results.append(
@@ -1162,33 +1053,41 @@ def _execute_extraction(
                 "items": record.get("item_count", 0),
                 "cost": 0,
                 "output_path": str(plan["outputs"][doc]),
-                "coverage": record.get("processing_metrics", {}).get(
-                    "coverage", {}
-                ),
+                "coverage": record.get("processing_metrics", {}).get("coverage", {}),
             }
         )
-    for doc in pending:
-        if on_progress:
-            on_progress(doc, None)
-        result = _extract_one_document(
-            doc,
-            extractor=extractor,
-            loaded_schema=plan["schema"],
-            schema_metadata=plan["metadata"],
-            schema_path=plan["schema_path"],
-            output_path=plan["outputs"][doc],
-            model=llm["model"],
-            provider=llm["provider"],
-            run_id=run_id,
-            input_fingerprint=plan["fingerprints"][doc],
-            page_range=ranges.get(doc),
-            section_text=sections.get(doc),
-            source_context_map=plan["context"],
-            ocr_corrections=inputs.get("ocr_corrections"),
-        )
-        results.append(result)
-        if on_progress:
-            on_progress(doc, result)
+    workers = inputs.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
+    queue, window = iter(pending), deque()
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        while True:
+            while len(window) < workers * 2 and (doc := next(queue, None)):
+                if on_progress:
+                    on_progress(doc, None)
+                window.append(
+                    (
+                        doc,
+                        pool.submit(
+                            _extract_one_document,
+                            doc,
+                            plan,
+                            extractor=extractor,
+                            run_id=run_id,
+                            page_range=ranges.get(doc),
+                            section_text=sections.get(doc),
+                        ),
+                    )
+                )
+            if not window:
+                break
+            doc, future = window.popleft()
+            results.append(future.result())
+            if on_progress:
+                on_progress(doc, results[-1])
+    except BaseException:
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown()
     return _complete_extraction(
         plan,
         results,
@@ -1211,54 +1110,16 @@ def extract_documents(
     limit: int | None = None,
     pages_csv: str | Path | None = None,
 ) -> ExtractionRunResult:
-    """Extract structured data from all documents in a folder.
+    """Extract every document under *documents_path* (no CLI, Rich, or sys.exit).
 
-    This is a pure Python function — no CLI, no Rich, no sys.exit. It calls
-    :class:`psweep.extraction.DocumentExtractor` for each supported document,
-    persists per-document JSON, and returns an aggregated result.
-
-    Parameters
-    ----------
-    documents_path:
-        Folder containing PDF/DOCX/TXT/XLSX/CSV documents.
-    schema:
-        Path to a valid ParseSweep v2.0+ JSON schema with ``$metadata``.
-    output_dir:
-        Where to write extracted JSON files. Defaults to
-        ``extracted/<documents_path.name>/``.
-    model:
-        LLM model identifier (e.g. ``gpt-4o-mini``, ``claude-3.5-sonnet``).
-    provider:
-        LLM provider. ``"auto"`` detects from environment variables.
-    max_context:
-        Maximum characters to send to the LLM per document.
-    skip_existing:
-        If True, skip documents whose output JSON already exists.
-    limit:
-        Cap the number of documents processed (useful for testing).
-    pages_csv:
-        Optional CSV mapping filenames to page ranges.
-
-    Returns
-    -------
-    ExtractionRunResult
-        Aggregated counts, cost, and output location.
-
-    Raises
-    ------
-    psweep.exceptions.APIKeyError
-        If no LLM credentials are found.
-    psweep.exceptions.SchemaError
-        If the schema is invalid or missing ``$metadata``.
-    psweep.exceptions.ExtractionError
-        If a document fails to extract (per-document errors are collected and
-        returned in ``result.errors`` rather than raised, unless *all* fail).
+    ``output_dir`` defaults to ``outputs/<domain>/extracted`` with the domain
+    inferred from *documents_path*; per-document errors land in ``result.errors``.
     """
     docs_path = Path(documents_path)
     inputs = {
         "path": str(docs_path),
         "schema": str(schema),
-        "output": str(output_dir or Path("extracted") / docs_path.name),
+        "output": str(output_dir or Workspace(infer_domain(docs_path)).extracted),
         "model": model,
         "provider": provider,
         "max_context": max_context,
@@ -1268,6 +1129,62 @@ def extract_documents(
     }
     plan = _prepare_extraction(inputs)
     return _execute_extraction(plan)
+
+
+def _compiler(extraction_dir, schema, *, config_path=None, output_dir=None, report_format=None):
+    """Resolve compile settings exactly like ``psweep compile --config``."""
+    from psweep.compilation.data_compiler import DataCompiler
+    from psweep.security import validate_protected_paths
+
+    ext_dir, schema_path = Path(extraction_dir), Path(schema)
+    if not ext_dir.exists():
+        raise FileNotFoundError(f"Extraction directory not found: {ext_dir}")
+    if not schema_path.exists():
+        raise FileNotFoundError(f"Schema not found: {schema_path}")
+    resolved: dict = {"schema": str(schema_path)}
+    if config_path:
+        resolved = resolve_command_config(
+            command="compile",
+            cli_values={"schema": str(schema_path), "extracted_dir": str(ext_dir)},
+            config_data=load_runtime_config_file(Path(config_path)),
+        )
+    workspace = Workspace(resolved.get("domain") or infer_domain(ext_dir))
+    out_dir = Path(output_dir or workspace.compiled)
+    validate_protected_paths({"input_dir": ext_dir, "output_dir": out_dir})
+    if report_format is not None:
+        resolved["compilation_output"] = {
+            **resolved.get("compilation_output", {}),
+            "default_format": report_format,
+        }
+    compiler = DataCompiler(
+        schema_metadata=resolve_compilation_metadata(resolved),
+        inputs=resolved,
+        verbose=False,
+        debug=False,
+    )
+    return compiler, ext_dir, out_dir, out_dir / f"{workspace.compiled_name}.csv"
+
+
+def compiled_table_fresh(
+    extraction_dir: str | Path,
+    schema: str | Path,
+    *,
+    config_path: str | Path | None,
+    output_dir: str | Path | None,
+) -> bool:
+    """True when the newest compile manifest matches the records and the CSV bytes."""
+    from psweep.compilation.accounting import latest_compilation_manifest
+
+    compiler, ext_dir, out_dir, table = _compiler(
+        extraction_dir, schema, config_path=config_path, output_dir=output_dir
+    )
+    lineage = (latest_compilation_manifest(out_dir) or {}).get("lineage") or {}
+    return (
+        table.is_file()
+        and bool(lineage.get("build_fingerprint"))
+        and lineage.get("table_sha256") == artifact_sha256(table)
+        and lineage["build_fingerprint"] == compiler.fingerprint(ext_dir)
+    )
 
 
 def compile_extractions(
@@ -1281,82 +1198,28 @@ def compile_extractions(
 ) -> CompilationResult:
     """Compile extracted JSON files into Excel/CSV output.
 
-    Parameters
-    ----------
-    extraction_dir:
-        Directory containing ``.json`` extraction files.
-    schema:
-        Path to the same schema used during extraction.
-    config_path:
-        Optional path to the domain run config (e.g.
-        ``config/<domain>/<domain>.yaml``). When provided, the
-        ``compilation.output`` settings (exclude_fields, column_renames,
-        column_order, etc.) and ``compilation.normalization`` from the config
-        are applied to the output. Matches the behavior of
-        ``pixi run psweep compile --config``.
-    output_dir:
-        Where to write compiled output. Defaults to ``compiled/<name>/``.
-    report_format:
-        ``"xlsx"``, ``"csv"``, or ``"both"``. If omitted, runtime output settings
-        override schema output settings; absent both, CSV and Excel are emitted.
-    dry_run:
-        If True, parse and validate but write no output files.
-
-    Returns
-    -------
-    CompilationResult
+    ``config_path`` applies the run config's ``compilation`` settings like
+    ``psweep compile --config``; ``output_dir`` defaults to
+    ``outputs/<domain>/compiled`` with the domain inferred from *extraction_dir*.
     """
-    from psweep.compilation.data_compiler import DataCompiler
+    from psweep.compilation.accounting import write_compilation_run_manifest
+    from psweep.security import protected_mode
 
-    ext_dir = Path(extraction_dir)
-    schema_path = Path(schema)
-
-    if not ext_dir.exists():
-        raise FileNotFoundError(f"Extraction directory not found: {ext_dir}")
-    if not schema_path.exists():
-        raise FileNotFoundError(f"Schema not found: {schema_path}")
-
-    # See ``extract_documents`` above: the Python API keeps the minimal
-    # ``compiled/<input-dir-name>`` convention rather than the CLI's
-    # ``resolve_compile_output_dir`` (which swaps a nested ``extracted`` component
-    # in place and returns an absolute path). Pass ``output_dir`` for full control.
-    out_dir = (
-        Path(output_dir) if output_dir else Path("compiled") / ext_dir.name
+    compiler, ext_dir, out_dir, table = _compiler(
+        extraction_dir,
+        schema,
+        config_path=config_path,
+        output_dir=output_dir,
+        report_format=report_format,
     )
-    resolved: dict = {"schema": str(schema_path)}
-    if config_path:
-        cfg = load_runtime_config_file(Path(config_path))
-        resolved = resolve_command_config(
-            command="compile",
-            cli_values={
-                "schema": str(schema_path),
-                "extracted_dir": str(ext_dir),
-            },
-            config_data=cfg,
-            strict=False,
-        )
-    if report_format is not None:
-        resolved["compilation_output"] = {
-            **resolved.get("compilation_output", {}),
-            "default_format": report_format,
-        }
-    schema_metadata = resolve_compilation_metadata(resolved)
-    if (
-        schema_metadata.metadata.get("compilation", {})
-        .get("synthesis", {})
-        .get("enabled")
-    ):
-        message = (
-            "Library compile_extractions does not run synthesis; "
-            "use the compile CLI"
-        )
-        raise ValueError(message)
-    compiler = DataCompiler(
-        schema_metadata=schema_metadata,
-        verbose=False,
-        debug=False,
-    )
+    schema_metadata = compiler.schema_metadata
+    started_at = datetime.now(UTC)
     provenance_warnings = analyze_compile_input_provenance(ext_dir)
+    if protected_mode() and provenance_warnings:
+        raise ValueError(
+            "Protected compilation rejected provenance: " + "; ".join(provenance_warnings)
+        )
+    build_fingerprint = None if dry_run else compiler.fingerprint(ext_dir)
     df, _schema_info = compiler.compile_from_directory(
         ext_dir,
         apply_deduplication=not dry_run,
@@ -1364,30 +1227,48 @@ def compile_extractions(
 
     rows = len(df)
     output_files: list[Path] = []
-    if not df.empty:
-        if dry_run:
+    if dry_run:
+        if not df.empty:
             from contextlib import redirect_stdout
             from io import StringIO
 
             with redirect_stdout(StringIO()):
-                export_df = compiler.deduplicator.deduplicate(df.copy())
-            frame = compiler._prepare_output_dataframe(export_df)
-            compiler.validate_export(
-                frame, schema_metadata.get_output_formats()
-            )
-        else:
-            output_files, _ = compiler.export(
-                df,
-                out_dir,
-                ext_dir.name.replace("_", "-"),
-                schema_metadata.get_output_formats(),
-            )
+                export_df = (
+                    df
+                    if compiler.mode == "roster"
+                    else compiler.deduplicator.deduplicate(df.copy())
+                )
+            frame = compiler._prepare_output_dataframe(export_df)  # noqa: SLF001 - package-internal helper
+            compiler.validate_export(frame, schema_metadata.get_output_formats())
+    else:
+        output_files, frame = compiler.export(
+            df,
+            out_dir,
+            table.stem,
+            schema_metadata.get_output_formats(),
+        )
+        write_compilation_run_manifest(
+            output_dir=out_dir,
+            schema_id=str(schema_metadata.schema_path),
+            mode=compiler.mode,
+            stats={
+                "records": rows,
+                "columns": len(frame.columns),
+                "duplicates_removed": compiler.duplicates_removed,
+                "output_formats": schema_metadata.get_output_formats(),
+                **(compiler.roster_stats or {}),
+            },
+            started_at=started_at,
+            build_fingerprint=build_fingerprint,
+            table_sha256=artifact_sha256(table) if table.is_file() else None,
+        )
 
     return CompilationResult(
         output_dir=out_dir,
         output_files=output_files,
         total_rows=max(rows, 0),
         deduplicated=not dry_run
+        and compiler.mode == "rows"
         and bool(schema_metadata.get_deduplication_key_fields()),
         warnings=provenance_warnings,
     )
@@ -1400,36 +1281,16 @@ def run_pipeline(
     skip_extract: bool = False,
     fresh: bool = False,
 ) -> PipelineResult:
-    """Run the full pipeline (discover → extract → compile) from a run config.
+    """Run the full pipeline (discover → extract → compile → validate) from a run config.
 
     This is a thin subprocess-based orchestrator that mirrors the CLI ``run``
     command. It is suitable for scripting and automation where you want
     programmatic control over the pipeline without the Rich terminal UI.
-    When the config enables QA/QC, a ``compare`` stage runs after ``compile``.
 
-    Parameters
-    ----------
-    config_path:
-        Path to a domain run config file (e.g. ``config/<domain>/<domain>.yaml``).
-    skip_discover:
-        If True, skip the discovery stage.
-    skip_extract:
-        If True, skip the extraction stage (compile from existing JSON).
-    fresh:
-        If True, re-run discovery without checkpoint reuse, re-extract already-
-        processed documents, and clear compiled outputs before recompiling.
-
-    Returns
-    -------
-    PipelineResult
-
-    Raises
-    ------
-    psweep.exceptions.PipelineError
-        If any stage fails.
+    Raises ``psweep.exceptions.PipelineError`` when a stage fails; stages that
+    finish with usable output and recorded errors are listed in
+    ``PipelineResult.partial_stages`` instead.
     """
-    from psweep.exceptions import PipelineError
-
     cfg_path = Path(config_path)
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config not found: {cfg_path}")
@@ -1440,7 +1301,6 @@ def run_pipeline(
             command="compile",
             cli_values={},
             config_data=runtime_cfg,
-            strict=True,
         )
     )
     if not skip_extract:
@@ -1450,20 +1310,19 @@ def run_pipeline(
             command="extract",
             cli_values={},
             config_data=runtime_cfg,
-            strict=True,
         )
         load_schema(Path(extract_inputs["schema"]))
 
     discovery_enabled = resolve_run_discovery_enabled(cfg_path)
     if discovery_enabled and not skip_discover:
-        discovery_inputs = resolve_command_config(
-            command="discover",
-            cli_values={},
-            config_data=runtime_cfg,
-            strict=True,
+        discovery_request_fields(
+            resolve_command_config(
+                command="discover",
+                cli_values={},
+                config_data=runtime_cfg,
+            )
         )
-        validate_discover_plan(normalize_discover_inputs(discovery_inputs))
-    domain = runtime_cfg.get("domain", cfg_path.parent.name)
+    domain = runtime_cfg["domain"]
     stage_cmds = build_run_stage_commands(
         cfg_path,
         base_cmd=[sys.executable, "-m", "psweep.cli.main"],
@@ -1474,15 +1333,39 @@ def run_pipeline(
         extra_flags=("-q",),
     )
 
-    for stage, cmd in stage_cmds:
-        logger.info("Running stage: %s", stage)
-        result = subprocess.run(cmd, capture_output=False)
-        if result.returncode != 0:
-            raise PipelineError(
-                f"Stage '{stage}' failed (exit {result.returncode})",
-                stage=stage,
-            )
+    partial = execute_run_stages(
+        stage_cmds,
+        on_stage=lambda _index, stage: logger.info("Running stage: %s", stage),
+    )
 
     return PipelineResult(
-        domain=domain, stages_run=[stage for stage, _ in stage_cmds]
+        domain=domain,
+        stages_run=[stage for stage, _ in stage_cmds],
+        partial_stages=partial,
     )
+
+
+def execute_run_stages(
+    stage_cmds: Sequence[tuple[str, list[str]]],
+    on_stage: Callable[[int, str], None] | None = None,
+) -> list[str]:
+    """Run stage subprocesses in order and return the stages that ended partial.
+
+    A partial stage (usable output plus recorded errors) does not stop the
+    stages after it; re-running retries its failed items. Any other non-zero
+    exit raises ``PipelineError``.
+    """
+    partial: list[str] = []
+    for index, (stage, cmd) in enumerate(stage_cmds, 1):
+        if on_stage is not None:
+            on_stage(index, stage)
+        returncode = subprocess.run(cmd, check=False).returncode  # noqa: S603 - argv built from sys.executable
+        if returncode == EXIT_PARTIAL:
+            partial.append(stage)
+        elif returncode != 0:
+            raise PipelineError(
+                f"Stage '{stage}' failed (exit {returncode})",
+                stage=stage,
+                returncode=returncode,
+            )
+    return partial

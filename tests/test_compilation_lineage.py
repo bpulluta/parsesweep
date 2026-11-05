@@ -23,7 +23,6 @@ def _write_schema(path: Path) -> None:
             "extraction": {
                 "main_data_array": "items",
                 "context_objects": ["metadata"],
-                "identifier_fields": ["metadata.id"],
                 "document_type": "Test Document",
             },
             "identity": {
@@ -35,8 +34,24 @@ def _write_schema(path: Path) -> None:
         },
         "type": "object",
         "properties": {
-            "metadata": {"type": "object"},
-            "items": {"type": "array"},
+            "metadata": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "jurisdiction": {"type": "string"},
+                    "state": {"type": "string"},
+                },
+            },
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "title": "Charge Name"},
+                        "value": {"type": "number"},
+                    },
+                },
+            },
         },
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,7 +76,6 @@ def test_compilation_includes_run_id_from_extraction_record_payload(tmp_path) ->
             "lineage": {
                 "run_id": "run://deterministic1111",
                 "artifact_id": "artifact://runtime/abc123",
-                "profile_id": "default",
                 "model": "gpt-5",
                 "provider": "azure",
                 "extracted_at": "2026-03-24T00:00:00Z",
@@ -102,7 +116,6 @@ def test_compilation_includes_run_id_from_validation_extraction_record(tmp_path)
             "lineage": {
                 "run_id": "run://deterministic2222",
                 "artifact_id": "artifact://runtime/def456",
-                "profile_id": "default",
                 "model": "gpt-4o",
                 "provider": "openai",
                 "extracted_at": "2026-03-24T00:00:00Z",
@@ -142,7 +155,6 @@ def test_compilation_supports_extraction_record_payload_lineage(tmp_path) -> Non
             },
             "lineage": {
                 "artifact_id": "artifact://runtime/ghi789",
-                "profile_id": "default",
                 "run_id": "run://deterministic3333",
                 "model": "gpt-5",
                 "provider": "azure",
@@ -186,7 +198,7 @@ def test_compilation_supports_extraction_record_payload_lineage(tmp_path) -> Non
     assert df.iloc[0]["Error Count"] == 1
     assert df.iloc[0]["Error Categories"] == "document_processing"
     assert "OCR text quality degraded" in df.iloc[0]["Error Messages"]
-    assert df.iloc[0]["Jurisdiction"] == "Example Borough"
+    assert df.iloc[0]["jurisdiction"] == "Example Borough"
 
 
 def test_compilation_skips_non_record_metadata_files(tmp_path) -> None:
@@ -214,7 +226,6 @@ def test_compilation_skips_non_record_metadata_files(tmp_path) -> None:
             },
             "lineage": {
                 "artifact_id": "artifact://runtime/jkl012",
-                "profile_id": "default",
                 "run_id": "run://deterministic4444",
                 "model": "gpt-4o",
                 "provider": "openai",
@@ -234,7 +245,7 @@ def test_compilation_skips_non_record_metadata_files(tmp_path) -> None:
     assert len(df) == 1
     assert df.iloc[0]["Run Id"] == "run://deterministic4444"
     assert df.iloc[0]["Artifact Id"] == "artifact://runtime/jkl012"
-    assert df.iloc[0]["Jurisdiction"] == "Example Parish"
+    assert df.iloc[0]["jurisdiction"] == "Example Parish"
 
 
 def test_compilation_exclude_fields_can_come_from_runtime_overrides(tmp_path) -> None:
@@ -254,14 +265,17 @@ def test_compilation_exclude_fields_can_come_from_runtime_overrides(tmp_path) ->
             },
             "lineage": {
                 "artifact_id": "artifact://runtime/mno345",
-                "profile_id": "default",
                 "run_id": "run://deterministic5555",
                 "model": "gpt-5",
                 "provider": "azure",
                 "extracted_at": "2026-03-24T00:00:00Z",
             },
             "payload": {
-                "metadata": {"id": "T-5", "jurisdiction": "Example District", "internal_note": "drop me"},
+                "metadata": {
+                    "id": "T-5",
+                    "jurisdiction": "Example District",
+                    "internal_note": "drop me",
+                },
                 "items": [{"name": "Charge E", "value": 50}],
             },
         },
@@ -281,8 +295,8 @@ def test_compilation_exclude_fields_can_come_from_runtime_overrides(tmp_path) ->
     df, _ = compiler.compile_from_directory(extracted_dir)
 
     assert not df.empty
-    assert "Internal Note" not in df.columns
-    assert df.iloc[0]["Jurisdiction"] == "Example District"
+    assert "internal_note" not in compiler._prepare_output_dataframe(df).columns
+    assert df.iloc[0]["jurisdiction"] == "Example District"
 
 
 def test_compilation_output_overrides_apply_to_saved_exports(tmp_path) -> None:
@@ -295,17 +309,11 @@ def test_compilation_output_overrides_apply_to_saved_exports(tmp_path) -> None:
         metadata_overrides={
             "compilation": {
                 "output": {
-                    "column_renames": {
-                        "Jurisdiction": "county",
-                        "Run Id": "run_id",
-                        "Name": "charge_name",
-                        "Value": "amount",
-                    },
                     "column_order": [
-                        "county",
-                        "run_id",
-                        "charge_name",
-                        "amount",
+                        "jurisdiction",
+                        "Run Id",
+                        "Charge Name",
+                        "value",
                     ],
                     "freeze_columns": 3,
                     "auto_width": False,
@@ -322,10 +330,10 @@ def test_compilation_output_overrides_apply_to_saved_exports(tmp_path) -> None:
     export_frame = pd.DataFrame(
         [
             {
-                "Jurisdiction": "Example District",
+                "jurisdiction": "Example District",
                 "Run Id": "run://deterministic6666",
-                "Name": "Charge F",
-                "Value": 60,
+                "name": "Charge F",
+                "value": 60,
                 "Artifact Id": "artifact://runtime/pqr678",
             }
         ]
@@ -336,14 +344,14 @@ def test_compilation_output_overrides_apply_to_saved_exports(tmp_path) -> None:
     compiler.save_csv(export_frame, csv_path)
     compiler.save_excel(export_frame, excel_path)
 
-    csv_headers = (
-        csv_path.read_text(encoding="utf-8").splitlines()[0].split(",")
-    )
+    csv_headers = csv_path.read_text(encoding="utf-8").splitlines()[0].split(",")
     assert csv_headers == [
-        "county",
-        "run_id",
-        "charge_name",
-        "amount",
+        "jurisdiction",
+        "Run Id",
+        "Charge Name",
+        "value",
+        "id",
+        "state",
         "Artifact Id",
     ]
 
@@ -351,10 +359,12 @@ def test_compilation_output_overrides_apply_to_saved_exports(tmp_path) -> None:
     worksheet = workbook["Data"]
     excel_headers = [cell.value for cell in worksheet[1]]
     assert excel_headers == [
-        "county",
-        "run_id",
-        "charge_name",
-        "amount",
+        "jurisdiction",
+        "Run Id",
+        "Charge Name",
+        "value",
+        "id",
+        "state",
         "Artifact Id",
     ]
     assert worksheet.freeze_panes == "D2"
@@ -370,7 +380,6 @@ def test_preview_deduplication_flags_conflicting_non_key_values_as_suspicious(tm
         [
             {
                 "Jurisdiction": "Example Borough",
-                "Id": "doc-1",
                 "Name": "Charge A",
                 "Value": 10,
                 "Run Id": "run://1",
@@ -378,7 +387,6 @@ def test_preview_deduplication_flags_conflicting_non_key_values_as_suspicious(tm
             },
             {
                 "Jurisdiction": "Example Borough",
-                "Id": "doc-2",
                 "Name": "Charge A",
                 "Value": 12,
                 "Run Id": "run://2",
@@ -412,7 +420,6 @@ def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_
                 "extraction": {
                     "main_data_array": "items",
                     "context_objects": ["metadata"],
-                    "identifier_fields": ["metadata.id"],
                     "document_type": "Test Document",
                 },
                 "identity": {
@@ -445,7 +452,6 @@ def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_
         [
             {
                 "Jurisdiction": "Example Borough",
-                "Id": "doc-1",
                 "Name": "Charge A",
                 "Distance Measure": 10,
                 "Run Id": "run://1",
@@ -453,7 +459,6 @@ def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_
             },
             {
                 "Jurisdiction": "Example Borough",
-                "Id": "doc-2",
                 "Name": "Charge A",
                 "Distance Measure": 12,
                 "Run Id": "run://2",
@@ -484,7 +489,6 @@ def _write_record_with_state(path: Path, state: str) -> None:
             "lineage": {
                 "run_id": "run://s",
                 "artifact_id": "artifact://s",
-                "profile_id": "default",
                 "model": "gpt-5",
                 "provider": "azure",
                 "extracted_at": "2026-03-24T00:00:00Z",
@@ -497,22 +501,19 @@ def _write_record_with_state(path: Path, state: str) -> None:
     )
 
 
-def test_state_normalization_default_abbreviates(tmp_path) -> None:
-    """By default (no config) a 'State' column is normalized to its abbrev."""
+def test_state_normalization_is_opt_in(tmp_path) -> None:
+    """Without normalization.state_column, raw state values are preserved."""
     schema_path = tmp_path / "schema.json"
     _write_schema(schema_path)
     extracted_dir = tmp_path / "processed/tariffs"
     _write_record_with_state(extracted_dir / "doc1.json", "Utah")
 
-    compiler = DataCompiler(
-        schema_metadata=SchemaMetadata(schema_path), verbose=False, debug=False
-    )
+    compiler = DataCompiler(schema_metadata=SchemaMetadata(schema_path), verbose=False, debug=False)
     df, _ = compiler.compile_from_directory(extracted_dir)
-    assert df.iloc[0]["State"] == "UT"
+    assert df.iloc[0]["state"] == "Utah"
 
 
-def test_state_normalization_can_be_disabled_via_config(tmp_path) -> None:
-    """A non-US/non-jurisdiction domain opts out; raw values are preserved."""
+def test_state_normalization_abbreviates_configured_field(tmp_path) -> None:
     schema_path = tmp_path / "schema.json"
     _write_schema(schema_path)
     extracted_dir = tmp_path / "processed/tariffs"
@@ -520,15 +521,11 @@ def test_state_normalization_can_be_disabled_via_config(tmp_path) -> None:
 
     schema_metadata = SchemaMetadata(
         schema_path,
-        metadata_overrides={
-            "compilation": {"normalization": {"state_column": None}}
-        },
+        metadata_overrides={"compilation": {"normalization": {"state_column": "state"}}},
     )
-    compiler = DataCompiler(
-        schema_metadata=schema_metadata, verbose=False, debug=False
-    )
+    compiler = DataCompiler(schema_metadata=schema_metadata, verbose=False, debug=False)
     df, _ = compiler.compile_from_directory(extracted_dir)
-    assert df.iloc[0]["State"] == "Utah"
+    assert df.iloc[0]["state"] == "UT"
 
 
 def test_preview_deduplication_keeps_distinct_numeric_keys_with_missing_values(
@@ -545,7 +542,6 @@ def test_preview_deduplication_keeps_distinct_numeric_keys_with_missing_values(
                 "extraction": {
                     "main_data_array": "items",
                     "context_objects": ["metadata"],
-                    "identifier_fields": ["metadata.id"],
                 },
                 "identity": {
                     "deduplication": {

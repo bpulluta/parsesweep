@@ -10,13 +10,12 @@ from psweep.utils.file_io import atomic_json
 def test_build_run_manifest_sorts_documents_and_output_records() -> None:
     runtime_artifact = {
         "artifact_id": "artifact://runtime/abc123def4567890",
-        "lineage": {"profile_id": "default"},
+        "lineage": {},
     }
 
     manifest = build_run_manifest(
         run_id="run://deterministic1234",
-        mode="single_model",
-        schema_path=Path("schemas/personal/electricity_tariff_schema.json"),
+        schema_path=Path("config/my_domain/schema.json"),
         provider="azure",
         model="gpt-5",
         runtime_artifact=runtime_artifact,
@@ -38,11 +37,7 @@ def test_build_run_manifest_sorts_documents_and_output_records() -> None:
 
     assert manifest["manifest_version"] == "1.0.0"
     assert manifest["run_id"] == "run://deterministic1234"
-    assert (
-        manifest["lineage"]["artifact_id"]
-        == "artifact://runtime/abc123def4567890"
-    )
-    assert manifest["lineage"]["profile_id"] == "default"
+    assert manifest["lineage"]["artifact_id"] == "artifact://runtime/abc123def4567890"
     assert manifest["lineage"]["provider"] == "azure"
     assert manifest["lineage"]["model"] == "gpt-5"
     assert manifest["documents"] == [
@@ -61,8 +56,7 @@ def test_build_run_manifest_sorts_documents_and_output_records() -> None:
 def test_build_run_manifest_summarizes_failed_error_records() -> None:
     manifest = build_run_manifest(
         run_id="run://deterministic1234",
-        mode="single_model",
-        schema_path=Path("schemas/personal/electricity_tariff_schema.json"),
+        schema_path=Path("config/my_domain/schema.json"),
         provider="azure",
         model="gpt-5",
         runtime_artifact=None,
@@ -99,10 +93,7 @@ def test_build_run_manifest_summarizes_failed_error_records() -> None:
     assert manifest["errors"]["total_errors"] == 1
     assert manifest["errors"]["by_category"] == {"document_processing": 1}
     assert manifest["errors"]["by_code"] == {"document_extraction_failed": 1}
-    assert (
-        manifest["lineage"]["artifact_id"]
-        == "artifact://runtime/deterministic1234"
-    )
+    assert manifest["lineage"]["artifact_id"] == "artifact://runtime/deterministic1234"
 
 
 def test_write_run_manifest_persists_expected_file(tmp_path) -> None:
@@ -112,15 +103,10 @@ def test_write_run_manifest_persists_expected_file(tmp_path) -> None:
         "lineage": {"artifact_id": "artifact://runtime/example"},
     }
 
-    manifest_path = (
-        tmp_path / "run_manifests" / "deterministic1234.manifest.json"
-    )
+    manifest_path = tmp_path / "run_manifests" / "deterministic1234.manifest.json"
     atomic_json(manifest_path, manifest)
 
-    assert (
-        manifest_path
-        == tmp_path / "run_manifests" / "deterministic1234.manifest.json"
-    )
+    assert manifest_path == tmp_path / "run_manifests" / "deterministic1234.manifest.json"
     saved = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert saved["run_id"] == "run://deterministic1234"
     assert saved["manifest_version"] == "1.0.0"

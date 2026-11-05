@@ -1,24 +1,21 @@
 # ParseSweep
 
-**AI-powered document extraction pipeline.**
+**Find documents, extract schema-defined data with an LLM, and compile it into one table.**
 
-ParseSweep discovers, extracts, and compiles structured data from documents
-(PDF, DOCX, TXT, XLSX) into Excel/CSV. Define *what* you need with a JSON
-schema, configure *how* to run it with a YAML config, and let the LLM handle
-the rest.
+ParseSweep turns a list of targets into a spreadsheet with one row per target.
+A JSON schema defines *what* to extract; one `run.yaml` per domain defines
+*how* every stage runs.
 
-```
-Documents (PDF, DOCX, TXT, XLSX)
-        │
-        ▼
-┌─── discover ───┐    ┌─── extract ───┐    ┌─── compile ───┐
-│ Find docs on   │ →  │ AI extracts   │ →  │ Merge + dedup │ → Excel/CSV
-│ the web        │    │ structured    │    │ into clean    │
-│ (optional)     │    │ JSON per doc  │    │ spreadsheet   │
-└────────────────┘    └───────────────┘    └───────────────┘
+```text
+discover  →  extract  →  compile  →  validate
+web/sources  JSON per     one table     models and
+→ documents  document     per domain    references
 ```
 
-Each step runs independently via the same config file.
+Documents can be PDF, Word, text, HTML, CSV, Excel, JSON or audio recordings —
+see [Document types and limits](config-reference.md#document-types-and-limits).
+Start with [Getting Started](getting-started.md): run the bundled example, then
+build your own domain.
 
 ## Documentation
 
@@ -27,10 +24,12 @@ Each step runs independently via the same config file.
 :caption: Guides
 
 getting-started
-commands/index
+sources
 config-reference
 tuning
 schemas/index
+commands/index
+security
 ```
 
 ```{toctree}

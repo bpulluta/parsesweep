@@ -8,6 +8,7 @@ never touch the network.
 from __future__ import annotations
 
 import json
+from urllib.parse import parse_qs, urlsplit
 
 from psweep.discovery.code_host_adapters import (
     MunicodeAdapter,
@@ -41,12 +42,13 @@ def _friendswood_get(calls: list[tuple[str, dict]] | None = None):
             body = {
                 "Docs": [
                     {
+                        "Id": "PTIICICO_CH26EN_ARTVIIOIGA",
                         "Content": (
                             "<div><h2>Sec. 26-290. Natural gas compressor "
                             "stations.</h2><p>A minimum building setback of "
                             "<b>500&nbsp;feet</b> from residential districts "
                             "applies to every compressor station.</p></div>"
-                        )
+                        ),
                     }
                 ]
             }
@@ -75,6 +77,12 @@ class TestCanHandle:
         assert isinstance(resolve_adapter(_PUBLIC_URL), MunicodeAdapter)
         assert resolve_adapter("https://ecode360.com/12345") is None
 
+    def test_request_headers_are_an_independent_copy(self):
+        adapter = MunicodeAdapter()
+        headers = adapter.request_headers()
+        headers["X-CSRF"] = "operator"
+        assert adapter.request_headers()["X-CSRF"] == "1"
+
 
 class TestFetchText:
     def test_happy_path_returns_clean_text(self):
@@ -86,16 +94,14 @@ class TestFetchText:
         assert "<" not in text and ">" not in text
         assert "&nbsp;" not in text
 
-    def test_sends_csrf_header_and_generic_ua(self):
+    def test_sends_csrf_header_and_leaves_user_agent_to_the_engine(self):
         calls: list[tuple[str, dict]] = []
         MunicodeAdapter().fetch_text(_PUBLIC_URL, _friendswood_get(calls))
         assert calls, "adapter made no HTTP calls"
         for _url, headers in calls:
             assert headers.get("X-CSRF") == "1"
-            ua = headers.get("User-Agent", "")
-            assert "ParseSweep" in ua
-            # Never a named AI-crawler UA (Municode disallows those).
-            assert "GPTBot" not in ua and "Bytespider" not in ua
+            # The engine adds the one shared discovery User-Agent.
+            assert "User-Agent" not in headers
 
     def test_missing_node_id_returns_none(self):
         url = "https://library.municode.com/tx/friendswood/codes/code_of_ordinances"
@@ -140,9 +146,7 @@ class TestFetchText:
         # node — valid sibling docs are still returned.
         def _get(u: str, h: dict) -> tuple[int, str]:
             if "Clients/stateAbbr" in u:
-                return 200, json.dumps(
-                    [{"ClientID": 2291, "ClientName": "Friendswood"}]
-                )
+                return 200, json.dumps([{"ClientID": 2291, "ClientName": "Friendswood"}])
             if u.endswith("/api/ClientContent/2291"):
                 return 200, json.dumps({"codes": [{"productId": 13883}]})
             if u.endswith("/api/Jobs/latest/13883"):
@@ -151,8 +155,14 @@ class TestFetchText:
                 return 200, json.dumps(
                     {
                         "Docs": [
-                            {"Content": 12345},  # malformed
-                            {"Content": "<p>compressor setback 500 feet</p>"},
+                            {
+                                "Id": "PTIICICO_CH26EN_ARTVIIOIGA_BAD",
+                                "Content": 12345,
+                            },
+                            {
+                                "Id": "PTIICICO_CH26EN_ARTVIIOIGA_OK",
+                                "Content": "<p>compressor setback 500 feet</p>",
+                            },
                         ]
                     }
                 )
@@ -161,6 +171,67 @@ class TestFetchText:
         text = MunicodeAdapter().fetch_text(_PUBLIC_URL, _get)
         assert text is not None
         assert "compressor setback 500 feet" in text
+
+
+def test_grouped_api_content_keeps_only_requested_subtree_and_headings():
+    docs = [
+        {"Id": "CH10_OTHER", "Content": "<p>Unrelated chapter material</p>"},
+        {"Id": "CH10_GAS", "TitleHtml": "<h2>Gas pipelines</h2>", "Content": ""},
+        {
+            "Id": "CH10_GAS_SEC1",
+            "TitleHtml": "<h3>Sec. 10-1</h3>",
+            "Content": "<p>A 500-foot setback applies.</p>",
+        },
+        {"Id": "CH10_GASOTHER", "Content": "<p>Unrelated sibling</p>"},
+    ]
+    text = MunicodeAdapter()._fetch_content(
+        1,
+        2,
+        "CH10_GAS",
+        lambda *_: (200, json.dumps({"Docs": docs})),
+    )
+    assert text == "Gas pipelines\nSec. 10-1\nA 500-foot setback applies."
+
+
+def test_heading_only_or_wrong_node_response_is_not_a_document():
+    for docs in (
+        [{"Id": "OTHER", "Content": "Unrelated body"}],
+        [{"Id": "NODE", "TitleHtml": "Catalogue heading", "Content": None}],
+    ):
+        assert (
+            MunicodeAdapter()._fetch_content(
+                1,
+                2,
+                "NODE",
+                lambda *_, docs=docs: (200, json.dumps({"Docs": docs})),
+            )
+            is None
+        )
+
+
+def test_node_value_cannot_override_api_query_parameters():
+    calls = []
+
+    def get(url, headers):
+        calls.append(url)
+        return 200, '{"Docs":[]}'
+
+    MunicodeAdapter()._fetch_content(1, 2, "NODE&jobId=other", get)
+    query = parse_qs(urlsplit(calls[0]).query)
+    assert query["jobId"] == ["2"]
+    assert query["nodeId"] == ["NODE&jobId=other"]
+
+
+def test_amendment_link_is_not_misrepresented_as_current_code():
+    calls = []
+    assert (
+        MunicodeAdapter().fetch_text(
+            "https://library.municode.com/tx/keller/ordinances/code_of_ordinances?nodeId=N",
+            _friendswood_get(calls),
+        )
+        is None
+    )
+    assert calls == []
 
 
 class TestStripHtml:

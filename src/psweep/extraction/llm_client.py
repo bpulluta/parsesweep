@@ -14,21 +14,36 @@ import json
 import logging
 import os
 import re
-from typing import Dict, Any, Optional, List
+import threading
+import time
+from dataclasses import dataclass
+from typing import Any
+
+# Pricing metadata must not initiate an unapproved network request at import time.
+os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 
 import litellm
-from litellm import completion, completion_cost
+from litellm import completion, completion_cost, cost_per_token
 
-from ..utils.model_pricing import get_pricing
-from ..exceptions import ExtractionError
+from psweep.security import (
+    ca_bundle,
+    protected_mode,
+    provider_error_category,
+    require_model_endpoint,
+    resolve_tls_verification,
+    tls_context,
+)
+from psweep.exceptions import ExtractionError
 from .llm_factory import DEFAULT_MODEL, detect_provider
+from psweep.utils.retry import compute_backoff, is_transient_error
+from .schema_utils import strict_compatible
 from .text_processor import find_data_arrays
 
 logger = logging.getLogger(__name__)
 
 
-# Substring markers that identify "reasoning" models — those that reject the
-# temperature / response_format params. Provider-neutral defaults; a deployment
+# Substring markers that identify "reasoning" models — those that reject a
+# non-default temperature. Provider-neutral defaults; a deployment
 # can extend this via the top-level ``reasoning_models`` run.yaml list (unioned
 # with these defaults) so a new reasoning model works without a code change.
 DEFAULT_REASONING_MODEL_MARKERS: tuple[str, ...] = (
@@ -38,6 +53,23 @@ DEFAULT_REASONING_MODEL_MARKERS: tuple[str, ...] = (
     "o4",
     "thinking",
 )
+
+
+def prompt_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Return the schema the model sees: everything except ``$metadata``."""
+    return {key: value for key, value in schema.items() if key != "$metadata"}
+
+
+RETRY_ATTEMPTS = 4
+
+
+@dataclass(frozen=True)
+class Completion:
+    """One answered request: the first choice and its measured usage."""
+
+    content: str | None
+    finish_reason: str | None
+    usage: dict[str, Any]
 
 
 class LLMClient:
@@ -54,15 +86,15 @@ class LLMClient:
 
     def __init__(
         self,
-        api_key: str = None,
+        api_key: str | None = None,
         model: str = DEFAULT_MODEL,
-        provider: str = None,
-        azure_endpoint: str = None,
-        azure_api_version: str = None,
-        context_windows: Optional[Dict[str, int]] = None,
-        base_url: str = None,
-        timeout: int = None,
-        reasoning_models: Optional[List[str]] = None,
+        provider: str | None = None,
+        azure_endpoint: str | None = None,
+        azure_api_version: str | None = None,
+        context_windows: dict[str, int] | None = None,
+        base_url: str | None = None,
+        timeout: int | None = None,
+        reasoning_models: list[str] | None = None,
     ):
         """
         Initialize LLM client.
@@ -70,7 +102,7 @@ class LLMClient:
         Parameters
         ----------
         api_key : str
-            API key for the provider (will auto-set environment variables)
+            API key passed directly to this client, without mutating environment variables
         model : str
             Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "gemini-1.5-pro")
         provider : str
@@ -102,14 +134,18 @@ class LLMClient:
                 "Add a 'models:' block at the top of your run config "
                 "(e.g. 'primary: your-deployment') and set "
                 "'model: primary' under the relevant stage "
-                "(extraction:, compilation.synthesis:, etc.), "
+                "(extraction:, discovery.document_review:, etc.), "
                 "or set LLM_MODEL / AZURE_OPENAI_MODEL / OPENAI_MODEL in your .env file."
             )
         self.raw_model = model  # Keep original for cost tracking
         self.base_url = base_url
-        self._api_key = (
-            api_key  # Stored for direct-pass in endpoint-override mode
-        )
+        require_model_endpoint(base_url)
+        self.ssl_verify = resolve_tls_verification("PSWEEP_SSL_VERIFY")
+        self._tls_context = tls_context(self.ssl_verify)
+        self._provider_tls = ca_bundle() if self.ssl_verify else False
+        self._azure_endpoint = azure_endpoint
+        self._azure_api_version = azure_api_version
+        self._api_key = api_key  # Stored for direct-pass in endpoint-override mode
         self.usage = {
             "calls": 0,
             "cost": 0.0,
@@ -117,28 +153,21 @@ class LLMClient:
             "output_tokens": 0,
             "unknown_cost_calls": 0,
         }
+        self._usage_lock = threading.Lock()
         self.context_windows = dict(context_windows or {})
         # Reasoning-model markers: built-in defaults unioned with any
         # config-supplied ``reasoning_models`` (extra markers, lowercased).
-        extra_markers = [
-            m.lower().strip() for m in (reasoning_models or []) if m.strip()
-        ]
+        extra_markers = [m.lower().strip() for m in (reasoning_models or []) if m.strip()]
         self.reasoning_model_markers: tuple[str, ...] = (
             *DEFAULT_REASONING_MODEL_MARKERS,
-            *(
-                m
-                for m in extra_markers
-                if m not in DEFAULT_REASONING_MODEL_MARKERS
-            ),
+            *(m for m in extra_markers if m not in DEFAULT_REASONING_MODEL_MARKERS),
         )
         self.timeout = (
             timeout
             if timeout is not None
             else int(os.environ.get("LLM_TIMEOUT", self.DEFAULT_TIMEOUT))
         )
-        self._explicit_provider = (
-            provider is not None and not model.startswith("openrouter/")
-        )
+        self._explicit_provider = provider is not None and not model.startswith("openrouter/")
         self.provider = provider or detect_provider(model)
 
         # Format model name for LiteLLM
@@ -147,17 +176,15 @@ class LLMClient:
         # Configure LiteLLM
         litellm.drop_params = True  # Drop unsupported params
         litellm.suppress_debug_info = True
+        litellm.set_verbose = False
+        litellm.turn_off_message_logging = True
 
-        # Set up environment variables for LiteLLM
-        self._configure_environment(api_key, azure_endpoint, azure_api_version)
+        logger.info("Initialized LLM client: provider=%s, model=%s", self.provider, self.model)
 
-        # Load pricing database
-        self.pricing_db = get_pricing()
-
-        endpoint_info = f", base_url={self.base_url}" if self.base_url else ""
-        logger.info(
-            f"Initialized LLM client: provider={self.provider}, model={self.model}{endpoint_info}"
-        )
+    def _count(self, **deltas) -> None:
+        with self._usage_lock:
+            for key, value in deltas.items():
+                self.usage[key] += value
 
     def _format_model_for_litellm(self, model: str, provider: str) -> str:
         """
@@ -191,57 +218,202 @@ class LLMClient:
             if not model.startswith("azure/"):
                 return f"azure/{model}"
             return model
-        elif provider == "gemini":
-            if not model.startswith("gemini/") and not model.startswith(
-                "google/"
-            ):
+        if provider == "gemini":
+            if not model.startswith("gemini/") and not model.startswith("google/"):
                 return f"gemini/{model}"
             return model
-        else:
-            return model
+        return model
 
-    def _configure_environment(
-        self,
-        api_key: Optional[str],
-        azure_endpoint: Optional[str],
-        azure_api_version: Optional[str],
-    ):
-        """Configure environment variables for LiteLLM."""
-        if self.base_url:
-            # Endpoint-override mode: set the proxy URL and key as the OpenAI
-            # environment so LiteLLM routes all calls through this endpoint.
-            os.environ["OPENAI_BASE_URL"] = self.base_url
-            if api_key:
-                os.environ["OPENAI_API_KEY"] = api_key
-            return
+    def _complete(self, params: dict[str, Any]):
+        """Use client-scoped TLS and disable hidden provider retries."""
+        require_model_endpoint(self.base_url)
+        protected = protected_mode()
+        custom_tls = self._provider_tls is not True
+        if (
+            not protected
+            and not self.base_url
+            and not (custom_tls and self.provider in {"openai", "azure"})
+        ):
+            return completion(**params, num_retries=0)
+        if protected and not self._api_key:
+            raise ValueError("Protected model endpoint requires explicit credentials")
+        import httpx
+        from openai import AzureOpenAI, OpenAI
 
-        if not api_key:
-            return
-
-        # Direct-provider mode: set provider-specific environment variables.
-        if self.provider == "azure":
-            os.environ["AZURE_API_KEY"] = api_key
-            if azure_endpoint:
-                os.environ["AZURE_API_BASE"] = azure_endpoint
-            if azure_api_version:
-                os.environ["AZURE_API_VERSION"] = azure_api_version
+        logging.getLogger("openai").setLevel(logging.WARNING)
+        request = dict(params)
+        request["model"] = request["model"].removeprefix("openai/")
+        for key in ("base_url", "api_key", "timeout", "ssl_verify"):
+            request.pop(key, None)
+        with httpx.Client(
+            verify=self._tls_context,
+            trust_env=False,
+            follow_redirects=False,
+            timeout=self.timeout,
+        ) as transport:
+            client: OpenAI
+            if not self.base_url and self.provider == "azure":
+                client = AzureOpenAI(
+                    azure_endpoint=self._azure_endpoint,
+                    api_version=self._azure_api_version,
+                    api_key=self._api_key,
+                    timeout=self.timeout,
+                    max_retries=0,
+                    http_client=transport,
+                )
             else:
-                os.environ["AZURE_API_VERSION"] = "2024-02-15-preview"
-        elif self.provider == "anthropic":
-            os.environ["ANTHROPIC_API_KEY"] = api_key
-        elif self.provider == "gemini":
-            os.environ["GEMINI_API_KEY"] = api_key
-        else:
-            os.environ["OPENAI_API_KEY"] = api_key
+                client = OpenAI(
+                    base_url=self.base_url,
+                    api_key=self._api_key,
+                    timeout=self.timeout,
+                    max_retries=0,
+                    http_client=transport,
+                )
+            with client:
+                if protected:
+                    # Sensitive requests never enter provider plugins/callbacks.
+                    return client.chat.completions.create(**request)
+                return completion(**params, client=client, num_retries=0)
+
+    def _complete_with_backoff(self, params: dict[str, Any]):
+        """Retry transient provider failures (``is_transient_error``) with the shared backoff."""
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            time.sleep(
+                compute_backoff(attempt, initial_backoff_seconds=2.0, max_backoff_seconds=30.0)
+            )
+            try:
+                return self._complete(params)
+            except Exception as exc:
+                if attempt == RETRY_ATTEMPTS or not is_transient_error(exc):
+                    raise
+                self._count(calls=1, unknown_cost_calls=1)
+        return None
+
+    def _route(self) -> dict[str, Any]:
+        """Provider routing and credentials for one request."""
+        params: dict[str, Any] = {
+            "model": self.model,
+            "timeout": self.timeout,
+            "ssl_verify": self._provider_tls,
+        }
+        if self._api_key:
+            params["api_key"] = self._api_key
+        if self.base_url:
+            # The "openai/" model prefix (see _format_model_for_litellm)
+            # selects /chat/completions; no custom_llm_provider wanted.
+            params["base_url"] = self.base_url
+            return params
+        if self.provider == "azure":
+            if self._azure_endpoint:
+                params["api_base"] = self._azure_endpoint
+            if self._azure_api_version:
+                params["api_version"] = self._azure_api_version
+        if self._explicit_provider:
+            params["custom_llm_provider"] = (
+                "meta_llama" if self.provider == "meta" else self.provider
+            )
+        return params
+
+    def _cost(self, response: Any) -> float | None:
+        """Cost from litellm's bundled price map; ``None`` when unknown.
+
+        A proxy route (``openai/<model>``) is unmapped, so its usage is
+        priced as the configured model. Estimates are never substituted.
+        """
+        try:
+            return completion_cost(completion_response=response)
+        except Exception as exc:  # noqa: BLE001 - unpriced: unknown cost
+            logger.debug("Response cost unavailable (%s)", type(exc).__name__)
+        usage = getattr(response, "usage", None)
+        if not self.base_url or usage is None:
+            return None
+        try:
+            return sum(cost_per_token(model=self.raw_model, usage_object=usage))
+        except Exception as exc:  # noqa: BLE001 - unpriced: unknown cost
+            logger.debug("Model price unavailable (%s)", type(exc).__name__)
+            return None
+
+    def complete(self, messages: list[dict[str, Any]], **params: Any) -> Completion:
+        """Send one chat request and account for it.
+
+        Owns provider routing, transient-failure backoff, usage/cost accounting and
+        sanitized ``ExtractionError`` failures; ``params`` are request
+        options such as ``temperature`` or ``response_format``. A reply
+        without choices raises ``ExtractionError`` carrying its usage.
+        """
+        request = {**self._route(), "messages": messages, **params}
+        # Split from content parsing so the two failure modes produce distinct
+        # error messages: proxy/network errors vs model returned non-JSON text.
+        self._count(calls=1)
+        try:
+            response = self._complete_with_backoff(request)
+        except json.JSONDecodeError:
+            # LiteLLM failed to parse the HTTP response body from the proxy.
+            # Common causes: empty body, SSE stream when non-streaming expected,
+            # or an HTML/text error page from a gateway.
+            self._count(unknown_cost_calls=1)
+            raise ExtractionError(
+                f"Proxy returned a non-JSON response body for model={self.raw_model!r}. "
+                "Verify the model and endpoint configuration."
+            ) from None
+        except Exception as e:  # noqa: BLE001 - provider boundary: raw errors are sanitized below
+            # Some routed/provider-backed models reject `temperature` entirely.
+            # Retry once without temperature when the provider explicitly says the
+            # parameter is deprecated/unsupported.
+            self._count(unknown_cost_calls=1)
+            if not self._should_retry_without_temperature(e, request):
+                # Not logger.exception: the traceback would carry unsanitized provider text.
+                logger.error(  # noqa: TRY400
+                    "LLM request failed (provider=%s, model=%s)", self.provider, self.model
+                )
+                raise self._provider_error(e) from None
+            request = dict(request)
+            request.pop("temperature", None)
+            self._count(calls=1)
+            try:
+                response = self._complete(request)
+            except Exception as retry_error:  # noqa: BLE001 - provider boundary: raw errors are sanitized below
+                self._count(unknown_cost_calls=1)
+                logger.error(  # noqa: TRY400 - see above
+                    "LLM request failed after retry without temperature (provider=%s, model=%s)",
+                    self.provider,
+                    self.model,
+                )
+                raise self._provider_error(retry_error) from None
+
+        usage = getattr(response, "usage", None)
+        measured = {
+            "cost": self._cost(response),
+            "input_tokens": getattr(usage, "prompt_tokens", None),
+            "output_tokens": getattr(usage, "completion_tokens", None),
+        }
+        self._count(
+            cost=measured["cost"] or 0,
+            input_tokens=measured["input_tokens"] or 0,
+            output_tokens=measured["output_tokens"] or 0,
+            unknown_cost_calls=int(measured["cost"] is None),
+        )
+        choices = getattr(response, "choices", None)
+        if not choices:
+            error = ExtractionError(
+                f"Empty response from provider={self.provider}, model={self.model}"
+            )
+            error.usage = measured
+            raise error
+        return Completion(
+            content=choices[0].message.content,
+            finish_reason=getattr(choices[0], "finish_reason", None),
+            usage=measured,
+        )
 
     def extract(
         self,
         text: str,
-        schema: Dict[str, Any],
-        system_prompt: str = None,
-        user_prompt: str = None,
+        schema: dict[str, Any],
+        system_prompt: str | None = None,
+        user_prompt: str | None = None,
         suppress_errors: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Extract structured data using LLM.
 
@@ -278,133 +450,34 @@ class LLMClient:
 
         self._validate_context_budget(messages)
 
-        # Check if this is a reasoning model (doesn't support temperature/response_format)
-        is_reasoning_model = any(
-            x in self.model.lower() for x in self.reasoning_model_markers
-        )
-
-        # Prepare API call parameters
-        api_params = {
-            "model": self.model,
-            "messages": messages,
-            "timeout": self.timeout,
-        }
-        if not self.base_url and self._explicit_provider:
-            api_params["custom_llm_provider"] = (
-                "meta_llama" if self.provider == "meta" else self.provider
-            )
-            if self._api_key:
-                api_params["api_key"] = self._api_key
-
-        # Endpoint-override mode: route through the proxy's base_url.
-        # The model name already carries an "openai/" prefix (set by
-        # _format_model_for_litellm) so LiteLLM uses /chat/completions —
-        # no custom_llm_provider kwarg needed or wanted.
-        if self.base_url:
-            api_params["base_url"] = self.base_url
-            if self._api_key:
-                api_params["api_key"] = self._api_key
-
+        # Reasoning models reject a non-default temperature; JSON mode stays on
+        # for every model (LiteLLM's drop_params removes it where unsupported).
+        is_reasoning_model = any(x in self.model.lower() for x in self.reasoning_model_markers)
+        params: dict[str, Any] = {"response_format": self._response_format(schema)}
         if not is_reasoning_model:
-            api_params["temperature"] = 0
-            # response_format is a standard OpenAI-compatible parameter.
-            # Always send it for non-reasoning models — LiteLLM proxies translate
-            # it to each backend's native JSON mode, and litellm.drop_params=True
-            # silently drops it for backends that don't support it.
-            # Diagnostic confirmed: proxies forward this correctly.
-            api_params["response_format"] = {"type": "json_object"}
-            # Inject a JSON instruction when the messages don't already mention JSON.
-            # Required by Azure's json_object mode; also reinforces intent for
-            # models that add markdown fences or preamble despite response_format.
-            all_content = " ".join(m["content"] for m in messages)
-            if "json" not in all_content.lower():
-                messages[-1]["content"] += (
-                    "\n\nRespond with ONLY a raw JSON object. "
-                    "No markdown, no code fences, no explanation."
-                )
-
-        # ── API call ─────────────────────────────────────────────────────────
-        # Split from content parsing so the two failure modes produce distinct
-        # error messages: proxy/network errors vs model returned non-JSON text.
-        self.usage["calls"] += 1
-        try:
-            response = completion(**api_params)
-        except json.JSONDecodeError as e:
-            # LiteLLM failed to parse the HTTP response body from the proxy.
-            # Common causes: empty body, SSE stream when non-streaming expected,
-            # or an HTML/text error page from a gateway.
-            hint = (
-                f" Verify '{self.raw_model}' is configured in the proxy at {self.base_url!r}."
-                if self.base_url
-                else ""
+            params["temperature"] = 0
+        # Azure's json_object mode requires the word JSON in the messages.
+        all_content = " ".join(m["content"] for m in messages)
+        if "json" not in all_content.lower():
+            messages[-1]["content"] += (
+                "\n\nRespond with ONLY a raw JSON object. "
+                "No markdown, no code fences, no explanation."
             )
-            self.usage["unknown_cost_calls"] += 1
-            raise ExtractionError(
-                f"Proxy returned a non-JSON response body for model={self.raw_model!r}.{hint}"
-                f" Raw parse error: {e}"
-            ) from e
-        except Exception as e:
-            # Some routed/provider-backed models reject `temperature` entirely.
-            # Retry once without temperature when the provider explicitly says the
-            # parameter is deprecated/unsupported.
-            self.usage["unknown_cost_calls"] += 1
-            if self._should_retry_without_temperature(e, api_params):
-                retry_params = dict(api_params)
-                retry_params.pop("temperature", None)
-                self.usage["calls"] += 1
-                try:
-                    response = completion(**retry_params)
-                except Exception as retry_error:
-                    self.usage["unknown_cost_calls"] += 1
-                    logger.exception(
-                        f"LLM extraction failed after retry without temperature "
-                        f"(provider={self.provider}, model={self.model})"
-                    )
-                    raise ExtractionError(str(retry_error)) from retry_error
-            else:
-                logger.exception(
-                    f"LLM extraction failed (provider={self.provider}, model={self.model})"
-                )
-                raise ExtractionError(str(e)) from e
 
-        usage = getattr(response, "usage", None)
-        input_tokens = getattr(usage, "prompt_tokens", None)
-        output_tokens = getattr(usage, "completion_tokens", None)
+        reply = self.complete(messages, **params)
+        measured = reply.usage
+        cost = measured["cost"]
+        input_tokens = measured["input_tokens"]
+        output_tokens = measured["output_tokens"]
         try:
-            cost = completion_cost(completion_response=response)
-        except Exception as exc:  # noqa: BLE001 - optional provider pricing must not discard a response
-            # Estimates are not measured billing evidence.
-            logger.debug("Response cost unavailable: %s", exc)
-            cost = None
-        measured = {
-            "cost": cost,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-        }
-        self.usage["cost"] += cost or 0
-        self.usage["input_tokens"] += input_tokens or 0
-        self.usage["output_tokens"] += output_tokens or 0
-        self.usage["unknown_cost_calls"] += int(cost is None)
-        try:
-            raw_content = (
-                response.choices[0].message.content
-                if response.choices
-                else None
-            )
-            content = self._clean_json_content(raw_content)
+            content = self._clean_json_content(reply.content)
             if not content:
                 (logger.debug if suppress_errors else logger.error)(
-                    "Empty response from API (model=%s): raw=%r",
+                    "Empty response from API (model=%s)",
                     self.model,
-                    raw_content,
                 )
-                message = (
-                    f"Empty response from provider={self.provider}, "
-                    f"model={self.model}"
-                )
-                error = ExtractionError(message)
-                error.usage = measured
-                raise error
+                message = f"Empty response from provider={self.provider}, model={self.model}"
+                raise ExtractionError(message)
 
             # Parse JSON while retaining usage on a rejected response.
             try:
@@ -427,13 +500,11 @@ class LLMClient:
                         "Model returned non-JSON content: %s",
                         e,
                     )
-                    logger.debug("Cleaned content: %r", content[:500])
-                    logger.debug("Raw content: %r", (raw_content or "")[:500])
                     message = (
                         "Model returned non-JSON content "
                         f"(provider={self.provider}, model={self.model}): {e}"
                     )
-                    raise ExtractionError(message) from e
+                    raise ExtractionError(message) from None
 
         except ExtractionError as exc:
             exc.usage = measured
@@ -442,8 +513,11 @@ class LLMClient:
         total_items = sum(len(value) for _, value in find_data_arrays(data))
 
         logger.info(
-            f"✓ Extracted {total_items} items "
-            f"(tokens: {input_tokens}+{output_tokens}, cost: {cost})"
+            "✓ Extracted %s items (tokens: %s+%s, cost: %s)",
+            total_items,
+            input_tokens,
+            output_tokens,
+            cost,
         )
 
         return {
@@ -452,6 +526,20 @@ class LLMClient:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         }
+
+    def _response_format(self, schema: dict[str, Any]) -> dict[str, Any]:
+        """Use strict json_schema only when the provider and schema both allow it."""
+        sent = prompt_schema(schema)
+        try:
+            supported = litellm.supports_response_schema(model=self.model, custom_llm_provider=None)
+        except Exception:  # noqa: BLE001 - unknown models fall back to JSON mode
+            supported = False
+        if not self.base_url and supported and strict_compatible(sent):
+            return {
+                "type": "json_schema",
+                "json_schema": {"name": "extraction", "schema": sent, "strict": True},
+            }
+        return {"type": "json_object"}
 
     @staticmethod
     def _clean_json_content(raw: str | None) -> str:
@@ -466,18 +554,24 @@ class LLMClient:
         if not text:
             return text
         # Strip ```json ... ``` or ``` ... ``` fences
-        cleaned = re.sub(
+        return re.sub(
             r"^```(?:json)?\s*\n?(.*?)\n?\s*```\s*$",
             r"\1",
             text,
             flags=re.DOTALL,
         ).strip()
-        return cleaned
 
     @staticmethod
-    def _should_retry_without_temperature(
-        error: Exception, api_params: Dict[str, Any]
-    ) -> bool:
+    def _provider_error(error: Exception) -> ExtractionError:
+        """Wrap a provider failure without its untrusted text, keeping its retryability."""
+        wrapped = ExtractionError(
+            f"LLM request failed: {provider_error_category(error)} ({type(error).__name__})"
+        )
+        wrapped.retryable = is_transient_error(error)
+        return wrapped
+
+    @staticmethod
+    def _should_retry_without_temperature(error: Exception, api_params: dict[str, Any]) -> bool:
         """Return True when provider rejected `temperature` and retry is safe."""
         if "temperature" not in api_params:
             return False
@@ -485,11 +579,10 @@ class LLMClient:
         if "temperature" not in message:
             return False
         return any(
-            token in message
-            for token in ("deprecated", "unsupported", "invalid_request_error")
+            token in message for token in ("deprecated", "unsupported", "invalid_request_error")
         )
 
-    def _get_context_window_tokens(self) -> Optional[int]:
+    def _get_context_window_tokens(self) -> int | None:
         """Return the configured context window (prompt tokens) for this model.
 
         Sourced from the caller-supplied ``context_windows`` map only (populated
@@ -501,73 +594,50 @@ class LLMClient:
                 return self.context_windows[candidate]
         return None
 
-    def _estimate_message_tokens(self, messages: List[Dict[str, str]]) -> int:
+    def _estimate_message_tokens(self, messages: list[dict[str, str]]) -> int:
         """Estimate prompt token usage conservatively from message content."""
-        content_tokens = sum(
-            (len(message.get("content", "")) + 3) // 4 for message in messages
-        )
+        content_tokens = sum((len(message.get("content", "")) + 3) // 4 for message in messages)
         per_message_overhead = 16 * len(messages)
         return content_tokens + per_message_overhead
 
-    def _validate_context_budget(self, messages: List[Dict[str, str]]) -> None:
+    def _validate_context_budget(self, messages: list[dict[str, str]]) -> None:
         """Fail fast when the estimated request exceeds a known model context window."""
         context_window = self._get_context_window_tokens()
         if context_window is None:
             return
 
         estimated_prompt_tokens = self._estimate_message_tokens(messages)
-        estimated_total_tokens = (
-            estimated_prompt_tokens + self.CONTEXT_RESPONSE_RESERVE_TOKENS
-        )
+        estimated_total_tokens = estimated_prompt_tokens + self.CONTEXT_RESPONSE_RESERVE_TOKENS
         if estimated_total_tokens <= context_window:
             return
 
         raise ExtractionError(
             "context_window_exceeded: estimated request size "
-            f"{estimated_prompt_tokens} prompt tokens + {self.CONTEXT_RESPONSE_RESERVE_TOKENS} reserved output tokens "
-            f"exceeds model context window {context_window} for provider={self.provider}, model={self.model}. "
+            f"{estimated_prompt_tokens} prompt tokens + "
+            f"{self.CONTEXT_RESPONSE_RESERVE_TOKENS} reserved output tokens "
+            f"exceeds model context window {context_window} for "
+            f"provider={self.provider}, model={self.model}. "
             "Reduce max_context_chars or use page ranges/chunking for large documents."
         )
 
-    def _build_extraction_prompt(
-        self, text: str, schema: Dict[str, Any]
-    ) -> str:
-        """Build the extraction prompt with schema and document text."""
-        prompt = f"""Extract ALL data from this document into valid JSON matching the schema below.
+    @staticmethod
+    def _build_extraction_prompt(text: str, schema: dict[str, Any]) -> str:
+        """Build a domain-neutral prompt from the schema without ``$metadata``."""
+        array = schema.get("$metadata", {}).get("extraction", {}).get("main_data_array")
+        target = f'every "{array}" item' if array else "all data"
+        return f"""Extract {target} from the document text into JSON matching the schema below.
 
-══════════════════════════════════════════════════════════════════════════════
-CORE PRINCIPLES
-══════════════════════════════════════════════════════════════════════════════
+RULES
+1. Extract exactly as written; do not normalize, convert units, paraphrase, or infer.
+2. Search the entire document, including tables, lists, and appendices.
+3. Follow the schema descriptions; use null where the document does not state a value.
+4. Blocks marked "added by ParseSweep" are guidance, not document content.
 
-1. EXTRACT EXACTLY AS WRITTEN - Do not normalize, convert units, paraphrase, or infer
-2. PRESERVE DOCUMENT STRUCTURE - Extract requirements as organized in the document
-3. SEARCH ENTIRE DOCUMENT - Information may appear in tables, narrative sections, appendices
-4. VERIFY COMPLETENESS - Review all sections before returning
-5. FOLLOW SCHEMA GUIDANCE - Pay attention to schema descriptions and exclusion rules
-
-EXTRACTION STRATEGY:
-1. Read schema carefully - defines what to extract and exclude
-2. Scan document structure - identify relevant sections
-3. Extract systematically - work through document section by section
-4. Cross-reference - check for related information in different locations
-5. Validate completeness - ensure nothing was missed
-
-══════════════════════════════════════════════════════════════════════════════
 JSON SCHEMA
-══════════════════════════════════════════════════════════════════════════════
+{json.dumps(prompt_schema(schema), indent=2)}
 
-{json.dumps(schema, indent=2)}
-
-══════════════════════════════════════════════════════════════════════════════
 DOCUMENT TEXT
-══════════════════════════════════════════════════════════════════════════════
-
 {text}
-
-══════════════════════════════════════════════════════════════════════════════
-OUTPUT INSTRUCTIONS
-══════════════════════════════════════════════════════════════════════════════
 
 Return ONLY valid JSON matching the schema above. No markdown, no explanations.
 """
-        return prompt

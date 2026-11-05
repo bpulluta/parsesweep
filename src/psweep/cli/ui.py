@@ -11,8 +11,9 @@ contract (header -> config -> progress -> summary -> notes -> next steps).
 """
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Iterable, List, Mapping, Sequence, Tuple, Union
+from enum import StrEnum
+from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from rich.console import Console, RenderableType
@@ -40,11 +41,11 @@ from psweep.extraction.llm_factory import DEFAULT_MODEL
 console = Console()
 
 # A row is a (key, value) pair; callers may also pass a mapping.
-Row = Tuple[str, str]
-Rows = Union[Mapping[str, Any], Sequence[Row]]
+Row = tuple[str, str]
+Rows = Mapping[str, Any] | Sequence[Row]
 
 
-class Verbosity(str, Enum):
+class Verbosity(StrEnum):
     """Shared verbosity policy for every command in the CLI."""
 
     QUIET = "quiet"
@@ -68,7 +69,7 @@ class Verbosity(str, Enum):
     @property
     def shows_detail(self) -> bool:
         """True when expanded notes/diagnostics should be shown."""
-        return self in (Verbosity.VERBOSE, Verbosity.DEBUG)
+        return self in {Verbosity.VERBOSE, Verbosity.DEBUG}
 
     @property
     def is_quiet(self) -> bool:
@@ -81,7 +82,7 @@ _ACTIVE_VERBOSITY = Verbosity.NORMAL
 
 def set_verbosity(verbosity: Verbosity) -> None:
     """Set the process-wide verbosity used by default across the CLI."""
-    global _ACTIVE_VERBOSITY
+    global _ACTIVE_VERBOSITY  # noqa: PLW0603 - process-wide output verbosity
     _ACTIVE_VERBOSITY = verbosity
 
 
@@ -112,7 +113,7 @@ class UITheme:
     icon_ok: str = "✓"
     icon_warn: str = "⚠"
     icon_err: str = "✗"
-    icon_info: str = "ℹ"
+    icon_info: str = "ℹ"  # noqa: RUF001 - deliberate UI glyph
     icon_arrow: str = "→"
     icon_bullet: str = "•"
 
@@ -138,7 +139,7 @@ class UITheme:
         }.get(level, self.icon_bullet)
 
 
-def _as_rows(data: Rows) -> List[Row]:
+def _as_rows(data: Rows) -> list[Row]:
     """Normalize a mapping or sequence of pairs into a list of string rows."""
     if isinstance(data, Mapping):
         return [(str(k), str(v)) for k, v in data.items()]
@@ -191,7 +192,7 @@ class TerminalUI:
         level: str,
         message: str,
         details: str | None = None,
-        suggestions: List[str] | None = None,
+        suggestions: list[str] | None = None,
         compact: bool = False,
     ) -> None:
         """Print a leveled message, compact inline or as a detailed panel.
@@ -243,9 +244,7 @@ class TerminalUI:
             )
         )
 
-    def status_item(
-        self, level: str, text: str, detail: str | None = None
-    ) -> None:
+    def status_item(self, level: str, text: str, detail: str | None = None) -> None:
         """Print a single per-item status row (✓ / ⚠ / ✗ + text)."""
         color = self.theme.color_for(level)
         icon = self.theme.icon_for(level)
@@ -301,9 +300,7 @@ class TerminalUI:
             )
         return table
 
-    def events_panel(
-        self, events: Iterable[str], title: str = "Recent Events"
-    ) -> Panel:
+    def events_panel(self, events: Iterable[str], title: str = "Recent Events") -> Panel:
         """Build a bordered panel listing recent event strings."""
         event_table = Table(show_header=False, box=None, padding=(0, 1))
         event_table.add_column(title, style=self.theme.muted)
@@ -347,9 +344,7 @@ class TerminalUI:
                 soft_wrap=True,
             )
 
-    def runtime_config_error(
-        self, exc: Exception, warnings: Sequence[str] | None = None
-    ) -> None:
+    def runtime_config_error(self, exc: Exception, warnings: Sequence[str] | None = None) -> None:
         """Print the standardized runtime-config resolution failure block."""
         self.message(
             level="error",
@@ -381,15 +376,13 @@ def rule() -> None:
 
 
 def print_error(
-    message: str, details: str = None, suggestions: List[str] = None
+    message: str, details: str | None = None, suggestions: list[str] | None = None
 ) -> None:
     """Print an error message with optional details and suggestions."""
-    ui.message(
-        level="error", message=message, details=details, suggestions=suggestions
-    )
+    ui.message(level="error", message=message, details=details, suggestions=suggestions)
 
 
-def print_warning(message: str, details: str = None) -> None:
+def print_warning(message: str, details: str | None = None) -> None:
     """Print a warning message with optional details."""
     ui.message(level="warning", message=message, details=details)
 
@@ -404,7 +397,7 @@ def print_info(message: str) -> None:
     ui.message(level="info", message=message, compact=True)
 
 
-def status_item(level: str, text: str, detail: str = None) -> None:
+def status_item(level: str, text: str, detail: str | None = None) -> None:
     """Print a single per-item status row (module-level wrapper)."""
     ui.status_item(level, text, detail)
 
@@ -412,9 +405,9 @@ def status_item(level: str, text: str, detail: str = None) -> None:
 def key_values(
     data: Rows,
     *,
-    title: str = None,
+    title: str | None = None,
     as_panel: bool = False,
-    border: str = None,
+    border: str | None = None,
 ) -> RenderableType:
     """Render key/value rows as a table or panel (module-level wrapper)."""
     return ui.key_values(data, title=title, as_panel=as_panel, border=border)
@@ -435,9 +428,7 @@ def print_next_steps(steps: Sequence[str], title: str = "Next Steps") -> None:
     ui.next_steps(steps, title=title)
 
 
-def print_runtime_config_error(
-    exc: Exception, warnings: Sequence[str] = None
-) -> None:
+def print_runtime_config_error(exc: Exception, warnings: Sequence[str] | None = None) -> None:
     """Print a runtime-config error with optional warnings (wrapper)."""
     ui.runtime_config_error(exc, warnings)
 
@@ -464,7 +455,7 @@ def create_extraction_progress() -> Progress:
     )
 
 
-def display_json(data: dict, title: str = None) -> None:
+def display_json(data: dict, title: str | None = None) -> None:
     """Display JSON data with syntax highlighting."""
     import json
 
@@ -476,7 +467,7 @@ def display_json(data: dict, title: str = None) -> None:
         console.print(syntax)
 
 
-def display_yaml(data: dict, title: str = None) -> None:
+def display_yaml(data: dict, title: str | None = None) -> None:
     """Display YAML data with syntax highlighting."""
     import yaml
 
@@ -502,12 +493,10 @@ def with_status(message: str, *, quiet: bool = False, spinner: str = "dots"):
 
     if quiet:
         return nullcontext()
-    return console.status(
-        f"[{ui.theme.accent}]{message}[/{ui.theme.accent}]", spinner=spinner
-    )
+    return console.status(f"[{ui.theme.accent}]{message}[/{ui.theme.accent}]", spinner=spinner)
 
 
-def ask_choice(prompt: str, choices: List[str], default: str = None) -> str:
+def ask_choice(prompt: str, choices: list[str], default: str | None = None) -> str:
     """Ask the user to select from a list of choices."""
     return Prompt.ask(prompt, choices=choices, default=default)
 
@@ -517,12 +506,12 @@ def ask_confirm(prompt: str, default: bool = False) -> bool:
     return Confirm.ask(prompt, default=default)
 
 
-def ask_text(prompt: str, default: str = None) -> str:
+def ask_text(prompt: str, default: str | None = None) -> str:
     """Ask the user for free-text input."""
     return Prompt.ask(prompt, default=default)
 
 
-def create_file_tree(root_path: Path, title: str = None) -> Tree:
+def create_file_tree(root_path: Path, title: str | None = None) -> Tree:
     """Create a visual tree representation of a directory."""
     tree = Tree(f"📁 [bold]{title or root_path.name}[/bold]", guide_style="dim")
 
@@ -554,7 +543,7 @@ def create_file_tree(root_path: Path, title: str = None) -> Tree:
 def print_cost_estimate(
     total_docs: int,
     estimated_tokens: int,
-    estimated_cost: float,
+    estimated_cost: str,
     estimated_time: float,
     model: str = DEFAULT_MODEL,
 ) -> None:
@@ -563,7 +552,7 @@ def print_cost_estimate(
         ("Total documents", str(total_docs)),
         ("Estimated tokens", f"~{estimated_tokens:,}"),
         ("Model", model),
-        ("Estimated cost", f"[{ui.theme.cost}]${estimated_cost:.2f}[/{ui.theme.cost}]"),
+        ("Estimated cost", f"[{ui.theme.cost}]{estimated_cost}[/{ui.theme.cost}]"),
         ("Processing time", f"~{estimated_time:.1f} min"),
     ]
     console.print()

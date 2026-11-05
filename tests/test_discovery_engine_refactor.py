@@ -1,28 +1,16 @@
-"""Regression tests for the audit/pipeline-cleanup refactors of the discovery
-engine:
-
-1. Routing dedup — ``_route_distributed_candidates`` /
-   ``_route_centralized_candidates`` were consolidated onto shared helpers.
-   These tests lock the routing decisions, route-reason strings, per-mode
-   routing_state, and the distributed-only non-crawled merge-back.
-2. Post-review retry cap — a single opt-in ``_RetryBudget`` bounds the total
-   number of retried targets across both retry stages. Unset == unbounded.
-3. Incremental checkpointing — checkpoint entries are persisted per target
-   (crash-safety) while the final on-disk state is unchanged.
-"""
+"""Regression tests for discovery engine crawl, code-hosting retry, and checkpointing."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
+import pytest
+
 import psweep.discovery.engine as engine_mod
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
-from psweep.discovery.connectors.base import DiggerArtifact
-from psweep.discovery.constants import (
-    ROUTE_REASON_CENTRALIZED,
-    ROUTE_REASON_DISTRIBUTED,
-)
+from psweep.discovery.connectors.base import CrawlResult, DiggerArtifact
+from psweep.discovery.constants import ROUTE_REASON_CRAWLED
 from psweep.discovery.models import CandidateScore, DiscoveryCandidate
 
 # ---------------------------------------------------------------------------
@@ -37,184 +25,165 @@ class _FakeConnector:
         self._artifacts = artifacts
         self.calls: list[object] = []
 
-    def discover(self, digger_input):  # noqa: ANN001 - test stub
+    def discover(self, digger_input):
         self.calls.append(digger_input)
-        return self._artifacts
+        return CrawlResult(self._artifacts)
 
 
 def _base_request(**overrides) -> DiscoveryRequest:
-    params = dict(
-        domain="d",
-        seed_urls=[],
-        query="q",
-        enable_serpapi=False,
-        output_documents=None,
-        output_manifest=None,
-        dry_run=False,
-        robots_policy_mode="ignore",
-        tos_policy_mode="ignore",
-    )
+    params = {
+        "domain": "d",
+        "queries": ["q"],
+        "dry_run": False,
+        "robots_policy_mode": "ignore",
+        "tos_policy_mode": "ignore",
+    }
     params.update(overrides)
     return DiscoveryRequest(**params)
 
 
 def _candidate(url: str, **overrides) -> DiscoveryCandidate:
-    params = dict(
-        url=url,
-        source="seed",
-        score=CandidateScore(url_signal=0.9, trust_signal=0.9),
-    )
+    params = {
+        "url": url,
+        "source": "configured",
+        "score": CandidateScore(url_signal=0.9, trust_signal=0.9),
+    }
     params.update(overrides)
     return DiscoveryCandidate(**params)
 
 
 # ---------------------------------------------------------------------------
-# 1. Routing dedup
+# 1. Crawl
 # ---------------------------------------------------------------------------
 
 
-def test_distributed_routing_locks_decisions(monkeypatch):
-    """Distributed routing: existing candidates re-tagged, new artifacts staged
-    at the fixed 0.35/0.55 score, and non-crawled candidates merged back."""
-    engine = DiscoveryEngine()
+def test_crawl_disabled_never_calls_connector(monkeypatch):
+    fake = _FakeConnector([])
+    monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: fake)
+    candidates = [_candidate("https://county.gov/hub")]
+    routed, errors, _, state, _ = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=0), candidates=candidates
+    )
+    assert (routed, errors, fake.calls, state["applied"]) == (candidates, [], [], False)
 
-    seed_url = "https://municode.com/tx/keller/page"
-    pdf_url = "https://municode.com/tx/keller/ord.pdf"  # non-crawlable, merged back
-    child_url = "https://municode.com/tx/keller/section-3"
 
+def test_crawl_children_inherit_origin_attribution(monkeypatch):
+    """Linked documents keep their source page's target, scope, and URL."""
+    hub = "https://county.gov/hub"
+    pdf = "https://county.gov/ord.pdf"
+    child = "https://county.gov/codes/a.pdf"
+    fake = _FakeConnector(
+        [DiggerArtifact(url=child, source="http_digger", metadata={"source_url": hub})]
+    )
+    monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: fake)
     candidates = [
-        _candidate(seed_url, target_metadata={"label": "keller"}),
-        _candidate(pdf_url, target_metadata={"label": "keller"}),
-    ]
-
-    artifacts = [
-        # Matches an existing candidate -> re-tag with the distributed reason.
-        DiggerArtifact(url=seed_url, source="digger", metadata={"discovery_mode": "crawl"}),
-        # New crawl child, attributed back to its seed target metadata.
-        DiggerArtifact(
-            url=child_url,
-            source="digger",
-            mime_type="text/html",
-            extension="html",
-            metadata={"discovery_mode": "crawl", "source_seed": seed_url},
+        _candidate(
+            hub,
+            target_metadata={"label": "cty"},
+            target_id="t1",
+            source_scope="target",
+            source_url=hub,
+        ),
+        _candidate(
+            pdf,
+            target_metadata={"label": "cty"},
+            target_id="t1",
+            source_scope="target",
+            source_url=pdf,
         ),
     ]
-    fake = _FakeConnector(artifacts)
+    routed, errors, _, state, _ = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=1), candidates=candidates
+    )
+    assert errors == [] and state["applied"] is True
+    assert [c.url for c in routed] == [hub, pdf, child]
+    assert fake.calls[0].sources == [hub]
+    crawled = routed[-1]
+    assert crawled.reasons == [ROUTE_REASON_CRAWLED]
+    assert (crawled.target_id, crawled.source_scope, crawled.source_url) == ("t1", "target", hub)
+    assert crawled.target_metadata == {"label": "cty"}
+
+
+def test_configured_page_query_variants_stay_configured(monkeypatch):
+    """Pagination of a configured listing is that listing; its links are not."""
+    hub = "https://county.gov/list"
+    page = f"{hub}?page=2#top"
+    other = "https://county.gov/list/detail?page=2"
+    found = "https://search.example/list"
+    fake = _FakeConnector(
+        [
+            DiggerArtifact(url=url, source="http_digger", metadata={"source_url": src})
+            for url, src in ((page, hub), (other, hub), (f"{found}?page=2", found))
+        ]
+    )
     monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: fake)
-
-    request = _base_request(
-        topology_mode="distributed",
-        digger_provider="http",
-        link_prioritization_domain_scores={"municode.com": 1.0},
-    )
-
-    routed, errors, notes, state = engine._route_distributed_candidates(
-        request=request, candidates=candidates
-    )
-
-    assert errors == []
-    assert state["mode"] == "distributed"
-    assert state["applied"] is True
-    assert state["artifact_count"] == 2
-    assert state["discovery_modes"] == ["crawl"]
-    # No centralized-only keys leak into distributed state.
-    assert "hub_page_count" not in state
-
-    routed_by_url = {c.url: c for c in routed}
-    # Existing candidate re-tagged (not duplicated as a new artifact record).
-    assert ROUTE_REASON_DISTRIBUTED in routed_by_url[seed_url].reasons
-    # New crawl child gets the fixed routing score + inherited metadata.
-    child = routed_by_url[child_url]
-    assert child.reasons == [ROUTE_REASON_DISTRIBUTED]
-    assert child.score.url_signal == 0.35
-    assert child.score.trust_signal == 0.55
-    assert child.target_metadata == {"label": "keller"}
-    # Non-crawlable PDF candidate merged back in unchanged.
-    assert pdf_url in routed_by_url
-    assert ROUTE_REASON_DISTRIBUTED not in routed_by_url[pdf_url].reasons
-    assert any("Distributed routing staged" in n for n in notes)
-
-
-def test_centralized_routing_locks_decisions(monkeypatch):
-    """Centralized routing: hub_page_count / index_link_count present, the
-    centralized reason applied, and no non-artifact merge-back."""
-    engine = DiscoveryEngine()
-
-    hub = "https://docs.county.gov/index.html"
-    child_url = "https://docs.county.gov/ord-1.pdf"
-    extra_candidate = "https://docs.county.gov/never-swept.html"
-
-    candidates = [_candidate(extra_candidate, target_metadata={"label": "cty"})]
-
-    artifacts = [
-        DiggerArtifact(
-            url=child_url,
-            source="sweep",
-            mime_type="application/pdf",
-            extension="pdf",
-            metadata={"discovery_mode": "index"},
-        ),
+    candidates = [
+        _candidate(hub, source_scope="shared", source_url=hub),
+        _candidate(found, source="serpapi", target_id="t1", source_url=found),
     ]
-    fake = _FakeConnector(artifacts)
-    monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: fake)
+    routed, *_ = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=2), candidates=candidates
+    )
+    sources = {c.url: c.source for c in routed[2:]}
+    assert sources == {page: "configured", other: "http_digger", f"{found}?page=2": "http_digger"}
+    assert {c.source_url for c in routed[2:4]} == {hub}
 
-    request = _base_request(
-        topology_mode="centralized",
-        digger_provider="http",
-        hub_pages=[hub],
-        index_links=[{"url": "x"}],
+
+@pytest.mark.parametrize(
+    ("fetched", "cause"),
+    [
+        (3, "budget reached (crawl.max_pages=3, runtime.max_files=1)"),
+        (1, "budget reached (runtime.max_files=1)"),
+    ],
+)
+def test_crawl_names_the_budget_that_cut_it_off(monkeypatch, fetched, cause):
+    hub = "https://county.gov/list"
+    artifact = DiggerArtifact(
+        url=f"{hub}/a.pdf", source="http_digger", metadata={"source_url": hub}
     )
 
-    routed, errors, notes, state = engine._route_centralized_candidates(
-        request=request, candidates=candidates
+    class _Cut:
+        def discover(self, _di):
+            return CrawlResult([artifact], {hub}, pages_fetched=fetched)
+
+    monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: _Cut())
+    _, _, notes, _, unfinished = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=2, max_pages=3, max_files=1),
+        candidates=[_candidate(hub)],
     )
-
-    assert errors == []
-    assert state["mode"] == "centralized"
-    assert state["applied"] is True
-    assert state["artifact_count"] == 1
-    assert state["discovery_modes"] == ["index"]
-    assert state["hub_page_count"] == 1
-    assert state["index_link_count"] == 1
-
-    routed_urls = {c.url for c in routed}
-    # Only artifact-derived candidates; the non-swept candidate is NOT merged back.
-    assert child_url in routed_urls
-    assert extra_candidate not in routed_urls
-    child = next(c for c in routed if c.url == child_url)
-    assert child.reasons == [ROUTE_REASON_CENTRALIZED]
-    assert child.score.url_signal == 0.35
-    assert child.score.trust_signal == 0.55
-    assert any("through hub sweep" in n for n in notes)
+    assert f"Crawl fetched {fetched} page(s) from 1 source page(s)" in notes[0]
+    assert notes[1] == f"Crawl unfinished for 1 source page(s): {cause}; they stay incomplete."
+    assert [c.url for c in unfinished] == [hub]
 
 
-def test_distributed_routing_connector_failure_falls_back(monkeypatch):
-    """A connector exception falls back to the unrouted candidates and records
-    a routing error (behavior preserved through the shared discover helper)."""
-    engine = DiscoveryEngine()
+def test_crawl_without_exhausted_budget_reports_a_retryable_failure(monkeypatch):
+    hub = "https://county.gov/list"
 
+    class _Failed:
+        def discover(self, _di):
+            return CrawlResult([], {hub}, pages_fetched=0)
+
+    monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: _Failed())
+    _, _, notes, _, _ = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=2), candidates=[_candidate(hub)]
+    )
+    assert "retryable page failure" in notes[-1]
+
+
+def test_crawl_connector_failure_keeps_candidates(monkeypatch):
     class _Boom:
-        def discover(self, _di):  # noqa: ANN001
-            raise RuntimeError("digger exploded")
+        def discover(self, _di):
+            raise RuntimeError("crawl exploded")
 
     monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: _Boom())
-
-    seed_url = "https://municode.com/tx/keller/page"
-    candidates = [_candidate(seed_url, target_metadata={"label": "keller"})]
-    request = _base_request(
-        topology_mode="distributed",
-        digger_provider="http",
-        link_prioritization_domain_scores={"municode.com": 1.0},
+    candidates = [_candidate("https://county.gov/hub")]
+    routed, errors, notes, state, unfinished = DiscoveryEngine()._crawl_candidates(
+        request=_base_request(max_depth=1), candidates=candidates
     )
-
-    routed, errors, notes, state = engine._route_distributed_candidates(
-        request=request, candidates=candidates
-    )
-
-    assert [c.url for c in routed] == [seed_url]  # unrouted fallback
+    assert routed == candidates
     assert state["applied"] is False
-    assert len(errors) == 1
-    assert any("Distributed routing failed" in n for n in notes)
+    assert len(errors) == 1 and unfinished == []
+    assert any("Crawl failed" in n for n in notes)
 
 
 # ---------------------------------------------------------------------------
@@ -227,26 +196,27 @@ def _uncurated_record(label: str, url: str) -> dict[str, object]:
         "url": url,
         "status": "downloaded",
         "review_selected": False,
+        "target_id": label,
         "target_metadata": {"label": label},
     }
 
 
-def _run_code_hosting_retry(cap):
+def _run_code_hosting_retry():
     """Run the code-hosting retry with a fake seeker; return #targets queried."""
     engine = DiscoveryEngine()
 
     class _FakeSeeker:
-        instances: list["_FakeSeeker"] = []
+        instances: list[_FakeSeeker] = []
 
         def __init__(self, **_kwargs):
             self.queries: list[str] = []
             self.queries_run = 0
             _FakeSeeker.instances.append(self)
 
-        def discover(self, seeker_input):  # noqa: ANN001
+        def discover(self, seeker_input):
             self.queries_run += 1
-            self.queries.append(seeker_input.query)
-            return []  # no results -> no downloads, isolates the target-count cap
+            self.queries.extend(seeker_input.queries)
+            return []  # no results -> no downloads, isolates the target count
 
     import psweep.discovery.connectors.serpapi_seeker as ss_mod
 
@@ -262,15 +232,12 @@ def _run_code_hosting_retry(cap):
         request = _base_request(
             link_prioritization_domain_scores={"municode.com": 1.0},
         )
-        budget = engine_mod._RetryBudget(cap)
         engine._retry_failed_targets_on_code_hosting(
             request=request,
             download_records=records,
             notes=[],
             documents_dir=Path("/tmp"),
-            review_cfg={},
             classifier_keywords=["oil"],
-            budget=budget,
         )
     finally:
         ss_mod.SerpApiSeeker = orig
@@ -278,87 +245,130 @@ def _run_code_hosting_retry(cap):
     return sum(len(s.queries) for s in _FakeSeeker.instances)
 
 
-def test_retry_cap_bounds_targets_when_set():
-    assert _run_code_hosting_retry(cap=1) == 1
-    assert _run_code_hosting_retry(cap=2) == 2
+def test_code_hosting_retry_queries_every_failed_target():
+    assert _run_code_hosting_retry() == 3
 
 
-def test_retry_cap_unset_is_unbounded():
-    # None budget limit -> every failed target is retried (current behavior).
-    assert _run_code_hosting_retry(cap=None) == 3
+_CODE_HOST_SCORES = {
+    "municode.com": 0.2,
+    ".gov": 0.15,
+    ".us": 0.15,
+    "spam-codes.com": -0.3,
+    "zeroed.com": 0.0,
+}
+_CODE_HOST_URLS = {
+    "subdomain": "https://library.municode.com/tx/austin/codes",
+    "exact": "https://municode.com/ca/fresno/codes",
+    "lookalike": "https://notmunicode.com.evil.org/x/y/z",
+    "suffix_gov": "https://county.example.gov/zoning/code/ch1",
+    "suffix_us": "https://town.example.us/zoning/code/ch1",
+    "negative": "https://spam-codes.com/a/b/c",
+    "zero": "https://zeroed.com/a/b/c",
+}
 
 
-def test_retry_budget_shared_across_both_stages(monkeypatch):
-    """The orchestrator threads ONE budget through both retry stages, sized from
-    request.retry_max_retry_targets."""
-    engine = DiscoveryEngine()
-    seen: dict[str, object] = {}
+def _shell_record(label: str, url: str, tmp_path: Path) -> dict[str, object]:
+    page = tmp_path / f"{label}.html"
+    page.write_text("<html></html>")
+    return {**_uncurated_record(label, url), "path": str(page)}
 
-    def _fake_code(*, budget, download_records, notes, **_kw):
-        seen["code"] = budget
-        return download_records, notes
 
-    def _fake_js(*, budget, download_records, notes, **_kw):
-        seen["js"] = budget
-        return download_records, notes
-
-    monkeypatch.setattr(
-        engine, "_retry_failed_targets_on_code_hosting", _fake_code
-    )
-    monkeypatch.setattr(engine, "_retry_js_shells_with_digger", _fake_js)
-
+def test_code_host_domains_are_positive_host_entries_only():
     request = _base_request(
-        link_prioritization_domain_scores={"municode.com": 1.0},
-        retry_max_retry_targets=1,
+        link_prioritization_domain_scores={
+            **_CODE_HOST_SCORES,
+            " MuniCode.com. ": 0.1,
+        }
     )
-    engine._run_post_review_retries(
-        request=request,
-        download_records=[],
+    assert DiscoveryEngine._code_host_domains(request) == ("municode.com",)
+    assert DiscoveryEngine._code_host_domains(_base_request()) == ()
+
+
+def test_code_hosting_retry_targets_only_code_host_entries(monkeypatch, tmp_path):
+    import psweep.discovery.connectors.serpapi_seeker as ss_mod
+
+    queries: list[str] = []
+
+    class _Seeker:
+        queries_run = 0
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def discover(self, seeker_input):
+            queries.extend(seeker_input.queries)
+            return []
+
+    monkeypatch.setattr(ss_mod, "SerpApiSeeker", _Seeker)
+    DiscoveryEngine()._retry_failed_targets_on_code_hosting(
+        request=_base_request(link_prioritization_domain_scores=_CODE_HOST_SCORES),
+        download_records=[_uncurated_record(label, url) for label, url in _CODE_HOST_URLS.items()],
         notes=[],
-        documents_dir=Path("/tmp"),
-        review_cfg={},
-        classifier_keywords=["oil"],
+        documents_dir=tmp_path,
+        classifier_keywords=["zoning"],
     )
+    scoped = sorted(q.split()[0] for q in queries)
+    assert scoped == [
+        "site:library.municode.com/tx/austin/codes",
+        "site:municode.com/ca/fresno/codes",
+    ]
 
-    assert seen["code"] is seen["js"]  # same budget instance
-    assert isinstance(seen["code"], engine_mod._RetryBudget)
-    assert seen["code"].unbounded is False
+
+def test_js_shell_retry_targets_only_code_host_entries(monkeypatch, tmp_path):
+    import psweep.discovery.connectors.digger as digger_mod
+
+    crawled: list[str] = []
+
+    class _Digger:
+        def discover(self, digger_input):
+            crawled.extend(digger_input.sources)
+            return CrawlResult(artifacts=[])
+
+    monkeypatch.setattr(digger_mod, "HttpDiggerConnector", _Digger)
+    DiscoveryEngine()._retry_js_shells_with_digger(
+        request=_base_request(
+            link_prioritization_domain_scores=_CODE_HOST_SCORES,
+            browser_escalation=True,
+            document_classifier={"nice_to_have_keywords": ["zoning"]},
+        ),
+        download_records=[
+            _shell_record(label, url, tmp_path) for label, url in _CODE_HOST_URLS.items()
+        ],
+        notes=[],
+        documents_dir=tmp_path,
+    )
+    assert sorted(crawled) == sorted([_CODE_HOST_URLS["subdomain"], _CODE_HOST_URLS["exact"]])
 
 
-def test_retry_budget_unbounded_when_unset(monkeypatch):
+def test_suffix_only_domain_scores_skip_paid_retries(monkeypatch, tmp_path):
     engine = DiscoveryEngine()
-    seen: dict[str, object] = {}
-
+    calls: list[str] = []
     monkeypatch.setattr(
         engine,
         "_retry_failed_targets_on_code_hosting",
-        lambda *, budget, download_records, notes, **_kw: (
-            seen.__setitem__("code", budget),
-            (download_records, notes),
-        )[1],
+        lambda **kw: calls.append("serpapi") or (kw["download_records"], kw["notes"]),
     )
     monkeypatch.setattr(
         engine,
         "_retry_js_shells_with_digger",
-        lambda *, budget, download_records, notes, **_kw: (
-            seen.__setitem__("js", budget),
-            (download_records, notes),
-        )[1],
+        lambda **kw: (kw["download_records"], kw["notes"]),
     )
-
-    request = _base_request(
-        link_prioritization_domain_scores={"municode.com": 1.0},
-    )
+    request = _base_request(link_prioritization_domain_scores={".gov": 0.15, "bad.com": -0.2})
     engine._run_post_review_retries(
         request=request,
         download_records=[],
         notes=[],
-        documents_dir=Path("/tmp"),
-        review_cfg={},
-        classifier_keywords=["oil"],
+        documents_dir=tmp_path,
+        classifier_keywords=["zoning"],
     )
-    assert seen["code"] is seen["js"]
-    assert seen["code"].unbounded is True
+    assert calls == []
+
+
+def test_request_has_no_unwired_retry_target_cap():
+    from dataclasses import fields
+
+    assert "retry_max_retry_targets" not in {f.name for f in fields(DiscoveryRequest)}
+    assert not hasattr(engine_mod, "_RetryBudget")
 
 
 # ---------------------------------------------------------------------------
@@ -370,47 +380,34 @@ def test_checkpoint_persisted_once_after_curation(tmp_path, monkeypatch):
     """Completed target entries share one atomic snapshot after publication."""
     engine = DiscoveryEngine()
 
-    dom = tmp_path / "dom"
-    manifest_path = dom / "runs" / "run1" / "manifest.json"
-    documents_dir = dom / "runs" / "run1" / "documents"
+    monkeypatch.chdir(tmp_path)
+    dom = tmp_path / "outputs" / "d" / "discovered"
+    labels = ("alpha", "beta", "gamma")
 
-    canned = [
-        {
-            "url": "https://x/a.pdf",
-            "status": "downloaded",
-            "target_metadata": {"label": "alpha"},
-        },
-        {
-            "url": "https://x/b.pdf",
-            "status": "downloaded",
-            "target_metadata": {"label": "beta"},
-        },
-        {
-            "url": "https://x/c.pdf",
-            "status": "downloaded",
-            "target_metadata": {"label": "gamma"},
-        },
-    ]
+    def _download(*, request, candidates, documents_dir, max_downloads, reusable):
+        records = []
+        for label in labels:
+            path = documents_dir / f"{label}.pdf"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"synthetic document")
+            records.append(
+                {
+                    "url": f"https://x/{label}.pdf",
+                    "status": "downloaded",
+                    "target_id": label,
+                    "target_metadata": {"label": label},
+                    "path": str(path),
+                    "relative_path": path.name,
+                }
+            )
+        return records, [], []
 
-    for record in canned:
-        path = documents_dir / (record["target_metadata"]["label"] + ".pdf")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"synthetic document")
-        record.update(path=str(path), relative_path=path.name)
     monkeypatch.setattr(
         engine,
         "_filter_candidates_for_download",
         lambda candidates: (candidates, []),
     )
-    monkeypatch.setattr(
-        engine,
-        "_download_candidates",
-        lambda *, request, candidates, documents_dir, max_downloads: (
-            list(canned),
-            [],
-            [],
-        ),
-    )
+    monkeypatch.setattr(engine, "_download_candidates", _download)
 
     # Spy on checkpoint saves: avoid repeated whole-file rewrites per target.
     save_calls: list[int] = []
@@ -422,11 +419,7 @@ def test_checkpoint_persisted_once_after_curation(tmp_path, monkeypatch):
 
     monkeypatch.setattr(DiscoveryEngine, "_save_checkpoint_entries", staticmethod(_spy_save))
 
-    request = _base_request(
-        seed_urls=["https://x/a.pdf"],
-        output_documents=documents_dir,
-        output_manifest=manifest_path,
-    )
+    request = _base_request(sources=["https://x/a.pdf"], queries=[])
     engine.run(request)
 
     assert save_calls == [3]

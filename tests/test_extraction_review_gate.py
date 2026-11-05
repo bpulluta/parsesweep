@@ -1,26 +1,18 @@
 """Regression gates for independent Phase 2 integration findings."""
 
-import builtins
-import csv
 import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from click.testing import CliRunner
 
 from psweep import pipeline
-from psweep.cli.commands_extract import _run_validation_extraction
-from psweep.cli.main import cli
-from psweep.config.model_registry import ModelRegistry
-from psweep.exceptions import SchemaValidationError
 from psweep.extraction import schema_utils
 from psweep.extraction.document_utils import write_text_cache
 from psweep.extraction.page_locator import PageLocator
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 from psweep.utils.config import Config
-from psweep.validation.multi_model_extractor import run_multi_model_extraction
 
 
 @pytest.fixture
@@ -36,7 +28,6 @@ def reviewed_inputs(tmp_path, monkeypatch):
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["source.id"],
                     }
                 },
                 "type": "object",
@@ -65,9 +56,7 @@ def reviewed_inputs(tmp_path, monkeypatch):
             "output_tokens": 4,
         }
     )
-    monkeypatch.setattr(
-        "psweep.extraction.llm_client.LLMClient.extract", provider
-    )
+    monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", provider)
     inputs = {
         "path": str(source),
         "schema": str(schema),
@@ -77,9 +66,7 @@ def reviewed_inputs(tmp_path, monkeypatch):
     return inputs, provider
 
 
-def test_record_contract_does_not_depend_on_repository_path(
-    monkeypatch, tmp_path
-):
+def test_record_contract_does_not_depend_on_repository_path(monkeypatch, tmp_path):
     """Validate installed records away from a source checkout."""
     schema_utils.record_validator.cache_clear()
     monkeypatch.setattr(
@@ -89,10 +76,7 @@ def test_record_contract_does_not_depend_on_repository_path(
     )
     try:
         validator = schema_utils.record_validator()
-        assert (
-            validator.schema["properties"]["contract_version"]["const"]
-            == "1.0.0"
-        )
+        assert validator.schema["properties"]["contract_version"]["const"] == "1.1.0"
     finally:
         schema_utils.record_validator.cache_clear()
 
@@ -137,9 +121,7 @@ def test_invalid_locator_keywords_preserve_fresh_output(reviewed_inputs):
     provider.assert_not_called()
 
 
-def test_project_relative_page_mapping_is_preserved(
-    reviewed_inputs, monkeypatch
-):
+def test_project_relative_page_mapping_is_preserved(reviewed_inputs, monkeypatch):
     """Preserve CSV paths relative to the current directory."""
     inputs, _provider = reviewed_inputs
     root = Path(inputs["path"]).parent
@@ -158,9 +140,7 @@ def test_project_relative_page_mapping_is_preserved(
 
 
 @pytest.mark.parametrize("kind", ["manual", "unsupported", "cached", "small"])
-def test_locator_credentials_required_only_for_actual_calls(
-    reviewed_inputs, monkeypatch, kind
-):
+def test_locator_credentials_required_only_for_actual_calls(reviewed_inputs, monkeypatch, kind):
     """Skip locator credentials when no provider call is needed."""
 
     inputs, provider = reviewed_inputs
@@ -207,9 +187,7 @@ def test_locator_credentials_required_only_for_actual_calls(
     provider.assert_called_once()
 
 
-def test_locator_routing_change_invalidates_record_reuse(
-    reviewed_inputs, monkeypatch
-):
+def test_locator_routing_change_invalidates_record_reuse(reviewed_inputs, monkeypatch):
     """Bind targeted reuse to effective locator routing."""
 
     inputs, provider = reviewed_inputs
@@ -220,25 +198,19 @@ def test_locator_routing_change_invalidates_record_reuse(
         "trigger_chars": 1000,
     }
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "fixture")
-    monkeypatch.setenv(
-        "AZURE_OPENAI_ENDPOINT", "https://first.openai.azure.com"
-    )
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://first.openai.azure.com")
     monkeypatch.setattr(
         pipeline,
         "_target_extraction_inputs",
         lambda plan: (plan["ranges"], {}, []),
     )
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-    monkeypatch.setenv(
-        "AZURE_OPENAI_ENDPOINT", "https://second.openai.azure.com"
-    )
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://second.openai.azure.com")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 2
 
 
-def test_skipped_ocr_pages_survive_record_and_do_not_reuse(
-    reviewed_inputs, monkeypatch
-):
+def test_skipped_ocr_pages_survive_record_and_do_not_reuse(reviewed_inputs, monkeypatch):
     """Keep missing OCR pages visible and ineligible for reuse."""
     inputs, provider = reviewed_inputs
     root = Path(inputs["path"])
@@ -256,9 +228,7 @@ def test_skipped_ocr_pages_survive_record_and_do_not_reuse(
         ),
     )
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-    record = json.loads(
-        (Path(inputs["output"]) / "doc.json").read_text(encoding="utf-8")
-    )
+    record = json.loads((Path(inputs["output"]) / "doc.json").read_text(encoding="utf-8"))
     coverage = record["processing_metrics"]["coverage"]
     assert coverage["page_count"] == 3
     assert coverage["extracted_pages"] == [1, 3]
@@ -271,32 +241,7 @@ def test_skipped_ocr_pages_survive_record_and_do_not_reuse(
     assert provider.call_count == 2
 
 
-def test_unknown_cost_success_remains_successful_for_qaqc(reviewed_inputs):
-    """Keep successful QA payloads valid when pricing is unavailable."""
-    inputs, provider = reviewed_inputs
-    provider.return_value["cost"] = None
-    results = run_multi_model_extraction(
-        doc_text="Source evidence",
-        doc_name="doc",
-        schema=json.loads(Path(inputs["schema"]).read_text(encoding="utf-8")),
-        registry=ModelRegistry(llm_config=inputs["llm_config"]),
-        model_tiers=["gpt-fixture"],
-        output_dir=Path(inputs["output"]),
-    )
-    assert results["gpt-fixture"].success
-    assert results["gpt-fixture"].cost is None
-    assert results["gpt-fixture"].input_tokens == 12
-    meta = json.loads(
-        (Path(inputs["output"]) / "validation/doc/metadata.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert meta["summary"]["unknown_cost_models"] == 1
-
-
-def test_needed_locator_key_fails_before_fresh_reset(
-    reviewed_inputs, monkeypatch
-):
+def test_needed_locator_key_fails_before_fresh_reset(reviewed_inputs, monkeypatch):
     """Preserve output when a required locator has no credentials."""
     inputs, provider = reviewed_inputs
     source = Path(inputs["path"]) / "doc.txt"
@@ -319,87 +264,23 @@ def test_needed_locator_key_fails_before_fresh_reset(
     provider.assert_not_called()
 
 
-def test_filtered_index_has_stable_outputs(reviewed_inputs):
-    """Selecting one partition keeps its output identity and verified reuse."""
+def test_partitioned_outputs_are_stable_and_reused(reviewed_inputs):
+    """Partitioned inputs keep their output identity and verified reuse."""
 
     inputs, provider = reviewed_inputs
     root = Path(inputs["path"])
     (root / "doc.txt").unlink()
-    rows = []
     for label in ("first", "second"):
         doc = root / label / "report.txt"
         doc.parent.mkdir()
         doc.write_text("Source evidence", encoding="utf-8")
-        rows.append(
-            {
-                "status": "downloaded",
-                "path": str(doc),
-                "relative_path": f"{label}/report.txt",
-                "label": label,
-            }
-        )
-    index = root.parent / "index.csv"
-    with index.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
-    assert (
-        _execute_extraction(
-            _prepare_extraction(inputs, from_index=str(index))
-        ).exit_code
-        == 0
-    )
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert provider.call_count == 2
     provider.reset_mock()
-    assert (
-        _execute_extraction(
-            _prepare_extraction(
-                inputs, from_index=str(index), index_filters=["label=first"]
-            )
-        ).exit_code
-        == 0
-    )
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert not (Path(inputs["output"]) / "report.json").exists()
+    assert (Path(inputs["output"]) / "first/report.json").is_file()
     provider.assert_not_called()
-
-
-def test_check_displays_unknown_cost(reviewed_inputs):
-    """Valid unpriced records are inspectable through the recommended CLI."""
-
-    inputs, provider = reviewed_inputs
-    provider.return_value["cost"] = None
-    result = _execute_extraction(_prepare_extraction(inputs))
-    check = CliRunner().invoke(
-        cli,
-        [
-            "check",
-            str(result.output_dir / "doc.json"),
-            "--schema",
-            inputs["schema"],
-            "--show-data",
-        ],
-    )
-    assert check.exit_code == 0, check.output
-    assert "unknown" in check.output.lower()
-
-
-def test_paid_qa_failure_retains_usage(reviewed_inputs):
-    """A failed payload still carries returned billing evidence to QA."""
-
-    inputs, provider = reviewed_inputs
-    error = SchemaValidationError("fixture invalid payload")
-    error.usage = {"cost": 0.025, "input_tokens": 13, "output_tokens": 7}
-    provider.side_effect = error
-    results = run_multi_model_extraction(
-        doc_text="Source",
-        doc_name="doc",
-        schema=json.loads(Path(inputs["schema"]).read_text(encoding="utf-8")),
-        registry=ModelRegistry(llm_config=inputs["llm_config"]),
-        model_tiers=["gpt-fixture"],
-        output_dir=Path(inputs["output"]),
-    )
-    assert not results["gpt-fixture"].success
-    assert results["gpt-fixture"].cost == 0.025
-    assert results["gpt-fixture"].input_tokens == 13
 
 
 def test_replaced_authoritative_text_invalidates_reuse(reviewed_inputs):
@@ -407,13 +288,9 @@ def test_replaced_authoritative_text_invalidates_reuse(reviewed_inputs):
 
     inputs, provider = reviewed_inputs
     document = Path(inputs["path"]) / "doc.txt"
-    write_text_cache(
-        document, "Original rendered source", method="browser_render"
-    )
+    write_text_cache(document, "Original rendered source", method="browser_render")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-    write_text_cache(
-        document, "Changed rendered source", method="browser_render"
-    )
+    write_text_cache(document, "Changed rendered source", method="browser_render")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 2
 
@@ -459,36 +336,6 @@ def test_main_array_typo_preserves_fresh_output(reviewed_inputs):
     provider.assert_not_called()
 
 
-def test_index_accepts_existing_project_relative_sources(
-    reviewed_inputs, monkeypatch
-):
-    """Published project-relative source spellings remain executable."""
-
-    inputs, _provider = reviewed_inputs
-    root = Path(inputs["path"]).parent
-    monkeypatch.chdir(root)
-    index = root / "discovered/demo/index.csv"
-    index.parent.mkdir(parents=True)
-    with index.open("w", newline="") as handle:
-        writer = csv.DictWriter(
-            handle, fieldnames=["status", "path", "relative_path"]
-        )
-        writer.writeheader()
-        writer.writerow(
-            {
-                "status": "downloaded",
-                "path": "documents/doc.txt",
-                "relative_path": "doc.txt",
-            }
-        )
-    assert (
-        _execute_extraction(
-            _prepare_extraction(inputs, from_index=str(index))
-        ).exit_code
-        == 0
-    )
-
-
 @pytest.mark.parametrize("reserved", ["validation", "run_manifests", "qa_qc"])
 def test_reserved_record_partitions_fail_preflight(reviewed_inputs, reserved):
     """Reject output partitions reserved for internal products."""
@@ -502,9 +349,7 @@ def test_reserved_record_partitions_fail_preflight(reviewed_inputs, reserved):
     provider.assert_not_called()
 
 
-def test_derived_raw_ocr_cache_does_not_invalidate_reuse(
-    reviewed_inputs, monkeypatch
-):
+def test_derived_raw_ocr_cache_does_not_invalidate_reuse(reviewed_inputs, monkeypatch):
     """Reuse unchanged inputs after parsing populates derived OCR."""
 
     inputs, provider = reviewed_inputs
@@ -514,9 +359,7 @@ def test_derived_raw_ocr_cache_does_not_invalidate_reuse(
         write_text_cache(document, "raw OCR evidence", method="ocr")
         return "raw OCR evidence"
 
-    monkeypatch.setattr(
-        "psweep.extraction.document_utils.extract_text_from_document", parse
-    )
+    monkeypatch.setattr("psweep.extraction.document_utils.extract_text_from_document", parse)
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 1
@@ -576,87 +419,6 @@ def test_composed_main_array_schema_is_supported(reviewed_inputs, composition):
     inputs, _provider = reviewed_inputs
     path = Path(inputs["schema"])
     schema = json.loads(path.read_text(encoding="utf-8"))
-    schema["properties"]["items"] = {
-        composition: [{"type": "array", "items": {"type": "object"}}]
-    }
+    schema["properties"]["items"] = {composition: [{"type": "array", "items": {"type": "object"}}]}
     path.write_text(json.dumps(schema), encoding="utf-8")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-
-
-def test_index_common_layout_does_not_reject_disjoint_outputs(reviewed_inputs):
-    """Explicit indexed inputs are not a recursive scan of every ancestor."""
-
-    inputs, _provider = reviewed_inputs
-    root = Path(inputs["path"]).parent
-    second = root / "discovered/second.txt"
-    second.parent.mkdir()
-    second.write_text("Source", encoding="utf-8")
-    index = root / "index.csv"
-    with index.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["status", "path"])
-        writer.writeheader()
-        for document in [Path(inputs["path"]) / "doc.txt", second]:
-            writer.writerow({"status": "downloaded", "path": str(document)})
-    assert (
-        _execute_extraction(
-            _prepare_extraction(inputs, from_index=str(index))
-        ).exit_code
-        == 0
-    )
-
-
-def test_qaqc_rejects_ambiguous_same_stem_before_provider(reviewed_inputs):
-    """QA namespace collisions cannot reuse a different document's payload."""
-
-    inputs, provider = reviewed_inputs
-    root = Path(inputs["path"])
-    documents = []
-    for label in ["a", "b"]:
-        path = root / label / "report.txt"
-        path.parent.mkdir()
-        path.write_text("Source", encoding="utf-8")
-        documents.append(path)
-    with pytest.raises(ValueError, match="collision"):
-        _run_validation_extraction(
-            doc_files=documents,
-            loaded_schema=json.loads(
-                Path(inputs["schema"]).read_text(encoding="utf-8")
-            ),
-            schema_path=Path(inputs["schema"]),
-            output_dir=Path(inputs["output"]),
-            registry=ModelRegistry(llm_config=inputs["llm_config"]),
-            validation_models=["gpt-fixture", "gpt-second"],
-            max_context=600000,
-            timeout_seconds=10,
-            page_range_map={},
-            runtime_artifact=None,
-            run_id="run://fixture",
-            verbosity="quiet",
-            prompt_confirm=False,
-        )
-    provider.assert_not_called()
-
-
-def test_qaqc_write_failure_keeps_returned_usage(reviewed_inputs, monkeypatch):
-    """Post-response publication failure retains paid call evidence."""
-
-    inputs, _provider = reviewed_inputs
-    original = builtins.open
-
-    def fail_record(path, *args, **kwargs):
-        if str(path).endswith("gpt-fixture.json"):
-            raise OSError("fixture disk full")
-        return original(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", fail_record)
-    results = run_multi_model_extraction(
-        doc_text="Source",
-        doc_name="doc",
-        schema=json.loads(Path(inputs["schema"]).read_text(encoding="utf-8")),
-        registry=ModelRegistry(llm_config=inputs["llm_config"]),
-        model_tiers=["gpt-fixture"],
-        output_dir=Path(inputs["output"]),
-    )
-    assert not results["gpt-fixture"].success
-    assert results["gpt-fixture"].cost == 0.01
-    assert results["gpt-fixture"].input_tokens == 12

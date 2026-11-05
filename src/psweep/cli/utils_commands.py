@@ -15,7 +15,6 @@ For core workflow commands (extract, compile), see commands.py
 import json
 import os
 from pathlib import Path
-from typing import Optional
 
 import click
 from dotenv import load_dotenv
@@ -47,15 +46,22 @@ from psweep.cli.ui import (
     section,
     status_item,
 )
-from psweep.utils.page_range import load_pages_csv
-from psweep.cli.cost_tracker import estimate_extraction_cost
+from psweep.workspace import (
+    CONFIG_ROOT,
+    OUTPUTS_ROOT,
+    SCHEMA_FILENAME,
+    Workspace,
+    domain_schemas,
+    infer_domain,
+)
+from psweep.utils.model_pricing import estimate_extraction_cost
 from psweep.scaffolding import (
     ConfigValidationError,
-    _available_main_array_fields,
-    _build_schema_starter_from_reference,
-    _default_schema_output_path,
-    _display_cli_path,
-    _write_schema_starter,
+    available_main_array_fields,
+    build_schema_starter_from_reference,
+    default_schema_output_path,
+    display_cli_path,
+    write_schema_starter,
 )
 
 
@@ -69,30 +75,27 @@ def _cli_repo_root() -> Path:
     is_flag=True,
     help="Prompt for missing starter-schema values",
 )
-@click.option(
-    "--name", "schema_name", help="Base schema name (used for the output file)"
-)
+@click.option("--name", "schema_name", help="Base schema name (used for the output file)")
 @click.option(
     "--reference-schema",
     type=click.Path(exists=True),
     help="Existing schema file used as the closest reference for a lean starter",
 )
-@click.option(
-    "--domain", "domain_name", help="Override the metadata domain label"
-)
-@click.option(
-    "--document-type", help="Override the human-readable document type"
-)
+@click.option("--domain", "domain_name", help="Override the metadata domain label")
+@click.option("--document-type", help="Override the human-readable document type")
 @click.option(
     "--include-field",
     "include_fields",
     multiple=True,
-    help="Limit the starter schema to these main-array item fields; repeat the option to keep multiple fields",
+    help=(
+        "Limit the starter schema to these main-array item "
+        "fields; repeat the option to keep multiple fields"
+    ),
 )
 @click.option(
     "--output",
     type=click.Path(dir_okay=False),
-    help="Output schema path (defaults to schemas/personal/<name>_schema.json)",
+    help="Output schema path (defaults to config/<name>/schema.json)",
 )
 @click.option(
     "--force",
@@ -108,12 +111,12 @@ def _cli_repo_root() -> Path:
 )
 def init_domain_schema_cmd(
     interactive: bool,
-    schema_name: Optional[str],
-    reference_schema: Optional[str],
-    domain_name: Optional[str],
-    document_type: Optional[str],
+    schema_name: str | None,
+    reference_schema: str | None,
+    domain_name: str | None,
+    document_type: str | None,
     include_fields: tuple[str, ...],
-    output: Optional[str],
+    output: str | None,
     force: bool,
     report_format: str,
 ):
@@ -135,24 +138,24 @@ def init_domain_schema_cmd(
 
         if interactive:
             section("Interactive Domain Schema Setup")
-            console.print(
-                "Answer the prompts to create a lean starter schema.\n"
-            )
+            console.print("Answer the prompts to create a lean starter schema.\n")
 
         if interactive and not schema_name:
             schema_name = ask_text("Schema name")
         if interactive and not reference_schema:
             reference_schema = ask_text("Reference schema path")
-        if interactive and document_type is None:
-            if ask_confirm(
-                "Override the reference document type?", default=False
-            ):
-                document_type = ask_text("Document type")
-        if interactive and domain_name is None:
-            if ask_confirm(
-                "Override the reference domain label?", default=False
-            ):
-                domain_name = ask_text("Domain label")
+        if (
+            interactive
+            and document_type is None
+            and ask_confirm("Override the reference document type?", default=False)
+        ):
+            document_type = ask_text("Document type")
+        if (
+            interactive
+            and domain_name is None
+            and ask_confirm("Override the reference domain label?", default=False)
+        ):
+            domain_name = ask_text("Domain label")
 
         if not schema_name:
             raise ConfigValidationError(
@@ -164,23 +167,21 @@ def init_domain_schema_cmd(
             )
 
         output_path = (
-            Path(output).resolve()
-            if output
-            else _default_schema_output_path(repo_root, schema_name)
+            Path(output).resolve() if output else default_schema_output_path(repo_root, schema_name)
         )
         reference_schema_path = Path(reference_schema).resolve()
         selected_fields = list(include_fields)
 
-        schema_data = _build_schema_starter_from_reference(
+        schema_data = build_schema_starter_from_reference(
             reference_schema_path,
             schema_name=schema_name,
             domain_name=domain_name,
             document_type=document_type,
             include_fields=selected_fields or None,
         )
-        _write_schema_starter(output_path, schema_data, force=force)
+        write_schema_starter(output_path, schema_data, force=force)
 
-        main_item_fields = _available_main_array_fields(schema_data)
+        main_item_fields = available_main_array_fields(schema_data)
         result = {
             "status": "ready",
             "created": {
@@ -188,15 +189,8 @@ def init_domain_schema_cmd(
                 "schema_path": output_path.as_posix(),
                 "reference_schema": reference_schema_path.as_posix(),
                 "domain": schema_data["$metadata"]["domain"],
-                "document_type": schema_data["$metadata"]["extraction"][
-                    "document_type"
-                ],
-                "main_data_array": schema_data["$metadata"]["extraction"][
-                    "main_data_array"
-                ],
-                "identifier_fields": schema_data["$metadata"]["extraction"][
-                    "identifier_fields"
-                ],
+                "document_type": schema_data["$metadata"]["extraction"]["document_type"],
+                "main_data_array": schema_data["$metadata"]["extraction"]["main_data_array"],
                 "selected_fields": main_item_fields,
                 "interactive": interactive,
                 "force": force,
@@ -204,13 +198,15 @@ def init_domain_schema_cmd(
             "next_steps": [
                 {
                     "title": "Validate starter schema",
-                    "command": f"pixi run psweep check-schema {_display_cli_path(output_path, repo_root)}",
+                    "command": (
+                        f"pixi run psweep check-schema {display_cli_path(output_path, repo_root)}"
+                    ),
                 },
                 {
                     "title": "Create runtime config from template",
                     "command": (
-                        f"mkdir -p config/{schema_name.replace('_schema', '')} && "
-                        f"cp config/TEMPLATE.yaml config/{schema_name.replace('_schema', '')}/run.yaml"
+                        "cp config/TEMPLATE.yaml "
+                        f"{display_cli_path(output_path.parent / 'run.yaml', repo_root)}"
                     ),
                 },
             ],
@@ -229,21 +225,14 @@ def init_domain_schema_cmd(
                     "Schema Path": output_path.as_posix(),
                     "Reference Schema": reference_schema_path.as_posix(),
                     "Domain": schema_data["$metadata"]["domain"],
-                    "Document Type": schema_data["$metadata"]["extraction"][
-                        "document_type"
-                    ],
-                    "Main Data Array": schema_data["$metadata"]["extraction"][
-                        "main_data_array"
-                    ],
+                    "Document Type": schema_data["$metadata"]["extraction"]["document_type"],
+                    "Main Data Array": schema_data["$metadata"]["extraction"]["main_data_array"],
                     "Selected Fields": ", ".join(main_item_fields),
                 }
             )
         )
         print_next_steps(
-            [
-                f'{step["title"]}\n     {step["command"]}'
-                for step in result["next_steps"]
-            ]
+            [f"{step['title']}\n     {step['command']}" for step in result["next_steps"]]
         )
         console.print()
     except ConfigValidationError as exc:
@@ -264,7 +253,7 @@ def init_domain_schema_cmd(
         else:
             print_header("Init Domain Schema")
             print_error("Schema scaffold failed", str(exc))
-        raise click.exceptions.Exit(1)
+        raise click.exceptions.Exit(1) from None
 
 
 @click.command()
@@ -288,19 +277,16 @@ def init():
 
     # Check if .env already exists
     env_path = Path.cwd() / ".env"
-    if env_path.exists():
-        if not ask_confirm(
-            f".env file already exists at {env_path}. Overwrite?",
-            default=False,
-        ):
-            print_info("Keeping existing .env file")
-            return
+    if env_path.exists() and not ask_confirm(
+        f".env file already exists at {env_path}. Overwrite?",
+        default=False,
+    ):
+        print_info("Keeping existing .env file")
+        return
 
     # API Provider Selection
     section("Step 1: API Configuration")
-    provider = ask_choice(
-        "Select API provider", choices=["azure", "openai"], default="azure"
-    )
+    provider = ask_choice("Select API provider", choices=["azure", "openai"], default="azure")
 
     env_content = []
 
@@ -330,8 +316,7 @@ def init():
         ]
 
     # Write .env file
-    with open(env_path, "w") as f:
-        f.write("\n".join(env_content) + "\n")
+    Path(env_path).write_text("\n".join(env_content) + "\n", encoding="utf-8")
 
     print_success(f"Created .env file at {env_path}")
 
@@ -348,49 +333,35 @@ def init():
 
     project_root = Path.cwd()
     docs_dir = project_root / "documents" / doc_type
-    processed_dir = project_root / "extracted" / doc_type
-    compiled_dir = project_root / "compiled" / doc_type
-
     docs_dir.mkdir(parents=True, exist_ok=True)
-    processed_dir.mkdir(parents=True, exist_ok=True)
-    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     print_success("Created directory structure:")
-    console.print(
-        create_file_tree(project_root / "documents", "Project Structure")
-    )
+    console.print(create_file_tree(project_root / "documents", "Project Structure"))
 
-    # Schema selection
     section("Step 4: Schema Selection")
 
-    config = get_config()
-    schemas = list(config.schema_dir.glob("*.json"))
-
+    schemas = {p.parent.name: p for p in domain_schemas(get_config().config_dir)}
+    schema_path = CONFIG_ROOT / doc_type / SCHEMA_FILENAME
     if schemas:
-        schema_names = [s.stem for s in schemas]
-
-        # Try to auto-detect based on doc_type via fuzzy stem matching
         import difflib
 
-        suggested_schema = None
-        close = difflib.get_close_matches(doc_type, schema_names, n=1, cutoff=0.3)
+        close = difflib.get_close_matches(doc_type, list(schemas), n=1, cutoff=0.3)
         if close:
-            suggested_schema = close[0]
+            schema_path = CONFIG_ROOT / close[0] / SCHEMA_FILENAME
+            print_info(f"Suggested schema: {schema_path}")
+        if len(schemas) > 1:
+            console.print(f"\nAvailable domain schemas: {', '.join(schemas)}")
 
-        if suggested_schema:
-            print_info(f"Suggested schema: {suggested_schema}")
-
-        if len(schema_names) > 1:
-            console.print(f"\nAvailable schemas: {', '.join(schema_names)}")
-
-    # Summary
     rule()
     print_success("Setup complete!")
     print_next_steps(
         [
             f"Add your documents to: {docs_dir}",
-            f"Run extraction: psweep extract {docs_dir}",
-            f"Compile results: psweep compile {processed_dir}",
+            f"Run extraction: psweep extract {docs_dir} --schema {schema_path}",
+            (
+                "Compile results: psweep compile "
+                f"{Workspace(doc_type).extracted} --schema {schema_path}"
+            ),
         ]
     )
     console.print()
@@ -443,12 +414,10 @@ def preview(document_path: str):
         text = extract_text_from_document(doc_path)
         text_length = len(text)
 
-        # Estimate cost/time using the configured model's pricing (shared helper).
         config = get_config()
         model_name = config.llm_config.get("model", DEFAULT_MODEL)
         est = estimate_extraction_cost(text_length, model_name)
         estimated_tokens = est.input_tokens
-        total_cost = est.total_cost
 
         section("Content Analysis")
         analysis_table = key_values(
@@ -459,25 +428,23 @@ def preview(document_path: str):
         )
         console.print(analysis_table)
 
-        # Try to detect schema via fuzzy stem matching
+        # Fuzzy-match the document name against domain names under config/.
         matched_schema = None
-
-        candidates = sorted(config.schema_dir.glob("*.json"), key=lambda p: p.stem)
+        candidates = {p.parent.name: p for p in domain_schemas(config.config_dir)}
         if candidates:
             import difflib
 
-            stems = [c.stem for c in candidates]
             close = difflib.get_close_matches(
-                Path(doc_path).stem, stems, n=1, cutoff=0.3
+                Path(doc_path).stem, list(candidates), n=1, cutoff=0.3
             )
-            if close:
-                matched_schema = next(c for c in candidates if c.stem == close[0])
-            else:
-                matched_schema = candidates[0]
+            matched_schema = candidates[close[0] if close else next(iter(candidates))]
 
         if matched_schema:
             section("Schema Detection")
-            status_item("success", f"Matched schema: {matched_schema.name}")
+            status_item(
+                "success",
+                f"Matched schema: {display_cli_path(matched_schema, config.project_root)}",
+            )
 
             # Load and show field count
             schema = load_schema(matched_schema)
@@ -489,7 +456,7 @@ def preview(document_path: str):
         print_cost_estimate(
             total_docs=1,
             estimated_tokens=estimated_tokens,
-            estimated_cost=total_cost,
+            estimated_cost=est.format_cost(),
             estimated_time=est.estimated_minutes,
             model=model_name,
         )
@@ -498,19 +465,20 @@ def preview(document_path: str):
         console.print(f"{sample}...\n")
 
         section("Ready to Extract")
-        console.print(
-            f"Run: psweep extract {doc_path} --schema schemas/example_utility_rate_schema.json\n"
+        schema_hint = (
+            display_cli_path(matched_schema, config.project_root)
+            if matched_schema
+            else CONFIG_ROOT / infer_domain(doc_path) / SCHEMA_FILENAME
         )
+        console.print(f"Run: psweep extract {doc_path} --schema {schema_hint}\n")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - CLI boundary: report analysis failure
         print_error("Failed to analyze document", str(e))
 
 
 @click.command()
 @click.argument("documents_path", type=click.Path(exists=True))
-@click.option(
-    "--workers", "-w", type=int, default=4, help="Number of parallel workers"
-)
+@click.option("--workers", "-w", type=int, default=4, help="Number of parallel workers")
 @click.option(
     "--pages-csv",
     type=click.Path(exists=True),
@@ -576,13 +544,9 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
                 elif doc.name in page_mappings:
                     page_range_map[doc] = page_mappings[doc.name]
 
-            mapped_count = sum(
-                1 for v in page_range_map.values() if v is not None
-            )
-            print_info(
-                f"Loaded page ranges for {mapped_count} file(s) from CSV"
-            )
-        except Exception as e:
+            mapped_count = sum(1 for v in page_range_map.values() if v is not None)
+            print_info(f"Loaded page ranges for {mapped_count} file(s) from CSV")
+        except Exception as e:  # noqa: BLE001 - CLI boundary: report CSV load failure
             print_error(f"Failed to load page ranges CSV: {e}")
             return
 
@@ -595,28 +559,21 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
             page_range = page_range_map.get(doc) if pages_csv else None
             text = extract_text_from_document(doc, page_range=page_range)
             total_chars += len(text)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - unreadable sample documents are skipped
             pass
 
     if total_chars == 0:
         print_warning("Could not analyze documents for estimation")
         return
 
-    # Calculate averages and estimates (shared estimator, configured model).
     avg_chars = total_chars / sample_size
     estimated_total_chars = avg_chars * len(doc_files)
 
     config = get_config()
     model_name = config.llm_config.get("model", DEFAULT_MODEL)
 
-    est = estimate_extraction_cost(
-        estimated_total_chars, model_name, workers=workers
-    )
+    est = estimate_extraction_cost(estimated_total_chars, model_name, workers=workers)
     estimated_tokens = est.input_tokens
-    input_cost_per_1m = est.input_rate
-    output_cost_per_1m = est.output_rate
-    output_tokens = est.output_tokens
-    total_cost = est.total_cost
     estimated_minutes = est.estimated_minutes
 
     # Display analysis
@@ -630,24 +587,22 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
 
     # Add page range info if applicable
     if pages_csv and page_range_map:
-        files_with_ranges = sum(
-            1 for v in page_range_map.values() if v is not None
-        )
+        files_with_ranges = sum(1 for v in page_range_map.values() if v is not None)
         if files_with_ranges > 0:
-            doc_info["Page Ranges"] = (
-                f"{files_with_ranges} file(s) with specific ranges"
-            )
+            doc_info["Page Ranges"] = f"{files_with_ranges} file(s) with specific ranges"
 
     doc_table = key_values(doc_info)
     console.print(doc_table)
 
     # Display cost breakdown
     section(f"Cost Breakdown ({model_name})")
+    input_rate = "" if est.input_rate is None else f" @ ${est.input_rate:.2f}/1M"
+    output_rate = "" if est.output_rate is None else f" @ ${est.output_rate:.2f}/1M"
     cost_table = key_values(
         {
-            "Input Tokens": f"~{estimated_tokens:,} @ ${input_cost_per_1m:.2f}/1M",
-            "Output Tokens": f"~{int(output_tokens):,} @ ${output_cost_per_1m:.2f}/1M",
-            "Total Estimated Cost": f"${total_cost:.2f}",
+            "Input Tokens": f"~{estimated_tokens:,}{input_rate}",
+            "Output Tokens": f"~{int(est.output_tokens):,}{output_rate}",
+            "Total Estimated Cost": est.format_cost(),
         }
     )
     console.print(cost_table)
@@ -665,9 +620,8 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     # Confirmation prompt
     console.print()
     if ask_confirm("Proceed with extraction?", default=False):
-        console.print(
-            f"\nRun: psweep extract {docs_path} --schema schemas/example_utility_rate_schema.json\n"
-        )
+        schema_hint = CONFIG_ROOT / infer_domain(docs_path) / SCHEMA_FILENAME
+        console.print(f"\nRun: psweep extract {docs_path} --schema {schema_hint}\n")
     else:
         print_info("Operation cancelled")
 
@@ -683,8 +637,7 @@ def check_schema_cmd(schema_path: str):
 
     \b
     EXAMPLES:
-        psweep check-schema schemas/my_schema.json
-        psweep check-schema schemas/example_utility_rate_schema.json
+        psweep check-schema config/my_domain/schema.json
     """
     schema_file = Path(schema_path)
 
@@ -692,7 +645,7 @@ def check_schema_cmd(schema_path: str):
 
     # Load schema
     try:
-        with open(schema_file) as f:
+        with Path(schema_file).open(encoding="utf-8") as f:
             schema = json.load(f)
         print_success("Valid JSON syntax")
     except json.JSONDecodeError as e:
@@ -725,19 +678,13 @@ def check_schema_cmd(schema_path: str):
     if "$metadata" in schema:
         metadata = schema["$metadata"]
         extraction_metadata = (
-            metadata.get("extraction")
-            if isinstance(metadata.get("extraction"), dict)
-            else {}
+            metadata.get("extraction") if isinstance(metadata.get("extraction"), dict) else {}
         )
         identity_metadata = (
-            metadata.get("identity")
-            if isinstance(metadata.get("identity"), dict)
-            else {}
+            metadata.get("identity") if isinstance(metadata.get("identity"), dict) else {}
         )
         compilation_metadata = (
-            metadata.get("compilation")
-            if isinstance(metadata.get("compilation"), dict)
-            else {}
+            metadata.get("compilation") if isinstance(metadata.get("compilation"), dict) else {}
         )
         deduplication_metadata = (
             identity_metadata.get("deduplication")
@@ -746,22 +693,13 @@ def check_schema_cmd(schema_path: str):
         )
         print_success("Has $metadata section")
 
-        if extraction_metadata.get("identifier_fields"):
-            id_fields = extraction_metadata["identifier_fields"]
-            status_item(
-                "info", f"Identifier fields: {', '.join(id_fields)}"
-            )
-        else:
-            warnings.append(
-                "$metadata.extraction missing 'identifier_fields' (required for runtime document identification)"
-            )
-
         if extraction_metadata.get("main_data_array"):
             main_array = extraction_metadata["main_data_array"]
             status_item("info", f"Main data array: {main_array}")
         else:
             warnings.append(
-                "$metadata.extraction missing 'main_data_array' (required for extraction row generation)"
+                "$metadata.extraction missing 'main_data_array' "
+                "(required for extraction row generation)"
             )
 
         if deduplication_metadata:
@@ -774,40 +712,32 @@ def check_schema_cmd(schema_path: str):
             else:
                 status_item("info", "Deduplication configured")
         else:
-            status_item(
-                "info", "No deduplication config (optional in starter schemas)"
-            )
+            status_item("info", "No deduplication config (optional in starter schemas)")
 
         if isinstance(compilation_metadata.get("deduplication"), dict):
             issues.append(
-                "$metadata.compilation.deduplication is deprecated; move it to $metadata.identity.deduplication"
+                "$metadata.compilation.deduplication is deprecated; "
+                "move it to $metadata.identity.deduplication"
             )
 
         # Enforce a clean ownership boundary to reduce user confusion.
         if isinstance(compilation_metadata.get("output"), dict):
             warnings.append(
-                "$metadata.compilation.output is runtime-owned and should be moved to config/<domain>/run.yaml under compilation.output"
+                "$metadata.compilation.output is runtime-owned and should be "
+                "moved to config/<domain>/run.yaml under compilation.output"
             )
         if isinstance(compilation_metadata.get("normalization"), dict):
             warnings.append(
-                "$metadata.compilation.normalization is runtime-owned and should be moved to config/<domain>/run.yaml under compilation.normalization"
+                "$metadata.compilation.normalization is runtime-owned and should be "
+                "moved to config/<domain>/run.yaml under compilation.normalization"
             )
         if isinstance(compilation_metadata.get("value_typing"), dict):
             warnings.append(
-                "$metadata.compilation.value_typing is deprecated; keep vocabularies in schema properties[*].enum"
-            )
-        if isinstance(metadata.get("validation"), dict):
-            warnings.append(
-                "$metadata.validation is deprecated in this runtime; use schema-level JSON Schema constraints (required/type/enum) and runtime QA/QC config"
-            )
-        if isinstance(metadata.get("qa_qc"), dict):
-            warnings.append(
-                "$metadata.qa_qc is deprecated for active workflows; define QA/QC settings in config/<domain>/run.yaml under 'validation'"
+                "$metadata.compilation.value_typing is deprecated; "
+                "keep vocabularies in schema properties[*].enum"
             )
     else:
-        issues.append(
-            "Missing $metadata section (required for the modernized runtime)"
-        )
+        issues.append("Missing $metadata section (required for the modernized runtime)")
 
     # Summary
     rule()
@@ -902,21 +832,21 @@ def config(show_runtime_catalog: bool, output_format: str):
         key_values(
             {
                 "Project Root": str(config_obj.project_root),
-                "Schemas": str(config_obj.schema_dir),
+                "Domain Configs": str(config_obj.config_dir),
+                "Outputs": str(OUTPUTS_ROOT),
             }
         )
     )
 
-    # Available schemas
-    schemas = list(config_obj.schema_dir.glob("*.json"))
+    schemas = domain_schemas(config_obj.config_dir)
     if schemas:
         section("Available Schemas")
         for schema in schemas:
-            status_item("info", schema.name)
+            status_item("info", display_cli_path(schema, config_obj.project_root))
 
     if show_runtime_catalog:
         section("Runtime Variable Catalog")
-        for section_name in ("extraction", "compilation", "discovery"):
+        for section_name in ("extraction", "compilation", "discovery", "validation"):
             entries = VARIABLE_CATALOG.get(section_name, [])
             if not entries:
                 continue
@@ -924,9 +854,7 @@ def config(show_runtime_catalog: bool, output_format: str):
             section(section_name.title())
             grouped = {"required": [], "optional": [], "advanced": []}
             for entry in entries:
-                grouped.setdefault(entry.get("level", "optional"), []).append(
-                    entry
-                )
+                grouped.setdefault(entry.get("level", "optional"), []).append(entry)
 
             for level in ("required", "optional", "advanced"):
                 level_entries = grouped.get(level) or []

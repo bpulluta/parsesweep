@@ -1,0 +1,5 @@
+relative_path,source_scope,url,target_metadata
+_shared/where-is-solarapp-available.txt,shared,https://www.gosolarapp.org/where-is-solarapp-available,
+by_state_ahj/az/maricopa-county/Residential-Solar-Permits.txt,target,https://www.maricopa.gov/6714/Residential-Solar-Permits,"{""state"": ""AZ"", ""ahj"": ""Maricopa County"", ""geo_id"": ""4013"", ""Median Permit Cost"": ""300.0"", ""Number of Inspections Required"": ""2.0""}"
+by_state_ahj/az/pima-county/c4c73baf-77f7-4aac-bf3b-de6b139e88c2.txt,target,https://content.civicplus.com/api/assets/c4c73baf-77f7-4aac-bf3b-de6b139e88c2,"{""state"": ""AZ"", ""ahj"": ""Pima County"", ""geo_id"": ""4019"", ""Median Permit Cost"": ""113.0"", ""Number of Inspections Required"": ""1.0""}"
+by_state_ahj/co/boulder-county/b46-solar-photovoltaic-systems-checklist.txt,target,https://bouldercounty.gov/property-and-land/land-use/building/building-publications/b46-solar-photovoltaic-systems-checklist/,"{""state"": ""CO"", ""ahj"": ""Boulder County"", ""geo_id"": ""8013"", ""Median Permit Cost"": ""465.59"", ""Number of Inspections Required"": ""1.0""}"

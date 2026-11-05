@@ -14,6 +14,7 @@ from psweep.extraction.section_locator import (
     _Chunk,
     _pipe_row,
     _table_to_markdown,
+    split_text_sections,
 )
 
 
@@ -111,21 +112,18 @@ class TestHtmlSplitPreservesTables:
 
 class TestTxtSplit:
     def test_sections_split_by_markers(self):
-        locator = SectionLocator("setback requirements")
-        chunks = locator._split_txt_sections(TXT_WITH_SECTIONS)
+        chunks = split_text_sections(TXT_WITH_SECTIONS)
         headings = [c.heading for c in chunks]
         assert any("Section 2" in h or "Setback" in h for h in headings)
 
     def test_section_content_included(self):
-        locator = SectionLocator("setback requirements")
-        chunks = locator._split_txt_sections(TXT_WITH_SECTIONS)
+        chunks = split_text_sections(TXT_WITH_SECTIONS)
         all_text = "\n".join(c.text for c in chunks)
         assert "500 feet" in all_text
 
     def test_fallback_to_paragraph_chunks_when_no_markers(self):
         long_txt = ("Word content here.\n\n" * 50).strip()
-        locator = SectionLocator("some section")
-        chunks = locator._split_txt_sections(long_txt)
+        chunks = split_text_sections(long_txt)
         # Should produce at least one chunk
         assert len(chunks) >= 1
 
@@ -238,7 +236,7 @@ class TestSectionCacheIntegrity:
     def test_full_filename_identity(self, tmp_path):
         sources = [tmp_path / "doc.html", tmp_path / "doc.txt"]
         loc = SectionLocator("rates")
-        for source, text in zip(sources, ("HTML", "TXT")):
+        for source, text in zip(sources, ("HTML", "TXT"), strict=True):
             source.write_bytes(b"same")
             os.utime(source, ns=(1000000000, 1000000000))
             loc._write_cache(source, text)
@@ -280,9 +278,7 @@ class TestSectionCacheIntegrity:
         loc = SectionLocator("rate schedule", keywords=[])
         assert loc._candidate_chunks([_Chunk("rate", "schedule")]) == []
 
-    def test_metadata_last_staging_and_cached_lookup(
-        self, tmp_path, monkeypatch
-    ):
+    def test_metadata_last_staging_and_cached_lookup(self, tmp_path, monkeypatch):
         source = self._source(tmp_path)
         loc = SectionLocator("rates", trigger_chars=1)
         loc._write_cache(source, "before")
@@ -311,9 +307,7 @@ class TestSectionCacheIntegrity:
         assert len(list(meta_path.parent.iterdir())) == 2
 
     @pytest.mark.parametrize("failed_index", [0, 1])
-    def test_interruption_never_serves_mismatched_pair(
-        self, tmp_path, monkeypatch, failed_index
-    ):
+    def test_interruption_never_serves_mismatched_pair(self, tmp_path, monkeypatch, failed_index):
         source = self._source(tmp_path)
         loc = SectionLocator("rates")
         loc._write_cache(source, "before")
@@ -327,24 +321,16 @@ class TestSectionCacheIntegrity:
 
         monkeypatch.setattr(Path, "replace", fail)
         loc._write_cache(source, "after")
-        assert loc._read_cache(source) == (
-            "before" if failed_index == 0 else None
-        )
+        assert loc._read_cache(source) == ("before" if failed_index == 0 else None)
         assert len(list(meta_path.parent.iterdir())) == 2
 
 
 class TestSectionResponses:
-    @pytest.mark.parametrize(
-        "sections", [[True], [1.5], ["2"], {"unexpected": 1}]
-    )
+    @pytest.mark.parametrize("sections", [[True], [1.5], ["2"], {"unexpected": 1}])
     def test_noninteger_sections_are_not_coerced(self, monkeypatch, sections):
         locator = SectionLocator("rates")
-        monkeypatch.setattr(
-            locator, "_ensure_client", lambda: _FakeClient(sections)
-        )
-        assert (
-            locator._confirm_with_llm([_Chunk("", "rates")] * 3, [0]) is None
-        )
+        monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient(sections))
+        assert locator._confirm_with_llm([_Chunk("", "rates")] * 3, [0]) is None
 
 
 class TestLlmFailureReturnsNoneNoErrorLog:
@@ -358,7 +344,7 @@ class TestLlmFailureReturnsNoneNoErrorLog:
                 raise RuntimeError("simulated LLM failure")
 
         locator = SectionLocator("rate schedule", trigger_chars=100)
-        monkeypatch.setattr(locator, "_ensure_client", lambda: _FailClient())
+        monkeypatch.setattr(locator, "_ensure_client", _FailClient)
 
         with caplog.at_level(logging.ERROR):
             result = locator.locate(html)
