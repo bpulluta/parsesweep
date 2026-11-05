@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -17,8 +16,6 @@ from psweep.config.runtime_config_loader import (
 )
 from psweep.exceptions import SchemaMetadataError
 from psweep.utils.schema_metadata import SchemaMetadata
-
-SOLARTRACE = Path(__file__).resolve().parents[1] / "config" / "solartrace" / "run.yaml"
 
 
 def _schema(output=None, titles=("Name", "Name")):
@@ -50,12 +47,15 @@ def _prepare(tmp_path, schema):
     return compiler._prepare_output_dataframe(frame)
 
 
-def test_solartrace_titles_become_headers():
-    config = load_runtime_config_file(SOLARTRACE)
+def test_config_schema_titles_become_headers(tmp_path):
+    (tmp_path / "schema.json").write_text(
+        json.dumps(_schema(titles=("Name", "Also Known As"))), encoding="utf-8"
+    )
+    (tmp_path / "run.yaml").write_text("domain: demo\n", encoding="utf-8")
+    config = load_runtime_config_file(tmp_path / "run.yaml")
     resolved = resolve_command_config(command="compile", cli_values={}, config_data=config)
     titles = resolve_compilation_metadata(resolved).get_column_titles()
-    assert titles["ahj"] == "AHJ Name"
-    assert titles["solsmart_awardee"] == "SolSmart Awardee"
+    assert titles == {"name": "Name", "alias": "Also Known As"}
 
 
 def test_title_else_field_name_verbatim(tmp_path):

@@ -20,7 +20,6 @@ from psweep.extraction.roster import Roster, normalize
 from psweep.utils.file_io import publication_lock
 from psweep.validation import covered_keys
 
-REPO = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / "fixtures" / "validate"
 URL = re.compile(r"SOURCE_URL: (\S+)")
 
@@ -111,34 +110,27 @@ def summary(domain: str) -> dict:
     )
 
 
-# ── S1: validation of the live solartrace primary against the tracked human sheet ──
+# ── S1: validation of a solartrace primary against its human-labelled sheet ──
 
 
 @pytest.fixture
 def solartrace(fake):
-    config = Path("config/solartrace")
-    config.mkdir(parents=True)
-    for name in ("schema.json", "samples/ahj_requirements.csv"):
-        (config / name).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(REPO / "config/solartrace" / name, config / name)
-    # The roster of the fixture corpus, independent of the live targets list.
-    shutil.copy(FIXTURES / "solartrace/targets.csv", config / "targets.csv")
-    run = yaml.safe_load((REPO / "config/solartrace/run.yaml").read_text())
-    run["validation"] = {"references": ["samples/ahj_requirements.csv"]}
-    (config / "run.yaml").write_text(yaml.safe_dump(run, sort_keys=False))
-    shutil.copytree(FIXTURES / "solartrace/curated", "outputs/solartrace/discovered/curated")
-    write_index("solartrace", read_csv(FIXTURES / "solartrace/index.csv"), ["state", "ahj"])
-    responses = json.loads((FIXTURES / "solartrace/responses.json").read_text())
-    fake.payloads = {("gpt-6.1-sol", url): payload for url, payload in responses.items()}
-    psweep("extract", "--config", "config/solartrace/run.yaml", "-q")
-    psweep("compile", "--config", "config/solartrace/run.yaml", "-q")
+    """The fixture domain is read in place; every output lands in the tmp cwd."""
+    domain = FIXTURES / "solartrace"
+    shutil.copytree(domain / "curated", "outputs/solartrace/discovered/curated")
+    write_index("solartrace", read_csv(domain / "index.csv"), ["state", "ahj"])
+    responses = json.loads((domain / "responses.json").read_text())
+    fake.payloads = {(fake.config["model"], url): payload for url, payload in responses.items()}
+    config = str(domain / "run.yaml")
+    psweep("extract", "--config", config, "-q")
+    psweep("compile", "--config", config, "-q")
     fake.calls.clear()
-    return config / "run.yaml"
+    return config
 
 
 def test_s1_primary_against_human_sheet(solartrace, fake):
     fake.config["api_key"] = ""  # nothing pending and no models: no credentials needed
-    output = psweep("validate", "--config", str(solartrace))
+    output = psweep("validate", "--config", solartrace)
     assert fake.calls == []
     cells = read_csv("outputs/solartrace/validated/cells.csv")
     assert len(cells) == 27
@@ -165,8 +157,8 @@ def test_s1_primary_against_human_sheet(solartrace, fake):
     assert overall["ci95"]["accuracy"] == [0.1317, 0.4468]
     assert (overall["precision"], overall["recall"], overall["f1"]) == (0.8333, 0.2083, 0.3333)
     assert (overall["filled"], overall["tp"], overall["fp"], overall["fn"]) == (6, 5, 1, 19)
-    # The tracked sheet has 197 data rows; 3 are in the roster.
-    assert data["rows"]["out_of_scope"] == {"ahj_requirements": 194}
+    # The sheet has 6 data rows; 3 are in the roster.
+    assert data["rows"]["out_of_scope"] == {"ahj_requirements": 3}
     assert data["diagnosis"]["no_docs"]["count"] == 0
     assert "gate" not in data and "Gate:" not in output
     assert "primary  0.26 ±0.16" in output and "Next: extraction" in output

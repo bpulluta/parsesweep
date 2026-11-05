@@ -1,0 +1,8 @@
+# Three-county solartrace slice for the S1 test in test_cli_validate.py.
+# No models: extraction uses the provider default that the tests stub.
+domain: solartrace
+discovery:
+  targets: targets.csv
+  partition_by: [state, ahj]
+validation:
+  references: [samples/ahj_requirements.csv]

@@ -10,6 +10,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# The shipped runnable example: the only domain config the suite may read.
+EXAMPLE_CONFIG = Path(__file__).resolve().parents[1] / "config" / "example" / "run.yaml"
+
 
 def write_json(path: Path, content: dict) -> None:
     """Write ``content`` as indented JSON, creating parent dirs as needed."""

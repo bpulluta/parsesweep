@@ -1,111 +1,60 @@
-# ═══════════════════════════════════════════════════════════
-# StreamlineExtract - Clean .gitignore
-# ═══════════════════════════════════════════════════════════
+# ParseSweep tracks source, tests, docs and project infrastructure only.
+# Personal scratch folders belong in .git/info/exclude, not here.
 
-# ─────────────────────────────────────────────────────────
-# Environment & Secrets
-# ─────────────────────────────────────────────────────────
+# Secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
-# ─────────────────────────────────────────────────────────
-# Python
-# ─────────────────────────────────────────────────────────
+# Python build artifacts and caches
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
 build/
 dist/
 *.egg-info/
-.installed.cfg
 *.egg
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .coverage
+.coverage.*
 htmlcov/
+.ipynb_checkpoints/
 
-# ─────────────────────────────────────────────────────────
-# Virtual Environments
-# ─────────────────────────────────────────────────────────
+# Environments
+.pixi/
 .venv/
 venv/
-ENV/
 env/
-.pixi/
+ENV/
 
-# ─────────────────────────────────────────────────────────
-# IDE & Editor
-# ─────────────────────────────────────────────────────────
+# Editors and OS
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# ─────────────────────────────────────────────────────────
-# Operating System
-# ─────────────────────────────────────────────────────────
 .DS_Store
-.AppleDouble
-.LSOverride
 Thumbs.db
 
-# ─────────────────────────────────────────────────────────
-# Output Files (can be regenerated)
-# ─────────────────────────────────────────────────────────
-outputs/
-
-# ─────────────────────────────────────────────────────────
-# Archive & Old Code (for reference only)
-# ─────────────────────────────────────────────────────────
-archive/
-
-# ─────────────────────────────────────────────────────────
-# Logs & Temporary Files
-# ─────────────────────────────────────────────────────────
+# Logs and temporary files
 *.log
 logs/
 tmp/
 temp/
 *.tmp
 .cache/
-.scratch/
 
-# ─────────────────────────────────────────────────────────
-# Jupyter Notebooks
-# ─────────────────────────────────────────────────────────
-.ipynb_checkpoints/
-
-
-# ─────────────────────────────────────────────────────────
-# Data Directories (Contains Large Files - Not Version Controlled)
-# ─────────────────────────────────────────────────────────
-# User documents and generated outputs should not be tracked (do NOT add a bare
-# `validation/` here — it would also match the src/psweep/validation package).
-documents/
-tools/
-output*/
-.github/prompts/resume-web-acquisition.prompt.md
-
-test-v1/
-config/audit/
-dev_docs/
-
-.serena/
-.agents/
-AGENTS.md
-.claude/
-.github/*
-!.github/dependabot.yml
-!.github/workflows/
-!.github/workflows/*.yml
-!.github/workflows/*.yaml
-
-# Sphinx build output (source under docs/ IS tracked)
+# Documentation build output (sources under docs/ are tracked)
 docs/_build/
-.archive/
-notebooks/
-graphify-out/
-config/wind_puc/
+
+# Runtime inputs and generated outputs
+documents/
+outputs/
+
+# Domain configs are yours and stay local; only the template and the example ship.
+config/*
+!config/README.md
+!config/TEMPLATE.yaml
+!config/example/

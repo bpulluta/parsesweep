@@ -6,6 +6,15 @@ from typing import Any
 import pandas as pd
 
 
+def to_cell(value: Any) -> Any:
+    """Render a value as one cell: primitive lists comma-join, other lists and objects are JSON."""
+    if isinstance(value, list) and not any(isinstance(item, (dict, list)) for item in value):
+        return ", ".join(str(item) for item in value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return value
+
+
 class DataFlattener:
     """Nested objects become ``parent_child`` columns; arrays become one cell."""
 
@@ -22,19 +31,10 @@ class DataFlattener:
                 flattened[key] = ""
             elif isinstance(value, dict):
                 for nested_key, nested_value in value.items():
-                    flattened[f"{key}_{nested_key}"] = nested_value
-            elif isinstance(value, list):
-                flattened[key] = self._join(value)
+                    flattened[f"{key}_{nested_key}"] = to_cell(nested_value)
             else:
-                flattened[key] = value
+                flattened[key] = to_cell(value)
         return flattened
-
-    @staticmethod
-    def _join(values: list[Any]) -> str:
-        """Primitives comma-join; arrays holding objects keep compact JSON."""
-        if any(isinstance(value, (dict, list)) for value in values):
-            return json.dumps(values, ensure_ascii=False, separators=(",", ":"))
-        return ", ".join(str(value) for value in values)
 
     def normalize_units(self, df: pd.DataFrame) -> pd.DataFrame:
         """Apply the configured unit normalizations to the unit columns."""

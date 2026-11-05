@@ -23,8 +23,8 @@ def test_resolve_command_config_merges_cli_and_file_values(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
-domain: geothermal_ordinances
-schema: config/geothermal_ordinances/schema.json
+domain: my_domain
+schema: config/my_domain/schema.json
 extraction:
   skip_existing: true
   max_context: 111111
@@ -40,9 +40,9 @@ extraction:
         config_data=config_data,
     )
 
-    assert resolved["path"] == "outputs/geothermal_ordinances/discovered/curated"
-    assert resolved["schema"] == "config/geothermal_ordinances/schema.json"
-    assert resolved["output"] == "outputs/geothermal_ordinances/extracted"
+    assert resolved["path"] == "outputs/my_domain/discovered/curated"
+    assert resolved["schema"] == "config/my_domain/schema.json"
+    assert resolved["output"] == "outputs/my_domain/extracted"
     assert resolved["_config_sources"]["output"] == "derived"
     assert resolved["max_context"] == 222222
     assert resolved["timeout_seconds"] == 480
@@ -53,7 +53,7 @@ def test_resolve_command_config_strict_unknown_section_key_raises(tmp_path: Path
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
-schema: config/geothermal_ordinances/schema.json
+schema: config/my_domain/schema.json
 compilation:
   random_flag: true
 """,
@@ -75,7 +75,7 @@ def test_load_runtime_config_file_rejects_invalid_compilation_provenance_policy(
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
-schema: config/geothermal_ordinances/schema.json
+schema: config/my_domain/schema.json
 compilation:
   provenance_policy: maybe
 """,
@@ -90,7 +90,7 @@ def test_resolve_command_config_maps_compilation_provenance_policy(tmp_path: Pat
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
-schema: config/geothermal_ordinances/schema.json
+schema: config/my_domain/schema.json
 compilation:
   provenance_policy: FAIL
 """,
@@ -153,7 +153,7 @@ def test_load_runtime_config_file_rejects_invalid_extraction_timeout(tmp_path: P
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
-schema: config/geothermal_ordinances/schema.json
+schema: config/my_domain/schema.json
 extraction:
   skip_existing: true
   timeout_seconds: {timeout_value!r}
@@ -169,7 +169,7 @@ def test_load_runtime_config_file_accepts_ocr_corrections(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
-schema: config/geothermal_ordinances/schema.json
+schema: config/my_domain/schema.json
 extraction:
   skip_existing: true
   ocr_corrections:
@@ -199,7 +199,7 @@ def test_load_runtime_config_file_rejects_invalid_ocr_corrections(
 ):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        "schema: config/geothermal_ordinances/schema.json\n"
+        "schema: config/my_domain/schema.json\n"
         "extraction:\n"
         "  skip_existing: true\n"
         "  ocr_corrections:\n" + rules_block,
@@ -332,7 +332,7 @@ def test_load_runtime_config_file_rejects_split_processing_override(
     """Flat and wrapped overrides must be migrated into the run config."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "schema: config/geothermal_ordinances/schema.json\nextraction:\n  skip_existing: true\n",
+        "schema: config/my_domain/schema.json\nextraction:\n  skip_existing: true\n",
         encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(override_body, encoding="utf-8")

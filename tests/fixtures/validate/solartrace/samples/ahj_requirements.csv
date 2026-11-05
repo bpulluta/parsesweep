@@ -1,0 +1,7 @@
+﻿State,AHJ Name,geo_id,SolSmart Awardee,Online Permitting,Online Instant Permitting,Structural Stamp From Professional Engineer Required,Electrical Stamp From Licensed Electrician Required,Third-Party Permitting Available,Median Permit Cost,Number of Inspections Required,Rough-In Inspection Required,Virtual Inspections Available,Fire Review Required
+AZ,Maricopa County,4013,Bronze,Yes,No,Sometimes,Never,NA,300.0,2.0,No,No,No
+AZ,Pima County,4019,Gold,Yes,Yes (SolarAPP+),Sometimes,Never,NA,113.0,1.0,No,Yes,No
+AZ,Pinal County,4021,No,Yes,No,Never,Never,NA,300.115,1.0,No,Yes,No
+CA,Tulare County,6107,No,Yes,Yes (SolarAPP+),Sometimes,Never,No,392.96,1.0,No,No,NA
+CO,Adams County,8001,Gold,Yes,No,Always,Sometimes,NA,665.525,1.0,No,No,No
+CO,Boulder County,8013,Silver,Yes,No,Always,Always,NA,465.59,1.0,No,No,No

@@ -14,8 +14,10 @@ from psweep.config.runtime_config_loader import (
     resolve_compilation_metadata,
 )
 from psweep.compilation.data_compiler import DataCompiler
+from psweep.extraction.roster import load_roster
+from psweep.utils.schema_metadata import SchemaMetadata
 
-CONFIGS = sorted(Path(__file__).resolve().parents[1].glob("config/*/run.yaml"))
+from _helpers import EXAMPLE_CONFIG
 
 
 def _compiler(config_path: Path) -> DataCompiler:
@@ -72,7 +74,10 @@ def test_partial_overlap_is_a_config_error(tmp_path):
         _compiler(_write_config(tmp_path, ["state", "permit_id"]))
 
 
-@pytest.mark.parametrize("config", CONFIGS, ids=lambda path: path.parent.name)
-def test_repo_configs_keep_their_compile_mode(config):
-    expected = "roster" if config.parent.name == "solartrace" else "rows"
-    assert _compiler(config).mode == expected
+def test_example_config_rosters_in_extract_and_compile():
+    inputs = resolve_command_config(
+        command="extract", cli_values={}, config_data=load_runtime_config_file(EXAMPLE_CONFIG)
+    )
+    roster = load_roster(inputs, SchemaMetadata(Path(inputs["schema"])))
+    assert roster is not None and roster.fields == ("state", "name")
+    assert _compiler(EXAMPLE_CONFIG).mode == "roster"

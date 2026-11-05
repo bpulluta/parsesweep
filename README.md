@@ -13,8 +13,6 @@ your questions, extracts the fields your JSON schema defines, compiles them
 with sources, confidence and quotes, and validates the result against other
 models and human-labelled samples.
 
-![ParseSweep pipeline overview](src/psweep/img/imagev1.png)
-
 ## Install
 
 ```bash
@@ -23,8 +21,21 @@ git clone https://github.com/bpulluta/parsesweep.git && cd parsesweep
 pixi install
 ```
 
-Put credentials in `.env` (never in YAML): `SERPAPI_API_KEY` for search, and one
-LLM provider for extraction — `pixi run psweep init` writes it interactively.
+Put credentials in `.env` (never in YAML): one LLM provider for extraction, and
+`SERPAPI_API_KEY` only if discovery searches the web. Start from
+[`.env.example`](.env.example), or let `pixi run psweep init` write an OpenAI or
+Azure key.
+
+## Try the example
+
+```bash
+pixi run psweep run --config config/example/run.yaml
+```
+
+The [example](config/example/run.yaml) downloads the solar permit pages of
+three counties directly, so it needs only the LLM key. It writes
+`outputs/example/compiled/example.csv` (and `.xlsx`): one row per county with
+the extracted fields plus `sources`, `confidence` and `evidence`.
 
 ## The pipeline
 
@@ -62,8 +73,9 @@ pixi run psweep run --config config/my_domain/run.yaml --validate-config  # afte
 ```
 
 [`config/TEMPLATE.yaml`](config/TEMPLATE.yaml) is a complete, valid starting
-point. Discovery alone needs neither a schema nor LLM credentials; the later
-stages need `schema.json`.
+point; domain folders you create under `config/` are git-ignored and stay local.
+Discovery alone needs neither a schema nor LLM credentials; the later stages
+need `schema.json`.
 
 ## Outputs
 
@@ -77,7 +89,7 @@ outputs/<domain>/
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) — first domain, end to end
+- [Getting Started](docs/getting-started.md) — the example, then your own domain end to end
 - [Source Patterns](docs/sources.md) — searches, exports, listings, code hosts, audio
 - [Configuration Reference](docs/config-reference.md) — every `run.yaml` key, defaults, reuse and exit codes
 - [Tuning & Iteration](docs/tuning.md) — symptom → setting

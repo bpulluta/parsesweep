@@ -1,4 +1,4 @@
-"""Target specs, request-field resolution, and shipped discovery configs."""
+"""Target specs, request-field resolution, and the shipped example config."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ import pytest
 from psweep.config import RuntimeConfigError, load_runtime_config_file, resolve_command_config
 from psweep.discovery.request_inputs import discovery_request_fields
 from psweep.discovery.targets import TargetSpecError, iter_targets, resolve_targets_spec
+
+from _helpers import EXAMPLE_CONFIG
 
 
 def test_csv_bom_header_and_pipe_split_urls(tmp_path: Path):
@@ -162,17 +164,11 @@ def test_config_errors_name_the_file(tmp_path: Path):
         load_runtime_config_file(config)
 
 
-@pytest.mark.parametrize(
-    "path",
-    sorted(p for p in Path("config").glob("*/run.yaml") if p.parent.name != "solartrace"),
-    ids=lambda p: p.parent.name,
-)
-def test_shipped_configs_resolve_to_request_fields(path: Path):
-    data = load_runtime_config_file(path)
-    if not data.get("discovery"):
-        pytest.skip("no discovery section")
+def test_example_config_resolves_to_request_fields():
     fields = discovery_request_fields(
-        resolve_command_config(command="discover", cli_values={}, config_data=data)
+        resolve_command_config(
+            command="discover", cli_values={}, config_data=load_runtime_config_file(EXAMPLE_CONFIG)
+        )
     )
-    assert fields["domain"] == path.parent.name
-    assert fields["sources"] or fields["queries"] or fields["targets"]
+    assert fields["domain"] == "example"
+    assert fields["targets"]

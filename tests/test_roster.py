@@ -4,15 +4,10 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 
 import pytest
 
 from psweep.config import RuntimeConfigError
-from psweep.config.runtime_config_loader import (
-    load_runtime_config_file,
-    resolve_command_config,
-)
 from psweep.discovery.targets import identify_target
 from psweep.exceptions import SchemaValidationError
 from psweep.extraction.llm_client import LLMClient
@@ -206,18 +201,6 @@ def test_roster_fields_must_be_top_level_item_fields(tmp_path):
     inputs = {"targets": "unused.csv", "partition_by": list(FIELDS)}
     with pytest.raises(RuntimeConfigError, match="top-level 'items'"):
         load_roster(inputs, SchemaMetadata(schema))
-
-
-@pytest.mark.parametrize("config", sorted(Path("config").glob("*/run.yaml")))
-def test_shipped_configs_derive_roster_mode(config):
-    inputs = resolve_command_config(
-        command="extract", cli_values={}, config_data=load_runtime_config_file(config)
-    )
-    roster = load_roster(inputs, SchemaMetadata(Path(inputs["schema"])))
-    if config.parent.name == "solartrace":
-        assert roster is not None and roster.fields == FIELDS
-    else:
-        assert roster is None
 
 
 def test_prompt_schema_hides_metadata():
