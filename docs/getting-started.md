@@ -94,11 +94,12 @@ The small setup uses these defaults:
 - No automatic LLM calls. `document_review` is an explicit optional paid stage
   requiring a document description, model choice, and LLM credentials.
 
-PDF candidates are preferred to web pages when present. HTML/HTM and
-extensionless HTTP(S) URLs are provisionally eligible without disabling
-`require_supported_document`; known non-document binaries are excluded, and
-actual GET/MIME checks verify ambiguous URLs. Eligibility is not semantic
-validation: inspect whether the acquired document is the one you need.
+PDF candidates are preferred to web pages when present. HTML/HTM,
+extensionless and server-route (`.php`, `.aspx`, `.cfm` ...) HTTP(S) URLs
+are provisionally eligible without disabling `require_supported_document`;
+known non-document file types are excluded, and actual GET/MIME checks
+verify ambiguous URLs. Eligibility is not semantic validation: inspect
+whether the acquired document is the one you need.
 
 ### Add only the choices you need
 

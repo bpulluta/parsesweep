@@ -260,3 +260,35 @@ def test_rate_limits_are_retried_and_counted(monkeypatch):
     assert sent.call_count == 2
     assert client.usage["calls"] == 2
     assert client.usage["unknown_cost_calls"] == 1
+
+
+@pytest.mark.parametrize(
+    ("failure", "sent_calls"),
+    [
+        (litellm.ServiceUnavailableError("busy", "openai", "m"), 2),
+        (litellm.APIConnectionError("reset", "openai", "m"), 2),
+        (litellm.BadRequestError("bad", "m", "openai"), 1),
+    ],
+)
+def test_only_transient_provider_failures_are_retried(
+    monkeypatch, failure, sent_calls
+):
+    monkeypatch.setattr(
+        "psweep.extraction.llm_client.time.sleep", lambda _: None
+    )
+    client = _proxy()
+    with (
+        patch(
+            "psweep.extraction.llm_client.completion",
+            side_effect=[failure, _reply()],
+        ) as sent,
+        patch(
+            "psweep.extraction.llm_client.completion_cost", return_value=0.0
+        ),
+    ):
+        if sent_calls == 1:
+            with pytest.raises(ExtractionError):
+                client.complete(MESSAGES)
+        else:
+            assert client.complete(MESSAGES).content == "ok"
+    assert sent.call_count == sent_calls

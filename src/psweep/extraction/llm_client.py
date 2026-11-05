@@ -31,7 +31,7 @@ from ..security import (
 )
 from ..exceptions import ExtractionError
 from .llm_factory import DEFAULT_MODEL, detect_provider
-from ..discovery.retry import compute_backoff
+from ..discovery.retry import compute_backoff, is_transient_error
 from .schema_utils import strict_compatible
 from .text_processor import find_data_arrays
 
@@ -56,7 +56,7 @@ def prompt_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     return {key: value for key, value in schema.items() if key != "$metadata"}
 
 
-RATE_LIMIT_ATTEMPTS = 4
+RETRY_ATTEMPTS = 4
 
 
 @dataclass(frozen=True)
@@ -283,13 +283,13 @@ class LLMClient:
                 return completion(**params, client=client, num_retries=0)
 
     def _complete_with_backoff(self, params: Dict[str, Any]):
-        """Retry only provider rate limits (HTTP 429) with the shared backoff."""
-        for attempt in range(1, RATE_LIMIT_ATTEMPTS + 1):
+        """Retry transient provider failures (``is_transient_error``) with the shared backoff."""
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
             time.sleep(compute_backoff(attempt, initial_backoff_seconds=2.0, max_backoff_seconds=30.0))
             try:
                 return self._complete(params)
             except Exception as exc:
-                if attempt == RATE_LIMIT_ATTEMPTS or getattr(exc, "status_code", None) != 429:
+                if attempt == RETRY_ATTEMPTS or not is_transient_error(exc):
                     raise
                 self._count(calls=1, unknown_cost_calls=1)
         return None
@@ -343,7 +343,7 @@ class LLMClient:
     ) -> Completion:
         """Send one chat request and account for it.
 
-        Owns provider routing, HTTP 429 backoff, usage/cost accounting and
+        Owns provider routing, transient-failure backoff, usage/cost accounting and
         sanitized ``ExtractionError`` failures; ``params`` are request
         options such as ``temperature`` or ``response_format``. A reply
         without choices raises ``ExtractionError`` carrying its usage.

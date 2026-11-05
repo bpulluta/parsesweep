@@ -202,24 +202,28 @@ def test_real_model_tls_option_is_per_client(tls_server, monkeypatch):
     with pytest.raises(ExtractionError):
         secure.extract("synthetic", {"type": "object"})
     assert len(calls) == 1
+    # An untrusted certificate is terminal: no retry handshakes.
+    assert secure.usage["calls"] == 1
 
 
 @pytest.mark.parametrize("model", ["timeout-model", "unavailable-model"])
 def test_model_transport_failure_does_not_hide_retries(tls_server, monkeypatch, model):
     from psweep.exceptions import ExtractionError
+    from psweep.extraction.llm_client import RETRY_ATTEMPTS
 
     port, cert, calls = tls_server
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(cert))
+    monkeypatch.setattr("psweep.extraction.llm_client.compute_backoff", lambda *_, **__: 0)
     client = LLMClient(
         model=model, api_key="synthetic", base_url=f"https://localhost:{port}/v1",
         timeout=1,
     )
-    started = time.monotonic()
     with pytest.raises(ExtractionError):
         client.extract("synthetic", {"type": "object"})
-    assert time.monotonic() - started < 3
-    assert len(calls) == 1
-    assert client.usage["calls"] == client.usage["unknown_cost_calls"] == 1
+    # Transient failures are retried by the client's own bounded loop only;
+    # every request the endpoint saw is counted.
+    assert len(calls) == RETRY_ATTEMPTS
+    assert client.usage["calls"] == client.usage["unknown_cost_calls"] == len(calls)
 
 
 def test_real_redirect_to_private_address_never_contacts_target(

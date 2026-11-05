@@ -93,6 +93,17 @@ def test_gate_failure_is_not_retried(monkeypatch):
     assert checks == ["https://county.gov/"]
 
 
+def test_sampled_bot_challenge_is_retried(monkeypatch):
+    """Cloudflare challenges some identical requests; the next may pass."""
+    challenged = Response("https://county.gov/doc.pdf", status=403)
+    challenged.headers["cf-mitigated"] = "challenge"
+    responses = [challenged, Response("https://county.gov/doc.pdf")]
+    monkeypatch.setattr(network, "request_get", lambda *_a, **_k: responses.pop(0))
+    response, attempts = send_get("https://county.gov/doc.pdf", retry=(3, 0, 0))
+    assert (response.status_code, attempts) == (200, 2)
+    assert challenged.closed
+
+
 @pytest.mark.parametrize(
     "location", ["/private", "https://outside.org/private"]
 )

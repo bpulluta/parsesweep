@@ -94,6 +94,37 @@ def test_ambiguous_name_uses_address_state():
     assert _hits(text, Roster.build(WASHINGTON, FIELDS)) == _ids(WASHINGTON, "OR")
 
 
+SANTA_CRUZ = [{"state": "AZ", "ahj": "Santa Cruz County"}, {"state": "CA", "ahj": "Santa Cruz County"}]
+
+
+@pytest.mark.parametrize(
+    "layout",
+    [
+        "Jurisdiction Name: Santa Clara | State: CA | PV: TRUE\n"
+        "Jurisdiction Name: Santa Cruz County | State: CA | PV: TRUE\n"
+        "Jurisdiction Name: Santee | State: CA | PV: TRUE",
+        "Jurisdiction: Santa Cruz County | state_abbr: CA",
+        "Santa Clara County\n\nCA\n\nSanta Cruz County\n\nCA\n\nSantee\n\nCA",
+    ],
+)
+def test_ambiguous_name_uses_labelled_or_card_state(layout):
+    text = "Spokane, WA 99201\n" + "x" * 3000 + "\n" + layout
+    assert _hits(text, Roster.build(SANTA_CRUZ, FIELDS)) == _ids(SANTA_CRUZ, "CA")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Washington County solar permits\nSubmit a one-line diagram\n\nOR\n\nsubmit a site plan.",
+        "Submit to the Washington County Planning Department\n\nOR\n\napply online.",
+        "| ID | Jurisdiction | Status |\n|---|---|---|\n| 12 | Washington County | OK |",
+        "Washington County permits are online.\nApplication Status: OK",
+    ],
+)
+def test_uppercase_words_are_not_state_evidence(text):
+    assert _hits(text, Roster.build(WASHINGTON, FIELDS)) == _ids(WASHINGTON, "PA", "OR")
+
+
 def test_ambiguous_name_without_evidence_keeps_all():
     text = "Washington County permits are online."
     assert _hits(text, Roster.build(WASHINGTON, FIELDS)) == _ids(WASHINGTON, "PA", "OR")

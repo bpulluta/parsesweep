@@ -1,5 +1,10 @@
 """One classifier decides which failures may succeed on a later attempt."""
 
+import ssl
+
+import httpx
+import litellm
+import openai
 import pytest
 import requests
 
@@ -9,6 +14,7 @@ from psweep.discovery.retry import (
     error_record,
     is_retryable,
     is_transient_error,
+    may_retry_in_run,
 )
 
 
@@ -49,6 +55,59 @@ def test_transient_error_classification(exc, expected):
     assert is_transient_error(exc) is expected
 
 
+def _provider(name, **extra):
+    return getattr(litellm, name)(
+        message="provider failed", model="m", llm_provider="openai", **extra
+    )
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (_http_error(408), True),
+        (_provider("Timeout"), True),
+        (_provider("APIConnectionError"), True),
+        (_provider("InternalServerError"), True),
+        (_provider("ServiceUnavailableError"), True),
+        (_provider("BadGatewayError"), True),
+        (_provider("RateLimitError"), True),
+        (_provider("BadRequestError"), False),
+        (_provider("AuthenticationError"), False),
+        (_provider("ContextWindowExceededError"), False),
+        (_provider("NotFoundError"), False),
+    ],
+)
+def test_provider_errors_are_classified_by_status(exc, expected):
+    assert is_transient_error(exc) is expected
+
+
+def _caused_by(exc, cause, *, implicit=False):
+    if implicit:
+        exc.__context__ = cause
+    else:
+        exc.__cause__ = cause
+    return exc
+
+
+_REQUEST = httpx.Request("POST", "https://llm.example/v1/chat/completions")
+_CERT = ssl.SSLCertVerificationError("certificate is not trusted")
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (openai.APIConnectionError(request=_REQUEST), True),
+        (openai.APITimeoutError(request=_REQUEST), True),
+        (_caused_by(openai.APIConnectionError(request=_REQUEST), _CERT), False),
+        # litellm maps a certificate failure to a 500 while handling it.
+        (_caused_by(_provider("InternalServerError"), _CERT, implicit=True), False),
+        (_caused_by(requests.ConnectionError("reset"), _CERT), False),
+    ],
+)
+def test_sdk_connection_errors_are_transient_unless_tls_failed(exc, expected):
+    assert is_transient_error(exc) is expected
+
+
 @pytest.mark.parametrize(
     ("status", "header"),
     [
@@ -58,11 +117,22 @@ def test_transient_error_classification(exc, expected):
         (405, "x-amzn-waf-action"),
     ],
 )
-def test_bot_manager_challenges_are_terminal(status, header):
+def test_bot_manager_challenges_retry_in_run_but_are_final(status, header):
+    """Edges sample challenges, so a repeat may pass; a URL challenged on
+    every attempt is a final outcome, not an incomplete target."""
     exc = _http_error(status)
     exc.response.headers[header] = "challenge"
+    assert may_retry_in_run(exc) is True
     assert is_transient_error(exc) is False
     assert error_record(exc, stage="download")["retryable"] is False
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [(_http_error(503), True), (_http_error(403), False), (_http_error(404), False)],
+)
+def test_in_run_retry_otherwise_follows_transient_classification(exc, expected):
+    assert may_retry_in_run(exc) is expected
 
 
 @pytest.mark.parametrize(

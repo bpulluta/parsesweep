@@ -116,9 +116,11 @@ def summary(domain: str) -> dict:
 def solartrace(fake):
     config = Path("config/solartrace")
     config.mkdir(parents=True)
-    for name in ("schema.json", "targets.csv", "samples/ahj_requirements.csv"):
+    for name in ("schema.json", "samples/ahj_requirements.csv"):
         (config / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / "config/solartrace" / name, config / name)
+    # The roster of the fixture corpus, independent of the live targets list.
+    shutil.copy(FIXTURES / "solartrace/targets.csv", config / "targets.csv")
     run = yaml.safe_load((REPO / "config/solartrace/run.yaml").read_text())
     run["validation"] = {"references": ["samples/ahj_requirements.csv"]}
     (config / "run.yaml").write_text(yaml.safe_dump(run, sort_keys=False))

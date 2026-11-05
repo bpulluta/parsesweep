@@ -416,6 +416,40 @@ class TestPerTargetSelection:
         assert selected == [page]
         assert not any("unsupported document type" in n for n in notes)
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://www.gilacountyaz.gov/documents/building_safety_docs.php",
+            "https://a.gov/bids.aspx?bidId=4",
+            "https://a.gov/index.cfm?page=solar",
+            "https://a.gov/codes.nsf/view/solar",
+            "https://a.gov/code/Title.Nine",
+        ],
+    )
+    def test_require_supported_document_keeps_server_routes(self, url):
+        # Unrecognised suffixes are routes whose type GET/MIME decides.
+        sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
+        page = _candidate(url)
+        selected, notes = sel.select([[page]], primary_per_target=1)
+        assert selected == [page]
+        assert not any("unsupported document type" in n for n in notes)
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://a.gov/site-plan.jpg",
+            "https://a.gov/gis.zip",
+            "https://a.gov/x.xls",
+            "https://a.gov/zoning.gz",
+            "https://a.gov/dump.bz2",
+        ],
+    )
+    def test_require_supported_document_rejects_known_unreadable_files(self, url):
+        sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
+        selected, notes = sel.select([[_candidate(url)]], primary_per_target=1)
+        assert selected == []
+        assert any("unsupported document type" in n for n in notes)
+
     def test_target_identity_require_any_templates_matches_jurisdiction(self):
         sel = CandidateSelector(
             exclude_draft=False,

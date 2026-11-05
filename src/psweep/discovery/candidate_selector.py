@@ -9,6 +9,7 @@ Per-target limits keep larger candidate pools from crowding out others.
 
 from __future__ import annotations
 
+import mimetypes
 import re
 from datetime import date
 from pathlib import Path
@@ -18,6 +19,10 @@ from urllib.parse import urlparse
 from .constants import DOCUMENT_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
 from .models import DiscoveryCandidate
 from .urls import matches_url_exclusion, normalize_url_text, url_extension
+
+# Python's built-in type table only; system mime files would make
+# selection depend on the host.
+_KNOWN_FILE_TYPES = mimetypes.MimeTypes()
 
 # ---------------------------------------------------------------------------
 # CandidateSelector
@@ -652,6 +657,12 @@ class CandidateSelector:
 
     @staticmethod
     def _is_supported_document_url(candidate: DiscoveryCandidate) -> bool:
-        """Allow supported files and provisional web documents."""
+        """Reject only URLs naming a known file type that cannot be read.
+
+        Unrecognised suffixes (``.php``, ``.aspx``, ``.cfm`` ...) are server
+        routes; the download decides their type from the response MIME.
+        """
         extension = url_extension(candidate.url or "")
-        return not extension or extension in DOWNLOADABLE_EXTENSIONS
+        if not extension or extension in DOWNLOADABLE_EXTENSIONS:
+            return True
+        return _KNOWN_FILE_TYPES.guess_type(f"file{extension}", strict=False) == (None, None)

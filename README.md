@@ -752,7 +752,7 @@ Copy `.env.example` to `.env` and uncomment one block. Run `psweep init` for int
 
 **Large document timeout** — Add `pages.auto_locate` in your config or increase `max_context`.
 
-**Rate limit errors** — API throttling (429). Wait and retry, or reduce batch size with `-n`. For proxy deployments, exponential backoff is built in.
+**Rate limit errors** — API throttling (429). LLM calls retry rate limits, timeouts, 5xx and dropped connections with exponential backoff; if throttling persists, process fewer files per run with `-n`.
 
 **"No LLM provider configured"** — Check `.env` has one of: `LLM_BASE_URL`+`LLM_API_KEY`, `AZURE_OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `OPENAI_API_KEY`.
 
