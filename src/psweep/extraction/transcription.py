@@ -21,6 +21,7 @@ import subprocess  # noqa: S404 - ffmpeg is a declared pixi dependency
 import tempfile
 import threading
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
+from contextvars import copy_context
 from pathlib import Path
 from typing import Any
 
@@ -190,7 +191,11 @@ class Transcriber:
         with scratch as tmp:
             chunks = _split(source, starts, Path(tmp))
             with ThreadPoolExecutor(max_workers=self._workers) as pool:
-                futures = [pool.submit(self._transcribe_chunk, client, chunk) for chunk in chunks]
+                # Chunk workers keep the caller's context, so logs name the recording.
+                futures = [
+                    pool.submit(copy_context().run, self._transcribe_chunk, client, chunk)
+                    for chunk in chunks
+                ]
                 done, _ = wait(futures, return_when=FIRST_EXCEPTION)
                 failure = next((f.exception() for f in done if f.exception()), None)
                 if failure is not None:

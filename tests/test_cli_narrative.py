@@ -9,11 +9,15 @@ These lock in the design-system contract established by the UI refactor:
 - command source no longer carries ad-hoc colored markup / ASCII dividers.
 """
 
+import logging
 import re
 from pathlib import Path
 
+import pytest
 from rich.console import Console
 
+from psweep.cli import commands_extract
+from psweep.cli.commands import configure_logging
 from psweep.cli.ui import (
     TerminalUI,
     UITheme,
@@ -25,6 +29,7 @@ from psweep.cli.dashboard import (
     DiscoveryDashboard,
     create_discovery_live_dashboard,
 )
+from psweep.utils.log_context import document_scope
 import psweep.cli.ui as ui_module
 
 
@@ -117,6 +122,106 @@ class TestRunViewNarrative:
         assert Verbosity.from_flags(debug=True) is Verbosity.DEBUG
         assert Verbosity.from_flags(verbose=True) is Verbosity.VERBOSE
         assert Verbosity.from_flags() is Verbosity.NORMAL
+
+
+class TestExtractionProgress:
+    """Every running document has a live row and prints a line as it finishes."""
+
+    def test_documents_report_as_they_finish(self, monkeypatch):
+        slow, fast = Path("slow.pdf"), Path("fast.pdf")
+        events = [
+            (slow, None),
+            (fast, None),
+            (fast, {"success": True, "items": 3}),
+            (slow, {"success": False, "error": "LLM request failed: timeout [x]"}),
+        ]
+        console = _record()
+        view = RunView("extract", verbosity=Verbosity.NORMAL, console=console)
+        progress = view.make_progress()
+        monkeypatch.setattr(view, "make_progress", lambda: progress)
+        stages, rows = [], []
+
+        def execute(plan, *, on_progress=None):
+            stages.append(progress.tasks[0].description)
+            for doc, outcome in events:
+                on_progress(doc, outcome)
+                rows.append([task.description for task in progress.documents.tasks])
+            stages.append(progress.tasks[0].description)
+            return "result"
+
+        monkeypatch.setattr(commands_extract, "_execute_extraction", execute)
+        plan = {"pending": [slow, fast], "reused": [Path("kept.pdf")]}
+        assert commands_extract._render_extraction(plan, view) == "result"
+        assert stages == ["Preparing", "Extracting"]
+        assert rows == [["slow.pdf"], ["slow.pdf", "fast.pdf"], ["slow.pdf"], []]
+        assert progress.tasks[0].completed == 2
+        text = console.export_text()
+        assert "Reusing 1 verified record(s); extracting 2 document(s)" in text
+        assert text.index("fast.pdf: 3 items") < text.index(
+            "slow.pdf: LLM request failed: timeout [x]"
+        )
+
+    def test_long_names_are_cut_but_never_their_timer(self):
+        console = _record(width=70)
+        progress = RunView("extract", console=console).make_progress()
+        progress.add_task("Extracting", total=2)
+        progress.documents.add_task("tariff-" * 20 + ".pdf")
+        console.print(progress.get_renderable())
+        bar, row = console.export_text().rstrip().splitlines()
+        assert bar.rstrip().endswith("0/2 • 0:00:00 • -:--:--")
+        assert row.startswith("  0:00:00 tariff-tariff-")
+        assert row.rstrip().endswith("…") and len(row.rstrip()) == 70
+
+    def test_quiet_extraction_prints_nothing(self, monkeypatch):
+        monkeypatch.setattr(
+            commands_extract,
+            "_execute_extraction",
+            lambda plan, *, on_progress=None: on_progress,
+        )
+        console = _record()
+        view = RunView("extract", verbosity=Verbosity.QUIET, console=console)
+        plan = {"pending": [Path("a.pdf")], "reused": []}
+        assert commands_extract._render_extraction(plan, view) is None
+        assert console.export_text() == ""
+
+
+@pytest.fixture
+def restore_logging():
+    root, own = logging.getLogger(), logging.getLogger("psweep")
+    saved = root.level, root.handlers[:], own.level
+    yield
+    root.setLevel(saved[0])
+    root.handlers[:] = saved[1]
+    own.setLevel(saved[2])
+
+
+@pytest.mark.usefixtures("restore_logging")
+def test_debug_logging_lowers_only_parsesweep_loggers():
+    stage, vendor = logging.getLogger("psweep.extraction.llm_client"), logging.getLogger("vendor")
+    configure_logging(Verbosity.DEBUG.value)
+    assert stage.isEnabledFor(logging.DEBUG)
+    assert not vendor.isEnabledFor(logging.INFO)
+    configure_logging(Verbosity.NORMAL.value)
+    assert stage.isEnabledFor(logging.WARNING) and not stage.isEnabledFor(logging.INFO)
+    configure_logging(Verbosity.QUIET.value)
+    assert not stage.isEnabledFor(logging.WARNING)
+
+
+@pytest.mark.usefixtures("restore_logging")
+def test_log_lines_name_their_document():
+    configure_logging(Verbosity.NORMAL.value)
+    (handler,) = logging.getLogger().handlers
+
+    def shown(message):
+        record = logging.makeLogRecord({"msg": message})
+        return handler.render_message(record, handler.format(record)).plain
+
+    assert shown("model timed out") == "model timed out"
+    with document_scope("[draft] a.pdf"):
+        assert shown("model timed out") == "[draft] a.pdf: model timed out"
+    with document_scope("a.pdf"):
+        assert shown("No text in a.pdf") == "No text in a.pdf"
+    assert shown("model timed out") == "model timed out"
 
 
 class TestLiveDashboard:

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 
 import click
 from dotenv import load_dotenv
+from rich.markup import escape
 
 from psweep.config import RuntimeConfigError
 from psweep.exceptions import ParseSweepError
@@ -15,18 +17,43 @@ from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 
 
+def _duration(seconds: float) -> str:
+    """Compact wall-clock duration such as ``42s`` or ``8m 05s``."""
+    minutes, secs = divmod(round(seconds), 60)
+    return f"{minutes}m {secs:02d}s" if minutes else f"{secs}s"
+
+
 def _render_extraction(plan, view):
-    """Keep progress display outside shared extraction execution."""
+    """Give each running document a live row and a lasting line when it finishes."""
+    progress = view.make_progress()
+    if progress is None or not plan["pending"]:
+        return _execute_extraction(plan)
+    if plan["reused"]:
+        view.info(
+            f"Reusing {len(plan['reused'])} verified record(s); "
+            f"extracting {len(plan['pending'])} document(s)"
+        )
+    # "Preparing" covers optional page/section targeting before any document starts.
+    overall = progress.add_task("Preparing", total=len(plan["pending"]))
+    running = {}
 
-    def progress(doc_path, result):
-        if view.is_quiet or result is None:
+    def on_progress(doc_path, result):
+        name = escape(doc_path.name)
+        if result is None:
+            progress.update(overall, description="Extracting")
+            running[doc_path] = progress.documents.add_task(name), time.monotonic()
             return
+        row, started = running.pop(doc_path)
+        progress.documents.remove_task(row)
+        took = _duration(time.monotonic() - started)
         if result["success"]:
-            view.success(f"{doc_path.name}: {result['items']} items")
+            view.status("success", f"{name}: {result['items']} items", took)
         else:
-            view.error(f"Extraction failed for {doc_path.name}", result["error"])
+            view.status("error", f"{name}: {escape(result['error'])}", took)
+        progress.advance(overall)
 
-    return _execute_extraction(plan, on_progress=progress)
+    with progress:
+        return _execute_extraction(plan, on_progress=on_progress)
 
 
 @click.command(epilog=f"Supported file types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}")
