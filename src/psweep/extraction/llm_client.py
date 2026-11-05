@@ -407,13 +407,20 @@ class LLMClient:
                 )
                 raise self._provider_error(retry_error) from None
 
-        logger.debug("%s answered in %.1fs", self.raw_model, time.monotonic() - started)
         usage = getattr(response, "usage", None)
         measured = {
             "cost": self._cost(response),
             "input_tokens": getattr(usage, "prompt_tokens", None),
             "output_tokens": getattr(usage, "completion_tokens", None),
         }
+        # Output tokens drive response time: every extracted item is written out.
+        logger.debug(
+            "%s answered in %.1fs (%s prompt, %s output tokens)",
+            self.raw_model,
+            time.monotonic() - started,
+            measured["input_tokens"],
+            measured["output_tokens"],
+        )
         self._count(
             cost=measured["cost"] or 0,
             input_tokens=measured["input_tokens"] or 0,

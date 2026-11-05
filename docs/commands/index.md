@@ -18,8 +18,8 @@ Options shared across commands:
   stage.
 - `--quiet`, `--verbose`, `--debug` — minimal, detailed or diagnostic output;
   `run` forwards the choice to every stage. `--debug` adds ParseSweep's own
-  debug logs, such as each LLM request's size, timeout and response time.
-  Third-party libraries stay at warnings.
+  debug logs, such as each LLM request's size, timeout, response time and
+  token counts. Third-party libraries stay at warnings.
 - Exit codes: `0` success, `1` failure, `2` nothing found, `3` incomplete
   (re-run to retry the rest).
 

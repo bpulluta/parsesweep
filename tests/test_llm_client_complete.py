@@ -287,7 +287,8 @@ def test_retries_are_logged_without_provider_text(monkeypatch, caplog, failure, 
     ]
     debug = [r.getMessage() for r in logged if r.levelno == logging.DEBUG]
     assert "Sending gemini-3.5-flash request (2 prompt chars, 90s timeout)" in debug
-    assert any(message.startswith("gemini-3.5-flash answered in ") for message in debug)
+    answered = [m for m in debug if m.startswith("gemini-3.5-flash answered in ")]
+    assert len(answered) == 1 and answered[0].endswith("s (10 prompt, 5 output tokens)")
     assert not any("sk-123" in r.getMessage() or "://" in r.getMessage() for r in logged)
 
 

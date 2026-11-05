@@ -73,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `psweep run --debug` forwards `--debug` to every stage. LLM calls log
-  their prompt size, timeout and response time at debug level.
+  their prompt size, timeout, response time and token counts at debug level.
 - Public-only DNS-pinned acquisition, decoded response limits, verified local
   TLS integration tests, and an opt-in external smoke-test layer.
 - Protected operating mode with an approved HTTPS model endpoint, private

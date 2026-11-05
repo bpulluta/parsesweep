@@ -86,10 +86,14 @@ up to 4 attempts in total, and each retry logs a warning that names the
 document, such as `tariffs.pdf: gpt-4o did not finish within the 120s timeout;
 retrying in 2s (attempt 2/4)`. Every attempt resends the whole prompt and may
 be billed, and a model that needs longer than the timeout usually needs it
-again. For long documents and reasoning models, raise
-`extraction.timeout_seconds` (default `120`, or `LLM_TIMEOUT`) instead of
-relying on retries. Add `--debug` to log each request's size and response
-time.
+again.
+
+Response time grows mostly with the answer, because every item is written out
+in full: a one-page sheet that lists many items can take minutes, and page
+targeting only trims long inputs. First narrow the schema's scope to the
+subset you need, such as one customer class. If calls still run long, raise
+`extraction.timeout_seconds` (default `120`, or `LLM_TIMEOUT`). Add `--debug`
+to log each request's size, response time and token counts.
 
 ## Cost and speed
 
