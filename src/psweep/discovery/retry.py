@@ -7,8 +7,10 @@ Every in-run retry loop and every cross-run completion decision uses these, so
 from __future__ import annotations
 
 import re
+import ssl
 from collections.abc import Mapping
 
+import openai
 import requests
 
 from psweep.utils.error_taxonomy import build_error_record
@@ -37,8 +39,9 @@ _TRANSIENT_MARKERS: tuple[str, ...] = (
     "net::err_empty_response",
 )
 _URL = re.compile(r"\S+://\S+")
-# Edge bot-manager challenges (Cloudflare, Vercel, AWS WAF) answer 403/429/503
-# to every non-browser client; repeating the request cannot pass them.
+# Edge bot-manager challenges (Cloudflare, Vercel, AWS WAF) answer 403/429/503.
+# Edges sample them (Cloudflare challenged ~1 in 3 identical requests to county
+# sites), so a run repeats one, but a URL challenged on every attempt is final.
 _CHALLENGE_HEADERS: tuple[str, ...] = (
     "cf-mitigated",
     "x-vercel-mitigated",
@@ -65,38 +68,56 @@ def compute_backoff(
     return min(wait, max_backoff_seconds)
 
 
+def _is_challenge(exc: BaseException) -> bool:
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None) or {}
+    return isinstance(exc, requests.exceptions.HTTPError) and any(
+        name in headers for name in _CHALLENGE_HEADERS
+    )
+
+
+def may_retry_in_run(exc: BaseException) -> bool:
+    """Return True when the same run should repeat the request: transient
+    errors and sampled bot-manager challenges. Only transient errors leave
+    a target incomplete for the next run (``is_transient_error``)."""
+    return is_transient_error(exc) or _is_challenge(exc)
+
+
 def is_transient_error(exc: BaseException) -> bool:
     """Return True when a later attempt of the same request may succeed.
 
-    Timeouts, connection errors, truncated streams and HTTP 429/5xx are
+    Timeouts, connection errors, truncated streams and HTTP 408/429/5xx are
     transient unless a bot-manager challenge answered. Status-less browser
     failures (``Failed to fetch`` also covers CORS and mixed-content
-    rejections) are transient only on network markers; TLS certificate errors
-    and other HTTP 4xx responses are terminal. A policy rejection is transient only when its
+    rejections) are transient only on network markers; TLS errors (anywhere
+    in the cause chain) and other HTTP 4xx responses are terminal. A policy rejection is transient only when its
     evaluation failed transiently (e.g. robots.txt timed out) or a transient
-    error caused it. Typed errors are classified by type and status; only
-    untyped errors fall back to message markers.
+    error caused it. Typed errors (including LLM provider errors) are
+    classified by type and status; only untyped errors fall back to message
+    markers.
     """
     if isinstance(exc, NetworkPolicyError):
         cause = exc.__cause__
         return bool(getattr(exc.result, "retryable", False)) or (
             cause is not None and is_transient_error(cause)
         )
-    if isinstance(exc, requests.exceptions.SSLError):
+    if _tls_failure(exc):
         return False
     if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
-        headers = exc.response.headers or {}
-        return _transient_status(exc.response.status_code) and not any(
-            name in headers for name in _CHALLENGE_HEADERS
-        )
+        return _transient_status(exc.response.status_code) and not _is_challenge(exc)
     if isinstance(exc, BrowserDownloadError) and exc.status is not None:
         return _transient_status(exc.status)
+    # Provider SDK errors (litellm/openai) carry the HTTP status they map to.
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return _transient_status(status)
     if isinstance(
         exc,
         (
             requests.exceptions.Timeout,
             requests.exceptions.ConnectionError,
             requests.exceptions.ChunkedEncodingError,
+            openai.APIConnectionError,
             TimeoutError,
             ConnectionError,
         ),
@@ -106,8 +127,20 @@ def is_transient_error(exc: BaseException) -> bool:
     return any(marker in message for marker in _TRANSIENT_MARKERS)
 
 
+def _tls_failure(exc: BaseException | None) -> bool:
+    """Return True when a TLS error raised or caused ``exc``; SDKs wrap
+    certificate failures as connection errors or HTTP 500s."""
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, (ssl.SSLError, requests.exceptions.SSLError)):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
 def _transient_status(status: int) -> bool:
-    return status == 429 or status >= 500
+    return status in {408, 429} or status >= 500
 
 
 def browser_may_recover(exc: BaseException) -> bool:

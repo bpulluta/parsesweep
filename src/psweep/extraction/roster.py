@@ -9,6 +9,7 @@ import re
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any
 
 from psweep.config import RuntimeConfigError
@@ -21,6 +22,11 @@ WINDOW_CONTEXT_CHARS = 400
 _PUNCTUATION = re.compile(r"[^\w\s]|_")
 _LINE_HYPHEN = re.compile(r"(\w)[-\u2010\u2011]\s*\n\s*(?=\w)")
 _ADDRESS_STATE = re.compile(r",\s*([A-Z]{2})\b|\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b")
+# A row cell whose label names a state ("State: CA", "state_abbr: CA").
+_LABELLED_STATE = re.compile(
+    r"(?:^|\|)[^|:\n]*?(?<![A-Za-z])(?i:state)(?![A-Za-z])[^|:\n]*:[ \t]*([A-Z]{2})[ \t]*(?=\||$)",
+    re.M,
+)
 _STATE_CODES = frozenset(US_STATES.values())
 _ELLIPSIS = re.compile(r"\u2026|\.{3}")
 
@@ -111,12 +117,23 @@ class Roster:
         return 0
 
     def states(self, text: str) -> set[str]:
-        """State evidence: full names outside roster-name spans, codes in addresses."""
+        """State evidence: full names outside roster-name spans, codes in
+        addresses, in state-labelled cells, or alone on the line after a line
+        that is exactly a roster name (card layouts)."""
         found = {
             code
             for match in _ADDRESS_STATE.finditer(text)
             if (code := match.group(1) or match.group(2)) in _STATE_CODES
         }
+        found.update(
+            code for match in _LABELLED_STATE.finditer(text) if (code := match.group(1)) in _STATE_CODES
+        )
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        found.update(
+            line
+            for previous, line in pairwise(lines)
+            if line in _STATE_CODES and tuple(normalize(previous).split()) in self.index
+        )
         tokens, segment, start = normalize(text).split(), [], 0
         while start < len(tokens):
             size = self._name_at(tokens, start)

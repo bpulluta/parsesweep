@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 from urllib.parse import urljoin, urlparse
 
-from .retry import compute_backoff, is_transient_error
+from .retry import compute_backoff, may_retry_in_run
 from .transport import (
     MAX_PAGE_BYTES, NetworkPolicyError, request_get, validate_public_url,
 )
@@ -163,9 +163,10 @@ def send_get(
     All GETs, including redirects and retries, check ``gate`` and wait
     on ``limiter``. ``response_url_gate`` checks the final URL before
     callers use the body. Redirect/error responses are closed; callers
-    own and must close successful responses. Status errors are retried
-    with discovery backoff. Robots lookup disables ``raise_for_status``
-    to interpret missing rules without invoking a recursive gate.
+    own and must close successful responses. ``may_retry_in_run``
+    errors are retried with discovery backoff. Robots lookup disables
+    ``raise_for_status`` to interpret missing rules without invoking a
+    recursive gate.
     ``max_bytes`` and ``stream`` bound the body (see ``request_get``).
     """
     max_attempts, initial_backoff, max_backoff = retry
@@ -195,7 +196,7 @@ def send_get(
                 not isinstance(exc, Exception)
                 or isinstance(exc, NetworkPolicyError)
                 or attempt >= max_attempts
-                or not is_transient_error(exc)
+                or not may_retry_in_run(exc)
             ):
                 raise
             delay = compute_backoff(

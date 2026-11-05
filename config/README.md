@@ -127,9 +127,10 @@ and `filetype:` hints are not enforcement. Concrete provider/vendor source
 filters belong in each domain config; parsers do not add them automatically.
 Soft domain ranking boosts do not replace an allowlist.
 
-PDF candidates are preferred to web pages when present. HTML/HTM and
-extensionless HTTP(S) URLs remain provisionally eligible with the default
-`require_supported_document`; known non-document binaries are excluded and
+PDF candidates are preferred to web pages when present. HTML/HTM,
+extensionless and server-route (`.php`, `.aspx`, `.cfm` ...) HTTP(S) URLs
+remain provisionally eligible with the default `require_supported_document`;
+known non-document file types (images, archives ...) are excluded and
 GET/MIME checks verify ambiguous candidates. No `require_supported_document:
 false` workaround is needed for web documents. Eligibility does not certify
 semantic relevance.
@@ -250,7 +251,7 @@ Design rule:
 | `exclude_text_patterns` | list | Case-insensitive regex exclusions on candidate text evidence. |
 | `exclude_url_patterns` | list | Case-insensitive regex guards on the original URL. |
 | `relevance_allowed_domain_patterns` | list | Preferred host patterns; **soft ranking boost only**, not a host allowlist. |
-| `require_supported_document` | bool | Default supported-document eligibility includes provisional HTML/HTM and extensionless HTTP(S) URLs; GET/MIME verifies ambiguity. |
+| `require_supported_document` | bool | Default supported-document eligibility includes provisional HTML/HTM, extensionless and server-route (`.php`, `.aspx` ...) HTTP(S) URLs; GET/MIME verifies ambiguity. |
 | `target_identity_require_any_templates` | list | Candidate must match at least one rendered identity hint. |
 | `target_identity_require_all_templates` | list | Candidate must match all rendered identity hints. |
 | `target_identity_exclude_any_templates` | list | Template-driven negative identity hints. |
