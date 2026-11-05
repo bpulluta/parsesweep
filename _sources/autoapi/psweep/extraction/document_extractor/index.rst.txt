@@ -7,7 +7,6 @@ psweep.extraction.document_extractor
 
    Schema-driven extraction with measured usage and scope limits.
 
-   Regular extraction is single-model. Multi-model QA/QC runs separately.
    Structural validation does not certify source grounding or accuracy.
 
 
@@ -24,21 +23,9 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: DocumentExtractor(api_key: str = None, model: str = DEFAULT_MODEL, max_context_chars: int = DEFAULT_MAX_CONTEXT, schema_metadata=None, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: Optional[str] = None, timeout: Optional[int] = None, reasoning_models: Optional[List[str]] = None)
+.. py:class:: DocumentExtractor(api_key: str | None = None, model: str = DEFAULT_MODEL, max_context_chars: int = DEFAULT_MAX_CONTEXT, provider: str | None = None, azure_endpoint: str | None = None, azure_api_version: str | None = None, context_windows: dict[str, int] | None = None, base_url: str | None = None, timeout: int | None = None, reasoning_models: list[str] | None = None)
 
-   Universal document extractor with traceability and configurable context.
-
-   Architecture:
-
-   1. LLM Structured Extraction: Fast extraction with schema-driven parsing
-   2. Multi-Model QA/QC: Validates via multiple models (run separately via `psweep validate`)
-
-   Works with any document type and JSON schema - fully domain-agnostic.
-
-   Architecture:
-
-   - LLMClient: Handles all API calls via LiteLLM (100+ providers)
-   - TextProcessor: Optimizes text and normalizes output
+   Domain-agnostic, schema-driven document extractor (LLM calls via LiteLLM).
 
    .. rubric:: Examples
 
@@ -55,7 +42,6 @@ Module Contents
    :type model: str
    :param max_context_chars: Maximum characters to extract from document (default: 400000)
    :type max_context_chars: int
-   :param schema_metadata: Optional SchemaMetadata for metadata-driven processing
    :param provider: LLM provider ("openai", "azure", "anthropic", "gemini", etc.)
    :type provider: str
    :param azure_endpoint: Azure OpenAI endpoint URL (for Azure provider)
@@ -79,16 +65,14 @@ Module Contents
    :type reasoning_models: Optional[List[str]]
 
 
-   .. py:method:: extract(text: str, schema: Dict[str, Any]) -> ExtractionResult
+   .. py:method:: extract(text: str, schema: dict[str, Any]) -> ExtractionResult
 
       Extract structured data from document.
 
       This method orchestrates:
 
       1. LLM Structured Extraction - Fast, schema-driven parsing
-      2. Post-processing - Normalization and sanity checks
-
-      For multi-model QA/QC validation, use the CLI validate stage.
+      2. Post-processing - Normalization
 
       :param text: Full document text to extract from
       :type text: str
@@ -102,7 +86,6 @@ Module Contents
                 - cost: Total API cost in USD
                 - processing_time: Total time in seconds
                 - validation_notes: List of warnings/insights
-                - validation_report: Reserved for future use
       :rtype: ExtractionResult
 
       .. rubric:: Examples

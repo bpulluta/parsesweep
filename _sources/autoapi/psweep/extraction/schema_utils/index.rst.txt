@@ -15,19 +15,30 @@ Functions
 .. autoapisummary::
 
    psweep.extraction.schema_utils.build_schema_validator
+   psweep.extraction.schema_utils.evidence_paths
    psweep.extraction.schema_utils.load_schema
    psweep.extraction.schema_utils.record_validator
+   psweep.extraction.schema_utils.strict_compatible
 
 
 Module Contents
 ---------------
 
-.. py:function:: build_schema_validator(schema: Dict[str, Any])
+.. py:function:: build_schema_validator(schema: dict[str, Any])
 
    Validate a schema definition and return its format-aware validator.
 
 
-.. py:function:: load_schema(schema_path: Union[str, pathlib.Path]) -> Dict[str, Any]
+.. py:function:: evidence_paths(schema: dict[str, Any]) -> list[tuple[str, ...]]
+
+   Return paths of ``{value, quote}`` evidence objects (``*`` = array item).
+
+   An object whose properties are exactly ``value`` and ``quote`` is an
+   evidence field; both must be required, ``value`` must accept null, and
+   ``quote`` must be a nullable string.
+
+
+.. py:function:: load_schema(schema_path: str | pathlib.Path) -> dict[str, Any]
 
    Load JSON schema from file.
 
@@ -43,5 +54,10 @@ Module Contents
 .. py:function:: record_validator()
 
    Load the canonical record-envelope validator once per process.
+
+
+.. py:function:: strict_compatible(node: Any) -> bool
+
+   True when every object is closed and fully required, without unsupported keywords.
 
 

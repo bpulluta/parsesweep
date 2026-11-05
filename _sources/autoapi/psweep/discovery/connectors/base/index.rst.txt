@@ -16,6 +16,7 @@ Classes
 
    psweep.discovery.connectors.base.BaseDiggerConnector
    psweep.discovery.connectors.base.BaseSeekerConnector
+   psweep.discovery.connectors.base.CrawlResult
    psweep.discovery.connectors.base.DiggerArtifact
    psweep.discovery.connectors.base.DiggerInput
    psweep.discovery.connectors.base.SeekerInput
@@ -34,13 +35,13 @@ Module Contents
    Implementations crawl pages and return normalized artifact candidates.
 
 
-   .. py:method:: discover(digger_input: DiggerInput) -> list[DiggerArtifact]
+   .. py:method:: discover(digger_input: DiggerInput) -> CrawlResult
       :abstractmethod:
 
 
-      Discover candidate artifacts from seed pages within crawl budgets.
+      Discover candidate artifacts linked from source pages within crawl budgets.
 
-      :rtype: Normalized digger artifacts for downstream validation/scoring.
+      :rtype: Normalized digger artifacts and the sources left incomplete.
 
 
 
@@ -93,6 +94,15 @@ Module Contents
 
       Check if this connector supports the given provider name.
 
+
+
+.. py:class:: CrawlResult
+
+   Crawl outcome: linked artifacts plus sources whose crawl is unfinished.
+
+   ``incomplete_sources`` are source pages whose crawl hit a retryable fetch
+   failure or ran out of the ``max_pages``/``max_files`` budget, so they must
+   be crawled again on a later run.
 
 
 .. py:class:: DiggerArtifact

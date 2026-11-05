@@ -24,11 +24,11 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_range: Optional[tuple] = None, ocr_corrections: Optional[list] = None, *, return_meta: bool = False)
+.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_range: tuple | None = None, ocr_corrections: list | None = None, *, return_meta: bool = False, transcriber=None)
 
    Extract text from any supported document format.
 
-   Supports: PDF, DOCX, TXT, XLSX, CSV, DOC, HTML
+   Supports every type in ``SUPPORTED_EXTENSIONS``.
 
    :param file_path: Path to the document
    :type file_path: Path
@@ -39,6 +39,8 @@ Module Contents
    :type ocr_corrections: Optional[list]
    :param return_meta: Return a text/metadata pair with actual PDF scope when True.
    :type return_meta: bool
+   :param transcriber: Transcribes uncached audio; without one, only cached transcripts.
+   :type transcriber: Optional[transcription.Transcriber]
 
    :returns: Text, or ``(text, metadata)`` when ``return_meta`` is True.
    :rtype: str or tuple

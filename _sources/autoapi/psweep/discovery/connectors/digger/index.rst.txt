@@ -5,8 +5,16 @@ psweep.discovery.connectors.digger
 
 .. autoapi-nested-parse::
 
-   Digger connector abstraction and lightweight provider resolver.
+   Crawl connectors (HTTP and Selenium) sharing one bounded link-following loop.
 
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.connectors.digger.CrawlAbortError
 
 
 Classes
@@ -15,7 +23,6 @@ Classes
 .. autoapisummary::
 
    psweep.discovery.connectors.digger.HttpDiggerConnector
-   psweep.discovery.connectors.digger.NullDiggerConnector
    psweep.discovery.connectors.digger.SeleniumDiggerConnector
 
 
@@ -24,52 +31,41 @@ Functions
 
 .. autoapisummary::
 
+   psweep.discovery.connectors.digger.crawl
+   psweep.discovery.connectors.digger.matches_include_patterns
    psweep.discovery.connectors.digger.resolve_digger_connector
 
 
 Module Contents
 ---------------
 
+.. py:exception:: CrawlAbortError
+
+   Bases: :py:obj:`RuntimeError`
+
+
+   A crawl-wide configuration failure; aborts instead of skipping a page.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
 .. py:class:: HttpDiggerConnector
 
    Bases: :py:obj:`psweep.discovery.connectors.base.BaseDiggerConnector`
 
 
-   HTTP-based digger provider for real discovery from live hub/seed pages.
+   Crawl over HTTP, escalating JS-rendered shells to a browser when enabled.
 
 
-   .. py:method:: discover(digger_input: psweep.discovery.connectors.base.DiggerInput) -> list[psweep.discovery.connectors.base.DiggerArtifact]
+   .. py:method:: discover(digger_input: psweep.discovery.connectors.base.DiggerInput) -> psweep.discovery.connectors.base.CrawlResult
 
-      Crawl seed URLs over HTTP and return discovered artifacts.
-
-
-
-   .. py:method:: supports_provider(provider: str) -> bool
-
-      Return True for the HTTP-crawl provider names.
-
-
-
-.. py:class:: NullDiggerConnector
-
-   Bases: :py:obj:`psweep.discovery.connectors.base.BaseDiggerConnector`
-
-
-   Default digger connector placeholder.
-
-   This connector keeps the runtime contract stable while concrete
-   crawlers (for example Crawlee/Playwright) are implemented in later slices.
-
-
-   .. py:method:: discover(digger_input: psweep.discovery.connectors.base.DiggerInput) -> list[psweep.discovery.connectors.base.DiggerArtifact]
-
-      Return artifacts for the seed URLs without crawling (seed-only).
+      Crawl source pages over HTTP and return discovered artifacts.
 
 
 
    .. py:method:: supports_provider(provider: str) -> bool
 
-      Return True for the seed-only / null provider names.
+      Return True for the ``http`` provider.
 
 
 
@@ -78,30 +74,46 @@ Module Contents
    Bases: :py:obj:`psweep.discovery.connectors.base.BaseDiggerConnector`
 
 
-   Browser-based digger for bot-protected sites (Akamai/Cloudflare).
+   Crawl through headless Chrome for bot-protected sites.
 
-   Drives a real headless Chrome (via :mod:`..browser`) to crawl pages that
-   reject requests-based clients at the edge, extracting document links with
-   the same filtering the HTTP digger uses (including extension-less links via
-   ``include_url_patterns``). Discovered artifacts carry ``source_seed``
-   provenance. Downloads for these sites must also go through the browser
-   (``browser_mode: true``) since edge managers fingerprint the TLS layer.
+   Uses the same link filters as HTTP; downloads from these sites also need
+   ``crawl.browser_downloads`` since edge managers fingerprint TLS.
 
 
-   .. py:method:: discover(digger_input: psweep.discovery.connectors.base.DiggerInput) -> list[psweep.discovery.connectors.base.DiggerArtifact]
+   .. py:method:: discover(digger_input: psweep.discovery.connectors.base.DiggerInput) -> psweep.discovery.connectors.base.CrawlResult
 
-      Crawl seed URLs via a headless browser and return artifacts.
+      Crawl source pages via a headless browser and return artifacts.
 
 
 
    .. py:method:: supports_provider(provider: str) -> bool
 
-      Return True for the headless-browser provider names.
+      Return True for the ``selenium`` provider.
 
 
 
-.. py:function:: resolve_digger_connector(provider: str | None = None) -> psweep.discovery.connectors.base.BaseDiggerConnector
+.. py:function:: crawl(digger_input: psweep.discovery.connectors.base.DiggerInput, fetch_links: LinkFetcher, source: str) -> psweep.discovery.connectors.base.CrawlResult
 
-   Resolve digger connector by provider name.
+   Follow links breadth-first from each source page within the crawl budgets.
+
+   Sources are pages at depth 0 (any non-document URL, including ``.html``);
+   a page is fetched only while its depth is below ``max_depth``. Document
+   links become artifacts attributed to their source URL. When link-text
+   patterns are set, only matching pages are followed, and each is also an
+   artifact (e.g. "Next" pagination of a listing). Deduplication is per source, so
+   a link reachable from several sources is attributed to each; a page shared
+   by several sources is fetched once. A source is incomplete when one of its
+   pages failed with a retryable error or the page/file budget cut off a link
+   it would have kept or followed.
+
+
+.. py:function:: matches_include_patterns(url: str, link_text: str, digger_input: psweep.discovery.connectors.base.DiggerInput) -> bool
+
+   Apply ``include_url_patterns`` to the URL and ``include_link_text_patterns`` to link text.
+
+
+.. py:function:: resolve_digger_connector(provider: str) -> psweep.discovery.connectors.base.BaseDiggerConnector
+
+   Resolve the crawl connector for ``crawl.provider`` (http or selenium).
 
 

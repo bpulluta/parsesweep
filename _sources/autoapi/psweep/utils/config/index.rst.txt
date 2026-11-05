@@ -28,27 +28,13 @@ Functions
 Module Contents
 ---------------
 
-.. py:class:: Config(project_root: Optional[pathlib.Path] = None)
+.. py:class:: Config(project_root: pathlib.Path | None = None)
 
-   Global configuration for the ParseSweep toolkit.
-
-   Manages paths for schemas, API keys, and other settings.
-   Can be initialized from environment variables or set programmatically.
-
-   Initialize configuration.
-
-   :param project_root: Root directory of the project (auto-detected if None)
-   :type project_root: Optional[Path]
+   Global toolkit configuration: project paths and LLM provider settings.
 
 
-.. py:function:: get_config(project_root: Optional[pathlib.Path] = None) -> Config
+.. py:function:: get_config(project_root: pathlib.Path | None = None) -> Config
 
-   Get the global configuration instance.
-
-   :param project_root: Optional project root (used only on first call)
-   :type project_root: Optional[Path]
-
-   :returns: Config instance
-   :rtype: Config
+   Return the global Config (``project_root`` applies only on first call).
 
 

@@ -7,9 +7,16 @@ psweep.extraction.provenance
 
    Provenance and lineage helpers for the extraction stage.
 
-   Identify attempts and tie records to inputs and discovery hints.
-   No CLI dependencies; validation retains its deterministic run identity.
+   Tie records to inputs and discovery hints. No CLI dependencies.
 
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.provenance.SourceContext
 
 
 Functions
@@ -19,30 +26,35 @@ Functions
 
    psweep.extraction.provenance.build_run_manifest
    psweep.extraction.provenance.build_source_context_map
-   psweep.extraction.provenance.generate_run_id
    psweep.extraction.provenance.prepend_source_context
+   psweep.extraction.provenance.source_context
 
 
 Module Contents
 ---------------
 
-.. py:function:: build_run_manifest(*, run_id: str, mode: str, schema_path: pathlib.Path, provider: str, model: str, runtime_artifact: dict[str, Any] | None, doc_files: list[pathlib.Path], successful_output_paths: list[pathlib.Path], started_at: str, finished_at: str, total_processed: int, successful_count: int, failed_count: int, failed_results: list[dict[str, Any]] | None = None, costs: dict[str, Any] | None = None) -> dict[str, Any]
+.. py:class:: SourceContext
 
-   Build a run manifest for extraction and validation executions.
-
-
-.. py:function:: build_source_context_map(input_path: pathlib.Path | None, from_index: str | None) -> dict[str, dict[str, Any]]
-
-   Map paths to hints, permitting only unique basename fallbacks.
+   Deterministic discovery provenance for one curated document.
 
 
-.. py:function:: generate_run_id(*, schema_path: pathlib.Path, provider: str, model: str, enable_validation: bool, doc_files: list[pathlib.Path], artifact_id: str | None) -> str
+.. py:function:: build_run_manifest(*, run_id: str, schema_path: pathlib.Path, provider: str, model: str, runtime_artifact: dict[str, Any] | None, doc_files: list[pathlib.Path], successful_output_paths: list[pathlib.Path], started_at: str, finished_at: str, total_processed: int, successful_count: int, failed_count: int, failed_results: list[dict[str, Any]] | None = None, costs: dict[str, Any] | None = None) -> dict[str, Any]
 
-   Identify attempts uniquely, preserving validation identity.
+   Build an extraction run manifest.
 
 
-.. py:function:: prepend_source_context(text: str, doc_path: pathlib.Path, context_map: dict[str, dict[str, Any]]) -> str
+.. py:function:: build_source_context_map(input_path: pathlib.Path | None) -> dict[str, SourceContext]
+
+   Map paths to provenance, permitting only unique basename fallbacks.
+
+
+.. py:function:: prepend_source_context(text: str, info: SourceContext | None) -> str
 
    Prepend discovery hints, separate from document facts.
+
+
+.. py:function:: source_context(doc_path: pathlib.Path, context_map: dict[str, SourceContext]) -> SourceContext | None
+
+   Look up a document's provenance by canonical, relative, or unique name.
 
 

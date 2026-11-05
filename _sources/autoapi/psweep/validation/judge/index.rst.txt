@@ -1,0 +1,76 @@
+psweep.validation.judge
+=======================
+
+.. py:module:: psweep.validation.judge
+
+.. autoapi-nested-parse::
+
+   LLM judge: batched, cached, evidence-only verdicts on contested cells.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.validation.judge.Candidate
+   psweep.validation.judge.Item
+   psweep.validation.judge.Verdict
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.validation.judge.cell_item
+   psweep.validation.judge.class_key
+   psweep.validation.judge.judge
+   psweep.validation.judge.judge_identity
+   psweep.validation.judge.load_cache
+
+
+Module Contents
+---------------
+
+.. py:class:: Candidate
+
+   One candidate value with its evidence.
+
+
+.. py:class:: Item
+
+   One contested cell and its candidate values.
+
+
+.. py:class:: Verdict
+
+   Judge verdict for one item, with its cost and token usage.
+
+
+.. py:function:: cell_item(field: str, description: str, holders: collections.abc.Iterable[Candidate], model: dict[str, Any]) -> Item
+
+   One item per cell: a representative per value class, independent of holder order.
+
+
+.. py:function:: class_key(value: str) -> str
+
+   Canonical string of ``value_key``: ``1,500`` = ``1500.0``, text casefolded.
+
+
+.. py:function:: judge(items: collections.abc.Iterable[Item], client: Any, cache_path: pathlib.Path, *, workers: int) -> tuple[dict[str, Verdict], dict]
+
+   Verdicts by item key plus this run's usage; each batch is cached on completion.
+
+
+.. py:function:: judge_identity(stage: str | None, **kwargs: Any) -> dict[str, Any]
+
+   Judge model identity for cache keys: resolved client kwargs minus api_key.
+
+
+.. py:function:: load_cache(path: pathlib.Path) -> dict[str, Verdict]
+
+   Read the append-only JSONL cache; later lines win and torn lines are skipped.
+
+

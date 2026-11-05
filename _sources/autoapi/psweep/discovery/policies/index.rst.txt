@@ -26,7 +26,7 @@ Module Contents
    Evaluate robots.txt and manual ToS acknowledgement policy controls.
 
 
-   .. py:method:: evaluate(*, url: str, ssl_verify: bool, request_headers: dict[str, str] | None = None, robots_policy_mode: str = DEFAULT_ROBOTS_POLICY_MODE, tos_policy_mode: str = DEFAULT_TOS_POLICY_MODE, acknowledged_tos_domains: list[str] | None = None, timeout_seconds: float = 15, rate_limiter: psweep.discovery.network.RateLimiter | None = None) -> PolicyCheckResult
+   .. py:method:: evaluate(*, url: str, ssl_verify: bool, request_headers: dict[str, str] | None = None, robots_policy_mode: str = DEFAULT_ROBOTS_POLICY_MODE, tos_policy_mode: str = DEFAULT_TOS_POLICY_MODE, acknowledged_tos_domains: list[str] | None = None, timeout_seconds: float = 15, rate_limiter: psweep.discovery.network.RateLimiter | None = None, source_gate: psweep.discovery.network.URLGate | None = None) -> PolicyCheckResult
 
       Evaluate robots.txt and ToS-acknowledgement policy for a URL.
 

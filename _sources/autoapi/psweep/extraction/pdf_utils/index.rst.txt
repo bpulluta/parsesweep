@@ -27,7 +27,7 @@ Module Contents
    Return plain text per page (index 0 = page 1), best-effort.
 
 
-.. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, page_range: Optional[tuple] = None, return_meta: bool = False, ocr_corrections: Optional[list] = None)
+.. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, page_range: tuple | None = None, return_meta: bool = False, ocr_corrections: list | None = None)
 
    Extract selected pages with native, pypdf, then OCR fallbacks.
 

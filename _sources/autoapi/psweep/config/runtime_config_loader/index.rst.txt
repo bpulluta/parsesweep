@@ -9,14 +9,6 @@ psweep.config.runtime_config_loader
 
 
 
-Exceptions
-----------
-
-.. autoapisummary::
-
-   psweep.config.runtime_config_loader.RuntimeConfigError
-
-
 Functions
 ---------
 
@@ -24,6 +16,7 @@ Functions
 
    psweep.config.runtime_config_loader.build_model_registry
    psweep.config.runtime_config_loader.catalog_for_command
+   psweep.config.runtime_config_loader.config_key_paths
    psweep.config.runtime_config_loader.load_runtime_config_file
    psweep.config.runtime_config_loader.resolve_command_config
    psweep.config.runtime_config_loader.resolve_compilation_metadata
@@ -32,28 +25,9 @@ Functions
 Module Contents
 ---------------
 
-.. py:exception:: RuntimeConfigError
-
-   Bases: :py:obj:`ValueError`
-
-
-   Raised when runtime config cannot be loaded or validated.
-
-   Initialize self.  See help(type(self)) for accurate signature.
-
-
 .. py:function:: build_model_registry(config_data: dict[str, Any], llm_config: dict[str, Any] | None = None) -> psweep.config.model_registry.ModelRegistry
 
-   Build and validate a :class:`ModelRegistry` from loaded config.
-
-   This is the single integration point that turns the already-normalized
-   config dict into a registry, then fail-fast validates the tier definitions
-   and every ``model:`` / ``models:`` reference found in the runtime sections.
-
-   ``llm_config`` is optional; when omitted the registry lazily uses the global
-   environment config for provider/credential resolution at call time.
-
-   :raises RuntimeConfigError: If any tier definition or reference is invalid.
+   Build the registry and fail fast on invalid aliases or ``model:`` references.
 
 
 .. py:function:: catalog_for_command(command: str) -> list[dict[str, str]]
@@ -61,12 +35,17 @@ Module Contents
    Return catalog entries for a command plus global variables.
 
 
+.. py:function:: config_key_paths(command: str) -> dict[str, str]
+
+   Map resolved field names to the config key paths users write.
+
+
 .. py:function:: load_runtime_config_file(config_path: pathlib.Path) -> dict[str, Any]
 
    Load a run-level or section-level runtime config file.
 
 
-.. py:function:: resolve_command_config(*, command: str, cli_values: dict[str, Any], config_data: dict[str, Any] | None, strict: bool = False) -> dict[str, Any]
+.. py:function:: resolve_command_config(*, command: str, cli_values: dict[str, Any], config_data: dict[str, Any] | None) -> dict[str, Any]
 
    Resolve command inputs from runtime config and CLI overrides.
 

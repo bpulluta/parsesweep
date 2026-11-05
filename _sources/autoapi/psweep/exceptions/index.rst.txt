@@ -99,7 +99,7 @@ Module Contents
    Initialize self.  See help(type(self)) for accurate signature.
 
 
-.. py:exception:: PipelineError(message: str, *, stage: str | None = None, hint: str | None = None)
+.. py:exception:: PipelineError(message: str, *, stage: str | None = None, hint: str | None = None, returncode: int | None = None)
 
    Bases: :py:obj:`ParseSweepError`
 

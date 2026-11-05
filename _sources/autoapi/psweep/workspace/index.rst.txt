@@ -1,0 +1,132 @@
+psweep.workspace
+================
+
+.. py:module:: psweep.workspace
+
+.. autoapi-nested-parse::
+
+   Domain workspace layout: the single source of truth for input and output paths.
+
+   Inputs live in ``config/<domain>/`` (``run.yaml``, ``schema.json``, optional
+   ``targets.csv``); every stage output is derived from the domain under
+   ``outputs/<domain>/`` relative to the working directory.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.workspace.Workspace
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.workspace.config_relative_path
+   psweep.workspace.default_schema_path
+   psweep.workspace.domain_schemas
+   psweep.workspace.infer_domain
+
+
+Module Contents
+---------------
+
+.. py:class:: Workspace
+
+   Derived stage directories for one domain.
+
+
+   .. py:property:: compiled
+      :type: pathlib.Path
+
+
+      Compilation output directory.
+
+
+   .. py:property:: compiled_name
+      :type: str
+
+
+      Base name of the compiled CSV/XLSX (``<domain>.csv``); the one place it is derived.
+
+
+   .. py:property:: curated
+      :type: pathlib.Path
+
+
+      Consolidated curated corpus; the default extraction input.
+
+
+   .. py:property:: discovered
+      :type: pathlib.Path
+
+
+      Discovery output directory.
+
+
+   .. py:property:: extracted
+      :type: pathlib.Path
+
+
+      Extraction output directory.
+
+
+   .. py:property:: latest
+      :type: pathlib.Path
+
+
+      Internal pointer to the most recent discovery run.
+
+
+   .. py:property:: review_cache
+      :type: pathlib.Path
+
+
+      Domain-level, content-addressed document grade cache.
+
+
+   .. py:property:: root
+      :type: pathlib.Path
+
+
+      Root output directory of the domain.
+
+
+   .. py:property:: serpapi_cache
+      :type: pathlib.Path
+
+
+      Domain-level SerpApi response cache shared by all runs.
+
+
+   .. py:property:: validated
+      :type: pathlib.Path
+
+
+      Validation output directory.
+
+
+.. py:function:: config_relative_path(value: str, config_dir: pathlib.Path) -> pathlib.Path
+
+   Resolve a path written in a run config against that config's directory.
+
+
+.. py:function:: default_schema_path(config_path: pathlib.Path) -> pathlib.Path
+
+   Schema expected beside a run config when ``schema:`` is omitted.
+
+
+.. py:function:: domain_schemas(config_root: pathlib.Path = CONFIG_ROOT) -> list[pathlib.Path]
+
+   All domain schemas under ``config_root`` (``<domain>/schema.json``).
+
+
+.. py:function:: infer_domain(path: pathlib.Path) -> str
+
+   Domain for a config-less run: ``outputs/<domain>/...`` or the input's directory name.
+
+

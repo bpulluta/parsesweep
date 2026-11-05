@@ -1,0 +1,36 @@
+psweep.compilation.roster
+=========================
+
+.. py:module:: psweep.compilation.roster
+
+.. autoapi-nested-parse::
+
+   Roster compile: one row per discovery target, resolved from extracted evidence.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.compilation.roster.compile_roster
+   psweep.compilation.roster.value_key
+
+
+Module Contents
+---------------
+
+.. py:function:: compile_roster(records: collections.abc.Iterable[dict[str, Any]], metadata, roster: psweep.extraction.roster.Roster, targets_spec: Any) -> tuple[pandas.DataFrame, dict[str, int]]
+
+   Return the roster-shaped frame (field-name columns) and accounting stats.
+
+
+.. py:function:: value_key(value: Any) -> tuple[str, Any]
+
+   Agreement key: numbers by value; text casefolded with whitespace collapsed.
+
+   Punctuation stays significant, so "> 100" and "< 100" differ while
+   300, "300.0" and "300" agree.
+
+

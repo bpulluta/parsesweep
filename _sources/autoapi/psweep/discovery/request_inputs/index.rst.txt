@@ -5,11 +5,12 @@ psweep.discovery.request_inputs
 
 .. autoapi-nested-parse::
 
-   Normalize discovery config and check its executable input plan.
+   Turn resolved discovery inputs into ``DiscoveryRequest`` fields.
 
-   The runtime resolver merges config and explicit CLI overrides. This
-   layer checks typed controls and applies defaults to request values
-   used by discovery. CLI and pipeline preflight share the same plan check.
+   Config values are validated by ``psweep.config.discovery_config``; this layer
+   selects request fields, materializes targets after ``--target-limit``, checks
+   CLI-only values, and rejects plans with nothing to discover. The CLI and the
+   pipeline preflight share it.
 
 
 
@@ -18,24 +19,14 @@ Functions
 
 .. autoapisummary::
 
-   psweep.discovery.request_inputs.normalize_discover_inputs
-   psweep.discovery.request_inputs.validate_discover_plan
+   psweep.discovery.request_inputs.discovery_request_fields
 
 
 Module Contents
 ---------------
 
-.. py:function:: normalize_discover_inputs(resolved_inputs: dict[str, Any], *, domain: str | None = None, target: str | None = None, seed_urls: collections.abc.Sequence[str] = (), query: str | None = None, state: str | None = None, jurisdiction: str | None = None, partition_mode: str | None = None, target_limit: int | None = None, retention_documents: str | None = None, digger_provider: str | None = None, enable_serpapi: bool = False, max_concurrent_downloads: int | None = None, min_request_interval_ms: int | None = None, robots_policy_mode: str | None = None, tos_policy_mode: str | None = None, acknowledged_tos_domains: collections.abc.Sequence[str] = (), output_documents: str | None = None, output_manifest: str | None = None, dry_run: bool = False, fresh: bool = False) -> dict[str, Any]
+.. py:function:: discovery_request_fields(resolved: dict[str, Any]) -> dict[str, Any]
 
-   Apply discovery defaults and infer omitted search enablement.
-
-   Explicit CLI overrides are already merged into ``resolved_inputs``.
-   Keyword arguments supply defaults only where no value was resolved.
-   Invalid boolean and integer controls fail rather than being coerced.
-
-
-.. py:function:: validate_discover_plan(inputs: dict[str, Any]) -> None
-
-   Check executable inputs without contacting external services.
+   Return ``DiscoveryRequest`` keyword arguments or raise ``ValueError``.
 
 

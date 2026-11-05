@@ -22,6 +22,15 @@ Classes
    psweep.discovery.link_prioritizer.PriorityScore
 
 
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.link_prioritizer.domain_score_patterns
+   psweep.discovery.link_prioritizer.host_matches_domain_pattern
+
+
 Module Contents
 ---------------
 
@@ -80,5 +89,18 @@ Module Contents
 
       Serialize the priority score components to a rounded plain dict.
 
+
+
+.. py:function:: domain_score_patterns(domain_scores: dict[str, float] | None) -> list[tuple[str, float]]
+
+   Normalize ``link_prioritization.domain_scores`` into ``(pattern, score)``.
+
+
+.. py:function:: host_matches_domain_pattern(host: str, pattern: str) -> bool
+
+   Match a host against a normalized ``domain_scores`` pattern.
+
+   Leading-dot patterns match hostname suffixes; host patterns match the host
+   itself or any of its subdomains.
 
 

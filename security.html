@@ -1,0 +1,599 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Changelog" href="changelog.html"><link rel="prev" title="Command Reference" href="commands/index.html">
+
+    <link rel="shortcut icon" href="_static/favicon.svg"><!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
+        <title>Security and protected operation - ParseSweep 2.0.1</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=579eeedf" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">ParseSweep 2.0.1</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  <span class="sidebar-brand-text">ParseSweep 2.0.1</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sources.html">Source Patterns</a></li>
+<li class="toctree-l1"><a class="reference internal" href="config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tuning.html">Tuning &amp; Iteration</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="schemas/index.html">Schema Authoring</a><input aria-label="Toggle navigation of Schema Authoring" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="schemas/best-practices.html">Schema Design Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="commands/index.html">Command Reference</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Security and protected operation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/compilation/index.html">psweep.compilation</a><input aria-label="Toggle navigation of psweep.compilation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/accounting/index.html">psweep.compilation.accounting</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/csv_exporter/index.html">psweep.compilation.csv_exporter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/data_compiler/index.html">psweep.compilation.data_compiler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/data_flattener/index.html">psweep.compilation.data_flattener</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/deduplicator/index.html">psweep.compilation.deduplicator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/roster/index.html">psweep.compilation.roster</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/config/index.html">psweep.config</a><input aria-label="Toggle navigation of psweep.config" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/config/discovery_config/index.html">psweep.config.discovery_config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/config/errors/index.html">psweep.config.errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/config/file_loader/index.html">psweep.config.file_loader</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/config/model_registry/index.html">psweep.config.model_registry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/config/runtime_config_loader/index.html">psweep.config.runtime_config_loader</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/concurrency/index.html">psweep.discovery.concurrency</a></li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
+<li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
+<li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/serpapi_seeker/index.html">psweep.discovery.connectors.serpapi_seeker</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/constants/index.html">psweep.discovery.constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/document_reviewer/index.html">psweep.discovery.document_reviewer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/network/index.html">psweep.discovery.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/transport/index.html">psweep.discovery.transport</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/urls/index.html">psweep.discovery.urls</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/validators/index.html">psweep.discovery.validators</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/exceptions/index.html">psweep.exceptions</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_factory/index.html">psweep.extraction.llm_factory</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/provenance/index.html">psweep.extraction.provenance</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/roster/index.html">psweep.extraction.roster</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/text_processor/index.html">psweep.extraction.text_processor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/transcription/index.html">psweep.extraction.transcription</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/outcomes/index.html">psweep.outcomes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/pipeline/index.html">psweep.pipeline</a></li>
+<li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/scaffolding/index.html">psweep.scaffolding</a></li>
+<li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/security/index.html">psweep.security</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/normalizers/index.html">psweep.utils.normalizers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/page_range/index.html">psweep.utils.page_range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/retry/index.html">psweep.utils.retry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/schema_metadata/index.html">psweep.utils.schema_metadata</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/spreadsheet/index.html">psweep.utils.spreadsheet</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/validation/align/index.html">psweep.validation.align</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/validation/judge/index.html">psweep.validation.judge</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/validation/quality/index.html">psweep.validation.quality</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/validation/tables/index.html">psweep.validation.tables</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/workspace/index.html">psweep.workspace</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/security.md?plain=true" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/security.md" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="security-and-protected-operation">
+<h1>Security and protected operation<a class="headerlink" href="#security-and-protected-operation" title="Link to this heading">¶</a></h1>
+<section id="status-and-boundaries">
+<h2>Status and boundaries<a class="headerlink" href="#status-and-boundaries" title="Link to this heading">¶</a></h2>
+<p>This is a hardened application, <strong>not an authorization to process sensitive
+data</strong> and not a claim of zero vulnerabilities, FIPS validation, compliance,
+or HPC certification. Python 3.12/macOS ARM64 is the locally executed baseline;
+other locked platforms require execution on their target systems.</p>
+<p>The Python audit is clean. <code class="docutils literal notranslate"><span class="pre">filelock</span></code> is overridden to <code class="docutils literal notranslate"><span class="pre">&gt;=4.2.1,&lt;5</span></code> in
+<code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code> (<code class="docutils literal notranslate"><span class="pre">[pypi-options]</span></code>) to fix CVE-2026-112909 and CVE-2026-112910:
+LiteLLM still declares <code class="docutils literal notranslate"><span class="pre">filelock&lt;4</span></code>, but uses it only in its proxy CLI, which
+psweep never calls. The override applies to pixi environments only; a plain
+<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> still resolves LiteLLM’s <code class="docutils literal notranslate"><span class="pre">filelock&lt;4</span></code>. Remove the override once
+LiteLLM allows 4.x.
+Native libraries were refreshed, not comprehensively vulnerability-scanned.</p>
+<section id="trust-model">
+<h3>Trust model<a class="headerlink" href="#trust-model" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>URLs, documents, OCR, provider responses, filenames, and spreadsheet evidence
+are untrusted. Configurations, schemas, installed code, the OS trust store,
+and the operator-approved model endpoint are administrative inputs.</p></li>
+<li><p>Public discovery connects only to globally routable addresses. Every DNS
+answer is checked; the validated sockaddr is used directly, with original
+hostname verification/SNI. Redirects and robots lookups retain source gates.
+Proxies, <code class="docutils literal notranslate"><span class="pre">.netrc</span></code>, and URL credentials are not accepted.</p></li>
+<li><p>Do not place API keys or secrets in discovery URL queries or custom headers.
+Source URLs are provenance and can appear in manifests and diagnostics.</p></li>
+<li><p>TLS requires at least 1.2 and defaults to authenticated certificates. System roots are
+the default; <code class="docutils literal notranslate"><span class="pre">REQUESTS_CA_BUNDLE</span></code> or <code class="docutils literal notranslate"><span class="pre">SSL_CERT_FILE</span></code> selects approved roots.
+Public mode permits an explicitly warned <code class="docutils literal notranslate"><span class="pre">PSWEEP_SSL_VERIFY=false</span></code> (models
+and search/download fallback), <code class="docutils literal notranslate"><span class="pre">SERPAPI_SSL_VERIFY=false</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">DISCOVERY_SSL_VERIFY=false</span></code>. Connections and credentials can then be
+intercepted: this is compatibility operation, not secure production use.
+Protected mode rejects every configured false setting. Invalid settings
+fail in both modes. Stage-specific settings override the global fallback;
+explicit request arguments override those settings in public mode.
+Disabling verification never relaxes public-address or redirect checks.</p></li>
+<li><p>Responses are capped in decoded bytes
+(<a class="reference internal" href="config-reference.html#document-types-and-limits"><span class="std std-ref">limits</span></a>). The configured request timeout bounds socket
+waits, the elapsed time of in-memory responses, and stalls (time without
+data) of file downloads. It is <strong>not a hard whole-job deadline</strong>:
+DNS, native parsing, decompression internals, and OS scheduling need external
+resource controls.</p></li>
+<li><p>Ordinary browser operation is disabled. Public browser use requires
+<code class="docutils literal notranslate"><span class="pre">PSWEEP_BROWSER_ISOLATED=1</span></code> and an executable <code class="docutils literal notranslate"><span class="pre">PSWEEP_CHROMEDRIVER</span></code>.
+This is an operator attestation, not automatic sandbox/network validation.
+Chrome’s sandbox stays enabled; drivers are never downloaded at runtime.
+Enforce network restrictions outside the browser, including DNS, subresources,
+redirects, and downloads. Browsers are forbidden in protected mode.</p></li>
+<li><p>Model output is data, never a command. Prompt injection can still change
+extraction accuracy; schemas and review are not proof of factual correctness.
+No model/tool-execution permission is granted by document content.</p></li>
+<li><p>CSV exports prefix formula-like strings with an apostrophe; numeric values
+remain numeric. XLSX evidence cells remain strings. Canonical JSON
+retains original evidence. CSV machine ledgers are not spreadsheet reports:
+import them as text rather than opening them with spreadsheet auto-detection.</p></li>
+</ul>
+</section>
+</section>
+<section id="public-acquisition-and-sensitive-processing-are-separate-jobs">
+<h2>Public acquisition and sensitive processing are separate jobs<a class="headerlink" href="#public-acquisition-and-sensitive-processing-are-separate-jobs" title="Link to this heading">¶</a></h2>
+<p>Acquire and quarantine public documents on a public-data system first. Scan,
+inspect, and transfer approved input into a restricted workspace. Do not allow
+public discovery or browser execution from a sensitive-data compute allocation.</p>
+<p>Protected CLI operation:</p>
+<ol class="arabic simple">
+<li><p>Provision an owner-only POSIX work directory (<code class="docutils literal notranslate"><span class="pre">chmod</span> <span class="pre">700</span></code>) below trusted,
+non-group/world-writable ancestors, or a suitable sticky scratch directory.
+Verify ACLs, ownership, encryption, quotas, and cleanup policy separately.</p></li>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">PSWEEP_SECURITY_MODE=protected</span></code>. Set <code class="docutils literal notranslate"><span class="pre">LLM_BASE_URL</span></code> to the exact approved
+HTTPS OpenAI-compatible endpoint and supply its credential securely through
+the environment. Direct providers and differing per-stage endpoints fail.</p></li>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">REQUESTS_CA_BUNDLE</span></code> only if a site-approved private CA is needed.
+Protected model requests disable redirects, environment proxies, provider
+plugins, and callbacks. They do not fall back to another provider.</p></li>
+<li><p>Run from the private workspace. Input and output directories configured for
+stages must remain inside it. Automatic dotenv loading is disabled.
+Private caches and temporaries are placed below <code class="docutils literal notranslate"><span class="pre">.psweep-private/</span></code>; inherited
+cache/TMPDIR overrides outside the workspace are rejected. Library API users
+must invoke <code class="docutils literal notranslate"><span class="pre">prepare_protected_runtime()</span></code> before creating data or caches.</p></li>
+<li><p>Disable discovery in the run configuration (or use <code class="docutils literal notranslate"><span class="pre">--skip-discover</span></code>) and
+explicitly configure local extraction inputs. Protected compilation requires
+canonical records and fails on provenance warnings.</p></li>
+</ol>
+<p>Example (synthetic placeholders, never literal credentials):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>/approved/private/job-workspace
+<span class="nb">export</span><span class="w"> </span><span class="nv">PSWEEP_SECURITY_MODE</span><span class="o">=</span>protected
+<span class="nb">export</span><span class="w"> </span><span class="nv">LLM_BASE_URL</span><span class="o">=</span>https://approved-model.example/v1
+<span class="c1"># Inject LLM_API_KEY using your site's credential mechanism.</span>
+<span class="nb">unset</span><span class="w"> </span>HF_HOME<span class="w"> </span>HUGGINGFACE_HUB_CACHE<span class="w"> </span>TIKTOKEN_CACHE_DIR<span class="w"> </span>XDG_CACHE_HOME<span class="w"> </span>TMPDIR
+psweep<span class="w"> </span>run<span class="w"> </span>--config<span class="w"> </span>run.yaml<span class="w"> </span>--skip-discover<span class="w"> </span>--yes
+</pre></div>
+</div>
+<p>The application selects an endpoint; only firewall/namespace rules can prove
+egress confinement. DNS changes at the trusted endpoint, administrative
+configuration changes, compromised dependencies, native parser exploits,
+and inherited host privileges remain outside that guarantee.</p>
+</section>
+<section id="hpc-operating-checklist">
+<h2>HPC operating checklist<a class="headerlink" href="#hpc-operating-checklist" title="Link to this heading">¶</a></h2>
+<p>Before any real sensitive workload, the site owner must verify:</p>
+<ul class="simple">
+<li><p>[ ] Institutional data classification, model/provider authorization, retention,
+training/logging policy, geography, contractual terms, and access controls.</p></li>
+<li><p>[ ] Unprivileged UID, dedicated private workspace, protected ancestors, ACLs,
+encrypted storage/scratch where required, and no shared writable caches.</p></li>
+<li><p>[ ] Network namespace/firewall egress only to approved inference/DNS services;
+no public internet, metadata service, browser, or credentialed proxy path.</p></li>
+<li><p>[ ] Immutable reviewed image/environment, native-library SBOM and advisory
+scan, dependency provenance, and review of the <code class="docutils literal notranslate"><span class="pre">filelock</span></code> override.</p></li>
+<li><p>[ ] Scheduler/cgroup CPU, memory, process, file-descriptor, file-size, and wall
+limits. Native PDF/OCR work needs OS isolation, not only Python timeouts.</p></li>
+<li><p>[ ] Separate read-only input mount and bounded output/temp mounts; parser
+isolation with restricted syscalls/privileges appropriate to the site.</p></li>
+<li><p>[ ] Synthetic extraction and compilation on the actual scheduler and
+filesystem, including cancellation, OOM, full disk, restart, and recovery.</p></li>
+<li><p>[ ] Lock behavior on actual NFS/Lustre/GPFS configuration; one writer per
+output directory, no lock-inode removal, and read-after-success consumers.</p></li>
+<li><p>[ ] Model accuracy, prompt-injection review, completeness, throughput and
+cost measured with representative approved data; humans adjudicate output.</p></li>
+<li><p>[ ] Backup/recovery, retention deletion, incident response, access audit,
+and log redaction verified without exporting sensitive diagnostics.</p></li>
+</ul>
+<p>Compilation and discovery journals recover interrupted <em>publication</em> on the
+next locked writer. They are not whole-pipeline transactions or atomic
+multi-file snapshots for concurrent readers. Power-loss durability and
+distributed filesystem semantics need site testing.</p>
+</section>
+<section id="migration-and-validation">
+<h2>Migration and validation<a class="headerlink" href="#migration-and-validation" title="Link to this heading">¶</a></h2>
+<p>Provision approved VPN/enterprise CA trust rather than disabling verification.
+Remove false SSL_VERIFY settings before protected operation. Public opt-out is
+explicit, warned, and scoped to each request/client, not a global SDK mutation.
+Private discovery URLs no longer work; ingest approved private
+documents locally. Browser users must provision isolated infrastructure and a
+driver explicitly. Python 3.9/3.10/3.11 are no longer supported.</p>
+<p>Nested compilation rows are selected from the schema. One nested object array
+expands automatically; multiple candidates need
+<code class="docutils literal notranslate"><span class="pre">$metadata.compilation.flattening.row_array</span></code> naming the desired field.
+Use explicit <code class="docutils literal notranslate"><span class="pre">null</span></code> to retain child arrays as columns. Parent/child column
+collisions fail rather than silently overwrite. Malformed payloads never
+publish; public <code class="docutils literal notranslate"><span class="pre">--provenance-policy</span> <span class="pre">warn</span></code> can inspect incomplete records, but
+release/protected runs require the canonical extraction-record contract.
+Protected library compilation also rejects provenance warnings and data paths
+outside the private workspace. Missing extraction records fail without changing
+existing exports. Valid zero-item <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> compilation clears stale output
+through the same locked, recoverable publication path as nonempty output.</p>
+<p>Run ordinary tests offline; <code class="docutils literal notranslate"><span class="pre">-m</span> <span class="pre">integration</span></code> includes actual local TLS/provider
+requests with synthetic data. <code class="docutils literal notranslate"><span class="pre">-m</span> <span class="pre">live</span> <span class="pre">--live</span></code> explicitly enables approved
+public endpoint smoke tests. Also execute the real subprocess CLI pipeline,
+verify unchanged extraction reuse and output values, build documentation and a
+wheel, install the wheel cleanly, and audit the installed release inventory.
+Mocked requests, resolved lockfiles, or an HTTP 200 alone do not satisfy these
+acceptance gates.</p>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="changelog.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Changelog</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="commands/index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Command Reference</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Byron Pullutasig
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Security and protected operation</a><ul>
+<li><a class="reference internal" href="#status-and-boundaries">Status and boundaries</a><ul>
+<li><a class="reference internal" href="#trust-model">Trust model</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#public-acquisition-and-sensitive-processing-are-separate-jobs">Public acquisition and sensitive processing are separate jobs</a></li>
+<li><a class="reference internal" href="#hpc-operating-checklist">HPC operating checklist</a></li>
+<li><a class="reference internal" href="#migration-and-validation">Migration and validation</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=f5cff4aa"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=a5fa425f"></script>
+    </body>
+</html>

@@ -1,0 +1,69 @@
+psweep.security
+===============
+
+.. py:module:: psweep.security
+
+.. autoapi-nested-parse::
+
+   Fail-closed policy for network and model boundaries.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.security.ca_bundle
+   psweep.security.prepare_protected_runtime
+   psweep.security.protected_mode
+   psweep.security.provider_error_category
+   psweep.security.require_model_endpoint
+   psweep.security.resolve_tls_verification
+   psweep.security.tls_context
+   psweep.security.validate_protected_paths
+
+
+Module Contents
+---------------
+
+.. py:function:: ca_bundle() -> str | bool
+
+   Resolve explicitly configured CA roots.
+
+
+.. py:function:: prepare_protected_runtime() -> None
+
+   Require a private POSIX workspace, caches, and temporaries.
+
+
+.. py:function:: protected_mode() -> bool
+
+   Return whether approved-endpoint operation is selected.
+
+
+.. py:function:: provider_error_category(error: Exception) -> str
+
+   Return a fixed failure category without copying untrusted provider text.
+
+
+.. py:function:: require_model_endpoint(base_url: str | None) -> None
+
+   Restrict protected calls to the approved HTTPS endpoint.
+
+
+.. py:function:: resolve_tls_verification(setting: str, explicit: bool | None = None) -> bool
+
+   Resolve verified TLS or a warned public-only explicit opt-out.
+
+
+.. py:function:: tls_context(verify: bool = True) -> ssl.SSLContext
+
+   Use approved/system roots or an explicit public-only opt-out.
+
+
+.. py:function:: validate_protected_paths(values: dict) -> None
+
+   Keep configured data and outputs within the private workspace.
+
+

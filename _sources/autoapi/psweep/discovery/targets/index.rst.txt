@@ -5,18 +5,20 @@ psweep.discovery.targets
 
 .. autoapi-nested-parse::
 
-   Target-provider package: pluggable sources for discovery targets.
+   Discovery target specs: validation and lazy iteration.
+
+   A spec is one of: a ``.csv``/``.json`` path, an inline list of rows, or
+   ``{cross_product: {dimensions: [...]}}``. Rows stream from generators so a
+   large cross product with ``--target-limit`` never materializes.
 
 
 
-Submodules
+Exceptions
 ----------
 
-.. toctree::
-   :maxdepth: 1
+.. autoapisummary::
 
-   /autoapi/psweep/discovery/targets/base/index
-   /autoapi/psweep/discovery/targets/providers/index
+   psweep.discovery.targets.TargetSpecError
 
 
 Functions
@@ -24,18 +26,46 @@ Functions
 
 .. autoapisummary::
 
-   psweep.discovery.targets.resolve_target_provider
+   psweep.discovery.targets.identify_target
+   psweep.discovery.targets.iter_targets
+   psweep.discovery.targets.resolve_targets_spec
+   psweep.discovery.targets.target_identity
 
 
-Package Contents
-----------------
+Module Contents
+---------------
 
-.. py:function:: resolve_target_provider(spec: dict[str, Any], *, config_dir: pathlib.Path) -> base.BaseTargetProvider
+.. py:exception:: TargetSpecError
 
-   Build a target provider from a ``targets`` config dict.
+   Bases: :py:obj:`ValueError`
 
-   The dict must carry a ``source`` key of ``dataset`` or ``cross_product``
-   (``csv``/``inline`` are handled directly by the config loader from their
-   shorthand forms). Relative dataset paths resolve against ``config_dir``.
+
+   Raised when a target spec or target row is invalid.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:function:: identify_target(target: collections.abc.Mapping[str, Any], fields: collections.abc.Sequence[str] | None = None) -> str
+
+   Stable, path-safe target id hashed from :func:`target_identity`.
+
+
+.. py:function:: iter_targets(spec: TargetSpec, limit: int | None = None) -> collections.abc.Iterator[dict[str, Any]]
+
+   Yield normalized target rows, stopping after ``limit`` rows.
+
+
+.. py:function:: resolve_targets_spec(spec: Any, config_dir: pathlib.Path, identity_fields: collections.abc.Sequence[str] | None = None) -> TargetSpec
+
+   Validate a spec and return it with paths resolved against ``config_dir``.
+
+   Rows are streamed once to validate each row and to reject duplicate
+   target identities (see :func:`target_identity`).
+
+
+.. py:function:: target_identity(target: collections.abc.Mapping[str, Any], fields: collections.abc.Sequence[str] | None = None) -> dict[str, Any]
+
+   Fields that identify a target: ``partition_by`` when set, else every
+   non-input field. Other (passthrough) fields never affect identity.
 
 

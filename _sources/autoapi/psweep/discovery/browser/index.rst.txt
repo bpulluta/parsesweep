@@ -28,6 +28,8 @@ Exceptions
 
 .. autoapisummary::
 
+   psweep.discovery.browser.BrowserDownloadError
+   psweep.discovery.browser.BrowserNavigationError
    psweep.discovery.browser.BrowserUnavailableError
 
 
@@ -50,6 +52,27 @@ Functions
 Module Contents
 ---------------
 
+.. py:exception:: BrowserDownloadError(message: str, *, status_code: int | None = None)
+
+   Bases: :py:obj:`RuntimeError`
+
+
+   An in-browser ``fetch()`` failed; ``status_code`` is None when it rejected.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:exception:: BrowserNavigationError
+
+   Bases: :py:obj:`RuntimeError`
+
+
+   Chrome showed its error page; the message carries the ``net::ERR_*``
+   code so retry classification matches Selenium navigation errors.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
 .. py:exception:: BrowserUnavailableError
 
    Bases: :py:obj:`RuntimeError`
@@ -60,7 +83,7 @@ Module Contents
    Initialize self.  See help(type(self)) for accurate signature.
 
 
-.. py:class:: BrowserSession(*, headless: bool = True, user_agent: str = _DEFAULT_UA, page_load_timeout: int = 45)
+.. py:class:: BrowserSession(*, headless: bool = True, request_headers: collections.abc.Mapping[str, str] | None = None, page_load_timeout: int = 45)
 
    Context-managed headless Chrome session with anti-automation flags.
 

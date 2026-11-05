@@ -1,0 +1,30 @@
+psweep.outcomes
+===============
+
+.. py:module:: psweep.outcomes
+
+.. autoapi-nested-parse::
+
+   Stage outcome statuses and the process exit codes every stage shares.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.outcomes.exit_code
+
+
+Module Contents
+---------------
+
+.. py:function:: exit_code(status: str) -> int
+
+   Return the exit code for a stage outcome status.
+
+   ``partial_failure`` means usable output exists alongside recorded errors;
+   ``run`` continues downstream on it and re-runs retry the failed items.
+
+

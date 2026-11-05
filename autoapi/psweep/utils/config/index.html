@@ -5,7 +5,7 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.utils.error_taxonomy" href="../error_taxonomy/index.html"><link rel="prev" title="psweep.utils" href="../index.html">
 
-    <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>psweep.utils.config - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
@@ -202,11 +202,15 @@
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../../getting-started.html">Getting Started</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../commands/index.html">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../sources.html">Source Patterns</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../config-reference.html">Configuration Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../tuning.html">Tuning &amp; Iteration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html">Schema Authoring</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../schemas/index.html">Schema Authoring</a><input aria-label="Toggle navigation of Schema Authoring" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../schemas/best-practices.html">Schema Design Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../commands/index.html">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../security.html">Security and protected operation</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -215,12 +219,8 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul class="current">
-<li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
-<li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../benchmarking/index.html">psweep.benchmarking</a><input aria-label="Toggle navigation of psweep.benchmarking" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../../benchmarking/performance/index.html">psweep.benchmarking.performance</a></li>
-</ul>
-</li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../compilation/index.html">psweep.compilation</a><input aria-label="Toggle navigation of psweep.compilation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/accounting/index.html">psweep.compilation.accounting</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/csv_exporter/index.html">psweep.compilation.csv_exporter</a></li>
@@ -229,17 +229,18 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/deduplicator/index.html">psweep.compilation.deduplicator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../compilation/schema_detector/index.html">psweep.compilation.schema_detector</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../compilation/synthesizer/index.html">psweep.compilation.synthesizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../config/index.html">psweep.config</a><input aria-label="Toggle navigation of psweep.config" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../config/discovery_config/index.html">psweep.config.discovery_config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../config/errors/index.html">psweep.config.errors</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../config/file_loader/index.html">psweep.config.file_loader</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../config/model_registry/index.html">psweep.config.model_registry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../config/runtime_config_loader/index.html">psweep.config.runtime_config_loader</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../../core/index.html">psweep.core</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
@@ -260,18 +261,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../discovery/retry/index.html">psweep.discovery.retry</a></li>
-<li class="toctree-l4 has-children"><a class="reference internal" href="../../discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l5"><a class="reference internal" href="../../discovery/targets/base/index.html">psweep.discovery.targets.base</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../../discovery/targets/providers/index.html">psweep.discovery.targets.providers</a></li>
-</ul>
-</li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/targets/index.html">psweep.discovery.targets</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/urls/index.html">psweep.discovery.urls</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/validators/index.html">psweep.discovery.validators</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../exceptions/index.html">psweep.exceptions</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -280,34 +277,38 @@
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/text_processor/index.html">psweep.extraction.text_processor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/transcription/index.html">psweep.extraction.transcription</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../outcomes/index.html">psweep.outcomes</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../pipeline/index.html">psweep.pipeline</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../scaffolding/index.html">psweep.scaffolding</a></li>
-<li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" checked="" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../../security/index.html">psweep.security</a></li>
+<li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" checked="" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../item_matcher/index.html">psweep.utils.item_matcher</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../model_pricing/index.html">psweep.utils.model_pricing</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../normalizers/index.html">psweep.utils.normalizers</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../page_range/index.html">psweep.utils.page_range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../retry/index.html">psweep.utils.retry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../schema_metadata/index.html">psweep.utils.schema_metadata</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../value_normalizer/index.html">psweep.utils.value_normalizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../spreadsheet/index.html">psweep.utils.spreadsheet</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/comparison_engine/index.html">psweep.validation.comparison_engine</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/evidence_loader/index.html">psweep.validation.evidence_loader</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/multi_model_extractor/index.html">psweep.validation.multi_model_extractor</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/report_generator/index.html">psweep.validation.report_generator</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/utils/index.html">psweep.validation.utils</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../validation/align/index.html">psweep.validation.align</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../validation/judge/index.html">psweep.validation.judge</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../validation/quality/index.html">psweep.validation.quality</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../validation/tables/index.html">psweep.validation.tables</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../workspace/index.html">psweep.workspace</a></li>
 </ul>
 </li>
 </ul>
@@ -363,7 +364,7 @@
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.config.Config" title="psweep.utils.config.Config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Config</span></code></a></p></td>
-<td><p>Global configuration for the ParseSweep toolkit.</p></td>
+<td><p>Global toolkit configuration: project paths and LLM provider settings.</p></td>
 </tr>
 </tbody>
 </table>
@@ -375,7 +376,7 @@
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.config.get_config" title="psweep.utils.config.get_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_config</span></code></a>(→ Config)</p></td>
-<td><p>Get the global configuration instance.</p></td>
+<td><p>Return the global Config (<code class="docutils literal notranslate"><span class="pre">project_root</span></code> applies only on first call).</p></td>
 </tr>
 </tbody>
 </table>
@@ -386,32 +387,13 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.utils.config.Config">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.utils.config.</span></span><span class="sig-name descname"><span class="pre">Config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">project_root</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.utils.config.Config" title="Link to this definition">¶</a></dt>
-<dd><p>Global configuration for the ParseSweep toolkit.</p>
-<p>Manages paths for schemas, API keys, and other settings.
-Can be initialized from environment variables or set programmatically.</p>
-<p>Initialize configuration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>project_root</strong> (<em>Optional</em><em>[</em><em>Path</em><em>]</em>) – Root directory of the project (auto-detected if None)</p>
-</dd>
-</dl>
+<dd><p>Global toolkit configuration: project paths and LLM provider settings.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.utils.config.get_config">
 <span class="sig-prename descclassname"><span class="pre">psweep.utils.config.</span></span><span class="sig-name descname"><span class="pre">get_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">project_root</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.utils.config.Config" title="psweep.utils.config.Config"><span class="pre">Config</span></a></span></span><a class="headerlink" href="#psweep.utils.config.get_config" title="Link to this definition">¶</a></dt>
-<dd><p>Get the global configuration instance.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>project_root</strong> (<em>Optional</em><em>[</em><em>Path</em><em>]</em>) – Optional project root (used only on first call)</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Config instance</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#psweep.utils.config.Config" title="psweep.utils.config.Config">Config</a></p>
-</dd>
-</dl>
+<dd><p>Return the global Config (<code class="docutils literal notranslate"><span class="pre">project_root</span></code> applies only on first call).</p>
 </dd></dl>
 
 </section>

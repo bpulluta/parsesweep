@@ -1,0 +1,131 @@
+psweep.extraction.roster
+========================
+
+.. py:module:: psweep.extraction.roster
+
+.. autoapi-nested-parse::
+
+   Roster-anchored candidate matching (the single target matcher) and quote verification.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.roster.QuoteRows
+   psweep.extraction.roster.Roster
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.roster.batch
+   psweep.extraction.roster.candidate_hash
+   psweep.extraction.roster.candidates_block
+   psweep.extraction.roster.evidence_nodes
+   psweep.extraction.roster.load_roster
+   psweep.extraction.roster.normalize
+   psweep.extraction.roster.quote_present
+   psweep.extraction.roster.roster_fields
+   psweep.extraction.roster.scan_candidates
+   psweep.extraction.roster.verify_quotes
+
+
+Module Contents
+---------------
+
+.. py:class:: QuoteRows
+
+   Rows mode: every compiled row carries its verbatim quote in ``field``.
+
+   A row is an ``array`` item, or the item merged with each
+   ``row_array`` child.
+
+
+.. py:class:: Roster
+
+   Target identities indexed by n-grams of their name field.
+
+
+   .. py:method:: build(rows: collections.abc.Iterable[dict[str, Any]], fields: collections.abc.Sequence[str]) -> Roster
+      :classmethod:
+
+
+      Build a roster from target rows keyed by ``fields``.
+
+
+
+   .. py:method:: key(item: dict[str, Any]) -> tuple
+
+      Normalized roster identity of ``item``.
+
+
+
+   .. py:method:: states(text: str) -> set[str]
+
+      State evidence: full names outside roster-name spans, codes in
+      addresses, in state-labelled cells, or alone on the line after a line
+      that is exactly a roster name (card layouts).
+
+
+
+.. py:function:: batch(candidates: list[tuple[str, set[str]]], budget: int) -> list[tuple[str, list[str]]]
+
+   Group spans in document order so each call's text fits ``budget``.
+
+
+.. py:function:: candidate_hash(roster: Roster, target_ids: collections.abc.Iterable[str]) -> str
+
+   Stable hash of the candidate target identities.
+
+
+.. py:function:: candidates_block(roster: Roster, target_ids: collections.abc.Iterable[str]) -> str
+
+   Prompt block listing the candidate target identities.
+
+
+.. py:function:: evidence_nodes(node: Any, path: collections.abc.Sequence[str], location: str = '')
+
+   Yield ``(location, node)`` for every node reached by ``path`` (``*`` = each list item).
+
+
+.. py:function:: load_roster(inputs: dict[str, Any], metadata) -> Roster | None
+
+   Load the discovery target roster when roster mode is derived.
+
+
+.. py:function:: normalize(text: Any) -> str
+
+   NFKD, strip marks and soft hyphens, join line-break hyphenation,
+   casefold, punctuation to space, collapse whitespace.
+
+
+.. py:function:: quote_present(quote: Any, source_text: str) -> bool
+
+   True when the normalized quote occurs, on word boundaries, in the normalized source.
+
+   An elided quote (``head … tail``) matches when its parts occur in order.
+
+
+.. py:function:: roster_fields(inputs: dict[str, Any], key_fields: collections.abc.Sequence[str]) -> tuple[str, ...] | None
+
+   Roster mode is on iff targets exist and key_fields equal partition_by.
+
+
+.. py:function:: scan_candidates(text: str, roster: Roster) -> list[tuple[str, set[str]]]
+
+   Return ordered unique spans with the state-disambiguated targets they hold.
+
+
+.. py:function:: verify_quotes(data: dict, source_text: str, *, evidence: collections.abc.Sequence[collections.abc.Sequence[str]] = (), rows: QuoteRows | None = None) -> list[str]
+
+   Drop ``rows`` and null ``evidence`` whose quote is not in the source.
+
+   The one quote check for roster and rows mode. Returns one warning
+   per rejection.
+
+

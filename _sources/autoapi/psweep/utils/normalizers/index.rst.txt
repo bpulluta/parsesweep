@@ -17,9 +17,7 @@ Functions
 .. autoapisummary::
 
    psweep.utils.normalizers.add_county_fips_column
-   psweep.utils.normalizers.camel_to_title
    psweep.utils.normalizers.county_to_fips
-   psweep.utils.normalizers.humanize_field_name
    psweep.utils.normalizers.normalize_state
    psweep.utils.normalizers.normalize_state_column
 
@@ -36,30 +34,7 @@ Module Contents
    GIS/DS join key with zero per-domain code.
 
 
-.. py:function:: camel_to_title(name: str) -> str
-
-   Split camelCase boundaries and Title Case the result, preserving any
-   existing separators (e.g. underscores) untouched.
-
-   Unlike :func:`humanize_field_name`, this does not rewrite underscores;
-   it is used where established display keys must keep their literal
-   separators.
-
-   :param name: Raw field name
-   :type name: str
-
-   :returns: Title-cased name with spaces inserted at camelCase boundaries
-   :rtype: str
-
-   .. rubric:: Examples
-
-   >>> camel_to_title("facilityName")
-   'Facility Name'
-   >>> camel_to_title("utility_name")
-   'Utility_Name'
-
-
-.. py:function:: county_to_fips(state: Optional[str], county: Optional[str]) -> Optional[str]
+.. py:function:: county_to_fips(state: str | None, county: str | None) -> str | None
 
    Return the 5-digit county FIPS (GEOID) for a state + county, or None.
 
@@ -69,29 +44,7 @@ Module Contents
    missing or no county matches (never raises).
 
 
-.. py:function:: humanize_field_name(field_name: str) -> str
-
-   Convert any naming style to clean Title Case.
-
-   Handles snake_case, camelCase, and mixed formats, replacing underscores
-   with spaces and splitting camelCase boundaries before capitalizing each
-   word. This is the canonical column-label humanizer.
-
-   :param field_name: Raw field name
-   :type field_name: str
-
-   :returns: Clean Title Case column name
-   :rtype: str
-
-   .. rubric:: Examples
-
-   >>> humanize_field_name("charge_type")
-   'Charge Type'
-   >>> humanize_field_name("annualConsumption")
-   'Annual Consumption'
-
-
-.. py:function:: normalize_state(state: Optional[str]) -> Optional[str]
+.. py:function:: normalize_state(state: str | None) -> str | None
 
    Normalize US state name to 2-letter abbreviation.
 
@@ -123,7 +76,7 @@ Module Contents
    None
 
 
-.. py:function:: normalize_state_column(df, column_name: str = 'State') -> None
+.. py:function:: normalize_state_column(df, column_name: str) -> None
 
    Normalize state column in-place in a DataFrame.
 

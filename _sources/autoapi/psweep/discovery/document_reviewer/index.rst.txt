@@ -9,11 +9,13 @@ psweep.discovery.document_reviewer
 
    Grade each downloaded file against the configured document description.
    The engine copies selections into ``curated/``; originals stay put.
-   Full-filename ``.review`` sidecars separate raw grades from selection.
-   Each sidecar preserves only its own file's human decisions.
+   Raw grades are cached by content and grading inputs in a domain-level
+   directory, so identical documents are never re-graded across runs.
 
    Reuse the extraction LLM client and document text extraction. Explicit
-   per-record failures let the caller block unsafe publication.
+   per-record failures let the caller block unsafe publication. Recordings
+   are graded on a cached transcript only; review never pays to transcribe,
+   so a recording without one stays selected for extraction to transcribe.
 
 
 
@@ -23,6 +25,7 @@ Exceptions
 .. autoapisummary::
 
    psweep.discovery.document_reviewer.ReviewError
+   psweep.discovery.document_reviewer.UnreadableDocumentError
 
 
 Classes
@@ -36,17 +39,29 @@ Classes
 Module Contents
 ---------------
 
-.. py:exception:: ReviewError(message: str, *, usage_unknown: bool = False)
+.. py:exception:: ReviewError(message: str, *, usage_unknown: bool = False, retryable: bool = True)
 
    Bases: :py:obj:`Exception`
 
 
    A per-file failure without sensitive provider error text.
 
+   LLM/provider failures are retryable; unreadable content is terminal.
+
    Initialize self.  See help(type(self)) for accurate signature.
 
 
-.. py:class:: DocumentReviewer(*, document_description: str, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, keep_top: int = 1, max_chars: int = 12000, review_keywords: list[str] | None = None, deduplicate_redundant: bool = True, dedup_key_fields: list[str] | None = None)
+.. py:exception:: UnreadableDocumentError(message: str)
+
+   Bases: :py:obj:`ReviewError`
+
+
+   No reviewable text; recorded as a terminal ``skipped_unreadable``.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: DocumentReviewer(*, document_description: str, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, keep_top: int = 1, max_chars: int = 12000, review_keywords: list[str] | None = None, deduplicate_redundant: bool = True, dedup_key_fields: list[str] | None = None, cache_dir: pathlib.Path | None = None, identity_fields: list[str] | None = None)
 
    Grade downloaded files with an LLM and promote the primary one(s).
 
@@ -61,7 +76,7 @@ Module Contents
 
       Grade downloaded files per target and promote the top one(s).
 
-      Annotates each record with ``review_*`` fields and writes audit sidecars.
+      Annotates each record with ``review_*`` fields.
       Files stay in place; the engine materializes selected files separately.
 
 

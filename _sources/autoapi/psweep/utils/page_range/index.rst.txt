@@ -21,7 +21,7 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: load_pages_csv(csv_path: pathlib.Path) -> Dict[str, Optional[Tuple[int, int]]]
+.. py:function:: load_pages_csv(csv_path: pathlib.Path) -> dict[str, tuple[int, int] | None]
 
    Load page range mappings from CSV file.
 
@@ -45,7 +45,7 @@ Module Contents
    :raises ValueError: If CSV format is invalid
 
 
-.. py:function:: parse_page_range(page_spec: str) -> Tuple[int, int]
+.. py:function:: parse_page_range(page_spec: str) -> tuple[int, int]
 
    Parse a page range specification string.
 

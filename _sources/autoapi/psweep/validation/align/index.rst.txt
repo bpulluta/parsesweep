@@ -1,0 +1,76 @@
+psweep.validation.align
+=======================
+
+.. py:module:: psweep.validation.align
+
+.. autoapi-nested-parse::
+
+   Align contender and reference tables: roster identity or exact keys, then the quote anchor.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.validation.align.Cell
+   psweep.validation.align.Cluster
+   psweep.validation.align.Columns
+   psweep.validation.align.Source
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.validation.align.align
+   psweep.validation.align.columns
+   psweep.validation.align.context_fields
+   psweep.validation.align.item_properties
+
+
+Module Contents
+---------------
+
+.. py:class:: Cell
+
+   One table cell: value, evidence quote and URL, and a conflict flag.
+
+
+.. py:class:: Cluster
+
+   Rows from every source that align to one key within a scope.
+
+
+.. py:class:: Columns
+
+   Scored, focus and unscored columns with their titles and descriptions.
+
+
+.. py:class:: Source
+
+   One input table and its role in the comparison.
+
+
+.. py:function:: align(sources: collections.abc.Sequence[Source], *, metadata: psweep.utils.schema_metadata.SchemaMetadata, roster: psweep.extraction.roster.Roster | None, key_fields: collections.abc.Sequence[str], quote_field: str | None, columns: Columns, staging: sqlite3.Connection, stats: dict) -> collections.abc.Iterator[Cluster]
+
+   Validate headers and stage rows now; return the cluster stream (fills ``stats``).
+
+
+.. py:function:: columns(metadata: psweep.utils.schema_metadata.SchemaMetadata, roster: psweep.extraction.roster.Roster | None, *, key_fields: collections.abc.Sequence[str], quote_field: str | None, fields: collections.abc.Sequence[str] | None, references: collections.abc.Sequence[Source]) -> Columns
+
+   Scored and focus fields, compiled headers, and the reference header checks.
+
+
+.. py:function:: context_fields(metadata: psweep.utils.schema_metadata.SchemaMetadata) -> set[str]
+
+   Context-object fields; an item field of the same name wins, as in compile.
+
+
+.. py:function:: item_properties(metadata: psweep.utils.schema_metadata.SchemaMetadata, row_array: str | None) -> dict[str, dict]
+
+   Item properties in schema order; a row array is replaced by its child properties.
+
+

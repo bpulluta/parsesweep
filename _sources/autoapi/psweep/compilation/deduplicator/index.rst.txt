@@ -64,7 +64,7 @@ Module Contents
 
 
 
-   .. py:method:: preview_deduplication(df: pandas.DataFrame) -> Dict[str, Any]
+   .. py:method:: preview_deduplication(df: pandas.DataFrame) -> dict[str, Any]
 
       Preview deduplication effects without mutating or writing outputs.
 

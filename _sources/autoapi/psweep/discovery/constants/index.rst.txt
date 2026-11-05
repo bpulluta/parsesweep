@@ -7,10 +7,5 @@ psweep.discovery.constants
 
    Shared constants for the discovery module.
 
-   Single source of truth for file-type sets, MIME mapping, and the routing-reason
-   string literals that are produced in one place and matched by equality in
-   another. Centralizing these removes the historical duplication/drift across
-   engine, selector, prioritizer, and connectors.
-
 
 

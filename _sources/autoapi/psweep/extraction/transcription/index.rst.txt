@@ -1,0 +1,116 @@
+psweep.extraction.transcription
+===============================
+
+.. py:module:: psweep.extraction.transcription
+
+.. autoapi-nested-parse::
+
+   Audio transcription: the text extractor for recordings.
+
+   ffmpeg transcodes a recording to mono 16 kHz MP3 chunks of about
+   ``CHUNK_SECONDS``, each cut at the quietest moment near its boundary so
+   words are not split. The ``extraction.transcription_model`` tier
+   transcribes the chunks concurrently with reasoning off. The joined
+   transcript starts every chunk with its exact ``[hh:mm:ss]`` offset
+   (model-written timestamps drift) and is cached beside the recording like
+   OCR text, keyed by the source bytes and :attr:`Transcriber.identity`.
+
+   Module-level imports stay lightweight (stdlib, ``psweep.exceptions``):
+   ``document_utils`` imports this module.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.transcription.TranscriptionError
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.transcription.Transcriber
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.transcription.build_transcriber
+   psweep.extraction.transcription.chunk_starts
+   psweep.extraction.transcription.is_audio
+   psweep.extraction.transcription.timestamp
+   psweep.extraction.transcription.transcript
+
+
+Module Contents
+---------------
+
+.. py:exception:: TranscriptionError
+
+   Bases: :py:obj:`RuntimeError`
+
+
+   A recording could not be transcribed.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: Transcriber(llm: dict[str, Any], *, max_concurrent: int, timeout: int | None = None)
+
+   One transcription tier shared by every document of a run.
+
+   ``max_concurrent`` bounds in-flight transcription requests across
+   all documents. The LLM client is created on first use, so fully
+   cached runs make no client and no call.
+
+
+   .. py:method:: transcribe(source: pathlib.Path, workdir: pathlib.Path) -> str
+
+      Transcribe ``source`` via scratch chunks in ``workdir``.
+
+
+
+   .. py:property:: usage
+      :type: dict[str, float]
+
+
+      Calls, tokens and cost so far (empty when none were sent).
+
+
+.. py:function:: build_transcriber(inputs: dict[str, Any]) -> Transcriber | None
+
+   The run's transcriber; None without ``transcription_model``.
+
+
+.. py:function:: chunk_starts(levels: list[float]) -> list[float]
+
+   Chunk start times (seconds) for an RMS envelope.
+
+   Every ``CHUNK_SECONDS`` the cut moves to the quietest window within
+   ``CUT_WINDOW_SECONDS``; the last chunk is 30 s to 6 min long.
+
+
+.. py:function:: is_audio(path: pathlib.Path) -> bool
+
+   Whether ``path`` is a recording (by extension).
+
+
+.. py:function:: timestamp(seconds: float) -> str
+
+   ``[hh:mm:ss]`` marker for an offset in seconds.
+
+
+.. py:function:: transcript(source: pathlib.Path, transcriber: Transcriber | None) -> str
+
+   The recording's transcript: cached, or transcribed and cached.
+
+   Without a transcriber (review, validation, CLI utilities) any cached
+   transcript is used; with one, only a transcript of its identity is.
+
+

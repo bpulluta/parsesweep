@@ -10,7 +10,7 @@ psweep.config.model_registry
    The strict loader accepts ``models: {alias: model-name}`` only. Context
    windows remain a separate model-name map passed directly to LLM clients,
    not folded into aliases. The factory owns provider and credentials for
-   all callers, including QA/QC.
+   all callers.
 
 
 
@@ -51,7 +51,7 @@ Module Contents
 
 .. py:class:: ModelRegistry(tiers: collections.abc.Mapping[str, ModelDefinition] | None = None, llm_config: collections.abc.Mapping[str, Any] | None = None)
 
-   Resolve aliases and validate single/multi-model references.
+   Resolve aliases and validate model references.
 
    Store aliases and distinguish omitted/empty credentials.
 
@@ -70,21 +70,15 @@ Module Contents
 
 
 
-   .. py:method:: get_models(tier_names: collections.abc.Sequence[str] | None) -> list[ModelDefinition]
-
-      Resolve in order, deduplicating concrete models.
-
-
-
    .. py:method:: to_llm_kwargs(tier_name: str | None) -> dict[str, Any]
 
       Resolve client kwargs through shared credential handling.
 
 
 
-   .. py:method:: validate(*, references: collections.abc.Iterable[str | None] | None = None, multi_references: collections.abc.Iterable[tuple[str, collections.abc.Sequence[str] | None]] | None = None) -> None
+   .. py:method:: validate(*, references: collections.abc.Iterable[str | None] | None = None) -> None
 
-      Validate aliases, references, and distinct-model minimum.
+      Validate aliases and references.
 
 
 

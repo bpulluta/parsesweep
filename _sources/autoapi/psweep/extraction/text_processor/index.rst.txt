@@ -5,16 +5,8 @@ psweep.extraction.text_processor
 
 .. autoapi-nested-parse::
 
-   Text processing utilities for extraction.
+   Payload normalizers applied after extraction.
 
-
-
-Classes
--------
-
-.. autoapisummary::
-
-   psweep.extraction.text_processor.TextProcessor
 
 
 Functions
@@ -22,103 +14,18 @@ Functions
 
 .. autoapisummary::
 
+   psweep.extraction.text_processor.calculate_completeness
    psweep.extraction.text_processor.find_data_arrays
+   psweep.extraction.text_processor.normalize_string_fields
+   psweep.extraction.text_processor.normalize_with_schema
 
 
 Module Contents
 ---------------
 
-.. py:class:: TextProcessor(max_chars: int = 400000)
+.. py:function:: calculate_completeness(data: dict[str, Any]) -> float
 
-   Handles text optimization and preparation for extraction.
-
-   Initialize text processor.
-
-   :param max_chars: Maximum characters to extract from document (default: 400000).
-                     Proven reliable for fast processing. Increase for very long documents.
-   :type max_chars: int
-
-
-   .. py:method:: calculate_completeness(data: dict[str, Any]) -> float
-      :staticmethod:
-
-
-      Calculate completeness score based on fields populated.
-
-      Generic scoring that works for any schema:
-
-      - 0.3: Base score for successful extraction
-      - 0.2: Has context fields (entity identifiers, location, etc.)
-      - 0.5: Has item arrays with populated fields
-
-      :param data: Extracted data dictionary
-      :type data: dict[str, Any]
-
-      :returns: Score from 0-1 indicating data completeness
-      :rtype: float
-
-
-
-   .. py:method:: normalize_string_fields(data: dict[str, Any]) -> dict[str, Any]
-      :staticmethod:
-
-
-      Normalize string fields for consistency.
-
-      Cleans whitespace, removes extra spaces, and standardizes formatting.
-      Works generically with any schema structure.
-
-      :param data: Extracted data dictionary
-      :type data: dict[str, Any]
-
-      :returns: Data with normalized string fields
-      :rtype: dict[str, Any]
-
-
-
-   .. py:method:: normalize_with_schema(data: dict[str, Any], schema: dict[str, Any], validator=None) -> dict[str, Any]
-
-      Fill absent optional fields with null only when their schema permits it.
-
-      Required fields must already be present; non-nullable optional fields
-      remain absent rather than becoming invalid null values.
-
-      :param data: Extracted data dictionary
-      :type data: dict[str, Any]
-      :param schema: JSON schema defining expected structure
-      :type schema: dict[str, Any]
-
-      :returns: Data with absent nullable optional fields filled
-      :rtype: dict[str, Any]
-
-
-
-   .. py:method:: optimize(text: str) -> tuple[str, bool]
-
-      Optimize text for extraction by truncating if needed.
-
-      :param text: Full document text
-      :type text: str
-
-      :returns: Tuple of (optimized_text, was_truncated)
-      :rtype: tuple[str, bool]
-
-
-
-   .. py:method:: run_sanity_checks(data: dict[str, Any], schema_metadata=None) -> list[str]
-
-      Run post-extraction sanity checks to catch obvious errors.
-
-      Generic checks that work for any schema type. Uses schema_metadata
-      identifier_fields (when available) to build human-readable item labels.
-
-      :param data: Extracted data dictionary
-      :type data: dict[str, Any]
-      :param schema_metadata: Optional SchemaMetadata for identifier field lookup
-
-      :returns: List of warning messages
-      :rtype: list[str]
-
+   Heuristic 0-1 fill score: 0.3 base, 0.2 context fields, 0.5 items.
 
 
 .. py:function:: find_data_arrays(data: dict[str, Any]) -> list[tuple[str, list]]
@@ -129,5 +36,15 @@ Module Contents
    This is the single source of truth for "which top-level fields hold the
    extracted item arrays", used by item counting, completeness scoring, and
    record writing so the "find the data arrays" scan is not reimplemented.
+
+
+.. py:function:: normalize_string_fields(data: Any) -> Any
+
+   Collapse whitespace in every string value, recursively.
+
+
+.. py:function:: normalize_with_schema(data: dict[str, Any], schema: dict[str, Any], validator=None) -> dict[str, Any]
+
+   Fill absent optional fields with null only when their schema permits it.
 
 

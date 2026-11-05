@@ -13,12 +13,54 @@ psweep.compilation.accounting
    run manifests. It lives here (rather than in the thin CLI layer) so it can be
    built and tested without invoking the ``compile`` Click command.
 
-   Public API
-   ----------
-   - :func:`build_pipeline_accounting` — assemble the full accounting payload.
-   - :func:`write_compilation_run_manifest` — persist one compile run manifest.
-   - :func:`collect_discovery_manifests` / :func:`discover_domain_roots` —
-     manifest discovery helpers, exposed for testing.
+   Public API: :func:`build_pipeline_accounting`,
+   :func:`write_compilation_run_manifest`, :func:`latest_compilation_manifest`,
+   :func:`collect_discovery_manifests`.
 
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.compilation.accounting.build_pipeline_accounting
+   psweep.compilation.accounting.canonical_discovery_manifest_path
+   psweep.compilation.accounting.collect_discovery_manifests
+   psweep.compilation.accounting.latest_compilation_manifest
+   psweep.compilation.accounting.write_compilation_run_manifest
+
+
+Module Contents
+---------------
+
+.. py:function:: build_pipeline_accounting(*, domain: str, extraction_dir: pathlib.Path, output_dir: pathlib.Path, compilation_stats: dict[str, Any]) -> dict[str, Any]
+
+   Build run_accounting.json: a factual, cumulative log of discover, extract and compile.
+
+   Histories accumulate across immutable run manifests (discovery runs, plus
+   ``run_manifests/`` under the extraction and compilation dirs). Discovery and
+   extraction LLM costs sum into ``summary.total_cost_usd``; compilation makes no
+   LLM calls and records output stats only; flat-rate search APIs count queries only.
+
+
+.. py:function:: canonical_discovery_manifest_path(domain: str, manifest_path: pathlib.Path, run_id: str) -> str
+
+   Prefer ``runs/<run_id>/manifest.json`` over the ``latest`` pointer.
+
+
+.. py:function:: collect_discovery_manifests(domain: str) -> list[pathlib.Path]
+
+   Discovery run manifests for *domain* plus the ``latest`` pointer, sorted by path.
+
+
+.. py:function:: latest_compilation_manifest(output_dir: pathlib.Path) -> dict[str, Any] | None
+
+   The newest compilation run manifest (stamped file names sort chronologically).
+
+
+.. py:function:: write_compilation_run_manifest(*, output_dir: pathlib.Path, schema_id: str, mode: str, stats: dict[str, Any], started_at: datetime.datetime, build_fingerprint: str, table_sha256: str | None) -> pathlib.Path | None
+
+   Persist one immutable compilation run manifest (compile makes no LLM calls).
 
 

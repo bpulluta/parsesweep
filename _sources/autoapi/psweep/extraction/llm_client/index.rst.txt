@@ -23,13 +23,27 @@ Classes
 
 .. autoapisummary::
 
+   psweep.extraction.llm_client.Completion
    psweep.extraction.llm_client.LLMClient
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.llm_client.prompt_schema
 
 
 Module Contents
 ---------------
 
-.. py:class:: LLMClient(api_key: str = None, model: str = DEFAULT_MODEL, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: str = None, timeout: int = None, reasoning_models: Optional[List[str]] = None)
+.. py:class:: Completion
+
+   One answered request: the first choice and its measured usage.
+
+
+.. py:class:: LLMClient(api_key: str | None = None, model: str = DEFAULT_MODEL, provider: str | None = None, azure_endpoint: str | None = None, azure_api_version: str | None = None, context_windows: dict[str, int] | None = None, base_url: str | None = None, timeout: int | None = None, reasoning_models: list[str] | None = None)
 
    Universal LLM client for structured data extraction.
 
@@ -38,7 +52,7 @@ Module Contents
 
    Initialize LLM client.
 
-   :param api_key: API key for the provider (will auto-set environment variables)
+   :param api_key: API key passed directly to this client, without mutating environment variables
    :type api_key: str
    :param model: Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "gemini-1.5-pro")
    :type model: str
@@ -66,7 +80,18 @@ Module Contents
    :type timeout: int
 
 
-   .. py:method:: extract(text: str, schema: Dict[str, Any], system_prompt: str = None, user_prompt: str = None, suppress_errors: bool = False) -> Dict[str, Any]
+   .. py:method:: complete(messages: list[dict[str, Any]], **params: Any) -> Completion
+
+      Send one chat request and account for it.
+
+      Owns provider routing, transient-failure backoff, usage/cost accounting and
+      sanitized ``ExtractionError`` failures; ``params`` are request
+      options such as ``temperature`` or ``response_format``. A reply
+      without choices raises ``ExtractionError`` carrying its usage.
+
+
+
+   .. py:method:: extract(text: str, schema: dict[str, Any], system_prompt: str | None = None, user_prompt: str | None = None, suppress_errors: bool = False) -> dict[str, Any]
 
       Extract structured data using LLM.
 
@@ -82,5 +107,10 @@ Module Contents
       :returns: dict with 'data' (extracted data) and 'cost' (API cost in USD)
       :rtype: Dict[str, Any]
 
+
+
+.. py:function:: prompt_schema(schema: dict[str, Any]) -> dict[str, Any]
+
+   Return the schema the model sees: everything except ``$metadata``.
 
 

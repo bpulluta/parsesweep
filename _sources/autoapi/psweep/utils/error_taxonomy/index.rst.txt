@@ -22,17 +22,17 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: build_error_record(exc: BaseException, *, stage: str, document_path: Optional[str] = None, model: Optional[str] = None, provider: Optional[str] = None) -> Dict[str, Any]
+.. py:function:: build_error_record(exc: BaseException, *, stage: str, document_path: str | None = None, model: str | None = None, provider: str | None = None) -> dict[str, Any]
 
    Convert a runtime exception into the canonical error payload.
 
 
-.. py:function:: normalize_error_records(errors: Optional[Iterable[Dict[str, Any]]]) -> List[Dict[str, Any]]
+.. py:function:: normalize_error_records(errors: collections.abc.Iterable[dict[str, Any]] | None) -> list[dict[str, Any]]
 
    Return a deterministic list of canonical error records.
 
 
-.. py:function:: summarize_error_records(errors: Optional[Iterable[Dict[str, Any]]]) -> Dict[str, Any]
+.. py:function:: summarize_error_records(errors: collections.abc.Iterable[dict[str, Any]] | None) -> dict[str, Any]
 
    Aggregate deterministic error totals for manifests and metadata.
 

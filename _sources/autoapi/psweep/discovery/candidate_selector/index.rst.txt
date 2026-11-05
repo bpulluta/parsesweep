@@ -26,7 +26,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: CandidateSelector(exclude_draft: bool = True, draft_patterns: list[str] | None = None, relevance_require_any_terms: list[str] | None = None, relevance_require_legal_marker_terms: list[str] | None = None, relevance_exclude_any_terms: list[str] | None = None, exclude_url_patterns: list[str] | None = None, exclude_text_patterns: list[str] | None = None, require_supported_document: bool = True, max_per_host_per_target: int = 0, target_identity_require_any_templates: list[str] | None = None, target_identity_require_all_templates: list[str] | None = None, target_identity_exclude_any_templates: list[str] | None = None)
+.. py:class:: CandidateSelector(exclude_draft: bool = True, draft_patterns: list[str] | None = None, relevance_require_any_terms: list[str] | None = None, relevance_exclude_any_terms: list[str] | None = None, exclude_url_patterns: list[str] | None = None, exclude_text_patterns: list[str] | None = None, require_supported_document: bool = True, max_per_host_per_target: int = 0, target_require_any: list[str] | None = None, target_require_all: list[str] | None = None, target_exclude: list[str] | None = None)
 
    Selects the best candidate(s) per target from seeker output.
 
@@ -36,7 +36,7 @@ Module Contents
                           Omitted or empty lists impose no draft exclusions.
 
 
-   .. py:method:: select(candidates_by_target: list[list[psweep.discovery.models.DiscoveryCandidate]], primary_per_target: int = 1, target_contexts: list[dict[str, object]] | None = None, include_metrics: bool = False) -> tuple[list[psweep.discovery.models.DiscoveryCandidate], list[str]] | tuple[list[psweep.discovery.models.DiscoveryCandidate], list[str], list[dict[str, Any]]]
+   .. py:method:: select(candidates_by_target: list[list[psweep.discovery.models.DiscoveryCandidate]], primary_per_target: int = 1, target_contexts: list[dict[str, object]] | None = None, include_metrics: bool = False, labels: list[str] | None = None) -> tuple[list[psweep.discovery.models.DiscoveryCandidate], list[str]] | tuple[list[psweep.discovery.models.DiscoveryCandidate], list[str], list[dict[str, Any]]]
 
       Select up to *primary_per_target* candidates per target.
 
@@ -52,6 +52,7 @@ Module Contents
       :param target_contexts: Optional per-target metadata (parallel to *candidates_by_target*)
                               used to enrich selection notes and metrics.
       :param include_metrics: When ``True``, also return the per-target selection metrics.
+      :param labels: Optional per-target display names for notes (default ``#<n>``).
 
       :returns: ``(selected, notes)``, or ``(selected, notes, target_metrics)``
                 when ``include_metrics=True``, where:

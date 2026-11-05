@@ -22,8 +22,8 @@ psweep.discovery.code_host_adapters
    The bundled :class:`MunicodeAdapter` targets ``library.municode.com``, the
    dominant US municipal-code host. Municode serves public municipal law
    (government edicts); this collects it as reference material, honors the site's
-   robots policy through the engine's existing policy gate, and uses a generic
-   User-Agent (never a named AI-crawler UA, which the site disallows).
+   robots policy through the engine's existing policy gate, and sends the shared
+   discovery User-Agent (never a named AI-crawler UA, which the site disallows).
 
 
 
@@ -61,9 +61,15 @@ Module Contents
 
 
 
-   .. py:method:: fetch_text(url: str, get: HttpGet) -> Optional[str]
+   .. py:method:: fetch_text(url: str, get: HttpGet) -> str | None
 
       Return clean text for ``url`` via ``get``, or None if unresolved.
+
+
+
+   .. py:method:: request_headers() -> dict[str, str]
+
+      Return headers for the host's public landing pages and API.
 
 
 
@@ -76,8 +82,8 @@ Module Contents
    token). Given a public URL such as
    ``https://library.municode.com/tx/friendswood/codes/code_of_ordinances?nodeId=<node>``
    the resolution chain is: client (state + name) -> product -> latest job ->
-   node content. ``groupChunks=true`` returns the node's whole subtree in one
-   call so a link that points at a chapter/article still yields its sections.
+   node content. Grouped responses can include neighboring sections; retain
+   only the requested node and descendants, with their section headings.
 
 
    .. py:method:: can_handle(url: str) -> bool
@@ -86,13 +92,19 @@ Module Contents
 
 
 
-   .. py:method:: fetch_text(url: str, get: HttpGet) -> Optional[str]
+   .. py:method:: fetch_text(url: str, get: HttpGet) -> str | None
 
       Resolve the Municode API chain for ``url`` and return clean text.
 
 
 
-.. py:function:: resolve_adapter(url: str) -> Optional[CodeHostAdapter]
+   .. py:method:: request_headers() -> dict[str, str]
+
+      Use the same identifying client headers throughout acquisition.
+
+
+
+.. py:function:: resolve_adapter(url: str) -> CodeHostAdapter | None
 
    Return the first bundled adapter that can handle ``url``, or ``None``.
 

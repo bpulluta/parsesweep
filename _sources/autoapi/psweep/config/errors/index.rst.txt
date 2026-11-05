@@ -1,0 +1,45 @@
+psweep.config.errors
+====================
+
+.. py:module:: psweep.config.errors
+
+.. autoapi-nested-parse::
+
+   Runtime config error type and strict key checking.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.config.errors.RuntimeConfigError
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.config.errors.reject_unknown_keys
+
+
+Module Contents
+---------------
+
+.. py:exception:: RuntimeConfigError
+
+   Bases: :py:obj:`ValueError`
+
+
+   Raised when runtime config cannot be loaded or validated.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:function:: reject_unknown_keys(values: collections.abc.Mapping[str, Any], allowed: collections.abc.Iterable[str], location: str = '', config_path: str | None = None) -> None
+
+   Fail on the first unknown key, suggesting the closest allowed key.
+
+

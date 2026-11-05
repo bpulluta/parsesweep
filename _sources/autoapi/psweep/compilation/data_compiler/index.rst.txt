@@ -5,9 +5,7 @@ psweep.compilation.data_compiler
 
 .. autoapi-nested-parse::
 
-   Universal DataCompiler - Works with ANY schema automatically.
-
-   Clean, simple, and intelligent. No configuration needed.
+   Compile extraction records into one analysis-ready table.
 
 
 
@@ -19,71 +17,40 @@ Classes
    psweep.compilation.data_compiler.DataCompiler
 
 
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.compilation.data_compiler.apply_value_normalizations
+
+
 Module Contents
 ---------------
 
-.. py:class:: DataCompiler(schema_metadata, verbose=True, debug=False)
+.. py:class:: DataCompiler(schema_metadata, inputs: dict[str, Any] | None = None, verbose=True, debug=False)
 
-   Universal data compiler that automatically handles any extraction schema.
+   Roster mode emits one row per discovery target; otherwise one row per item.
 
-   Simply point it at extracted JSON files and it:
-
-   - Detects schema structure automatically
-   - Intelligently flattens nested data for spreadsheets
-   - Creates readable, analysis-ready output
-   - Handles both simple and complex nested structures
-
-   No configuration required - just works.
-
-   Initialize compiler.
-
-   :param schema_metadata: SchemaMetadata instance (required in v2.0+)
-   :param verbose: Whether to print informational messages (default: True)
-   :param debug: Whether to print debug-level details (default: False)
-
-   :raises SchemaMetadataError: If schema_metadata is not provided
+   ``inputs`` are the resolved compile inputs; ``targets``/``partition_by``
+   activate roster mode exactly as in extraction.
 
 
-   .. py:method:: compile_from_directory(json_dir: pathlib.Path, *, apply_deduplication: bool = True) -> Tuple[pandas.DataFrame, Dict]
+   .. py:method:: compile_from_directory(json_dir: pathlib.Path, *, apply_deduplication: bool = True) -> tuple[pandas.DataFrame, dict[str, Any]]
 
-      Load all JSON files and compile into DataFrame.
-
-      Searches recursively through nested subdirectories.
-
-      :returns: Tuple of (DataFrame, schema_info dict)
-      :rtype: Tuple[pd.DataFrame, Dict]
+      Return the compiled frame (field-name columns) and a schema summary.
 
 
 
    .. py:method:: export(df, output_dir: pathlib.Path, base_name: str, formats, *, fresh=False)
 
-      Prepare once, preflight, then publish from a staging dir with rollback.
+      Serialize writers and recover interrupted output publication first.
 
-      All requested writers run inside a fresh temporary stage directory beside
-      the real output (same parent, so promotion is a local rename). The stage
-      holds a ``files/`` subdir (writer output) and a ``backup/`` subdir (live
-      files moved aside during publication); every backup name is stage-owned,
-      so nothing in or around the output dir is ever overwritten by a fixed
-      sentinel name. Nothing live is touched until every writer has succeeded:
 
-      - ``fresh``: the finished ``files/`` dir replaces the whole output
-        directory in one rename; the prior directory is kept in ``backup/`` and
-        restored if the rename fails.
-      - non-fresh: each finished file is promoted into place, moving any file
-        it overwrites into ``backup/`` first; a failed promotion rolls the
-        already-promoted files back. Unrelated files are never disturbed.
 
-      A caught writer or publish failure leaves prior output and unrelated
-      files as they were and leaves no staging directory behind. In the rare
-      case that a rollback cannot restore a file it moved aside, the stage root
-      (holding that backup) is kept and the raised error reports where it is,
-      rather than claiming the output is unchanged.
+   .. py:method:: fingerprint(json_dir: pathlib.Path) -> str
 
-      Limitations: this is staged publication with rollback, not a crash-safe
-      transaction. Writers run before any live file is touched, but publication
-      is a sequence of renames — a process/power crash mid-publish, or a
-      concurrent writer in the same output dir, can leave a brief or partial
-      state; there is no locking.
+      Build fingerprint: schema bytes, compile overlay, roster targets, record bytes.
 
 
 
@@ -105,5 +72,19 @@ Module Contents
 
       Reject workbook overflow before either writer touches output.
 
+
+
+   .. py:property:: mode
+      :type: str
+
+
+      ``roster`` when a roster is configured, else ``rows``.
+
+      :type: Compilation mode
+
+
+.. py:function:: apply_value_normalizations(df: pandas.DataFrame, metadata) -> pandas.DataFrame
+
+   Rows-mode value normalization (units, state names) on field-name columns.
 
 

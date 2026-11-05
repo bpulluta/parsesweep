@@ -1,0 +1,211 @@
+psweep.discovery.transport
+==========================
+
+.. py:module:: psweep.discovery.transport
+
+.. autoapi-nested-parse::
+
+   HTTP transport with connection-time public-address enforcement.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.transport.MAX_FILE_BYTES
+   psweep.discovery.transport.MAX_PAGE_BYTES
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.transport.NetworkPolicyError
+   psweep.discovery.transport.ResponseTooLargeError
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.transport.BoundedResponse
+   psweep.discovery.transport.PublicHTTPAdapter
+   psweep.discovery.transport.PublicHTTPConnection
+   psweep.discovery.transport.PublicHTTPPool
+   psweep.discovery.transport.PublicHTTPSConnection
+   psweep.discovery.transport.PublicHTTPSPool
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.transport.max_file_bytes
+   psweep.discovery.transport.public_address
+   psweep.discovery.transport.request_get
+   psweep.discovery.transport.validate_public_url
+
+
+Module Contents
+---------------
+
+.. py:exception:: NetworkPolicyError(url: str, reason: str, result: object = None)
+
+   Bases: :py:obj:`RuntimeError`
+
+
+   Acquisition cannot satisfy the configured security boundary.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:exception:: ResponseTooLargeError(url: str, max_bytes: int, *, file: bool)
+
+   Bases: :py:obj:`NetworkPolicyError`
+
+
+   A wanted response exceeded its byte limit: lost data, not a policy skip.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: BoundedResponse(response: requests.Response, *, max_bytes: int, deadline: float, stall_timeout: float | None = None)
+
+   Expose discovery response operations with bounded decoding.
+
+   An in-memory response must finish by ``deadline``. A file streamed to
+   disk passes ``stall_timeout`` instead: every received chunk extends the
+   deadline, so only a transfer that stops delivering bytes is aborted.
+
+
+   .. py:method:: close() -> None
+
+      Release the underlying response and connection.
+
+
+
+   .. py:method:: iter_content(chunk_size: int = 65536) -> collections.abc.Iterator[bytes]
+
+      Bound decoded bytes and elapsed time between socket reads.
+
+
+
+   .. py:method:: json()
+
+      Decode a bounded JSON response.
+
+
+
+   .. py:method:: raise_for_status() -> None
+
+      Propagate unsuccessful HTTP status codes.
+
+
+
+   .. py:property:: content
+      :type: bytes
+
+
+      Read a size-limited body once.
+
+
+   .. py:property:: text
+      :type: str
+
+
+      Decode a bounded response using its declared encoding.
+
+
+.. py:class:: PublicHTTPAdapter(pool_connections: int = DEFAULT_POOLSIZE, pool_maxsize: int = DEFAULT_POOLSIZE, max_retries: int | urllib3.util.retry.Retry = DEFAULT_RETRIES, pool_block: bool = DEFAULT_POOLBLOCK)
+
+   Bases: :py:obj:`requests.adapters.HTTPAdapter`
+
+
+   Use private pool classes and verified system or private roots.
+
+
+   .. py:method:: build_connection_pool_key_attributes(request, verify, cert=None)
+
+      Use approved private roots or system trust.
+
+
+
+   .. py:method:: init_poolmanager(*args, **kwargs)
+
+      Install public-only pools on this adapter.
+
+
+
+.. py:class:: PublicHTTPConnection(host: str, port: int | None = None, *, timeout: urllib3.util.timeout._TYPE_TIMEOUT = _DEFAULT_TIMEOUT, source_address: tuple[str, int] | None = None, blocksize: int = 16384, socket_options: None | urllib3.util.connection._TYPE_SOCKET_OPTIONS = default_socket_options, proxy: urllib3.util.url.Url | None = None, proxy_config: urllib3._base_connection.ProxyConfig | None = None)
+
+   Bases: :py:obj:`urllib3.connection.HTTPConnection`
+
+
+   Open HTTP sockets only to validated public addresses.
+
+
+.. py:class:: PublicHTTPPool(host: str, port: int | None = None, timeout: _TYPE_TIMEOUT | None = _DEFAULT_TIMEOUT, maxsize: int = 1, block: bool = False, headers: Mapping[str, str] | None = None, retries: urllib3.util.retry.Retry | bool | int | None = None, _proxy: urllib3.util.url.Url | None = None, _proxy_headers: Mapping[str, str] | None = None, _proxy_config: urllib3.connection.ProxyConfig | None = None, **conn_kw: Any)
+
+   Bases: :py:obj:`urllib3.connectionpool.HTTPConnectionPool`
+
+
+   Pool HTTP connections without global configuration changes.
+
+
+.. py:class:: PublicHTTPSConnection(host: str, port: int | None = None, *, timeout: urllib3.util.timeout._TYPE_TIMEOUT = _DEFAULT_TIMEOUT, source_address: tuple[str, int] | None = None, blocksize: int = 16384, socket_options: None | urllib3.util.connection._TYPE_SOCKET_OPTIONS = HTTPConnection.default_socket_options, proxy: urllib3.util.url.Url | None = None, proxy_config: urllib3._base_connection.ProxyConfig | None = None, cert_reqs: int | str | None = None, assert_hostname: None | str | Literal[False] = None, assert_fingerprint: str | None = None, server_hostname: str | None = None, ssl_context: ssl.SSLContext | None = None, ca_certs: str | None = None, ca_cert_dir: str | None = None, ca_cert_data: None | str | bytes = None, ssl_minimum_version: int | None = None, ssl_maximum_version: int | None = None, ssl_version: int | str | None = None, cert_file: str | None = None, key_file: str | None = None, key_password: str | None = None)
+
+   Bases: :py:obj:`urllib3.connection.HTTPSConnection`
+
+
+   Keep the TLS hostname while pinning the underlying socket.
+
+
+.. py:class:: PublicHTTPSPool(host: str, port: int | None = None, timeout: _TYPE_TIMEOUT | None = _DEFAULT_TIMEOUT, maxsize: int = 1, block: bool = False, headers: Mapping[str, str] | None = None, retries: urllib3.util.retry.Retry | bool | int | None = None, _proxy: urllib3.util.url.Url | None = None, _proxy_headers: Mapping[str, str] | None = None, key_file: str | None = None, cert_file: str | None = None, cert_reqs: int | str | None = None, key_password: str | None = None, ca_certs: str | None = None, ssl_version: int | str | None = None, ssl_minimum_version: ssl.TLSVersion | None = None, ssl_maximum_version: ssl.TLSVersion | None = None, assert_hostname: str | Literal[False] | None = None, assert_fingerprint: str | None = None, ca_cert_dir: str | None = None, **conn_kw: Any)
+
+   Bases: :py:obj:`urllib3.connectionpool.HTTPSConnectionPool`
+
+
+   Pool HTTPS connections with address validation.
+
+
+.. py:function:: max_file_bytes() -> int
+
+   Return the file download limit; ``MAX_FILE_BYTES_ENV`` overrides it.
+
+
+.. py:function:: public_address(address: str) -> bool
+
+   Reject non-global, multicast, scoped, and reserved addresses.
+
+
+.. py:function:: request_get(url: str, *, headers: dict[str, str], timeout: float, verify: bool, stream: bool, allow_redirects: bool, cookies=None, max_bytes: int = MAX_PAGE_BYTES) -> BoundedResponse
+
+   Send once; the caller owns redirects and response lifetime.
+
+   ``stream=False`` reads the body into memory within ``timeout`` in total.
+   ``stream=True`` is a file the caller writes to disk: it passes the file
+   limit (``max_file_bytes()``) and only a stall of ``timeout`` aborts it.
+
+
+.. py:function:: validate_public_url(url: str) -> None
+
+   Check URL syntax and literal addresses before policy gates.
+
+
+.. py:data:: MAX_FILE_BYTES
+   :value: 1073741824
+
+
+   Default decoded-size limit of files streamed to disk.
+
+.. py:data:: MAX_PAGE_BYTES
+   :value: 52428800
+
+
+   Decoded-size limit of responses read into memory (pages, search, APIs).
+

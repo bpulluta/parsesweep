@@ -3,9 +3,9 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="psweep.scaffolding" href="../scaffolding/index.html"><link rel="prev" title="psweep.extraction.text_processor" href="../extraction/text_processor/index.html">
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="psweep.scaffolding" href="../scaffolding/index.html"><link rel="prev" title="psweep.outcomes" href="../outcomes/index.html">
 
-    <link rel="shortcut icon" href="../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>psweep.pipeline - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
@@ -202,11 +202,15 @@
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../getting-started.html">Getting Started</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../commands/index.html">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../sources.html">Source Patterns</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../config-reference.html">Configuration Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../tuning.html">Tuning &amp; Iteration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../schemas/index.html">Schema Authoring</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../schemas/index.html">Schema Authoring</a><input aria-label="Toggle navigation of Schema Authoring" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../schemas/best-practices.html">Schema Design Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../commands/index.html">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../security.html">Security and protected operation</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -215,12 +219,8 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul class="current">
-<li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
-<li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
-<li class="toctree-l3 has-children"><a class="reference internal" href="../benchmarking/index.html">psweep.benchmarking</a><input aria-label="Toggle navigation of psweep.benchmarking" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../benchmarking/performance/index.html">psweep.benchmarking.performance</a></li>
-</ul>
-</li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l3 has-children"><a class="reference internal" href="../compilation/index.html">psweep.compilation</a><input aria-label="Toggle navigation of psweep.compilation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../compilation/accounting/index.html">psweep.compilation.accounting</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compilation/csv_exporter/index.html">psweep.compilation.csv_exporter</a></li>
@@ -229,17 +229,18 @@
 <li class="toctree-l4"><a class="reference internal" href="../compilation/deduplicator/index.html">psweep.compilation.deduplicator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../compilation/schema_detector/index.html">psweep.compilation.schema_detector</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../compilation/synthesizer/index.html">psweep.compilation.synthesizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../config/index.html">psweep.config</a><input aria-label="Toggle navigation of psweep.config" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../config/discovery_config/index.html">psweep.config.discovery_config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../config/errors/index.html">psweep.config.errors</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../config/file_loader/index.html">psweep.config.file_loader</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../config/model_registry/index.html">psweep.config.model_registry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../config/runtime_config_loader/index.html">psweep.config.runtime_config_loader</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../core/index.html">psweep.core</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
@@ -260,18 +261,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../discovery/retry/index.html">psweep.discovery.retry</a></li>
-<li class="toctree-l4 has-children"><a class="reference internal" href="../discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l5"><a class="reference internal" href="../discovery/targets/base/index.html">psweep.discovery.targets.base</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../discovery/targets/providers/index.html">psweep.discovery.targets.providers</a></li>
-</ul>
-</li>
+<li class="toctree-l4"><a class="reference internal" href="../discovery/targets/index.html">psweep.discovery.targets</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/urls/index.html">psweep.discovery.urls</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/validators/index.html">psweep.discovery.validators</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../exceptions/index.html">psweep.exceptions</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -280,34 +277,38 @@
 <li class="toctree-l4"><a class="reference internal" href="../extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/text_processor/index.html">psweep.extraction.text_processor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../extraction/transcription/index.html">psweep.extraction.transcription</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../outcomes/index.html">psweep.outcomes</a></li>
 <li class="toctree-l3 current current-page"><a class="current reference internal" href="#">psweep.pipeline</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../scaffolding/index.html">psweep.scaffolding</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../security/index.html">psweep.security</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/normalizers/index.html">psweep.utils.normalizers</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/page_range/index.html">psweep.utils.page_range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../utils/retry/index.html">psweep.utils.retry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/schema_metadata/index.html">psweep.utils.schema_metadata</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../utils/value_normalizer/index.html">psweep.utils.value_normalizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../utils/spreadsheet/index.html">psweep.utils.spreadsheet</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../validation/comparison_engine/index.html">psweep.validation.comparison_engine</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../validation/evidence_loader/index.html">psweep.validation.evidence_loader</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../validation/multi_model_extractor/index.html">psweep.validation.multi_model_extractor</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../validation/report_generator/index.html">psweep.validation.report_generator</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../validation/utils/index.html">psweep.validation.utils</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../validation/align/index.html">psweep.validation.align</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../validation/judge/index.html">psweep.validation.judge</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../validation/quality/index.html">psweep.validation.quality</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../validation/tables/index.html">psweep.validation.tables</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../workspace/index.html">psweep.workspace</a></li>
 </ul>
 </li>
 </ul>
@@ -365,17 +366,17 @@ REST API layer.</p>
 <dl>
 <dt>Quick start:</dt><dd><div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">psweep.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">extract_documents</span><span class="p">,</span> <span class="n">compile_extractions</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">extract_documents</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="s2">&quot;documents/my_domain/&quot;</span><span class="p">,</span>
-<span class="gp">... </span>    <span class="n">schema</span><span class="o">=</span><span class="s2">&quot;schemas/personal/my_schema.json&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="s2">"documents/my_domain/"</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">schema</span><span class="o">=</span><span class="s2">"config/my_domain/schema.json"</span><span class="p">,</span>
 <span class="gp">... </span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Extracted </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">successful</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2"> documents&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Extracted </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">successful</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2"> documents"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">compiled</span> <span class="o">=</span> <span class="n">compile_extractions</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output_dir</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="n">result</span><span class="o">.</span><span class="n">schema_path</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Compiled to </span><span class="si">{</span><span class="n">compiled</span><span class="o">.</span><span class="n">output_files</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Compiled to </span><span class="si">{</span><span class="n">compiled</span><span class="o">.</span><span class="n">output_files</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </dd>
 <dt>For full config-driven runs (recommended for complex domains):</dt><dd><div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">psweep.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_pipeline</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">run_pipeline</span><span class="p">(</span><span class="s2">&quot;config/my_domain/my_domain.yaml&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">run_pipeline</span><span class="p">(</span><span class="s2">"config/my_domain/run.yaml"</span><span class="p">)</span>
 </pre></div>
 </div>
 </dd>
@@ -392,7 +393,7 @@ REST API layer.</p>
 <td><p>Summary of a batch document extraction run.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.PipelineResult" title="psweep.pipeline.PipelineResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PipelineResult</span></code></a></p></td>
-<td><p>Combined result from a full discover → extract → [validate] → compile run.</p></td>
+<td><p>Combined result from a full discover → extract → compile run.</p></td>
 </tr>
 </tbody>
 </table>
@@ -409,38 +410,29 @@ REST API layer.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.compile_extractions" title="psweep.pipeline.compile_extractions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compile_extractions</span></code></a>(→ CompilationResult)</p></td>
 <td><p>Compile extracted JSON files into Excel/CSV output.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.count_curated_documents" title="psweep.pipeline.count_curated_documents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">count_curated_documents</span></code></a>(→ int)</p></td>
-<td><p>Count curated docs, skipping <code class="docutils literal notranslate"><span class="pre">.text</span></code> sidecars and <code class="docutils literal notranslate"><span class="pre">.json</span></code>.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.compiled_table_fresh" title="psweep.pipeline.compiled_table_fresh"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compiled_table_fresh</span></code></a>(→ bool)</p></td>
+<td><p>True when the newest compile manifest matches the records and the CSV bytes.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.count_extracted_documents" title="psweep.pipeline.count_extracted_documents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">count_extracted_documents</span></code></a>(→ int)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.count_curated_documents" title="psweep.pipeline.count_curated_documents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">count_curated_documents</span></code></a>(→ int)</p></td>
+<td><p>Count the documents extraction would read.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.count_extracted_documents" title="psweep.pipeline.count_extracted_documents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">count_extracted_documents</span></code></a>(→ int)</p></td>
 <td><p>Count extracted JSONs, excluding <code class="docutils literal notranslate"><span class="pre">run_manifests/*.json</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.discover_domain" title="psweep.pipeline.discover_domain"><code class="xref py py-obj docutils literal notranslate"><span class="pre">discover_domain</span></code></a>(→ Optional[str])</p></td>
-<td><p>Return <code class="docutils literal notranslate"><span class="pre">&lt;domain&gt;</span></code> for a <code class="docutils literal notranslate"><span class="pre">discovered/&lt;domain&gt;/...</span></code> path, else <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.execute_run_stages" title="psweep.pipeline.execute_run_stages"><code class="xref py py-obj docutils literal notranslate"><span class="pre">execute_run_stages</span></code></a>(→ list[str])</p></td>
+<td><p>Run stage subprocesses in order and return the stages that ended partial.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.extract_documents" title="psweep.pipeline.extract_documents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">extract_documents</span></code></a>(→ ExtractionRunResult)</p></td>
-<td><p>Extract structured data from all documents in a folder.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.extract_documents" title="psweep.pipeline.extract_documents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">extract_documents</span></code></a>(→ ExtractionRunResult)</p></td>
+<td><p>Extract every document under <em>documents_path</em> (no CLI, Rich, or sys.exit).</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.resolve_compile_output_dir" title="psweep.pipeline.resolve_compile_output_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_compile_output_dir</span></code></a>(→ pathlib.Path)</p></td>
-<td><p>Default <code class="docutils literal notranslate"><span class="pre">compiled/...</span></code> output dir for a compile input directory.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.resolve_extract_output_dir" title="psweep.pipeline.resolve_extract_output_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_extract_output_dir</span></code></a>(→ pathlib.Path)</p></td>
-<td><p>Default <code class="docutils literal notranslate"><span class="pre">extracted/...</span></code> output dir for an extract input path.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.resolve_run_discovery_enabled" title="psweep.pipeline.resolve_run_discovery_enabled"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_run_discovery_enabled</span></code></a>(→ bool)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.resolve_run_discovery_enabled" title="psweep.pipeline.resolve_run_discovery_enabled"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_run_discovery_enabled</span></code></a>(→ bool)</p></td>
 <td><p>Return True when discovery is configured for the run config.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.resolve_run_extraction_dir" title="psweep.pipeline.resolve_run_extraction_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_run_extraction_dir</span></code></a>(→ pathlib.Path)</p></td>
-<td><p>Resolve the extraction output dir for a run config.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.run_pipeline" title="psweep.pipeline.run_pipeline"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_pipeline</span></code></a>(→ PipelineResult)</p></td>
+<td><p>Run the full pipeline (discover → extract → compile → validate) from a run config.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.resolve_run_validation" title="psweep.pipeline.resolve_run_validation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_run_validation</span></code></a>(→ Optional[dict])</p></td>
-<td><p>Resolve QA/QC orchestration settings from a domain run config.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.run_pipeline" title="psweep.pipeline.run_pipeline"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_pipeline</span></code></a>(→ PipelineResult)</p></td>
-<td><p>Run the full pipeline (discover → extract → compile) from a run config.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.pipeline.swap_layout_component" title="psweep.pipeline.swap_layout_component"><code class="xref py py-obj docutils literal notranslate"><span class="pre">swap_layout_component</span></code></a>(→ pathlib.Path)</p></td>
-<td><p>Swap the first <code class="docutils literal notranslate"><span class="pre">source</span></code> path component for <code class="docutils literal notranslate"><span class="pre">target</span></code>.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.pipeline.run_validation_enabled" title="psweep.pipeline.run_validation_enabled"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_validation_enabled</span></code></a>(→ bool)</p></td>
+<td><p>Return True when the run config has a <code class="docutils literal notranslate"><span class="pre">validation:</span></code> section.</p></td>
 </tr>
 </tbody>
 </table>
@@ -483,52 +475,38 @@ REST API layer.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.pipeline.PipelineResult">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">PipelineResult</span></span><a class="headerlink" href="#psweep.pipeline.PipelineResult" title="Link to this definition">¶</a></dt>
-<dd><p>Combined result from a full discover → extract → [validate] → compile run.</p>
+<dd><p>Combined result from a full discover → extract → compile run.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.pipeline.build_run_stage_commands">
-<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">build_run_stage_commands</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_cmd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_discover</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_extract</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">discovery_enabled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fresh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_limit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retention_documents</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extract_input_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_flags</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">()</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.pipeline.build_run_stage_commands" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">build_run_stage_commands</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_cmd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_discover</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_extract</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">discovery_enabled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fresh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_limit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extract_input_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_flags</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">()</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.pipeline.build_run_stage_commands" title="Link to this definition">¶</a></dt>
 <dd><p>Build the subprocess commands used to execute a run config pipeline.</p>
 <p><code class="docutils literal notranslate"><span class="pre">fresh</span></code> propagates a “start fresh” signal to discover (ignore the
 checkpoint and refresh the search cache), extract (re-extract already-
 processed documents), and compile (clear compiled outputs before writing),
 giving <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--fresh</span></code> a fully clean pipeline across all stages.</p>
-<p>When the config enables multi-model QA/QC, an explicit <code class="docutils literal notranslate"><span class="pre">validate</span></code> stage
-is appended after extraction.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.pipeline.compile_extractions">
 <span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">compile_extractions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">extraction_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dry_run</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.pipeline.CompilationResult" title="psweep.pipeline.CompilationResult"><span class="pre">CompilationResult</span></a></span></span><a class="headerlink" href="#psweep.pipeline.compile_extractions" title="Link to this definition">¶</a></dt>
 <dd><p>Compile extracted JSON files into Excel/CSV output.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>extraction_dir</strong> – Directory containing <code class="docutils literal notranslate"><span class="pre">.json</span></code> extraction files.</p></li>
-<li><p><strong>schema</strong> – Path to the same schema used during extraction.</p></li>
-<li><p><strong>config_path</strong> – Optional path to the domain run config (e.g.
-<code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/&lt;domain&gt;.yaml</span></code>). When provided, the
-<code class="docutils literal notranslate"><span class="pre">compilation.output</span></code> settings (exclude_fields, column_renames,
-column_order, etc.) and <code class="docutils literal notranslate"><span class="pre">compilation.normalization</span></code> from the config
-are applied to the output. Matches the behavior of
-<code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">psweep</span> <span class="pre">compile</span> <span class="pre">--config</span></code>.</p></li>
-<li><p><strong>output_dir</strong> – Where to write compiled output. Defaults to <code class="docutils literal notranslate"><span class="pre">compiled/&lt;name&gt;/</span></code>.</p></li>
-<li><p><strong>report_format</strong> – <code class="docutils literal notranslate"><span class="pre">&quot;xlsx&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;csv&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;both&quot;</span></code>. If omitted, runtime output settings
-override schema output settings; absent both, CSV and Excel are emitted.</p></li>
-<li><p><strong>dry_run</strong> – If True, parse and validate but write no output files.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="#psweep.pipeline.CompilationResult" title="psweep.pipeline.CompilationResult">CompilationResult</a></p>
-</dd>
-</dl>
+<p><code class="docutils literal notranslate"><span class="pre">config_path</span></code> applies the run config’s <code class="docutils literal notranslate"><span class="pre">compilation</span></code> settings like
+<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">compile</span> <span class="pre">--config</span></code>; <code class="docutils literal notranslate"><span class="pre">output_dir</span></code> defaults to
+<code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/compiled</span></code> with the domain inferred from <em>extraction_dir</em>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.pipeline.compiled_table_fresh">
+<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">compiled_table_fresh</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">extraction_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.pipeline.compiled_table_fresh" title="Link to this definition">¶</a></dt>
+<dd><p>True when the newest compile manifest matches the records and the CSV bytes.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.pipeline.count_curated_documents">
 <span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">count_curated_documents</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">curated_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#psweep.pipeline.count_curated_documents" title="Link to this definition">¶</a></dt>
-<dd><p>Count curated docs, skipping <code class="docutils literal notranslate"><span class="pre">.text</span></code> sidecars and <code class="docutils literal notranslate"><span class="pre">.json</span></code>.</p>
+<dd><p>Count the documents extraction would read.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -538,65 +516,20 @@ override schema output settings; absent both, CSV and Excel are emitted.</p></li
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="psweep.pipeline.discover_domain">
-<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">discover_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.pipeline.discover_domain" title="Link to this definition">¶</a></dt>
-<dd><p>Return <code class="docutils literal notranslate"><span class="pre">&lt;domain&gt;</span></code> for a <code class="docutils literal notranslate"><span class="pre">discovered/&lt;domain&gt;/...</span></code> path, else <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
-<p>The path is resolved first so the convention holds regardless of how the
-input was spelled (relative, symlinked, or absolute).</p>
+<dt class="sig sig-object py" id="psweep.pipeline.execute_run_stages">
+<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">execute_run_stages</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stage_cmds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_stage</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.pipeline.execute_run_stages" title="Link to this definition">¶</a></dt>
+<dd><p>Run stage subprocesses in order and return the stages that ended partial.</p>
+<p>A partial stage (usable output plus recorded errors) does not stop the
+stages after it; re-running retries its failed items. Any other non-zero
+exit raises <code class="docutils literal notranslate"><span class="pre">PipelineError</span></code>.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.pipeline.extract_documents">
 <span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">extract_documents</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">documents_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_context</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">DEFAULT_MAX_CONTEXT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_existing</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">limit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pages_csv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.pipeline.ExtractionRunResult" title="psweep.pipeline.ExtractionRunResult"><span class="pre">ExtractionRunResult</span></a></span></span><a class="headerlink" href="#psweep.pipeline.extract_documents" title="Link to this definition">¶</a></dt>
-<dd><p>Extract structured data from all documents in a folder.</p>
-<p>This is a pure Python function — no CLI, no Rich, no sys.exit. It calls
-<code class="xref py py-class docutils literal notranslate"><span class="pre">psweep.extraction.DocumentExtractor</span></code> for each supported document,
-persists per-document JSON, and returns an aggregated result.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>documents_path</strong> – Folder containing PDF/DOCX/TXT/XLSX/CSV documents.</p></li>
-<li><p><strong>schema</strong> – Path to a valid ParseSweep v2.0+ JSON schema with <code class="docutils literal notranslate"><span class="pre">$metadata</span></code>.</p></li>
-<li><p><strong>output_dir</strong> – Where to write extracted JSON files. Defaults to
-<code class="docutils literal notranslate"><span class="pre">extracted/&lt;documents_path.name&gt;/</span></code>.</p></li>
-<li><p><strong>model</strong> – LLM model identifier (e.g. <code class="docutils literal notranslate"><span class="pre">gpt-4o-mini</span></code>, <code class="docutils literal notranslate"><span class="pre">claude-3.5-sonnet</span></code>).</p></li>
-<li><p><strong>provider</strong> – LLM provider. <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> detects from environment variables.</p></li>
-<li><p><strong>max_context</strong> – Maximum characters to send to the LLM per document.</p></li>
-<li><p><strong>skip_existing</strong> – If True, skip documents whose output JSON already exists.</p></li>
-<li><p><strong>limit</strong> – Cap the number of documents processed (useful for testing).</p></li>
-<li><p><strong>pages_csv</strong> – Optional CSV mapping filenames to page ranges.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Aggregated counts, cost, and output location.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#psweep.pipeline.ExtractionRunResult" title="psweep.pipeline.ExtractionRunResult">ExtractionRunResult</a></p>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><ul class="simple">
-<li><p><a class="reference internal" href="../exceptions/index.html#psweep.exceptions.APIKeyError" title="psweep.exceptions.APIKeyError"><strong>psweep.exceptions.APIKeyError</strong></a> – If no LLM credentials are found.</p></li>
-<li><p><a class="reference internal" href="../exceptions/index.html#psweep.exceptions.SchemaError" title="psweep.exceptions.SchemaError"><strong>psweep.exceptions.SchemaError</strong></a> – If the schema is invalid or missing <code class="docutils literal notranslate"><span class="pre">$metadata</span></code>.</p></li>
-<li><p><a class="reference internal" href="../exceptions/index.html#psweep.exceptions.ExtractionError" title="psweep.exceptions.ExtractionError"><strong>psweep.exceptions.ExtractionError</strong></a> – If a document fails to extract (per-document errors are collected and
-returned in <code class="docutils literal notranslate"><span class="pre">result.errors</span></code> rather than raised, unless <em>all</em> fail).</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="psweep.pipeline.resolve_compile_output_dir">
-<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">resolve_compile_output_dir</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pathlib.Path</span></span></span><a class="headerlink" href="#psweep.pipeline.resolve_compile_output_dir" title="Link to this definition">¶</a></dt>
-<dd><p>Default <code class="docutils literal notranslate"><span class="pre">compiled/...</span></code> output dir for a compile input directory.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="psweep.pipeline.resolve_extract_output_dir">
-<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">resolve_extract_output_dir</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pathlib.Path</span></span></span><a class="headerlink" href="#psweep.pipeline.resolve_extract_output_dir" title="Link to this definition">¶</a></dt>
-<dd><p>Default <code class="docutils literal notranslate"><span class="pre">extracted/...</span></code> output dir for an extract input path.</p>
-<p><code class="docutils literal notranslate"><span class="pre">discovered/&lt;domain&gt;/...</span></code> inputs map to <code class="docutils literal notranslate"><span class="pre">extracted/&lt;domain&gt;</span></code>; otherwise a
-<code class="docutils literal notranslate"><span class="pre">documents</span></code> component is swapped to <code class="docutils literal notranslate"><span class="pre">extracted</span></code>; otherwise
-<code class="docutils literal notranslate"><span class="pre">extracted/&lt;name&gt;</span></code>.</p>
+<dd><p>Extract every document under <em>documents_path</em> (no CLI, Rich, or sys.exit).</p>
+<p><code class="docutils literal notranslate"><span class="pre">output_dir</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/extracted</span></code> with the domain
+inferred from <em>documents_path</em>; per-document errors land in <code class="docutils literal notranslate"><span class="pre">result.errors</span></code>.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -606,56 +539,21 @@ returned in <code class="docutils literal notranslate"><span class="pre">result.
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="psweep.pipeline.resolve_run_extraction_dir">
-<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">resolve_run_extraction_dir</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pathlib.Path</span></span></span><a class="headerlink" href="#psweep.pipeline.resolve_run_extraction_dir" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve the extraction output dir for a run config.</p>
-<p>Uses <code class="docutils literal notranslate"><span class="pre">extraction.output_dir</span></code> when set, else the <code class="docutils literal notranslate"><span class="pre">extracted/&lt;domain&gt;</span></code>
-convention.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="psweep.pipeline.resolve_run_validation">
-<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">resolve_run_validation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.pipeline.resolve_run_validation" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve QA/QC orchestration settings from a domain run config.</p>
-<p>QA/QC is enabled for <code class="docutils literal notranslate"><span class="pre">run</span></code> when the top-level <code class="docutils literal notranslate"><span class="pre">validation.models</span></code> list is
-present. Returns <code class="docutils literal notranslate"><span class="pre">None</span></code> when absent, otherwise a dict describing validate
-stage inputs.</p>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="psweep.pipeline.run_pipeline">
 <span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">run_pipeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_discover</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_extract</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fresh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.pipeline.PipelineResult" title="psweep.pipeline.PipelineResult"><span class="pre">PipelineResult</span></a></span></span><a class="headerlink" href="#psweep.pipeline.run_pipeline" title="Link to this definition">¶</a></dt>
-<dd><p>Run the full pipeline (discover → extract → compile) from a run config.</p>
+<dd><p>Run the full pipeline (discover → extract → compile → validate) from a run config.</p>
 <p>This is a thin subprocess-based orchestrator that mirrors the CLI <code class="docutils literal notranslate"><span class="pre">run</span></code>
 command. It is suitable for scripting and automation where you want
-programmatic control over the pipeline without the Rich terminal UI.
-When the config enables QA/QC, a <code class="docutils literal notranslate"><span class="pre">compare</span></code> stage runs after <code class="docutils literal notranslate"><span class="pre">compile</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>config_path</strong> – Path to a domain run config file (e.g. <code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/&lt;domain&gt;.yaml</span></code>).</p></li>
-<li><p><strong>skip_discover</strong> – If True, skip the discovery stage.</p></li>
-<li><p><strong>skip_extract</strong> – If True, skip the extraction stage (compile from existing JSON).</p></li>
-<li><p><strong>fresh</strong> – If True, re-run discovery without checkpoint reuse, re-extract already-
-processed documents, and clear compiled outputs before recompiling.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="#psweep.pipeline.PipelineResult" title="psweep.pipeline.PipelineResult">PipelineResult</a></p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="../exceptions/index.html#psweep.exceptions.PipelineError" title="psweep.exceptions.PipelineError"><strong>psweep.exceptions.PipelineError</strong></a> – If any stage fails.</p>
-</dd>
-</dl>
+programmatic control over the pipeline without the Rich terminal UI.</p>
+<p>Raises <code class="docutils literal notranslate"><span class="pre">psweep.exceptions.PipelineError</span></code> when a stage fails; stages that
+finish with usable output and recorded errors are listed in
+<code class="docutils literal notranslate"><span class="pre">PipelineResult.partial_stages</span></code> instead.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="psweep.pipeline.swap_layout_component">
-<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">swap_layout_component</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pathlib.Path</span></span></span><a class="headerlink" href="#psweep.pipeline.swap_layout_component" title="Link to this definition">¶</a></dt>
-<dd><p>Swap the first <code class="docutils literal notranslate"><span class="pre">source</span></code> path component for <code class="docutils literal notranslate"><span class="pre">target</span></code>.</p>
-<p>Falls back to <code class="docutils literal notranslate"><span class="pre">Path.cwd()</span> <span class="pre">/</span> <span class="pre">target</span> <span class="pre">/</span> <span class="pre">path.name</span></code> when <code class="docutils literal notranslate"><span class="pre">path</span></code> has no
-<code class="docutils literal notranslate"><span class="pre">source</span></code> component. This is the shared documents-&gt;extracted-&gt;compiled
-directory swap.</p>
+<dt class="sig sig-object py" id="psweep.pipeline.run_validation_enabled">
+<span class="sig-prename descclassname"><span class="pre">psweep.pipeline.</span></span><span class="sig-name descname"><span class="pre">run_validation_enabled</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.pipeline.run_validation_enabled" title="Link to this definition">¶</a></dt>
+<dd><p>Return True when the run config has a <code class="docutils literal notranslate"><span class="pre">validation:</span></code> section.</p>
 </dd></dl>
 
 </section>
@@ -675,14 +573,14 @@ directory swap.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../extraction/text_processor/index.html">
+          <a class="prev-page" href="../outcomes/index.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">psweep.extraction.text_processor</div>
+                <div class="title">psweep.outcomes</div>
                 
               </div>
             </a>
@@ -732,17 +630,14 @@ directory swap.</p>
 <li><a class="reference internal" href="#psweep.pipeline.PipelineResult"><code class="docutils literal notranslate"><span class="pre">PipelineResult</span></code></a></li>
 <li><a class="reference internal" href="#psweep.pipeline.build_run_stage_commands"><code class="docutils literal notranslate"><span class="pre">build_run_stage_commands()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.pipeline.compile_extractions"><code class="docutils literal notranslate"><span class="pre">compile_extractions()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.pipeline.compiled_table_fresh"><code class="docutils literal notranslate"><span class="pre">compiled_table_fresh()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.pipeline.count_curated_documents"><code class="docutils literal notranslate"><span class="pre">count_curated_documents()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.pipeline.count_extracted_documents"><code class="docutils literal notranslate"><span class="pre">count_extracted_documents()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.pipeline.discover_domain"><code class="docutils literal notranslate"><span class="pre">discover_domain()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.pipeline.execute_run_stages"><code class="docutils literal notranslate"><span class="pre">execute_run_stages()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.pipeline.extract_documents"><code class="docutils literal notranslate"><span class="pre">extract_documents()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.pipeline.resolve_compile_output_dir"><code class="docutils literal notranslate"><span class="pre">resolve_compile_output_dir()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.pipeline.resolve_extract_output_dir"><code class="docutils literal notranslate"><span class="pre">resolve_extract_output_dir()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.pipeline.resolve_run_discovery_enabled"><code class="docutils literal notranslate"><span class="pre">resolve_run_discovery_enabled()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.pipeline.resolve_run_extraction_dir"><code class="docutils literal notranslate"><span class="pre">resolve_run_extraction_dir()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.pipeline.resolve_run_validation"><code class="docutils literal notranslate"><span class="pre">resolve_run_validation()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.pipeline.run_pipeline"><code class="docutils literal notranslate"><span class="pre">run_pipeline()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.pipeline.swap_layout_component"><code class="docutils literal notranslate"><span class="pre">swap_layout_component()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.pipeline.run_validation_enabled"><code class="docutils literal notranslate"><span class="pre">run_validation_enabled()</span></code></a></li>
 </ul>
 </li>
 </ul>

@@ -35,13 +35,18 @@ Functions
 .. autoapisummary::
 
    psweep.discovery.publication.artifact_sha256
+   psweep.discovery.publication.assign_document_names
    psweep.discovery.publication.checkpoint_artifacts_valid
    psweep.discovery.publication.csv_content
    psweep.discovery.publication.discovery_publication
+   psweep.discovery.publication.document_owner
    psweep.discovery.publication.effective_discovery_fingerprint
+   psweep.discovery.publication.inherit_text_caches
    psweep.discovery.publication.load_checkpoint
+   psweep.discovery.publication.load_prior_outcomes
    psweep.discovery.publication.materialize_curated
    psweep.discovery.publication.merge_download_index
+   psweep.discovery.publication.owner_key
    psweep.discovery.publication.promote_curated
    psweep.discovery.publication.publish_manual_curation
    psweep.discovery.publication.record_is_curated
@@ -75,6 +80,20 @@ Module Contents
    symlink.
 
 
+.. py:function:: assign_document_names(records: list[dict[str, object]], index: pathlib.Path, replaced: set[pathlib.Path]) -> None
+
+   Give every downloaded record one stable, readable consolidated path.
+
+   Call under the publication lock so ``index`` is current. Each record's
+   ``relative_path`` holds the plain name it asks for. An owner keeps the
+   path it holds in ``index`` while it asks for the same plain name;
+   otherwise it gets the plain name unless another owner holds it, then a
+   short owner hash (publication withdraws the owner's old path). Curated
+   records claim first, so failed or unselected downloads never push a
+   published document to a suffixed name. Index rows in ``replaced``
+   partitions (``--fresh``) are ignored.
+
+
 .. py:function:: checkpoint_artifacts_valid(entry: collections.abc.Mapping[str, object]) -> bool
 
    Validate hashed artifact evidence for a completed target.
@@ -95,16 +114,39 @@ Module Contents
    not an unsafe stale timeout.
 
 
+.. py:function:: document_owner(row: collections.abc.Mapping[str, object]) -> DocumentOwner
+
+   Owner of a published document: its target or shared source, and URL.
+
+
 .. py:function:: effective_discovery_fingerprint(request: object) -> str
 
    Fingerprint effective discovery semantics and configured
    output locations.
+
+   ``targets`` and ``sources`` are inputs checkpointed per item, so
+   adding one does not invalidate completed work.
+
+
+.. py:function:: inherit_text_caches(targets: collections.abc.Iterable[pathlib.Path], donors: collections.abc.Iterable[pathlib.Path]) -> None
+
+   Copy a donor's valid text cache to each uncached target with the same SHA-256.
 
 
 .. py:function:: load_checkpoint(path: pathlib.Path, *, fingerprint: str | None = None, validate_artifacts: bool = True) -> dict[str, dict[str, object]]
 
    Load matching v2 completions whose artifact evidence remains
    valid.
+
+
+.. py:function:: load_prior_outcomes(path: pathlib.Path, *, fingerprint: str) -> dict[str, dict[str, dict[str, object]]]
+
+   Final child outcomes saved for incomplete targets and sources.
+
+   Returns ``{owner key: {url: outcome}}``. A download carries its file
+   path and SHA-256, which the caller verifies before reuse, so it holds
+   under any settings; other final outcomes (terminal failures, skips)
+   hold only for the same ``fingerprint``.
 
 
 .. py:function:: materialize_curated(*, documents_dir: pathlib.Path, download_records: list[dict[str, object]], curated_dir: pathlib.Path | None = None) -> tuple[pathlib.Path, int, int]
@@ -117,15 +159,21 @@ Module Contents
    Atomically publish the index for known promoted documents.
 
 
+.. py:function:: owner_key(target_id: object, source_url: object) -> str | None
+
+   Checkpoint key of a target or shared source; owns its documents.
+
+
 .. py:function:: promote_curated(*, run_curated_dir: pathlib.Path, domain_dir: pathlib.Path, attempted_partitions=None, blocked_partitions=None, run_index: pathlib.Path | None = None) -> None
 
-   Publish complete partitions and their consolidated provenance.
+   Publish run curation and its consolidated provenance; blocked
+   partitions are published additively.
 
 
-.. py:function:: publish_manual_curation(*, paths: PublicationPaths, download_records: list[dict[str, object]], run_index: pathlib.Path, run_index_content: str, metadata_updates: collections.abc.Mapping[pathlib.Path, str], attempted_partitions=None, blocked_partitions=None, _lock_held: bool = False) -> tuple[pathlib.Path, int]
+.. py:function:: publish_manual_curation(*, paths: PublicationPaths, download_records: list[dict[str, object]], run_index: pathlib.Path, run_index_content: str, metadata_updates: collections.abc.Mapping[pathlib.Path, str], attempted_partitions=None, blocked_partitions=None, completed: set[str] = frozenset(), _lock_held: bool = False) -> tuple[pathlib.Path, int]
 
    Publish local/consolidated human curation and its provenance
-   together.
+   together; ``completed`` targets/sources reconcile their documents.
 
 
 .. py:function:: record_is_curated(record: collections.abc.Mapping[str, object], *, review_ran: bool) -> bool

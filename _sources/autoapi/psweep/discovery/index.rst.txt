@@ -29,8 +29,8 @@ Submodules
    /autoapi/psweep/discovery/policies/index
    /autoapi/psweep/discovery/publication/index
    /autoapi/psweep/discovery/request_inputs/index
-   /autoapi/psweep/discovery/retry/index
    /autoapi/psweep/discovery/targets/index
+   /autoapi/psweep/discovery/transport/index
    /autoapi/psweep/discovery/urls/index
    /autoapi/psweep/discovery/validators/index
 

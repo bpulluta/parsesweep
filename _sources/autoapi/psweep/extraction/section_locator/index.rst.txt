@@ -38,6 +38,14 @@ Classes
    psweep.extraction.section_locator.SectionLocator
 
 
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.section_locator.split_text_sections
+
+
 Module Contents
 ---------------
 
@@ -63,5 +71,10 @@ Module Contents
 
       Return verified section text without document parsing.
 
+
+
+.. py:function:: split_text_sections(text: str) -> list[_Chunk]
+
+   Split plain text by section markers or blank-line paragraphs.
 
 

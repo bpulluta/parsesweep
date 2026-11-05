@@ -3,9 +3,9 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Configuration Reference" href="../config-reference.html"><link rel="prev" title="Getting Started" href="../getting-started.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Security and protected operation" href="../security.html"><link rel="prev" title="Schema Design Best Practices" href="../schemas/best-practices.html">
 
-    <link rel="shortcut icon" href="../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../_static/favicon.svg"><!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>Command Reference - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
@@ -202,11 +202,15 @@
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting Started</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../sources.html">Source Patterns</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../config-reference.html">Configuration Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../tuning.html">Tuning &amp; Iteration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../schemas/index.html">Schema Authoring</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../schemas/index.html">Schema Authoring</a><input aria-label="Toggle navigation of Schema Authoring" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../schemas/best-practices.html">Schema Design Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../security.html">Security and protected operation</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -215,12 +219,8 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/benchmarking/index.html">psweep.benchmarking</a><input aria-label="Toggle navigation of psweep.benchmarking" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/benchmarking/performance/index.html">psweep.benchmarking.performance</a></li>
-</ul>
-</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/compilation/index.html">psweep.compilation</a><input aria-label="Toggle navigation of psweep.compilation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/accounting/index.html">psweep.compilation.accounting</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/csv_exporter/index.html">psweep.compilation.csv_exporter</a></li>
@@ -229,17 +229,18 @@
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/deduplicator/index.html">psweep.compilation.deduplicator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/schema_detector/index.html">psweep.compilation.schema_detector</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/synthesizer/index.html">psweep.compilation.synthesizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/config/index.html">psweep.config</a><input aria-label="Toggle navigation of psweep.config" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/discovery_config/index.html">psweep.config.discovery_config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/errors/index.html">psweep.config.errors</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/file_loader/index.html">psweep.config.file_loader</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/model_registry/index.html">psweep.config.model_registry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/runtime_config_loader/index.html">psweep.config.runtime_config_loader</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/core/index.html">psweep.core</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
@@ -260,18 +261,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/retry/index.html">psweep.discovery.retry</a></li>
-<li class="toctree-l4 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/targets/base/index.html">psweep.discovery.targets.base</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/targets/providers/index.html">psweep.discovery.targets.providers</a></li>
-</ul>
-</li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/urls/index.html">psweep.discovery.urls</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/validators/index.html">psweep.discovery.validators</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/exceptions/index.html">psweep.exceptions</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -280,34 +277,38 @@
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/text_processor/index.html">psweep.extraction.text_processor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/transcription/index.html">psweep.extraction.transcription</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/outcomes/index.html">psweep.outcomes</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/pipeline/index.html">psweep.pipeline</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/scaffolding/index.html">psweep.scaffolding</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/security/index.html">psweep.security</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/normalizers/index.html">psweep.utils.normalizers</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/page_range/index.html">psweep.utils.page_range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/retry/index.html">psweep.utils.retry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/schema_metadata/index.html">psweep.utils.schema_metadata</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/value_normalizer/index.html">psweep.utils.value_normalizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/spreadsheet/index.html">psweep.utils.spreadsheet</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/comparison_engine/index.html">psweep.validation.comparison_engine</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/evidence_loader/index.html">psweep.validation.evidence_loader</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/multi_model_extractor/index.html">psweep.validation.multi_model_extractor</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/report_generator/index.html">psweep.validation.report_generator</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/utils/index.html">psweep.validation.utils</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/align/index.html">psweep.validation.align</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/judge/index.html">psweep.validation.judge</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/quality/index.html">psweep.validation.quality</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/tables/index.html">psweep.validation.tables</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/workspace/index.html">psweep.workspace</a></li>
 </ul>
 </li>
 </ul>
@@ -358,10 +359,25 @@
 <h1>Command Reference<a class="headerlink" href="#command-reference" title="Link to this heading">¶</a></h1>
 <p>Every command is generated directly from the CLI itself, so the options and
 their <strong>defaults shown here always match runtime behavior</strong>.</p>
+<p>Options shared across commands:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--config</span></code> — the domain <code class="docutils literal notranslate"><span class="pre">run.yaml</span></code>; every key is in the
+<a class="reference internal" href="../config-reference.html"><span class="std std-doc">Configuration Reference</span></a>, and
+<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">config</span> <span class="pre">--show-runtime-catalog</span></code> lists them all from the registry the
+validator uses.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--validate-config</span></code> — check the config offline and exit.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-n</span></code> — on <code class="docutils literal notranslate"><span class="pre">run</span></code> and <code class="docutils literal notranslate"><span class="pre">discover</span></code> (<code class="docutils literal notranslate"><span class="pre">--target-limit</span></code>), only the first N targets
+(pilot runs);
+<code class="docutils literal notranslate"><span class="pre">run</span></code> then extracts only those targets’ documents. On <code class="docutils literal notranslate"><span class="pre">extract</span></code> (<code class="docutils literal notranslate"><span class="pre">--limit</span></code>),
+only the first N pending files.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--fresh</span></code> — ignore reusable earlier work for that stage; on <code class="docutils literal notranslate"><span class="pre">run</span></code>, for every
+stage.</p></li>
+<li><p>Exit codes: <code class="docutils literal notranslate"><span class="pre">0</span></code> success, <code class="docutils literal notranslate"><span class="pre">1</span></code> failure, <code class="docutils literal notranslate"><span class="pre">2</span></code> nothing found, <code class="docutils literal notranslate"><span class="pre">3</span></code> incomplete
+(re-run to retry the rest).</p></li>
+</ul>
 <section id="psweep">
 <h2>psweep<a class="headerlink" href="#psweep" title="Link to this heading">¶</a></h2>
-<p>📄 [bold]ParseSweep[/bold] — AI-powered structured data extraction from documents.</p>
-<p>[dim]Run [cyan]psweep[/cyan] with no arguments for an interactive guided menu.[/dim]</p>
+<p>Extract structured data from documents using LLMs and schemas.</p>
 <p class="rubric">Usage</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>COMMAND<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>...
 </pre></div>
@@ -370,203 +386,9 @@ their <strong>defaults shown here always match runtime behavior</strong>.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-V">
 <span id="cmdoption-psweep-version"></span><span class="sig-name descname"><span class="pre">-V</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--version</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-V" title="Link to this definition">¶</a></dt>
-<dd><p>Show version and exit.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
+<dd><p>Show the version and exit.</p>
 </dd></dl>
 
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-install-completion">
-<span class="sig-name descname"><span class="pre">--install-completion</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-install-completion" title="Link to this definition">¶</a></dt>
-<dd><p>Install completion for the current shell.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-show-completion">
-<span class="sig-name descname"><span class="pre">--show-completion</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-show-completion" title="Link to this definition">¶</a></dt>
-<dd><p>Show completion for the current shell, to copy it or customize the installation.</p>
-</dd></dl>
-
-<section id="psweep-benchmark">
-<h3>benchmark<a class="headerlink" href="#psweep-benchmark" title="Link to this heading">¶</a></h3>
-<p>Build a performance profile from run manifests and evaluate benchmark gates.</p>
-<p class="rubric">Usage</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>benchmark<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>PATH<span class="o">]</span>
-</pre></div>
-</div>
-<p class="rubric">Options</p>
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-gate-profile">
-<span class="sig-name descname"><span class="pre">--gate-profile</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;gate_profile&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-gate-profile" title="Link to this definition">¶</a></dt>
-<dd><p>JSON file containing benchmark input paths and gate thresholds for reproducible release evaluation.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-extraction-baseline-dir">
-<span class="sig-name descname"><span class="pre">--extraction-baseline-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;extraction_baseline_dir&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-extraction-baseline-dir" title="Link to this definition">¶</a></dt>
-<dd><p>Directory containing expected extraction JSON records for parity scoring. Files should mirror benchmark output relative paths or record filenames.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-validation-baseline-dir">
-<span class="sig-name descname"><span class="pre">--validation-baseline-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;validation_baseline_dir&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-validation-baseline-dir" title="Link to this definition">¶</a></dt>
-<dd><p>Directory containing expected QA/QC comparison_report.csv files for signal-quality scoring. Files should mirror benchmark document-folder relative paths.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-compilation-baseline-dir">
-<span class="sig-name descname"><span class="pre">--compilation-baseline-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;compilation_baseline_dir&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-compilation-baseline-dir" title="Link to this definition">¶</a></dt>
-<dd><p>Directory containing expected compiled CSV outputs for row-correctness scoring. Files should mirror benchmark CSV relative paths or filenames.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-compilation-schema">
-<span class="sig-name descname"><span class="pre">--compilation-schema</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;compilation_schema&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-compilation-schema" title="Link to this definition">¶</a></dt>
-<dd><p>Schema used to generate compiled outputs. Required for compilation correctness scoring.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-baseline-snapshot">
-<span class="sig-name descname"><span class="pre">--baseline-snapshot</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;baseline_snapshot&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-baseline-snapshot" title="Link to this definition">¶</a></dt>
-<dd><p>Path to a saved benchmark snapshot used for median throughput/cost delta comparison.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-write-snapshot">
-<span class="sig-name descname"><span class="pre">--write-snapshot</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;write_snapshot&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-write-snapshot" title="Link to this definition">¶</a></dt>
-<dd><p>Write the current benchmark metrics to a snapshot JSON file.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-snapshot-label">
-<span class="sig-name descname"><span class="pre">--snapshot-label</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;snapshot_label&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-snapshot-label" title="Link to this definition">¶</a></dt>
-<dd><p>Optional label to store in a written benchmark snapshot.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-extraction-parity">
-<span class="sig-name descname"><span class="pre">--min-extraction-parity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_extraction_parity&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-extraction-parity" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum required extraction parity percentage (0-100) when expected extraction records are provided.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-validation-signal-quality">
-<span class="sig-name descname"><span class="pre">--min-validation-signal-quality</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_validation_signal_quality&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-validation-signal-quality" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum required QA/QC signal quality percentage (0-100) when expected comparison reports are provided.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-validation-qualitative-pass-rate">
-<span class="sig-name descname"><span class="pre">--min-validation-qualitative-pass-rate</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_validation_qualitative_pass_rate&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-validation-qualitative-pass-rate" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum required percentage (0-100) of qualitative QA/QC comparison summaries whose advisory gate status is pass.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-compilation-correctness">
-<span class="sig-name descname"><span class="pre">--min-compilation-correctness</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_compilation_correctness&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-compilation-correctness" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum required compilation correctness percentage (0-100) when expected compiled CSVs are provided.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-failure-rate">
-<span class="sig-name descname"><span class="pre">--max-failure-rate</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_failure_rate&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-failure-rate" title="Link to this definition">¶</a></dt>
-<dd><p>Maximum allowed failed-document rate (0-1).</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-average-seconds-per-document">
-<span class="sig-name descname"><span class="pre">--max-average-seconds-per-document</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_average_seconds_per_document&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-average-seconds-per-document" title="Link to this definition">¶</a></dt>
-<dd><p>Maximum allowed average processing seconds per document.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-documents-per-minute">
-<span class="sig-name descname"><span class="pre">--min-documents-per-minute</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_documents_per_minute&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-documents-per-minute" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum required successful document throughput.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-total-errors">
-<span class="sig-name descname"><span class="pre">--max-total-errors</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_total_errors&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-total-errors" title="Link to this definition">¶</a></dt>
-<dd><p>Maximum allowed total structured errors across manifests.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-throughput-delta-percent">
-<span class="sig-name descname"><span class="pre">--max-throughput-delta-percent</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_throughput_delta_percent&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-throughput-delta-percent" title="Link to this definition">¶</a></dt>
-<dd><p>Maximum allowed median time-per-document increase versus the baseline snapshot.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-cost-delta-percent">
-<span class="sig-name descname"><span class="pre">--max-cost-delta-percent</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_cost_delta_percent&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-cost-delta-percent" title="Link to this definition">¶</a></dt>
-<dd><p>Maximum allowed median cost-per-document increase versus the baseline snapshot.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-q">
-<span id="cmdoption-psweep-benchmark-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-benchmark-q" title="Link to this definition">¶</a></dt>
-<dd><p>Minimal output (machine-readable)</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-v">
-<span id="cmdoption-psweep-benchmark-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-benchmark-v" title="Link to this definition">¶</a></dt>
-<dd><p>Detailed output</p>
-</dd></dl>
-
-<p class="rubric">Arguments</p>
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-arg-PATH">
-<span class="sig-name descname"><span class="pre">PATH</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-benchmark-arg-PATH" title="Link to this definition">¶</a></dt>
-<dd><p>Optional argument</p>
-</dd></dl>
-
-</section>
-<section id="psweep-check">
-<h3>check<a class="headerlink" href="#psweep-check" title="Link to this heading">¶</a></h3>
-<p>Check an extraction result against the schema.</p>
-<div class="line-block">
-<div class="line">EXAMPLES:</div>
-<div class="line-block">
-<div class="line">psweep check extracted/data/doc.json</div>
-<div class="line">psweep check extracted/data/doc.json –show-data</div>
-</div>
-</div>
-<p class="rubric">Usage</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>check<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>EXTRACTION_FILE
-</pre></div>
-</div>
-<p class="rubric">Options</p>
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-check-schema">
-<span class="sig-name descname"><span class="pre">--schema</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;schema&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-check-schema" title="Link to this definition">¶</a></dt>
-<dd><p>Schema to check against (defaults to the record’s lineage schema).</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-check-v">
-<span id="cmdoption-psweep-check-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-check-v" title="Link to this definition">¶</a></dt>
-<dd><p>Enable verbose logging</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-check-show-data">
-<span class="sig-name descname"><span class="pre">--show-data</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-check-show-data" title="Link to this definition">¶</a></dt>
-<dd><p>Display extracted data with syntax highlighting</p>
-</dd></dl>
-
-<p class="rubric">Arguments</p>
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-check-arg-EXTRACTION_FILE">
-<span class="sig-name descname"><span class="pre">EXTRACTION_FILE</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-check-arg-EXTRACTION_FILE" title="Link to this definition">¶</a></dt>
-<dd><p>Required argument</p>
-</dd></dl>
-
-</section>
 <section id="psweep-check-schema">
 <h3>check-schema<a class="headerlink" href="#psweep-check-schema" title="Link to this heading">¶</a></h3>
 <p>Check a JSON schema file.</p>
@@ -575,8 +397,7 @@ metadata requirements.</p>
 <div class="line-block">
 <div class="line">EXAMPLES:</div>
 <div class="line-block">
-<div class="line">psweep check-schema schemas/my_schema.json</div>
-<div class="line">psweep check-schema schemas/example_utility_rate_schema.json</div>
+<div class="line">psweep check-schema config/my_domain/schema.json</div>
 </div>
 </div>
 <p class="rubric">Usage</p>
@@ -594,8 +415,8 @@ metadata requirements.</p>
 <section id="psweep-compile">
 <h3>compile<a class="headerlink" href="#psweep-compile" title="Link to this heading">¶</a></h3>
 <p>Compile extracted JSON files into clean Excel/CSV output.</p>
-<p>Reads per-document JSON files from EXTRACTED_DIR (or the configured
-input_dir), deduplicates records using the schema’s identity rules, and
+<p>Reads per-document JSON files from EXTRACTED_DIR (default:
+outputs/&lt;domain&gt;/extracted), deduplicates records using the schema’s identity rules, and
 writes a consolidated Excel and/or CSV file to the output directory.</p>
 <p>Use –fresh to clear the compiled output directory (stale CSV/XLSX) before
 writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pipeline run.</p>
@@ -603,8 +424,8 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 <section id="examples">
 <h4>Examples<a class="headerlink" href="#examples" title="Link to this heading">¶</a></h4>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">psweep</span> <span class="nb">compile</span> <span class="o">--</span><span class="n">config</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">run</span><span class="o">.</span><span class="n">yaml</span>
-<span class="n">psweep</span> <span class="nb">compile</span> <span class="n">extracted</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">schemas</span><span class="o">/</span><span class="n">my_schema</span><span class="o">.</span><span class="n">json</span>
-<span class="n">psweep</span> <span class="nb">compile</span> <span class="n">extracted</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">s</span><span class="o">.</span><span class="n">json</span> <span class="o">--</span><span class="n">dry</span><span class="o">-</span><span class="n">run</span> <span class="o">--</span><span class="n">verbose</span>
+<span class="n">psweep</span> <span class="nb">compile</span> <span class="n">outputs</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">extracted</span> <span class="o">--</span><span class="n">schema</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">schema</span><span class="o">.</span><span class="n">json</span>
+<span class="n">psweep</span> <span class="nb">compile</span> <span class="n">outputs</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">extracted</span> <span class="o">--</span><span class="n">schema</span> <span class="n">s</span><span class="o">.</span><span class="n">json</span> <span class="o">--</span><span class="n">dry</span><span class="o">-</span><span class="n">run</span> <span class="o">--</span><span class="n">verbose</span>
 </pre></div>
 </div>
 <p class="rubric">Usage</p>
@@ -615,7 +436,7 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-compile-config">
 <span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-config" title="Link to this definition">¶</a></dt>
-<dd><p>Domain run config file (RECOMMENDED — compile input, schema, and output paths)</p>
+<dd><p>Domain run config file (RECOMMENDED — schema and paths derive from it)</p>
 </dd></dl>
 
 <dl class="std option">
@@ -631,12 +452,6 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-compile-config-strict">
-<span class="sig-name descname"><span class="pre">--config-strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-config-strict" title="Link to this definition">¶</a></dt>
-<dd><p>Fail on unknown keys in runtime config sections</p>
-</dd></dl>
-
-<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-compile-s">
 <span id="cmdoption-psweep-compile-schema"></span><span class="sig-name descname"><span class="pre">-s</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--schema</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;schema&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-s" title="Link to this definition">¶</a></dt>
 <dd><p>Schema file (for quick testing without a config YAML)</p>
@@ -645,7 +460,7 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-compile-o">
 <span id="cmdoption-psweep-compile-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-o" title="Link to this definition">¶</a></dt>
-<dd><p>Output directory (auto-detected if not specified)</p>
+<dd><p>Output directory (default: outputs/&lt;domain&gt;/compiled)</p>
 </dd></dl>
 
 <dl class="std option">
@@ -777,7 +592,7 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-curate-config">
 <span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-curate-config" title="Link to this definition">¶</a></dt>
-<dd><p>Path to runtime config (.yaml/.yml/.json) — locates the domain’s latest run or explicit manifest</p>
+<dd><p>Path to runtime config (.yaml/.yml/.json) — locates the domain’s latest run</p>
 </dd></dl>
 
 <dl class="std option">
@@ -814,29 +629,26 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 </section>
 <section id="psweep-discover">
 <h3>discover<a class="headerlink" href="#psweep-discover" title="Link to this heading">¶</a></h3>
-<p>Discover and download source documents from web targets.</p>
-<p>Searches for documents matching the configured queries, scores and filters
-candidates, then downloads accepted files to the discovery output directory.
-Supports seeding from a CSV of targets, direct seed URLs, or a SerpApi
-search query. Resumes from a checkpoint on subsequent runs; pass –fresh to
-re-run all targets from scratch.</p>
-<p>Run <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">discover</span> <span class="pre">--help</span></code> for every option and its resolved default.</p>
+<p>Discover and download source documents.</p>
+<p>Downloads configured sources and target URLs, searches with the configured
+queries, optionally crawls links, then reviews and curates the documents.
+Resumes from a checkpoint on later runs; pass –fresh to start over.</p>
 <section id="id1">
 <h4>Examples<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h4>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">psweep</span> <span class="n">discover</span> <span class="o">--</span><span class="n">config</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">run</span><span class="o">.</span><span class="n">yaml</span>
-<span class="n">psweep</span> <span class="n">discover</span> <span class="o">--</span><span class="n">seed</span><span class="o">-</span><span class="n">url</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">docs</span> <span class="o">--</span><span class="n">domain</span> <span class="n">my_domain</span>
+<span class="n">psweep</span> <span class="n">discover</span> <span class="o">--</span><span class="n">source</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">doc</span><span class="o">.</span><span class="n">pdf</span> <span class="o">--</span><span class="n">domain</span> <span class="n">my_domain</span>
 <span class="n">psweep</span> <span class="n">discover</span> <span class="o">--</span><span class="n">config</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">run</span><span class="o">.</span><span class="n">yaml</span> <span class="o">--</span><span class="n">dry</span><span class="o">-</span><span class="n">run</span> <span class="o">--</span><span class="n">verbose</span>
 </pre></div>
 </div>
 <p class="rubric">Usage</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>discover<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>TARGET<span class="o">]</span>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>discover<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
 </pre></div>
 </div>
 <p class="rubric">Options</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-discover-config">
 <span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-config" title="Link to this definition">¶</a></dt>
-<dd><p>Domain run config file (RECOMMENDED — discovery targets, providers, and output paths)</p>
+<dd><p>Domain run config file (targets, sources, queries, crawl, review)</p>
 </dd></dl>
 
 <dl class="std option">
@@ -852,140 +664,27 @@ re-run all targets from scratch.</p>
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-config-strict">
-<span class="sig-name descname"><span class="pre">--config-strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-config-strict" title="Link to this definition">¶</a></dt>
-<dd><p>Fail on unknown keys in runtime config sections</p>
-</dd></dl>
-
-<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-discover-domain">
 <span class="sig-name descname"><span class="pre">--domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-domain" title="Link to this definition">¶</a></dt>
-<dd><p>Domain key for discovery output structure</p>
+<dd><p>Domain key for the output workspace (overrides config)</p>
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-seed-url">
-<span class="sig-name descname"><span class="pre">--seed-url</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;seed_urls&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-seed-url" title="Link to this definition">¶</a></dt>
-<dd><p>Seed URL for discovery (repeatable)</p>
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-source">
+<span class="sig-name descname"><span class="pre">--source</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;sources&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-source" title="Link to this definition">¶</a></dt>
+<dd><p>Document or page URL to download and keep (repeatable; replaces discovery.sources)</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-discover-query">
-<span class="sig-name descname"><span class="pre">--query</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;query&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-query" title="Link to this definition">¶</a></dt>
-<dd><p>Discovery query hint for seeker stage</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-state">
-<span class="sig-name descname"><span class="pre">--state</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;state&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-state" title="Link to this definition">¶</a></dt>
-<dd><p>Optional state hint used for jurisdiction-based output organization (for example: CA, Colorado)</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-jurisdiction">
-<span class="sig-name descname"><span class="pre">--jurisdiction</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;jurisdiction&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-jurisdiction" title="Link to this definition">¶</a></dt>
-<dd><p>Optional jurisdiction hint used for output organization (for example: Imperial County)</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-partition-mode">
-<span class="sig-name descname"><span class="pre">--partition-mode</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;partition_mode&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-partition-mode" title="Link to this definition">¶</a></dt>
-<dd><p>Download organization mode: auto prefers jurisdiction when available, else host</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'auto'</span></code></p>
-</dd>
-<dt class="field-even">Options<span class="colon">:</span></dt>
-<dd class="field-even"><p>auto | jurisdiction | host</p>
-</dd>
-</dl>
+<span class="sig-name descname"><span class="pre">--query</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;queries&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-query" title="Link to this definition">¶</a></dt>
+<dd><p>Search query template (repeatable; replaces discovery.queries)</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-discover-n">
 <span id="cmdoption-psweep-discover-target-limit"></span><span class="sig-name descname"><span class="pre">-n</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--target-limit</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;target_limit&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-n" title="Link to this definition">¶</a></dt>
-<dd><p>Limit discovery to the first N configured targets after config resolution.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-retention-documents">
-<span class="sig-name descname"><span class="pre">--retention-documents</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;retention_documents&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-retention-documents" title="Link to this definition">¶</a></dt>
-<dd><p>Retention mode for downloaded documents: all, curated, or none.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Options<span class="colon">:</span></dt>
-<dd class="field-odd"><p>all | curated | none</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-digger-provider">
-<span class="sig-name descname"><span class="pre">--digger-provider</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;digger_provider&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-digger-provider" title="Link to this definition">¶</a></dt>
-<dd><p>Digger provider (for example: seed_only, http, crawlee_playwright)</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-enable-serpapi">
-<span id="cmdoption-psweep-discover-disable-serpapi"></span><span class="sig-name descname"><span class="pre">--enable-serpapi</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--disable-serpapi</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-enable-serpapi" title="Link to this definition">¶</a></dt>
-<dd><p>Enable optional SerpApi seeker provider</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-max-concurrent-downloads">
-<span class="sig-name descname"><span class="pre">--max-concurrent-downloads</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_concurrent_downloads&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-max-concurrent-downloads" title="Link to this definition">¶</a></dt>
-<dd><p>Maximum parallel downloads during discover runs</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-min-request-interval-ms">
-<span class="sig-name descname"><span class="pre">--min-request-interval-ms</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_request_interval_ms&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-min-request-interval-ms" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum delay between outbound discovery requests in milliseconds</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-robots-policy-mode">
-<span class="sig-name descname"><span class="pre">--robots-policy-mode</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;robots_policy_mode&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-robots-policy-mode" title="Link to this definition">¶</a></dt>
-<dd><p>Robots policy mode for target-site requests</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'warn'</span></code></p>
-</dd>
-<dt class="field-even">Options<span class="colon">:</span></dt>
-<dd class="field-even"><p>ignore | warn | enforce</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-tos-policy-mode">
-<span class="sig-name descname"><span class="pre">--tos-policy-mode</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;tos_policy_mode&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-tos-policy-mode" title="Link to this definition">¶</a></dt>
-<dd><p>Terms acknowledgement mode for target-site requests</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'warn'</span></code></p>
-</dd>
-<dt class="field-even">Options<span class="colon">:</span></dt>
-<dd class="field-even"><p>ignore | warn | enforce</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-acknowledge-tos-domain">
-<span class="sig-name descname"><span class="pre">--acknowledge-tos-domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;acknowledged_tos_domains&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-acknowledge-tos-domain" title="Link to this definition">¶</a></dt>
-<dd><p>Host or parent domain acknowledged for target-site terms checks (repeatable)</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-output-documents">
-<span class="sig-name descname"><span class="pre">--output-documents</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_documents&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-output-documents" title="Link to this definition">¶</a></dt>
-<dd><p>Directory for discovered documents (defaults to run-scoped deterministic path)</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-output-manifest">
-<span class="sig-name descname"><span class="pre">--output-manifest</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_manifest&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-output-manifest" title="Link to this definition">¶</a></dt>
-<dd><p>Path to discovery manifest JSON (defaults to run-scoped deterministic path)</p>
+<dd><p>Use only the first N targets (pilot runs).</p>
 </dd></dl>
 
 <dl class="std option">
@@ -997,12 +696,7 @@ re-run all targets from scratch.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-discover-fresh">
 <span class="sig-name descname"><span class="pre">--fresh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-fresh" title="Link to this definition">¶</a></dt>
-<dd><p>Re-run all targets from scratch: clears the checkpoint, bypasses the search-result cache, and replaces the curated/ partitions for every jurisdiction processed this run. Jurisdictions not touched by this run keep their existing curated files.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
+<dd><p>Re-run all targets: clear the checkpoint, bypass the search cache, and replace curated partitions for targets processed this run.</p>
 </dd></dl>
 
 <dl class="std option">
@@ -1021,13 +715,6 @@ re-run all targets from scratch.</p>
 <dt class="sig sig-object std" id="cmdoption-psweep-discover-debug">
 <span class="sig-name descname"><span class="pre">--debug</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-debug" title="Link to this definition">¶</a></dt>
 <dd><p>Debug output with diagnostic context</p>
-</dd></dl>
-
-<p class="rubric">Arguments</p>
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-discover-arg-TARGET">
-<span class="sig-name descname"><span class="pre">TARGET</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-arg-TARGET" title="Link to this definition">¶</a></dt>
-<dd><p>Optional argument</p>
 </dd></dl>
 
 </section>
@@ -1073,16 +760,17 @@ cost and time estimates before you commit to processing.</p>
 <section id="psweep-extract">
 <h3>extract<a class="headerlink" href="#psweep-extract" title="Link to this heading">¶</a></h3>
 <p>Extract structured data from documents using an LLM.</p>
-<p>Reads PDF, DOCX, TXT, and XLSX files from PATH (or the configured
-input_dir) and writes one JSON file per document to the output directory.
+<p>Reads every supported file type (listed below; recordings are
+transcribed) from PATH (default: the domain’s curated discovery
+directory) and writes one JSON file per document to the output directory.
 Already-processed files are skipped by default; pass –fresh to re-extract
 documents that already have output JSON (cached text/sidecars are still
-reused). Output defaults to <code class="docutils literal notranslate"><span class="pre">extracted/&lt;domain&gt;/</span></code> when –output is omitted;
+reused). Output defaults to <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/extracted/</span></code> when –output is omitted;
 run <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span> <span class="pre">--help</span></code> for every option and its default.</p>
 <section id="id2">
 <h4>Examples<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h4>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">psweep</span> <span class="n">extract</span> <span class="o">--</span><span class="n">config</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">run</span><span class="o">.</span><span class="n">yaml</span> <span class="o">--</span><span class="n">fresh</span>
-<span class="n">psweep</span> <span class="n">extract</span> <span class="n">docs</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">schemas</span><span class="o">/</span><span class="n">my_schema</span><span class="o">.</span><span class="n">json</span>
+<span class="n">psweep</span> <span class="n">extract</span> <span class="n">docs</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">schema</span><span class="o">.</span><span class="n">json</span>
 <span class="n">psweep</span> <span class="n">extract</span> <span class="n">docs</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">s</span><span class="o">.</span><span class="n">json</span> <span class="o">--</span><span class="n">model</span> <span class="n">gpt</span><span class="o">-</span><span class="mi">4</span><span class="n">o</span> <span class="o">--</span><span class="n">provider</span> <span class="n">azure</span>
 </pre></div>
 </div>
@@ -1094,7 +782,7 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-extract-config">
 <span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-config" title="Link to this definition">¶</a></dt>
-<dd><p>Domain run config file (RECOMMENDED — extraction input, schema, model, and output paths)</p>
+<dd><p>Domain run config file (RECOMMENDED — schema, model, and paths derive from it)</p>
 </dd></dl>
 
 <dl class="std option">
@@ -1110,15 +798,9 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-extract-config-strict">
-<span class="sig-name descname"><span class="pre">--config-strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-config-strict" title="Link to this definition">¶</a></dt>
-<dd><p>Fail on unknown keys in runtime config sections</p>
-</dd></dl>
-
-<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-extract-o">
 <span id="cmdoption-psweep-extract-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-o" title="Link to this definition">¶</a></dt>
-<dd><p>Output directory (auto-detected if not specified)</p>
+<dd><p>Output directory (default: outputs/&lt;domain&gt;/extracted)</p>
 </dd></dl>
 
 <dl class="std option">
@@ -1194,12 +876,6 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-extract-live-dashboard">
-<span class="sig-name descname"><span class="pre">--live-dashboard</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-live-dashboard" title="Link to this definition">¶</a></dt>
-<dd><p>Show live dashboard during extraction</p>
-</dd></dl>
-
-<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-extract-pages">
 <span class="sig-name descname"><span class="pre">--pages</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;pages&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-pages" title="Link to this definition">¶</a></dt>
 <dd><p>Page range to extract (e.g., “615-759”). Only for single PDF files.</p>
@@ -1211,18 +887,6 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 <dd><p>CSV file mapping documents to page ranges</p>
 </dd></dl>
 
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-extract-from-index">
-<span class="sig-name descname"><span class="pre">--from-index</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;from_index&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-from-index" title="Link to this definition">¶</a></dt>
-<dd><p>Load discovered files from a download_index.csv (bypasses PATH argument)</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-extract-filter">
-<span class="sig-name descname"><span class="pre">--filter</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;index_filters&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-filter" title="Link to this definition">¶</a></dt>
-<dd><p>With –from-index: keep only rows where COLUMN matches VALUE (format: column=value; repeatable; matches any download_index.csv column)</p>
-</dd></dl>
-
 <p class="rubric">Arguments</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-extract-arg-PATH">
@@ -1230,6 +894,7 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 <dd><p>Optional argument</p>
 </dd></dl>
 
+<p>Supported file types: .csv, .doc, .docx, .flac, .htm, .html, .json, .m4a, .mp3, .ogg, .pdf, .txt, .wav, .xlsx</p>
 </section>
 </section>
 <section id="psweep-init">
@@ -1302,7 +967,7 @@ the first smoke extraction pass.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-output">
 <span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-output" title="Link to this definition">¶</a></dt>
-<dd><p>Output schema path (defaults to schemas/personal/&lt;name&gt;_schema.json)</p>
+<dd><p>Output schema path (defaults to config/&lt;name&gt;/schema.json)</p>
 </dd></dl>
 
 <dl class="std option">
@@ -1352,16 +1017,16 @@ without performing the full extraction.</p>
 </section>
 <section id="psweep-run">
 <h3>run<a class="headerlink" href="#psweep-run" title="Link to this heading">¶</a></h3>
-<p>Run the full pipeline: discover → extract → validate (optional) → compile.</p>
+<p>Run the full pipeline: discover → extract → compile → validate.</p>
 <p>Shows what will be reused from previous runs and what is new, then
-asks for confirmation before proceeding. Use [cyan]–fresh[/cyan] to
+asks for confirmation before proceeding. Use –fresh to
 ignore all previous work and start fresh.</p>
 <dl class="simple">
-<dt>[bold]Usage:[/bold]</dt><dd><p>psweep run –config config/my_domain/run.yaml
+<dt>Usage:</dt><dd><p>psweep run –config config/my_domain/run.yaml
 psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes</p>
 </dd>
-<dt>[bold]Adding new targets:[/bold]</dt><dd><ol class="arabic simple">
-<li><p>Add rows to config/&lt;domain&gt;/targets.csv</p></li>
+<dt>Adding new targets:</dt><dd><ol class="arabic simple">
+<li><p>Add rows to the targets file named by discovery.targets</p></li>
 <li><p>Run: psweep run –config config/&lt;domain&gt;/run.yaml</p></li>
 <li><p>Only new targets are processed; previous results are preserved.</p></li>
 </ol>
@@ -1375,113 +1040,66 @@ psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-config">
 <span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-run-config" title="Link to this definition">¶</a></dt>
-<dd><p><strong>Required</strong> Path to the domain run config file (e.g. config/&lt;domain&gt;/run.yaml).</p>
+<dd><p><strong>Required</strong> Path to the domain run configuration.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-fresh">
 <span class="sig-name descname"><span class="pre">--fresh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-fresh" title="Link to this definition">¶</a></dt>
-<dd><p>Ignore all previous work and start fresh — re-run every discovery target (ignoring the checkpoint and search cache), clear extracted and compiled outputs, then re-extract every document from the newly discovered curated set before recompiling.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
+<dd><p>Re-run discovery, extraction, and compilation.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-n">
 <span id="cmdoption-psweep-run-target-limit"></span><span class="sig-name descname"><span class="pre">-n</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--target-limit</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;target_limit&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-run-n" title="Link to this definition">¶</a></dt>
-<dd><p>Limit discovery to the first N configured targets for this run.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-run-retention-documents">
-<span class="sig-name descname"><span class="pre">--retention-documents</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;retention_documents&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-run-retention-documents" title="Link to this definition">¶</a></dt>
-<dd><p>Discovery document retention mode: all, curated, or none.</p>
+<dd><p>Use only the first N targets (pilot runs).</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-skip-discover">
 <span class="sig-name descname"><span class="pre">--skip-discover</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-skip-discover" title="Link to this definition">¶</a></dt>
-<dd><p>Skip discovery (use existing curated docs).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
+<dd><p>Use existing curated documents.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-skip-extract">
 <span class="sig-name descname"><span class="pre">--skip-extract</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-skip-extract" title="Link to this definition">¶</a></dt>
-<dd><p>Skip extraction (compile from existing JSON).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
+<dd><p>Compile existing extracted records.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-validate-config">
 <span class="sig-name descname"><span class="pre">--validate-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-validate-config" title="Link to this definition">¶</a></dt>
-<dd><p>Validate resolved run-stage config and exit without executing stages.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-run-config-strict">
-<span id="cmdoption-psweep-run-no-config-strict"></span><span class="sig-name descname"><span class="pre">--config-strict</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--no-config-strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-config-strict" title="Link to this definition">¶</a></dt>
-<dd><p>Fail on unknown keys in runtime config sections during run preflight.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
-</dd>
-</dl>
+<dd><p>Validate the run configuration without executing stages.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-y">
 <span id="cmdoption-psweep-run-yes"></span><span class="sig-name descname"><span class="pre">-y</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--yes</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-y" title="Link to this definition">¶</a></dt>
-<dd><p>Skip confirmation prompt.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
+<dd><p>Skip confirmation.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-q">
 <span id="cmdoption-psweep-run-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-q" title="Link to this definition">¶</a></dt>
 <dd><p>Minimal output.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-v">
 <span id="cmdoption-psweep-run-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-v" title="Link to this definition">¶</a></dt>
 <dd><p>Detailed output.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
 </dd></dl>
 
 </section>
 <section id="psweep-validate">
 <h3>validate<a class="headerlink" href="#psweep-validate" title="Link to this heading">¶</a></h3>
-<p>Run explicit QA/QC validation: multi-model extraction + comparison.</p>
+<p>Compare the primary extraction with challenger models and human references.</p>
+<p>Reuses records and judge verdicts; only missing work calls an LLM.</p>
+<div class="line-block">
+<div class="line">psweep validate –config config/my_domain/run.yaml</div>
+<div class="line">psweep validate –config config/my_domain/run.yaml –sample 100 –seed 1</div>
+</div>
 <p class="rubric">Usage</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>validate<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
 </pre></div>
@@ -1490,48 +1108,54 @@ psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-validate-config">
 <span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-validate-config" title="Link to this definition">¶</a></dt>
-<dd><p><strong>Required</strong> Domain run config file with extraction + validation sections.</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-validate-n">
-<span id="cmdoption-psweep-validate-limit"></span><span class="sig-name descname"><span class="pre">-n</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--limit</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;limit&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-validate-n" title="Link to this definition">¶</a></dt>
-<dd><p>Process only first N documents</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-validate-compare-only">
-<span class="sig-name descname"><span class="pre">--compare-only</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-compare-only" title="Link to this definition">¶</a></dt>
-<dd><p>Skip QA/QC extraction and only regenerate comparison reports from existing validation outputs.</p>
+<dd><p><strong>Required</strong> Domain run config with a validation: section.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-validate-fresh">
 <span class="sig-name descname"><span class="pre">--fresh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-fresh" title="Link to this definition">¶</a></dt>
-<dd><p>Re-extract all files (default: skip files already processed)</p>
+<dd><p>Delete validated/ and re-run every challenger.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-sample">
+<span class="sig-name descname"><span class="pre">--sample</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;sample&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-validate-sample" title="Link to this definition">¶</a></dt>
+<dd><p>Write validated/sample_&lt;N&gt;.csv, a blind labelling template, and exit.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-seed">
+<span class="sig-name descname"><span class="pre">--seed</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;seed&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-validate-seed" title="Link to this definition">¶</a></dt>
+<dd><p>Seed for –sample.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-validate-config">
+<span class="sig-name descname"><span class="pre">--validate-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-validate-config" title="Link to this definition">¶</a></dt>
+<dd><p>Validate the validation: section and exit.</p>
+</dd></dl>
+
+<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-validate-q">
 <span id="cmdoption-psweep-validate-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-q" title="Link to this definition">¶</a></dt>
-<dd><p>Minimal output</p>
+<dd><p>Minimal output.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-validate-v">
 <span id="cmdoption-psweep-validate-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-v" title="Link to this definition">¶</a></dt>
-<dd><p>Detailed output</p>
+<dd><p>Detailed output.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-validate-debug">
 <span class="sig-name descname"><span class="pre">--debug</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-debug" title="Link to this definition">¶</a></dt>
-<dd><p>Debug mode with full logs</p>
+<dd><p>Debug output.</p>
 </dd></dl>
 
 </section>
@@ -1543,23 +1167,23 @@ psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../config-reference.html">
+          <a class="next-page" href="../security.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Configuration Reference</div>
+                <div class="title">Security and protected operation</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../getting-started.html">
+          <a class="prev-page" href="../schemas/best-practices.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Getting Started</div>
+                <div class="title">Schema Design Best Practices</div>
                 
               </div>
             </a>
@@ -1598,8 +1222,6 @@ psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes
             <ul>
 <li><a class="reference internal" href="#">Command Reference</a><ul>
 <li><a class="reference internal" href="#psweep">psweep</a><ul>
-<li><a class="reference internal" href="#psweep-benchmark">benchmark</a></li>
-<li><a class="reference internal" href="#psweep-check">check</a></li>
 <li><a class="reference internal" href="#psweep-check-schema">check-schema</a></li>
 <li><a class="reference internal" href="#psweep-compile">compile</a><ul>
 <li><a class="reference internal" href="#examples">Examples</a></li>

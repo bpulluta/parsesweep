@@ -25,6 +25,15 @@ Classes
    psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker
 
 
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.connectors.serpapi_seeker.render_query_template
+   psweep.discovery.connectors.serpapi_seeker.resolve_search_queries
+
+
 Module Contents
 ---------------
 
@@ -43,38 +52,30 @@ Module Contents
    Bases: :py:obj:`psweep.discovery.connectors.base.BaseSeekerConnector`
 
 
-   SerpApi-based seeker connector for Google Search discovery.
-
-   Normalizes SerpApi organic search results to discovery candidates.
-   Handles API key management and error scenarios gracefully.
+   SerpApi web search; ``search.params.engine`` picks the engine.
 
    Initialize SerpApi seeker connector.
 
    :param api_key: Optional override for SERPAPI_API_KEY env var.
-                   If not provided, falls back to SERPAPI_API_KEY or SERPAPI_KEY.
+                   If not provided, read from SERPAPI_API_KEY.
    :type api_key: str | None
    :param ssl_verify: Optional override for TLS verification behavior.
                       If omitted, defaults to env-driven value from
-                      SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (default: false).
+                      SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (verified by default).
    :type ssl_verify: bool | None
 
 
    .. py:method:: discover(seeker_input: psweep.discovery.connectors.base.SeekerInput) -> list[dict[str, Any]]
 
-      Execute search query against Google via SerpApi.
+      Run each rendered query; return candidates deduped by URL.
 
-      Normalizes organic search results to discovery candidates.
+      Results are interleaved by rank across queries (every query's
+      first hit, then every second hit, ...), so a per-target selection
+      cap keeps each query's best results instead of the first query's.
 
-      :param seeker_input: Query and constraints
-      :type seeker_input: SeekerInput
-
-      :returns: List of normalized candidate dictionaries with url, source, title, snippet.
-      :rtype: list[dict[str, Any]]
-
-      :raises ValueError: If query is empty or invalid.
-      :raises SerpApiSearchTimeout: If any query exhausts timeout retries; includes completed results and
-          explicit query errors, after attempting the remaining queries.
-      :raises RuntimeError: If SerpApi fails for another reason; aborts without partial success.
+      Raises ``ValueError`` when no query renders,
+      ``SerpApiSearchTimeout`` (carrying completed results) when a query
+      times out after retries, and ``RuntimeError`` otherwise.
 
 
 
@@ -82,5 +83,15 @@ Module Contents
 
       Check if this connector supports the provider.
 
+
+
+.. py:function:: render_query_template(template: str, context: dict[str, Any]) -> str
+
+   Render ``{field}`` (required) and ``{field?}`` (optional) tokens.
+
+
+.. py:function:: resolve_search_queries(seeker_input: psweep.discovery.connectors.base.SeekerInput) -> list[str]
+
+   Render each template against the context; skip ones missing required tokens.
 
 

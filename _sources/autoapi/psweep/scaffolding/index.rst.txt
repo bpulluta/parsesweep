@@ -5,15 +5,7 @@ psweep.scaffolding
 
 .. autoapi-nested-parse::
 
-   Schema and config scaffolding builders for domain onboarding.
-
-   Pure builder functions extracted from the CLI ``utils_commands`` module: they
-   derive lean starter schemas from a reference schema, build validation and
-   compilation scaffolds, and lay out the workspace/config skeleton for a new
-   domain. None of them perform Click or console I/O, so they can be reused and
-   tested independently of the CLI command wrappers that call them.
-
-   ``ConfigValidationError`` is raised by several builders and re-exported here.
+   Pure (I/O-free) builders for lean starter schemas used in domain onboarding.
 
 
 
@@ -23,6 +15,19 @@ Exceptions
 .. autoapisummary::
 
    psweep.scaffolding.ConfigValidationError
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.scaffolding.apply_main_array_field_selection
+   psweep.scaffolding.available_main_array_fields
+   psweep.scaffolding.build_schema_starter_from_reference
+   psweep.scaffolding.default_schema_output_path
+   psweep.scaffolding.display_cli_path
+   psweep.scaffolding.write_schema_starter
 
 
 Module Contents
@@ -36,5 +41,35 @@ Module Contents
    Config or schema validation error.
 
    Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:function:: apply_main_array_field_selection(schema_data: dict[str, Any], selected_fields: list[str]) -> dict[str, Any]
+
+   Restrict the main-array item schema to ``selected_fields``.
+
+
+.. py:function:: available_main_array_fields(schema_data: dict[str, Any]) -> list[str]
+
+   Field names of the main-array item schema.
+
+
+.. py:function:: build_schema_starter_from_reference(reference_schema_path: pathlib.Path, *, schema_name: str, domain_name: str | None, document_type: str | None, include_fields: list[str] | None = None) -> dict[str, Any]
+
+   Build a starter schema from a reference schema.
+
+
+.. py:function:: default_schema_output_path(repo_root: pathlib.Path, schema_name: str) -> pathlib.Path
+
+   Default path of a domain schema under the config root.
+
+
+.. py:function:: display_cli_path(path: pathlib.Path, repo_root: pathlib.Path) -> str
+
+   Display ``path`` relative to ``repo_root`` when inside it, else absolute.
+
+
+.. py:function:: write_schema_starter(schema_path: pathlib.Path, schema_data: dict[str, Any], force: bool) -> None
+
+   Write the starter schema; refuse to overwrite unless ``force``.
 
 

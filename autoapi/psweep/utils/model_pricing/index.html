@@ -3,9 +3,9 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.utils.normalizers" href="../normalizers/index.html"><link rel="prev" title="psweep.utils.logger" href="../logger/index.html">
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.utils.normalizers" href="../normalizers/index.html"><link rel="prev" title="psweep.utils.item_matcher" href="../item_matcher/index.html">
 
-    <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>psweep.utils.model_pricing - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
@@ -202,11 +202,15 @@
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../../getting-started.html">Getting Started</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../commands/index.html">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../sources.html">Source Patterns</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../config-reference.html">Configuration Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../tuning.html">Tuning &amp; Iteration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html">Schema Authoring</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../schemas/index.html">Schema Authoring</a><input aria-label="Toggle navigation of Schema Authoring" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../schemas/best-practices.html">Schema Design Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../commands/index.html">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../security.html">Security and protected operation</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -215,12 +219,8 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul class="current">
-<li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
-<li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../benchmarking/index.html">psweep.benchmarking</a><input aria-label="Toggle navigation of psweep.benchmarking" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../../benchmarking/performance/index.html">psweep.benchmarking.performance</a></li>
-</ul>
-</li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../compilation/index.html">psweep.compilation</a><input aria-label="Toggle navigation of psweep.compilation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/accounting/index.html">psweep.compilation.accounting</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/csv_exporter/index.html">psweep.compilation.csv_exporter</a></li>
@@ -229,17 +229,18 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/deduplicator/index.html">psweep.compilation.deduplicator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../compilation/schema_detector/index.html">psweep.compilation.schema_detector</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../compilation/synthesizer/index.html">psweep.compilation.synthesizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../config/index.html">psweep.config</a><input aria-label="Toggle navigation of psweep.config" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../config/discovery_config/index.html">psweep.config.discovery_config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../config/errors/index.html">psweep.config.errors</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../config/file_loader/index.html">psweep.config.file_loader</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../config/model_registry/index.html">psweep.config.model_registry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../config/runtime_config_loader/index.html">psweep.config.runtime_config_loader</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../../core/index.html">psweep.core</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
@@ -260,18 +261,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../discovery/retry/index.html">psweep.discovery.retry</a></li>
-<li class="toctree-l4 has-children"><a class="reference internal" href="../../discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l5"><a class="reference internal" href="../../discovery/targets/base/index.html">psweep.discovery.targets.base</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../../discovery/targets/providers/index.html">psweep.discovery.targets.providers</a></li>
-</ul>
-</li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/targets/index.html">psweep.discovery.targets</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/urls/index.html">psweep.discovery.urls</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/validators/index.html">psweep.discovery.validators</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../exceptions/index.html">psweep.exceptions</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -280,34 +277,38 @@
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/text_processor/index.html">psweep.extraction.text_processor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/transcription/index.html">psweep.extraction.transcription</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../outcomes/index.html">psweep.outcomes</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../pipeline/index.html">psweep.pipeline</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../scaffolding/index.html">psweep.scaffolding</a></li>
-<li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" checked="" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../../security/index.html">psweep.security</a></li>
+<li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" checked="" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="../config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../item_matcher/index.html">psweep.utils.item_matcher</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.utils.model_pricing</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../normalizers/index.html">psweep.utils.normalizers</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../page_range/index.html">psweep.utils.page_range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../retry/index.html">psweep.utils.retry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../schema_metadata/index.html">psweep.utils.schema_metadata</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../value_normalizer/index.html">psweep.utils.value_normalizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../spreadsheet/index.html">psweep.utils.spreadsheet</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/comparison_engine/index.html">psweep.validation.comparison_engine</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/evidence_loader/index.html">psweep.validation.evidence_loader</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/multi_model_extractor/index.html">psweep.validation.multi_model_extractor</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/report_generator/index.html">psweep.validation.report_generator</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../validation/utils/index.html">psweep.validation.utils</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../validation/align/index.html">psweep.validation.align</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../validation/judge/index.html">psweep.validation.judge</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../validation/quality/index.html">psweep.validation.quality</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../validation/tables/index.html">psweep.validation.tables</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../workspace/index.html">psweep.workspace</a></li>
 </ul>
 </li>
 </ul>
@@ -356,16 +357,14 @@
         <article role="main" id="furo-main-content">
           <section id="module-psweep.utils.model_pricing">
 <span id="psweep-utils-model-pricing"></span><h1>psweep.utils.model_pricing<a class="headerlink" href="#module-psweep.utils.model_pricing" title="Link to this heading">¶</a></h1>
-<p>AI Model Pricing Database.</p>
-<p>Pricing data as of August 2026.
-All prices are per 1M tokens in USD.</p>
+<p>Model pricing from LiteLLM’s bundled cost map, plus pre-flight estimates.</p>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.model_pricing.ModelPricing" title="psweep.utils.model_pricing.ModelPricing"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ModelPricing</span></code></a></p></td>
-<td><p>Simple wrapper for pricing lookup (for LLMClient compatibility).</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.model_pricing.ExtractionEstimate" title="psweep.utils.model_pricing.ExtractionEstimate"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ExtractionEstimate</span></code></a></p></td>
+<td><p>Pre-flight cost/time estimate; cost fields are None when the price is unknown.</p></td>
 </tr>
 </tbody>
 </table>
@@ -376,14 +375,11 @@ All prices are per 1M tokens in USD.</p>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.model_pricing.calculate_cost" title="psweep.utils.model_pricing.calculate_cost"><code class="xref py py-obj docutils literal notranslate"><span class="pre">calculate_cost</span></code></a>(→ float)</p></td>
-<td><p>Calculate API cost for a model.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.model_pricing.estimate_extraction_cost" title="psweep.utils.model_pricing.estimate_extraction_cost"><code class="xref py py-obj docutils literal notranslate"><span class="pre">estimate_extraction_cost</span></code></a>(→ ExtractionEstimate)</p></td>
+<td><p>Order-of-magnitude cost/time estimate for extracting <code class="docutils literal notranslate"><span class="pre">total_chars</span></code> of text.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.utils.model_pricing.get_model_pricing" title="psweep.utils.model_pricing.get_model_pricing"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_model_pricing</span></code></a>(→ Tuple[float, float])</p></td>
-<td><p>Get pricing for a model.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.model_pricing.get_pricing" title="psweep.utils.model_pricing.get_pricing"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_pricing</span></code></a>(→ ModelPricing)</p></td>
-<td><p>Get the global pricing instance.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.utils.model_pricing.get_model_pricing" title="psweep.utils.model_pricing.get_model_pricing"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_model_pricing</span></code></a>(→ tuple[float, float] | None)</p></td>
+<td><p>Return <code class="docutils literal notranslate"><span class="pre">(input,</span> <span class="pre">output)</span></code> USD per 1M tokens, or None if unknown.</p></td>
 </tr>
 </tbody>
 </table>
@@ -392,65 +388,33 @@ All prices are per 1M tokens in USD.</p>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
 <dl class="py class">
-<dt class="sig sig-object py" id="psweep.utils.model_pricing.ModelPricing">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.utils.model_pricing.</span></span><span class="sig-name descname"><span class="pre">ModelPricing</span></span><a class="headerlink" href="#psweep.utils.model_pricing.ModelPricing" title="Link to this definition">¶</a></dt>
-<dd><p>Simple wrapper for pricing lookup (for LLMClient compatibility).</p>
+<dt class="sig sig-object py" id="psweep.utils.model_pricing.ExtractionEstimate">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.utils.model_pricing.</span></span><span class="sig-name descname"><span class="pre">ExtractionEstimate</span></span><a class="headerlink" href="#psweep.utils.model_pricing.ExtractionEstimate" title="Link to this definition">¶</a></dt>
+<dd><p>Pre-flight cost/time estimate; cost fields are None when the price is unknown.</p>
 <dl class="py method">
-<dt class="sig sig-object py" id="psweep.utils.model_pricing.ModelPricing.get_cost">
-<span class="sig-name descname"><span class="pre">get_cost</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#psweep.utils.model_pricing.ModelPricing.get_cost" title="Link to this definition">¶</a></dt>
-<dd><p>Calculate cost for a model.</p>
+<dt class="sig sig-object py" id="psweep.utils.model_pricing.ExtractionEstimate.format_cost">
+<span class="sig-name descname"><span class="pre">format_cost</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.utils.model_pricing.ExtractionEstimate.format_cost" title="Link to this definition">¶</a></dt>
+<dd><p>Total cost as dollars, or a note when the price is unknown.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="psweep.utils.model_pricing.ExtractionEstimate.estimated_minutes">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">estimated_minutes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#psweep.utils.model_pricing.ExtractionEstimate.estimated_minutes" title="Link to this definition">¶</a></dt>
+<dd><p>Estimated run time in minutes.</p>
 </dd></dl>
 
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="psweep.utils.model_pricing.calculate_cost">
-<span class="sig-prename descclassname"><span class="pre">psweep.utils.model_pricing.</span></span><span class="sig-name descname"><span class="pre">calculate_cost</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">completion_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#psweep.utils.model_pricing.calculate_cost" title="Link to this definition">¶</a></dt>
-<dd><p>Calculate API cost for a model.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>model_name</strong> (<em>str</em>) – Model name</p></li>
-<li><p><strong>prompt_tokens</strong> (<em>int</em>) – Number of input tokens</p></li>
-<li><p><strong>completion_tokens</strong> (<em>int</em>) – Number of output tokens</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Cost in USD</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>float</p>
-</dd>
-</dl>
+<dt class="sig sig-object py" id="psweep.utils.model_pricing.estimate_extraction_cost">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.model_pricing.</span></span><span class="sig-name descname"><span class="pre">estimate_extraction_cost</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">total_chars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">workers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.utils.model_pricing.ExtractionEstimate" title="psweep.utils.model_pricing.ExtractionEstimate"><span class="pre">ExtractionEstimate</span></a></span></span><a class="headerlink" href="#psweep.utils.model_pricing.estimate_extraction_cost" title="Link to this definition">¶</a></dt>
+<dd><p>Order-of-magnitude cost/time estimate for extracting <code class="docutils literal notranslate"><span class="pre">total_chars</span></code> of text.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.utils.model_pricing.get_model_pricing">
-<span class="sig-prename descclassname"><span class="pre">psweep.utils.model_pricing.</span></span><span class="sig-name descname"><span class="pre">get_model_pricing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.utils.model_pricing.get_model_pricing" title="Link to this definition">¶</a></dt>
-<dd><p>Get pricing for a model.</p>
-<p>Handles:</p>
-<ul class="simple">
-<li><p>Exact matches: “gpt-4o-mini” -&gt; (0.15, 0.60)</p></li>
-<li><p>Partial matches: “gpt-4o” in “azure/gpt-4o” -&gt; (5.00, 15.00)</p></li>
-<li><p>Azure deployments: “compassop-gpt-4.1-mini” -&gt; (0.40, 1.60)</p></li>
-</ul>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model_name</strong> (<em>str</em>) – Model name (e.g., “gpt-4o-mini”, “claude-3.5-sonnet”, “compassop-gpt-4.1-mini”)</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>(input_cost_per_1m, output_cost_per_1m) tuple</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[float, float]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="psweep.utils.model_pricing.get_pricing">
-<span class="sig-prename descclassname"><span class="pre">psweep.utils.model_pricing.</span></span><span class="sig-name descname"><span class="pre">get_pricing</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.utils.model_pricing.ModelPricing" title="psweep.utils.model_pricing.ModelPricing"><span class="pre">ModelPricing</span></a></span></span><a class="headerlink" href="#psweep.utils.model_pricing.get_pricing" title="Link to this definition">¶</a></dt>
-<dd><p>Get the global pricing instance.</p>
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.model_pricing.</span></span><span class="sig-name descname"><span class="pre">get_model_pricing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.utils.model_pricing.get_model_pricing" title="Link to this definition">¶</a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">(input,</span> <span class="pre">output)</span></code> USD per 1M tokens, or None if unknown.</p>
 </dd></dl>
 
 </section>
@@ -470,14 +434,14 @@ All prices are per 1M tokens in USD.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../logger/index.html">
+          <a class="prev-page" href="../item_matcher/index.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">psweep.utils.logger</div>
+                <div class="title">psweep.utils.item_matcher</div>
                 
               </div>
             </a>
@@ -518,13 +482,13 @@ All prices are per 1M tokens in USD.</p>
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
-<li><a class="reference internal" href="#psweep.utils.model_pricing.ModelPricing"><code class="docutils literal notranslate"><span class="pre">ModelPricing</span></code></a><ul>
-<li><a class="reference internal" href="#psweep.utils.model_pricing.ModelPricing.get_cost"><code class="docutils literal notranslate"><span class="pre">ModelPricing.get_cost()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.model_pricing.ExtractionEstimate"><code class="docutils literal notranslate"><span class="pre">ExtractionEstimate</span></code></a><ul>
+<li><a class="reference internal" href="#psweep.utils.model_pricing.ExtractionEstimate.format_cost"><code class="docutils literal notranslate"><span class="pre">ExtractionEstimate.format_cost()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.model_pricing.ExtractionEstimate.estimated_minutes"><code class="docutils literal notranslate"><span class="pre">ExtractionEstimate.estimated_minutes</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#psweep.utils.model_pricing.calculate_cost"><code class="docutils literal notranslate"><span class="pre">calculate_cost()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.model_pricing.estimate_extraction_cost"><code class="docutils literal notranslate"><span class="pre">estimate_extraction_cost()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.model_pricing.get_model_pricing"><code class="docutils literal notranslate"><span class="pre">get_model_pricing()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.utils.model_pricing.get_pricing"><code class="docutils literal notranslate"><span class="pre">get_pricing()</span></code></a></li>
 </ul>
 </li>
 </ul>

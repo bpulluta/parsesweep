@@ -1,0 +1,39 @@
+psweep.config.discovery_config
+==============================
+
+.. py:module:: psweep.config.discovery_config
+
+.. autoapi-nested-parse::
+
+   Discovery config schema: strict validation and merge into request fields.
+
+   Each schema key maps to a nested schema or to a ``_Key`` whose check
+   validates (and may normalize) the value and whose ``dest`` names the
+   ``DiscoveryRequest`` field it feeds.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.config.discovery_config.discovery_key_paths
+   psweep.config.discovery_config.resolve_discovery_section
+
+
+Module Contents
+---------------
+
+.. py:function:: discovery_key_paths(schema: dict[str, Any] = DISCOVERY_SCHEMA, loc: str = 'discovery') -> dict[str, str]
+
+   Map each request field to the config key path users write.
+
+
+.. py:function:: resolve_discovery_section(section: Any, config_path: str | None) -> dict[str, tuple[Any, str]]
+
+   Validate ``discovery`` and return ``{request_field: (value, source)}``.
+
+   Errors name the config file and the full key path.
+
+

@@ -5,15 +5,10 @@ psweep.discovery.urls
 
 .. autoapi-nested-parse::
 
-   Shared URL helpers for the discovery module.
+   Shared discovery URL helpers: parse, match, canonicalize, redact.
 
-   These were previously duplicated (byte-for-byte in some cases) across the
-   engine and the candidate selector. Centralizing them removes the drift risk.
-
-   Note: the link prioritizer keeps its own length-guarded extension parser
-   (a scoring heuristic) and the engine keeps its MIME-aware extension resolver
-   (download gating) — those serve different purposes and are intentionally
-   not folded in here.
+   The link prioritizer (scoring) and the engine (MIME-aware download
+   gating) keep their own extension parsers on purpose.
 
 
 
@@ -22,8 +17,10 @@ Functions
 
 .. autoapisummary::
 
+   psweep.discovery.urls.canonical_url
    psweep.discovery.urls.compile_url_patterns
    psweep.discovery.urls.decode_discovery_url
+   psweep.discovery.urls.is_http_url
    psweep.discovery.urls.matches_allowed_domain
    psweep.discovery.urls.matches_url_exclusion
    psweep.discovery.urls.normalize_url_text
@@ -36,7 +33,15 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: compile_url_patterns(patterns) -> tuple[re.Pattern, Ellipsis]
+.. py:function:: canonical_url(url: str) -> str
+
+   Drop click-tracking query parameters, keeping every other byte.
+
+   Other parameters can identify the document (``?bidId=``,
+   ``?fileID=``, ``?<id>_page=N``), so only known tracking keys go.
+
+
+.. py:function:: compile_url_patterns(patterns) -> tuple[re.Pattern, ...]
 
    Return compiled patterns, reusing a cached compile for repeated calls.
 
@@ -44,6 +49,11 @@ Module Contents
 .. py:function:: decode_discovery_url(url: str) -> str
 
    Decode common escaped URL variants emitted by search APIs.
+
+
+.. py:function:: is_http_url(url: object) -> bool
+
+   Return True for an absolute http(s) URL with a host.
 
 
 .. py:function:: matches_allowed_domain(url: str, allowed_domains: list[str] | None) -> bool

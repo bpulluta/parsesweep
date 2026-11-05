@@ -1,0 +1,63 @@
+psweep.validation.tables
+========================
+
+.. py:module:: psweep.validation.tables
+
+.. autoapi-nested-parse::
+
+   Cell diff, consensus, metrics, review priority and the validation outputs.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.validation.tables.category
+   psweep.validation.tables.leaderboard
+   psweep.validation.tables.majority
+   psweep.validation.tables.pair_priority
+   psweep.validation.tables.status
+   psweep.validation.tables.validate_tables
+   psweep.validation.tables.wilson
+
+
+Module Contents
+---------------
+
+.. py:function:: category(x: str | None, base: str | None) -> str
+
+   Pair category of class ``x`` against base class ``base`` (None = NA).
+
+
+.. py:function:: leaderboard(summary: dict, title: str) -> list[str]
+
+   The printed leaderboard: contenders, per-field lines, gate, review and next step.
+
+
+.. py:function:: majority(votes: collections.abc.Sequence) -> tuple[bool, object]
+
+   Strict-majority vote among at least 2 voters; ``(False, None)`` is a split.
+
+
+.. py:function:: pair_priority(category: str, *, reference: bool, judged: bool, same: bool = False, p: str | None = None, s: str | None = None, corroborated: bool = False) -> int
+
+   Priority of the primary's cell against one source S; ``p``/``s`` are their supports.
+
+
+.. py:function:: status(classes: dict[str, str | None], contenders: collections.abc.Iterable[str]) -> str
+
+   Cell status over the holders' classes.
+
+
+.. py:function:: validate_tables(clusters: collections.abc.Iterable[psweep.validation.align.Cluster], *, sources: collections.abc.Sequence[psweep.validation.align.Source], columns: psweep.validation.align.Columns, judge_model: dict | None, judge_fn: JudgeFn | None, staging: sqlite3.Connection, out_dir: pathlib.Path, quality: dict[str, dict], align_stats: dict, inputs: dict, run: dict, covered: frozenset[tuple] | None, min_accuracy: float | None) -> dict
+
+   Diff, judge, score and publish ``cells.csv``, ``summary.csv`` and ``summary.json``.
+
+
+.. py:function:: wilson(k: int, n: int) -> list[float] | None
+
+   Wilson 95% score interval; None when n = 0.
+
+

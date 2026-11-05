@@ -9,14 +9,6 @@ psweep.discovery.network
 
 
 
-Exceptions
-----------
-
-.. autoapisummary::
-
-   psweep.discovery.network.NetworkPolicyError
-
-
 Classes
 -------
 
@@ -36,16 +28,6 @@ Functions
 
 Module Contents
 ---------------
-
-.. py:exception:: NetworkPolicyError(url: str, reason: str, result: object = None)
-
-   Bases: :py:obj:`RuntimeError`
-
-
-   A URL gate denied acquisition or could not be evaluated.
-
-   Initialize self.  See help(type(self)) for accurate signature.
-
 
 .. py:class:: RateLimiter
 
@@ -69,15 +51,17 @@ Module Contents
    closed and are never classified as transient network errors.
 
 
-.. py:function:: send_get(url: str, *, headers: dict[str, str] | None = None, timeout: float = 60, verify: bool = True, stream: bool = False, gate: URLGate | None = None, response_url_gate: URLGate | None = None, limiter: RateLimiter | None = None, retry: RetryConfig = (1, 0.0, 0.0), raise_for_status: bool = True) -> tuple[Any, int]
+.. py:function:: send_get(url: str, *, headers: dict[str, str] | None = None, timeout: float = 60, verify: bool = True, stream: bool = False, gate: URLGate | None = None, response_url_gate: URLGate | None = None, limiter: RateLimiter | None = None, retry: RetryConfig = (1, 0.0, 0.0), raise_for_status: bool = True, max_bytes: int = MAX_PAGE_BYTES) -> tuple[Any, int]
 
    Return a response and attempt count through the GET boundary.
 
    All GETs, including redirects and retries, check ``gate`` and wait
    on ``limiter``. ``response_url_gate`` checks the final URL before
    callers use the body. Redirect/error responses are closed; callers
-   own and must close successful responses. Status errors are retried
-   with discovery backoff. Robots lookup disables ``raise_for_status``
-   to interpret missing rules without invoking a recursive gate.
+   own and must close successful responses. ``may_retry_in_run``
+   errors are retried with discovery backoff. Robots lookup disables
+   ``raise_for_status`` to interpret missing rules without invoking a
+   recursive gate.
+   ``max_bytes`` and ``stream`` bound the body (see ``request_get``).
 
 

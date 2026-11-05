@@ -1,0 +1,77 @@
+psweep.utils.retry
+==================
+
+.. py:module:: psweep.utils.retry
+
+.. autoapi-nested-parse::
+
+   Shared retry primitives: backoff math and retryable-failure classification.
+
+   Every in-run retry loop and every cross-run completion decision uses these, so
+   "may succeed later" has one definition.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.retry.browser_may_recover
+   psweep.utils.retry.compute_backoff
+   psweep.utils.retry.http_status
+   psweep.utils.retry.is_retryable
+   psweep.utils.retry.is_transient_error
+   psweep.utils.retry.may_retry_in_run
+
+
+Module Contents
+---------------
+
+.. py:function:: browser_may_recover(exc: BaseException) -> bool
+
+   Return True when a real browser may pass where the HTTP client was refused.
+
+
+.. py:function:: compute_backoff(attempt: int, *, initial_backoff_seconds: float, max_backoff_seconds: float) -> float
+
+   Exponential backoff (seconds) before ``attempt``.
+
+   Attempt 1 waits 0 (first try). Attempt N waits
+   ``initial * 2**(N-2)``, clamped to ``max_backoff_seconds`` when positive.
+
+
+.. py:function:: http_status(exc: BaseException) -> int | None
+
+   HTTP status a failed request answered with, or None when none arrived.
+
+
+.. py:function:: is_retryable(record: collections.abc.Mapping[str, object]) -> bool
+
+   Return True when a failed download/review record may succeed on re-run.
+
+   Only retryable failures block partition publication and keep a target
+   incomplete; terminal failures stay recorded but do not block.
+
+
+.. py:function:: is_transient_error(exc: BaseException) -> bool
+
+   Return True when a later attempt of the same request may succeed.
+
+   Timeouts, connection errors, truncated streams and HTTP 408/429/5xx are
+   transient unless a bot-manager challenge answered. TLS errors (anywhere in
+   the cause chain) and other HTTP 4xx responses are terminal. An error that
+   declares a boolean ``retryable`` (policy rejections) is transient when it
+   says so or a transient error caused it. Errors carrying an int
+   ``status_code`` (provider SDKs, browser fetches) are classified by status;
+   status-less errors fall back to message markers (``Failed to fetch`` also
+   covers CORS and mixed-content rejections, so it is not a marker).
+
+
+.. py:function:: may_retry_in_run(exc: BaseException) -> bool
+
+   Return True when the same run should repeat the request: transient
+   errors and sampled bot-manager challenges. Only transient errors leave
+   a target incomplete for the next run (``is_transient_error``).
+
+

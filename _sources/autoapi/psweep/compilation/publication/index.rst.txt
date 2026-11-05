@@ -1,0 +1,45 @@
+psweep.compilation.publication
+==============================
+
+.. py:module:: psweep.compilation.publication
+
+.. autoapi-nested-parse::
+
+   Recover export publication under the output writer lock.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.compilation.publication.commit_export
+   psweep.compilation.publication.journal_path
+   psweep.compilation.publication.prepare_export
+   psweep.compilation.publication.recover_export
+
+
+Module Contents
+---------------
+
+.. py:function:: commit_export(output: pathlib.Path) -> None
+
+   Mark publication complete before deleting rollback evidence.
+
+
+.. py:function:: journal_path(output: pathlib.Path) -> pathlib.Path
+
+   Keep the journal outside the replaced directory.
+
+
+.. py:function:: prepare_export(output: pathlib.Path, stage: pathlib.Path, names: list[str], fresh: bool) -> None
+
+   Persist the rollback plan before touching output.
+
+
+.. py:function:: recover_export(output: pathlib.Path) -> None
+
+   Roll back an interrupted publication or clean committed state.
+
+

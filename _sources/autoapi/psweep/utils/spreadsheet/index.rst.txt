@@ -1,0 +1,45 @@
+psweep.utils.spreadsheet
+========================
+
+.. py:module:: psweep.utils.spreadsheet
+
+.. autoapi-nested-parse::
+
+   Keep untrusted evidence literal in spreadsheet exports.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.spreadsheet.csv_frame
+   psweep.utils.spreadsheet.csv_literal
+   psweep.utils.spreadsheet.formula_text
+   psweep.utils.spreadsheet.literal_worksheet
+
+
+Module Contents
+---------------
+
+.. py:function:: csv_frame(frame: pandas.DataFrame) -> pandas.DataFrame
+
+   Escape a display copy, including untrusted headers.
+
+
+.. py:function:: csv_literal(value: object) -> object
+
+   Escape formula-like text without changing numeric values.
+
+
+.. py:function:: formula_text(value: str, *, criteria: bool = False) -> str
+
+   Escape formula strings and optionally COUNTIF wildcards.
+
+
+.. py:function:: literal_worksheet(sheet: openpyxl.worksheet.worksheet.Worksheet) -> None
+
+   Mark evidence as text before adding trusted formulas.
+
+
