@@ -15,19 +15,19 @@ import json
 import math
 import os
 import shutil
-import socket
 import uuid
 from dataclasses import dataclass, fields, is_dataclass
-from pathlib import Path
-from collections.abc import Iterator, Mapping
+from pathlib import Path, PurePosixPath
+from collections.abc import Iterable, Iterator, Mapping
 
-from psweep.extraction.document_utils import text_cache_paths
-from psweep.utils.file_io import atomic_write, atomic_json
+from psweep.extraction.document_utils import (
+    read_text_cache,
+    text_cache_paths,
+    write_text_cache,
+)
+from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
-if os.name == "nt":
-    import msvcrt
-else:
-    import fcntl
+from psweep.utils.retry import is_retryable
 
 TOKEN_HEX_LENGTH = 32
 SHA256_HEX_LENGTH = 64
@@ -50,6 +50,74 @@ class PublicationPaths:
     domain_dir: Path
     run_curated_dir: Path
     run_index: Path
+
+
+DocumentOwner = tuple[str, str]
+
+
+def owner_key(target_id: object, source_url: object) -> str | None:
+    """Checkpoint key of a target or shared source; owns its documents."""
+    if target_id:
+        return str(target_id)
+    if source_url:
+        return f"source-{hashlib.md5(str(source_url).encode()).hexdigest()[:12]}"
+    return None
+
+
+def document_owner(row: Mapping[str, object]) -> DocumentOwner:
+    """Owner of a published document: its target or shared source, and URL."""
+    return (
+        owner_key(row.get("target_id"), row.get("source_url")) or "",
+        str(row.get("url") or ""),
+    )
+
+
+def _owner_name(path: str, owner: DocumentOwner, *, suffixed: bool) -> str:
+    """The plain path an owner asked for, or its owner-hash variant."""
+    tag = "-" + hashlib.sha256("\0".join(owner).encode()).hexdigest()[:8]
+    name = PurePosixPath(path)
+    stem = name.stem.removesuffix(tag)
+    return name.with_name(f"{stem}{tag if suffixed else ''}{name.suffix}").as_posix()
+
+
+def assign_document_names(
+    records: list[dict[str, object]], index: Path, replaced: set[Path]
+) -> None:
+    """Give every downloaded record one stable, readable consolidated path.
+
+    Call under the publication lock so ``index`` is current. Each record's
+    ``relative_path`` holds the plain name it asks for. An owner keeps the
+    path it holds in ``index`` while it asks for the same plain name;
+    otherwise it gets the plain name unless another owner holds it, then a
+    short owner hash (publication withdraws the owner's old path). Curated
+    records claim first, so failed or unselected downloads never push a
+    published document to a suffixed name. Index rows in ``replaced``
+    partitions (``--fresh``) are ignored.
+    """
+    held: dict[str, DocumentOwner] = {}
+    owned: dict[DocumentOwner, str] = {}
+    for row in _csv_read(index)[1] if index.exists() else ():
+        path = row["relative_path"]
+        if _under(Path(path).parent, replaced):
+            continue
+        owner = document_owner(row)
+        held[path] = owner
+        owned[owner] = path
+    review_ran = _review_ran(records)
+    named = sorted(
+        (record for record in records if record.get("relative_path")),
+        key=lambda record: not record_is_curated(record, review_ran=review_ran),
+    )
+    for record in named:
+        owner = document_owner(record)
+        plain = _owner_name(str(record["relative_path"]), owner, suffixed=False)
+        path = owned.get(owner)
+        if path is None or _owner_name(path, owner, suffixed=False) != plain:
+            free = held.get(plain, owner) == owner
+            path = plain if free else _owner_name(plain, owner, suffixed=True)
+            held[path] = owner
+            owned[owner] = path
+        record["relative_path"] = path
 
 
 def resolve_publication_paths(
@@ -81,9 +149,7 @@ def resolve_publication_paths(
     )
     if run_curated_dir is None and curated == root / "curated":
         curated = run / "run-curated"
-    index = run / (
-        "run-download_index.csv" if run == root else "download_index.csv"
-    )
+    index = run / ("run-download_index.csv" if run == root else "download_index.csv")
     return PublicationPaths(documents, manifest, root, curated, index)
 
 
@@ -109,46 +175,12 @@ def discovery_publication(domain_dir: Path) -> Iterator[None]:
     """
     root = Path(domain_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    with (root / ".discovery-publication.lock").open("a+b") as handle:
-        if os.name == "nt":
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b" ")
-                handle.flush()
-            handle.seek(0)
-            try:
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-            except OSError as exc:
-                msg = f"Discovery publication already active in {root}"
-                raise PublicationError(msg) from exc
-        else:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as exc:
-                msg = f"Discovery publication already active in {root}"
-                raise PublicationError(msg) from exc
-        try:
-            handle.seek(0)
-            handle.truncate()
-            handle.write(
-                json.dumps(
-                    {
-                        "pid": os.getpid(),
-                        "host": socket.gethostname(),
-                        "token": uuid.uuid4().hex,
-                    }
-                ).encode()
-            )
-            handle.flush()
-            os.fsync(handle.fileno())
+    try:
+        with publication_lock(root / ".discovery-publication.lock"):
             _recover(root)
             yield
-        finally:
-            if os.name == "nt":
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except PublicationLockError as exc:
+        raise PublicationError(str(exc)) from exc
 
 
 def _journal_path(root: Path) -> Path:
@@ -157,10 +189,7 @@ def _journal_path(root: Path) -> Path:
 
 def _plan_digest(entries: list[dict]) -> str:
     immutable = [
-        {
-            key: entry.get(key)
-            for key in ("destination", "staged", "backup", "had_old")
-        }
+        {key: entry.get(key) for key in ("destination", "staged", "backup", "had_old")}
         for entry in entries
     ]
     return hashlib.sha256(
@@ -197,26 +226,18 @@ def _validate_journal(root: Path, data: object) -> tuple[Path, list[dict]]:
     if staging.is_symlink() or (
         not staging.is_dir()
         and data["state"] == "prepared"
-        and any(
-            entry.get("state") != "restored"
-            for entry in entries
-            if isinstance(entry, dict)
-        )
+        and any(entry.get("state") != "restored" for entry in entries if isinstance(entry, dict))
     ):
         msg = "Missing discovery publication staging directory"
         raise PublicationError(msg)
-    _validate_entries(
-        root, staging, entries, prepared=data["state"] == "prepared"
-    )
+    _validate_entries(root, staging, entries, prepared=data["state"] == "prepared")
     if data.get("plan_sha256") != _plan_digest(entries):
         msg = "Corrupt discovery publication plan checksum"
         raise PublicationError(msg)
     return staging, entries
 
 
-def _entry_destination(
-    root: Path, staging: Path, entry: dict, index: int
-) -> Path:
+def _entry_destination(root: Path, staging: Path, entry: dict, index: int) -> Path:
     if (
         not isinstance(entry, dict)
         or type(entry.get("had_old")) is not bool
@@ -243,8 +264,7 @@ def _entry_destination(
         message = "Unsafe discovery publication destination"
         raise PublicationError(message)
     if entry.get("backup") != str(staging / f"backup-{index}") or (
-        entry.get("staged") is not None
-        and entry.get("staged") != str(staging / f"new-{index}")
+        entry.get("staged") is not None and entry.get("staged") != str(staging / f"new-{index}")
     ):
         message = "Corrupt discovery publication staging paths"
         raise PublicationError(message)
@@ -265,10 +285,7 @@ def _validate_backup(entry: dict, destination: Path) -> None:
     if (
         entry["state"] == "planned"
         and not _exists(backup)
-        and (
-            not _exists(destination)
-            or (staged is not None and not _exists(staged))
-        )
+        and (not _exists(destination) or (staged is not None and not _exists(staged)))
     ):
         message = "Missing discovery publication backup; refusing recovery"
         raise PublicationError(message)
@@ -281,9 +298,7 @@ def _validate_backup(entry: dict, destination: Path) -> None:
         raise PublicationError(message)
 
 
-def _validate_entries(
-    root: Path, staging: Path, entries: list[dict], *, prepared: bool
-) -> None:
+def _validate_entries(root: Path, staging: Path, entries: list[dict], *, prepared: bool) -> None:
     destinations: set[Path] = set()
     ancestors: set[Path] = set()
     for index, entry in enumerate(entries):
@@ -327,9 +342,7 @@ def _recover(root: Path) -> None:
     journal.unlink()
 
 
-def _publish(
-    root: Path, staging: Path, swaps: list[tuple[Path, Path | None]]
-) -> None:
+def _publish(root: Path, staging: Path, swaps: list[tuple[Path, Path | None]]) -> None:
     """Install only this discovery publication's known directory/file
     swaps.
     """
@@ -374,6 +387,21 @@ def _publish(
         _recover(root)
         raise
     _recover(root)
+    _prune_empty_parents(
+        (root / "curated").absolute(),
+        [Path(e["destination"]) for e in entries if not e["staged"]],
+    )
+
+
+def _prune_empty_parents(base: Path, removed: list[Path]) -> None:
+    for path in removed:
+        for parent in path.parents:
+            if base not in parent.parents:
+                break
+            try:
+                parent.rmdir()
+            except OSError:
+                break
 
 
 def _new_stage(root: Path) -> Path:
@@ -388,17 +416,13 @@ def _relative(value: object, *, partition: bool = False) -> Path:
     if not text or path.is_absolute() or ".." in path.parts or "\\" in text:
         msg = f"Unsafe selected relative path: {text!r}"
         raise PublicationError(msg)
-    if not partition and (
-        path == Path() or any(part.startswith(".") for part in path.parts)
-    ):
+    if not partition and (path == Path() or any(part.startswith(".") for part in path.parts)):
         msg = f"Selected document is a sidecar path: {text!r}"
         raise PublicationError(msg)
     return path
 
 
-def record_is_curated(
-    record: Mapping[str, object], *, review_ran: bool
-) -> bool:
+def record_is_curated(record: Mapping[str, object], *, review_ran: bool) -> bool:
     """Resolve the automated default with an explicit human override."""
     decision = str(record.get("human_decision") or "").strip().lower()
     if decision in {"keep", "reject"}:
@@ -406,9 +430,7 @@ def record_is_curated(
     if record.get("review_failed"):
         return False
     return (
-        bool(record.get("review_selected"))
-        if review_ran
-        else record.get("status") == "downloaded"
+        bool(record.get("review_selected")) if review_ran else record.get("status") == "downloaded"
     )
 
 
@@ -420,14 +442,23 @@ def _link(source: Path, destination: Path) -> None:
         shutil.copy2(source, destination)
 
 
-def _stage_curated(
-    documents_dir: Path, records: list[dict[str, object]], destination: Path
-) -> int:
-    destination.mkdir()
-    review_ran = any(
-        "review_selected" in record and record["review_selected"] is not None
+def _review_ran(records: list[dict[str, object]]) -> bool:
+    return any(record.get("review_selected") is not None for record in records)
+
+
+def _withdrawn_owners(records: list[dict[str, object]]) -> set[DocumentOwner]:
+    """Owners whose document this run finally did not select."""
+    review_ran = _review_ran(records)
+    return {
+        document_owner(record)
         for record in records
-    )
+        if not is_retryable(record) and not record_is_curated(record, review_ran=review_ran)
+    }
+
+
+def _stage_curated(documents_dir: Path, records: list[dict[str, object]], destination: Path) -> int:
+    destination.mkdir()
+    review_ran = _review_ran(records)
     seen: set[Path] = set()
     count = 0
     for record in records:
@@ -439,16 +470,8 @@ def _stage_curated(
             msg = f"Selected document has no source: {rel}"
             raise PublicationError(msg)
         source = Path(str(raw_source)).resolve()
-        expected = (documents_dir / rel).resolve()
-        if (
-            source != expected
-            or not source.is_relative_to(documents_dir.resolve())
-            or not source.is_file()
-        ):
-            msg = (
-                "Selected document source missing or outside documents "
-                f"directory: {source}"
-            )
+        if not source.is_relative_to(documents_dir.resolve()) or not source.is_file():
+            msg = f"Selected document source missing or outside documents directory: {source}"
             raise PublicationError(msg)
         if rel in seen:
             msg = f"Duplicate selected path: {rel}"
@@ -457,13 +480,10 @@ def _stage_curated(
         dest = destination / rel
         _link(source, dest)
         for cache, curated_cache in zip(
-            text_cache_paths(source), text_cache_paths(dest)
+            text_cache_paths(source), text_cache_paths(dest), strict=True
         ):
             if cache.is_file():
                 _link(cache, curated_cache)
-        sidecar = source.parent / ".review" / f"{source.name}.json"
-        if sidecar.is_file():
-            _link(sidecar, dest.parent / ".review" / sidecar.name)
         count += 1
     return count
 
@@ -484,9 +504,7 @@ def materialize_curated(
         staging = _new_stage(curated.parent)
         try:
             staged = staging / "curated"
-            count = _stage_curated(
-                Path(documents_dir), download_records, staged
-            )
+            count = _stage_curated(Path(documents_dir), download_records, staged)
             _publish(curated.parent, staging, [(curated, staged)])
         finally:
             if staging.exists() and not _journal_path(curated.parent).exists():
@@ -498,18 +516,11 @@ def _csv_read(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         fields_ = list(reader.fieldnames or ())
-        if (
-            not fields_
-            or len(fields_) != len(set(fields_))
-            or "relative_path" not in fields_
-        ):
+        if not fields_ or len(fields_) != len(set(fields_)) or "relative_path" not in fields_:
             msg = f"Invalid discovery index: {path}"
             raise PublicationError(msg)
         rows = list(reader)
-        if any(
-            None in row or any(value is None for value in row.values())
-            for row in rows
-        ):
+        if any(None in row or any(value is None for value in row.values()) for row in rows):
             msg = f"Malformed discovery index: {path}"
             raise PublicationError(msg)
     return fields_, rows
@@ -518,9 +529,7 @@ def _csv_read(path: Path) -> tuple[list[str], list[dict[str, str]]]:
 def csv_content(fieldnames: list[str], rows: list[dict]) -> str:
     """Serialize discovery provenance rows as a complete CSV."""
     handle = io.StringIO(newline="")
-    writer = csv.DictWriter(
-        handle, fieldnames=fieldnames, extrasaction="ignore"
-    )
+    writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
     return handle.getvalue()
@@ -531,11 +540,7 @@ def _under(partition: Path, roots: set[Path]) -> bool:
 
 
 def _minimal(partitions: set[Path]) -> set[Path]:
-    return {
-        part
-        for part in partitions
-        if not any(parent in partitions for parent in part.parents)
-    }
+    return {part for part in partitions if not any(parent in partitions for parent in part.parents)}
 
 
 def _merged_index(
@@ -544,50 +549,71 @@ def _merged_index(
     domain_index: Path,
     promoted_paths: set[str],
     replaced_partitions: set[Path],
+    withdrawn: set[DocumentOwner] = frozenset(),
+    completed: set[str] = frozenset(),
+    is_blocked=lambda _partition: False,
     run_content: str | None = None,
-) -> str:
-    fieldnames, existing = (
-        _csv_read(domain_index) if domain_index.exists() else ([], [])
-    )
+) -> tuple[str, set[str]]:
+    """Merge run provenance; return the index and the withdrawn paths removed.
+
+    A path is only replaced or withdrawn by its owner (``document_owner``),
+    and each owner keeps at most one path. Outside blocked partitions an
+    unpromoted row is withdrawn when its owner was promoted elsewhere, is in
+    ``withdrawn``, or belongs to a ``completed`` target or source.
+    """
+    fieldnames, existing = _csv_read(domain_index) if domain_index.exists() else ([], [])
     if run_content is None:
         incoming_fields, incoming = _csv_read(run_index)
     else:
         reader = csv.DictReader(io.StringIO(run_content))
         incoming_fields, incoming = list(reader.fieldnames or ()), list(reader)
     fieldnames = list(dict.fromkeys([*fieldnames, *incoming_fields, "path"]))
-    rows: dict[str, dict] = {}
-    for row in existing:
-        key = row.get("relative_path", "")
-        rel = _relative(key)
-        if not _under(rel.parent, replaced_partitions):
-            if key in rows:
-                msg = f"Duplicate consolidated index path: {key}"
-                raise PublicationError(msg)
-            rows[key] = row
-    found: set[str] = set()
+    promoted: dict[str, dict] = {}
     for row in incoming:
         key = row.get("relative_path", "")
         if key not in promoted_paths:
             continue
         _relative(key)
-        if key in found:
+        if key in promoted:
             msg = f"Duplicate run index path: {key}"
             raise PublicationError(msg)
-        found.add(key)
-        rows[key] = {
+        promoted[key] = {
             **row,
             "path": (domain_index.parent / "curated" / key).as_posix(),
         }
-    if found != promoted_paths:
-        missing = sorted(promoted_paths - found)
+    if promoted.keys() != promoted_paths:
+        missing = sorted(promoted_paths - promoted.keys())
         msg = f"Missing provenance for curated paths: {missing}"
         raise PublicationError(msg)
-    return csv_content(fieldnames, list(rows.values()))
+    promoted_owners = {document_owner(row) for row in promoted.values()}
+    rows: dict[str, dict] = {}
+    removed: set[str] = set()
+    for row in existing:
+        key = row.get("relative_path", "")
+        rel = _relative(key)
+        if _under(rel.parent, replaced_partitions):
+            continue
+        owner = document_owner(row)
+        if (
+            key not in promoted
+            and not is_blocked(rel.parent)
+            and (owner in promoted_owners or owner in withdrawn or owner[0] in completed)
+        ):
+            removed.add(key)
+            continue
+        if key in rows:
+            msg = f"Duplicate consolidated index path: {key}"
+            raise PublicationError(msg)
+        if key in promoted and owner != document_owner(promoted[key]):
+            msg = f"Curated path is owned by another target or source: {key}"
+            raise PublicationError(msg)
+        rows[key] = row
+    rows.update(promoted)
+    return csv_content(fieldnames, list(rows.values())), removed
 
 
-def _promotion_files(source: Path, is_blocked) -> tuple[list, set, set]:
+def _promotion_files(source: Path) -> tuple[list, set]:
     files: list[tuple[Path, Path, Path]] = []
-    partitions: set[Path] = set()
     promoted: set[str] = set()
     for src in source.rglob("*"):
         if not src.is_file():
@@ -599,13 +625,52 @@ def _promotion_files(source: Path, is_blocked) -> tuple[list, set, set]:
         partition = rel.parent
         while partition != Path() and partition.name.startswith("."):
             partition = partition.parent
-        if is_blocked(partition):
-            continue
-        partitions.add(partition)
         files.append((src, rel, partition))
         if not any(part.startswith(".") for part in rel.parts):
             promoted.add(rel.as_posix())
-    return files, partitions, promoted
+    return files, promoted
+
+
+def _documents(base: Path) -> list[Path]:
+    """Regular document files under ``base``, excluding dot sidecars."""
+    return [
+        path
+        for path in base.rglob("*")
+        if path.is_file()
+        and not path.is_symlink()
+        and not any(part.startswith(".") for part in path.relative_to(base).parts)
+    ]
+
+
+def _inherit_text_caches(source: Path, curated: Path, replaced: set[Path]) -> None:
+    """Carry OCR/transcript text to a republished copy of the same bytes.
+
+    A re-downloaded file is a new inode, so the text cache of the
+    consolidated file it replaces no longer validates. The cache is
+    re-written for the run's copy when the SHA-256 matches and the copy has
+    none, and is then promoted with it.
+    """
+    new = _documents(source)
+    outgoing = {curated / path.relative_to(source) for path in new}
+    for part in replaced:
+        if (curated / part).is_dir():
+            outgoing.update(_documents(curated / part))
+    inherit_text_caches(new, outgoing)
+
+
+def inherit_text_caches(targets: Iterable[Path], donors: Iterable[Path]) -> None:
+    """Copy a donor's valid text cache to each uncached target with the same SHA-256."""
+    cached = {}
+    for old in donors:
+        hit = read_text_cache(old, return_meta=True) if old.is_file() else None
+        if hit:
+            cached[hit[1]["source_sha256"]] = hit
+    if not cached:
+        return
+    for path in targets:
+        if read_text_cache(path) is None and (hit := cached.get(artifact_sha256(path))):
+            text, meta = hit
+            write_text_cache(path, text, meta["method"], page_count=meta.get("page_count"))
 
 
 def _stage_promotion(
@@ -617,29 +682,36 @@ def _stage_promotion(
     blocked_partitions,
     run_index: Path | None,
     run_content: str | None = None,
+    withdrawn: set[DocumentOwner] = frozenset(),
+    completed: set[str] = frozenset(),
 ) -> list[tuple[Path, Path | None]]:
+    """Stage a run's publication into consolidated curation.
+
+    ``attempted_partitions`` (``--fresh`` runs) are replaced wholesale; any
+    other selected document is published file by file. Blocked (incomplete)
+    partitions are only added to: same-name files are replaced, nothing is
+    removed. Outside them, the consolidated documents of ``withdrawn``
+    owners, of ``completed`` targets/sources not promoted now, and the old
+    paths of renamed owners are removed (see ``_merged_index``), so
+    documents of other targets sharing a partition are kept. Text caches of
+    replaced files carry over to identical new files.
+    """
     if source.resolve() == (root / "curated").resolve():
         msg = "Run curation and consolidated curation must have distinct paths"
         raise PublicationError(msg)
     if not source.is_dir():
         msg = f"Run curated directory missing: {source}"
         raise PublicationError(msg)
-    blocked = {
-        _relative(part, partition=True) for part in (blocked_partitions or ())
-    }
+    blocked = {_relative(part, partition=True) for part in (blocked_partitions or ())}
     blocked_ancestors = {parent for part in blocked for parent in part.parents}
 
     def is_blocked(part):
         return part in blocked_ancestors or _under(part, blocked)
 
-    files, partitions, promoted = _promotion_files(source, is_blocked)
-    attempted = {
-        _relative(part, partition=True)
-        for part in (attempted_partitions or ())
-    }
-    replacements = _minimal(
-        partitions | {part for part in attempted if not is_blocked(part)}
-    )
+    attempted = {_relative(part, partition=True) for part in (attempted_partitions or ())}
+    replacements = _minimal({part for part in attempted if not is_blocked(part)})
+    _inherit_text_caches(source, root / "curated", replacements)
+    files, promoted = _promotion_files(source)
     staged_root = staging / "promoted"
     staged_root.mkdir()
     for src, rel, _ in files:
@@ -655,14 +727,28 @@ def _stage_promotion(
             swaps.append((root / "curated" / part, stage_part))
         else:
             swaps.append((root / "curated" / part, None))
+    for i, (_, rel, partition) in enumerate(files):
+        if _under(partition, replacements):
+            continue
+        stage_file = staging / f"file-{i}"
+        (staged_root / rel).replace(stage_file)
+        swaps.append((root / "curated" / rel, stage_file))
     if run_index is not None:
-        content = _merged_index(
+        content, removed = _merged_index(
             run_index=run_index,
             domain_index=root / "download_index.csv",
             promoted_paths=promoted,
             replaced_partitions=replacements,
+            withdrawn=withdrawn,
+            completed=completed,
+            is_blocked=is_blocked,
             run_content=run_content,
         )
+        for key in sorted(removed):
+            document = root / "curated" / key
+            swaps.extend(
+                (path, None) for path in (document, *text_cache_paths(document)) if _exists(path)
+            )
         staged_index = staging / "index"
         atomic_write(staged_index, content)
         swaps.append((root / "download_index.csv", staged_index))
@@ -677,13 +763,13 @@ def promote_curated(
     blocked_partitions=None,
     run_index: Path | None = None,
 ) -> None:
-    """Publish complete partitions and their consolidated provenance."""
+    """Publish run curation and its consolidated provenance; blocked
+    partitions are published additively.
+    """
     root = Path(domain_dir).resolve()
     source = Path(run_curated_dir).resolve()
     index = (
-        Path(run_index).resolve()
-        if run_index is not None
-        else source.parent / "download_index.csv"
+        Path(run_index).resolve() if run_index is not None else source.parent / "download_index.csv"
     )
     if run_index is None and not index.exists():
         index = None
@@ -713,15 +799,13 @@ def merge_download_index(
 ) -> None:
     """Atomically publish the index for known promoted documents."""
     with discovery_publication(domain_index.parent):
-        atomic_write(
-            domain_index,
-            _merged_index(
-                run_index=run_index,
-                domain_index=domain_index,
-                promoted_paths=promoted_paths,
-                replaced_partitions=replaced_partitions,
-            ),
+        content, _ = _merged_index(
+            run_index=run_index,
+            domain_index=domain_index,
+            promoted_paths=promoted_paths,
+            replaced_partitions=replaced_partitions,
         )
+        atomic_write(domain_index, content)
 
 
 def publish_manual_curation(
@@ -733,36 +817,21 @@ def publish_manual_curation(
     metadata_updates: Mapping[Path, str],
     attempted_partitions=None,
     blocked_partitions=None,
+    completed: set[str] = frozenset(),
     _lock_held: bool = False,
 ) -> tuple[Path, int]:
     """Publish local/consolidated human curation and its provenance
-    together.
+    together; ``completed`` targets/sources reconcile their documents.
     """
     root = paths.domain_dir
     if paths.run_curated_dir == root / "curated":
         msg = "Run curation and consolidated curation must have distinct paths"
         raise PublicationError(msg)
-    with (
-        contextlib.nullcontext() if _lock_held else discovery_publication(root)
-    ):
+    with contextlib.nullcontext() if _lock_held else discovery_publication(root):
         staging = _new_stage(root)
         try:
             local = staging / "local"
-            count = _stage_curated(
-                paths.documents_dir, download_records, local
-            )
-            # Updated review sidecars must travel with curation, not
-            # stale copies.
-            for path, content in metadata_updates.items():
-                if path.parent.name == ".review" and path.is_relative_to(
-                    paths.documents_dir
-                ):
-                    rel = path.relative_to(paths.documents_dir)
-                    staged_sidecar = local / rel
-                    if staged_sidecar.exists():
-                        # Never mutate a source hardlink.
-                        staged_sidecar.unlink()
-                        atomic_write(staged_sidecar, content)
+            count = _stage_curated(paths.documents_dir, download_records, local)
             swaps = _stage_promotion(
                 source=local,
                 root=root,
@@ -771,6 +840,8 @@ def publish_manual_curation(
                 blocked_partitions=blocked_partitions,
                 run_index=run_index,
                 run_content=run_index_content,
+                withdrawn=_withdrawn_owners(download_records),
+                completed=completed,
             )
             swaps.append((paths.run_curated_dir, local))
             updates = {**metadata_updates, run_index: run_index_content}
@@ -785,9 +856,7 @@ def publish_manual_curation(
     return paths.run_curated_dir, count
 
 
-def refresh_latest_pointer(
-    run_dir: Path, *, domain_dir: Path | None = None
-) -> None:
+def refresh_latest_pointer(run_dir: Path, *, domain_dir: Path | None = None) -> None:
     """Atomically update the current-run pointer under the corpus
     lock.
     """
@@ -867,16 +936,12 @@ def _checkpoint_data(path: Path) -> dict:
         raise PublicationError(msg)
     if data.get("version") == 1 and type(data.get("version")) is int:
         return {}
-    if (
-        data.get("version") != CHECKPOINT_VERSION
-        or type(data.get("version")) is not int
-    ):
+    if data.get("version") != CHECKPOINT_VERSION or type(data.get("version")) is not int:
         msg = f"Invalid checkpoint version: {path}"
         raise PublicationError(msg)
     entries = data.get("entries")
     if not isinstance(entries, dict) or any(
-        not isinstance(key, str) or not isinstance(value, dict)
-        for key, value in entries.items()
+        not isinstance(key, str) or not isinstance(value, dict) for key, value in entries.items()
     ):
         msg = f"Corrupt checkpoint entries: {path}"
         raise PublicationError(msg)
@@ -892,9 +957,7 @@ def load_checkpoint(
     """Load matching v2 completions whose artifact evidence remains
     valid.
     """
-    if fingerprint is not None and (
-        not isinstance(fingerprint, str) or not fingerprint
-    ):
+    if fingerprint is not None and (not isinstance(fingerprint, str) or not fingerprint):
         msg = "Checkpoint fingerprint must be a nonempty string"
         raise PublicationError(msg)
     try:
@@ -904,9 +967,54 @@ def load_checkpoint(
     return {
         key: entry
         for key, entry in entries.items()
-        if (fingerprint is None or entry.get("fingerprint") == fingerprint)
+        if not entry.get("incomplete")
+        and (fingerprint is None or entry.get("fingerprint") == fingerprint)
         and (not validate_artifacts or checkpoint_artifacts_valid(entry))
     }
+
+
+def load_prior_outcomes(path: Path, *, fingerprint: str) -> dict[str, dict[str, dict[str, object]]]:
+    """Final child outcomes saved for incomplete targets and sources.
+
+    Returns ``{owner key: {url: outcome}}``. A download carries its file
+    path and SHA-256, which the caller verifies before reuse, so it holds
+    under any settings; other final outcomes (terminal failures, skips)
+    hold only for the same ``fingerprint``.
+    """
+    try:
+        entries = _checkpoint_data(path)
+    except PublicationError:
+        return {}
+    prior: dict[str, dict[str, dict[str, object]]] = {}
+    for key, entry in entries.items():
+        outcomes = entry.get("outcomes")
+        if not entry.get("incomplete") or not isinstance(outcomes, dict):
+            continue
+        same = entry.get("fingerprint") == fingerprint
+        kept = {
+            url: outcome
+            for url, outcome in outcomes.items()
+            if isinstance(outcome, dict)
+            and (
+                _download_evidence(outcome)
+                if outcome.get("status") == "downloaded"
+                else same and isinstance(outcome.get("status"), str)
+            )
+        }
+        if kept:
+            prior[key] = kept
+    return prior
+
+
+def _download_evidence(outcome: Mapping[str, object]) -> bool:
+    path, digest = outcome.get("path"), outcome.get("sha256")
+    return (
+        isinstance(path, str)
+        and Path(path).is_absolute()
+        and isinstance(digest, str)
+        and len(digest) == SHA256_HEX_LENGTH
+        and isinstance(outcome.get("final_url"), str)
+    )
 
 
 def save_checkpoint_entries(
@@ -924,9 +1032,7 @@ def save_checkpoint_entries(
     ):
         msg = "Checkpoint entries must be a mapping of target keys to objects"
         raise PublicationError(msg)
-    if fingerprint is not None and (
-        not isinstance(fingerprint, str) or not fingerprint
-    ):
+    if fingerprint is not None and (not isinstance(fingerprint, str) or not fingerprint):
         msg = "Checkpoint fingerprint must be a nonempty string"
         raise PublicationError(msg)
     with discovery_publication(Path(path).resolve().parent):
@@ -935,28 +1041,26 @@ def save_checkpoint_entries(
             {
                 key: {
                     **entry,
-                    **(
-                        {"fingerprint": fingerprint}
-                        if fingerprint is not None
-                        else {}
-                    ),
+                    **({"fingerprint": fingerprint} if fingerprint is not None else {}),
                 }
                 for key, entry in new_entries.items()
             }
         )
-        atomic_json(
-            path, {"version": 2, "entries": entries}, prefix=".checkpoint-"
-        )
+        atomic_json(path, {"version": 2, "entries": entries}, prefix=".checkpoint-")
 
 
 def effective_discovery_fingerprint(request: object) -> str:
     """Fingerprint effective discovery semantics and configured
     output locations.
+
+    ``targets`` and ``sources`` are inputs checkpointed per item, so
+    adding one does not invalidate completed work.
     """
     excluded = {
         "targets",
+        "sources",
         "progress_callback",
-        "reprocess",
+        "fresh",
         "dry_run",
         "seeker_cache",
         "seeker_cache_ttl_minutes",
@@ -968,9 +1072,7 @@ def effective_discovery_fingerprint(request: object) -> str:
             if field.name not in excluded
         }
     elif isinstance(request, Mapping):
-        values = {
-            key: value for key, value in request.items() if key not in excluded
-        }
+        values = {key: value for key, value in request.items() if key not in excluded}
     else:
         msg = "Fingerprint requires an effective discovery request"
         raise PublicationError(msg)

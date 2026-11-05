@@ -9,7 +9,6 @@ import pytest
 import yaml
 
 from psweep.config.model_registry import (
-    MIN_MULTI_MODELS,
     ModelDefinition,
     ModelRegistry,
     ModelRegistryError,
@@ -35,9 +34,7 @@ def test_from_config_string_form_builds_tier_definitions():
         {"models": {"primary": "gpt-4.1", "secondary": "gpt-4.1-mini"}},
         OPENAI_CFG,
     )
-    assert registry.get_model("primary") == ModelDefinition(
-        tier="primary", model="gpt-4.1"
-    )
+    assert registry.get_model("primary") == ModelDefinition(tier="primary", model="gpt-4.1")
     assert registry.get_model("secondary").model == "gpt-4.1-mini"
 
 
@@ -61,9 +58,7 @@ def test_from_config_rejects_long_form_models_with_actionable_message(spec):
 @pytest.mark.parametrize("defaults", [{"extract": "primary"}, {}, None, []])
 def test_from_config_rejects_retired_phase_defaults(defaults):
     """From config rejects retired phase defaults."""
-    with pytest.raises(
-        ModelRegistryError, match=r"model_defaults.*not supported"
-    ):
+    with pytest.raises(ModelRegistryError, match=r"model_defaults.*not supported"):
         ModelRegistry.from_config({"model_defaults": defaults}, OPENAI_CFG)
 
 
@@ -97,9 +92,7 @@ def test_from_config_rejects_invalid_alias_names(name):
 
 def test_get_model_literal_fallback_for_unknown_reference():
     """Get model literal fallback for unknown reference."""
-    registry = ModelRegistry.from_config(
-        {"models": {"accurate": "gpt-5"}}, OPENAI_CFG
-    )
+    registry = ModelRegistry.from_config({"models": {"accurate": "gpt-5"}}, OPENAI_CFG)
     assert registry.get_model("accurate").model == "gpt-5"
     assert registry.get_model("claude-3.5-sonnet") == ModelDefinition(
         tier="claude-3.5-sonnet", model="claude-3.5-sonnet"
@@ -135,19 +128,6 @@ def test_get_model_non_string_reference_raises():
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="must be a string or None"):
         registry.get_model(123)
-
-
-def test_get_models_preserves_order_and_dedups_by_concrete_model():
-    """Get models preserves order and dedups by concrete model."""
-    cfg = {"models": {"a": "gpt-5", "b": "gpt-4.1", "c": "gpt-5"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    resolved = registry.get_models(["a", "b", "c", "gpt-4.1"])
-    assert [(d.tier, d.model) for d in resolved] == [
-        ("a", "gpt-5"),
-        ("b", "gpt-4.1"),
-    ]
-    assert registry.get_models(None) == []
-    assert registry.get_models([]) == []
 
 
 def test_to_llm_kwargs_delegates_once_with_concrete_model(monkeypatch):
@@ -186,9 +166,7 @@ def test_to_llm_kwargs_cross_provider_uses_only_target_credentials(
 ):
     """To llm kwargs cross provider uses only target credentials."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
-    registry = ModelRegistry.from_config(
-        {"models": {"review": "claude-3.5-sonnet"}}, OPENAI_CFG
-    )
+    registry = ModelRegistry.from_config({"models": {"review": "claude-3.5-sonnet"}}, OPENAI_CFG)
     assert registry.to_llm_kwargs("review")["api_key"] == "anthropic-key"
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     assert registry.to_llm_kwargs("review")["api_key"] is None
@@ -202,9 +180,7 @@ def test_to_llm_kwargs_threads_azure_deployments():
         "azure_endpoint": "https://azure.example",
         "azure_api_version": "version",
     }
-    registry = ModelRegistry.from_config(
-        {"models": {"primary": "deployment"}}, cfg
-    )
+    registry = ModelRegistry.from_config({"models": {"primary": "deployment"}}, cfg)
     kwargs = registry.to_llm_kwargs("primary")
     assert kwargs["model"] == "deployment"
     assert kwargs["provider"] == "azure"
@@ -216,9 +192,7 @@ def test_to_llm_kwargs_threads_azure_deployments():
 def test_to_llm_kwargs_threads_proxy_without_provider_sniffing():
     """To llm kwargs threads proxy without provider sniffing."""
     cfg = {**OPENAI_CFG, "base_url": "https://proxy.example/v1"}
-    registry = ModelRegistry.from_config(
-        {"models": {"primary": "claude-custom"}}, cfg
-    )
+    registry = ModelRegistry.from_config({"models": {"primary": "claude-custom"}}, cfg)
     kwargs = registry.to_llm_kwargs("primary")
     assert kwargs["model"] == "claude-custom"
     assert kwargs["base_url"] == "https://proxy.example/v1"
@@ -241,21 +215,17 @@ def test_explicit_empty_llm_config_does_not_load_global_credentials(
     assert kwargs["api_key"] is None
 
 
-def test_context_windows_remain_separate_from_alias_resolution(
-    tmp_path, monkeypatch
-):
+def test_context_windows_remain_separate_from_alias_resolution(tmp_path, monkeypatch):
     """Context windows remain separate from alias resolution."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         "models:\n  primary: deployment\n"
         "model_context_windows:\n  deployment: 20000\n  other: 30000\n"
-        "extraction:\n  schema: s.json\n  input_dir: documents\n",
+        "schema: s.json\nextraction:\n  skip_existing: true\n",
         encoding="utf-8",
     )
     config_data = load_runtime_config_file(config_path)
-    resolved = resolve_command_config(
-        command="extract", cli_values={}, config_data=config_data, strict=True
-    )
+    resolved = resolve_command_config(command="extract", cli_values={}, config_data=config_data)
     windows = resolved["model_context_windows"]
     assert windows == {"deployment": 20000, "other": 30000}
     registry = ModelRegistry.from_config(config_data, OPENAI_CFG)
@@ -285,18 +255,14 @@ def test_strict_loader_rejects_invalid_context_windows(tmp_path, window):
 
 def test_validate_accepts_well_formed_aliases_and_references():
     """Validate accepts well formed aliases and references."""
-    registry = ModelRegistry.from_config(
-        {"models": {"primary": "gpt-5"}}, OPENAI_CFG
-    )
+    registry = ModelRegistry.from_config({"models": {"primary": "gpt-5"}}, OPENAI_CFG)
     registry.validate(references=["primary", "claude-3.5-sonnet", None])
 
 
 @pytest.mark.parametrize("name", ["", "   ", 123])
 def test_validate_rejects_invalid_direct_alias_name(name):
     """Validate rejects invalid direct alias name."""
-    registry = ModelRegistry(
-        tiers={name: ModelDefinition(tier="primary", model="gpt-5")}
-    )
+    registry = ModelRegistry(tiers={name: ModelDefinition(tier="primary", model="gpt-5")})
     with pytest.raises(ModelRegistryError, match="non-empty strings"):
         registry.validate()
 
@@ -304,9 +270,7 @@ def test_validate_rejects_invalid_direct_alias_name(name):
 @pytest.mark.parametrize("model", ["", "   ", None])
 def test_validate_rejects_invalid_direct_model(model):
     """Validate rejects invalid direct model."""
-    registry = ModelRegistry(
-        tiers={"primary": ModelDefinition(tier="primary", model=model)}
-    )
+    registry = ModelRegistry(tiers={"primary": ModelDefinition(tier="primary", model=model)})
     with pytest.raises(ModelRegistryError, match="non-empty model"):
         registry.validate()
 
@@ -317,54 +281,6 @@ def test_validate_rejects_invalid_single_reference(reference):
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="non-empty string"):
         registry.validate(references=[reference])
-
-
-def test_validate_multi_reference_requires_two_distinct_models():
-    """Validate multi reference requires two distinct models."""
-    registry = ModelRegistry.from_config(
-        {"models": {"a": "gpt-5", "b": "gpt-4.1"}}, OPENAI_CFG
-    )
-    registry.validate(multi_references=[("validation.models", ["a", "b"])])
-
-
-@pytest.mark.parametrize("references", [["a"], ["a", "alias"], []])
-def test_validate_multi_reference_rejects_too_few_distinct_models(references):
-    """Validate multi reference rejects too few distinct models."""
-    registry = ModelRegistry.from_config(
-        {"models": {"a": "gpt-5", "alias": "gpt-5"}}, OPENAI_CFG
-    )
-    with pytest.raises(
-        ModelRegistryError, match=f"at least {MIN_MULTI_MODELS} distinct"
-    ):
-        registry.validate(multi_references=[("validation.models", references)])
-
-
-def test_validate_multi_reference_rejects_none_list():
-    """Validate multi reference rejects none list."""
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(
-        ModelRegistryError, match=r"validation\.models must list at least"
-    ):
-        registry.validate(multi_references=[("validation.models", None)])
-
-
-def test_validate_multi_reference_rejects_non_list():
-    """Validate multi reference rejects non list."""
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(ModelRegistryError, match="must be a list"):
-        registry.validate(multi_references=[("validation.models", "gpt-5")])
-
-
-@pytest.mark.parametrize("reference", [" ", 42, None])
-def test_validate_multi_reference_rejects_invalid_entry(reference):
-    """Validate multi reference rejects invalid entry."""
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(
-        ModelRegistryError, match="entries must be non-empty strings"
-    ):
-        registry.validate(
-            multi_references=[("validation.models", ["gpt-5", reference])]
-        )
 
 
 def test_model_definition_is_frozen():

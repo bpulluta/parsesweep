@@ -12,12 +12,7 @@ from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
     _should_fail_on_suspicious,
 )
-from psweep.cli.commands_extract import (
-    _context_budget_suggestions_for_process,
-    _run_validation_extraction,
-)
 from psweep.extraction.schema_utils import load_schema
-from psweep.extraction.provenance import generate_run_id
 from psweep.extraction.record_writer import write_extraction_record
 from psweep.cli.main import cli
 from psweep.utils.schema_metadata import SchemaMetadata
@@ -28,108 +23,64 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _write_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding='utf-8')
+    path.write_text(content, encoding="utf-8")
 
 
 def test_schema_loader_accepts_direct_json_contract(tmp_path) -> None:
     """Extraction uses the domain schema directly, without pack unwrapping."""
-    schema = tmp_path / 'schema.json'
-    _write_json(schema, {'type': 'object'})
+    schema = tmp_path / "schema.json"
+    _write_json(schema, {"type": "object"})
     assert load_schema(schema) == {"type": "object"}
 
 
-def test_context_budget_suggestions_for_process_use_matching_repo_page_ranges_config(tmp_path) -> None:
-    # Hermetic: build a repo layout in tmp_path so the suggestion is inserted
-    # based on a file we control, not an untracked config in the real repo.
-    (tmp_path / 'config' / 'tariffs').mkdir(parents=True)
-    (tmp_path / 'config' / 'tariffs' / 'page_ranges.csv').write_text(
-        'file,start,end\n', encoding='utf-8'
-    )
-    document_path = tmp_path / 'documents' / 'tariffs' / 'PSCo_Electric_Entire_Tariff.pdf'
-    document_path.parent.mkdir(parents=True, exist_ok=True)
-    document_path.write_text('placeholder', encoding='utf-8')
-
-    suggestions = _context_budget_suggestions_for_process(
-        error_record={'code': 'context_window_exceeded'},
-        schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
-        document_path=document_path,
-        repo_root=tmp_path,
-    )
-
-    assert suggestions is not None
-    assert '--pages START-END' in suggestions[0]
-    assert 'config/tariffs/page_ranges.csv' in suggestions[1]
-    assert '25-100 pages' in suggestions[2]
-
-
-def test_context_budget_suggestions_for_process_without_matching_config_remain_generic(tmp_path) -> None:
-    document_path = tmp_path / 'documents' / 'custom_domain' / 'sample.pdf'
-    document_path.parent.mkdir(parents=True, exist_ok=True)
-    document_path.write_text('placeholder', encoding='utf-8')
-
-    suggestions = _context_budget_suggestions_for_process(
-        error_record={'code': 'context_window_exceeded'},
-        schema_path=Path('schemas/custom_schema.json'),
-        document_path=document_path,
-        repo_root=tmp_path,
-    )
-
-    assert suggestions is not None
-    assert '--pages START-END' in suggestions[0]
-    assert all('--pages-csv config/' not in suggestion for suggestion in suggestions)
-
-
 def test_resolve_compilation_output_formats_defaults_to_both(schema_path) -> None:
-    assert SchemaMetadata.for_compilation(schema_path, {}).get_output_formats() == ['csv', 'excel']
+    assert SchemaMetadata.for_compilation(schema_path, {}).get_output_formats() == ["csv", "excel"]
 
 
 def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) -> None:
-    reference_schema_path = tmp_path / 'reference_schema.json'
+    reference_schema_path = tmp_path / "reference_schema.json"
     _write_json(
         reference_schema_path,
         {
-            '$schema': 'http://json-schema.org/draft-07/schema#',
-            '$metadata': {
-                'domain': 'Reference Domain',
-                'version': '3.4.5',
-                'description': 'Detailed reference schema.',
-                'extraction': {
-                    'main_data_array': 'items',
-                    'identifier_fields': ['jurisdiction.county', 'jurisdiction.state'],
-                    'context_objects': ['jurisdiction'],
-                    'display_name_template': '{jurisdiction.county}',
-                    'document_type': 'Reference Permit',
-                    'normalization': {'trim_strings': True},
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "domain": "Reference Domain",
+                "version": "3.4.5",
+                "description": "Detailed reference schema.",
+                "extraction": {
+                    "main_data_array": "items",
+                    "context_objects": ["jurisdiction"],
+                    "document_type": "Reference Permit",
+                    "normalization": {"trim_strings": True},
                 },
-                'identity': {
-                    'deduplication': {
-                        'key_fields': ['category', 'citation'],
-                        'ignore_fields': ['notes'],
-                        'strategy': 'smart',
+                "identity": {
+                    "deduplication": {
+                        "key_fields": ["category", "citation"],
+                        "ignore_fields": ["notes"],
                     }
                 },
-                'output': {'default_format': 'excel'},
-                'validation': {'require_units': True},
+                "output": {"default_format": "excel"},
+                "validation": {"require_units": True},
             },
-            'title': 'Reference Schema',
-            'description': 'Verbose reference schema.',
-            'type': 'object',
-            'properties': {
-                'jurisdiction': {
-                    'type': 'object',
-                    'properties': {
-                        'county': {'type': 'string', 'default': 'Ada'},
-                        'state': {'type': 'string', 'enum': ['ID', 'WA']},
+            "title": "Reference Schema",
+            "description": "Verbose reference schema.",
+            "type": "object",
+            "properties": {
+                "jurisdiction": {
+                    "type": "object",
+                    "properties": {
+                        "county": {"type": "string", "default": "Ada"},
+                        "state": {"type": "string", "enum": ["ID", "WA"]},
                     },
                 },
-                'items': {
-                    'type': 'array',
-                    'items': {
-                        'type': 'object',
-                        'properties': {
-                            'category': {'type': 'string', 'examples': ['setback']},
-                            'citation': {'type': 'string'},
-                            'value': {'type': 'string', 'default': '100'},
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "category": {"type": "string", "examples": ["setback"]},
+                            "citation": {"type": "string"},
+                            "value": {"type": "string", "default": "100"},
                         },
                     },
                 },
@@ -138,91 +89,88 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
     )
 
     runner = CliRunner()
-    output_path = tmp_path / 'schemas/personal/starter_domain_schema.json'
+    output_path = tmp_path / "config/starter_domain/schema.json"
     result = runner.invoke(
         cli,
         [
-            'init-domain-schema',
-            '--name',
-            'starter_domain',
-            '--reference-schema',
+            "init-domain-schema",
+            "--name",
+            "starter_domain",
+            "--reference-schema",
             str(reference_schema_path),
-            '--domain',
-            'Starter Domain',
-            '--document-type',
-            'Starter Permit',
-            '--output',
+            "--domain",
+            "Starter Domain",
+            "--document-type",
+            "Starter Permit",
+            "--output",
             str(output_path),
-            '--report-format',
-            'json',
+            "--report-format",
+            "json",
         ],
     )
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload['status'] == 'ready'
-    assert payload['created']['schema_name'] == 'starter_domain'
-    assert payload['created']['main_data_array'] == 'items'
-    assert payload['created']['identifier_fields'] == ['jurisdiction.county', 'jurisdiction.state']
+    assert payload["status"] == "ready"
+    assert payload["created"]["schema_name"] == "starter_domain"
+    assert payload["created"]["main_data_array"] == "items"
 
-    starter_schema = json.loads(output_path.read_text(encoding='utf-8'))
-    metadata = starter_schema['$metadata']
-    assert metadata['domain'] == 'Starter Domain'
-    assert metadata['version'] == '0.1.0'
-    assert metadata['extraction']['document_type'] == 'Starter Permit'
-    assert metadata['identity']['deduplication'] == {
-        'key_fields': ['category', 'citation'],
-        'ignore_fields': ['notes'],
+    starter_schema = json.loads(output_path.read_text(encoding="utf-8"))
+    metadata = starter_schema["$metadata"]
+    assert metadata["domain"] == "Starter Domain"
+    assert metadata["version"] == "0.1.0"
+    assert metadata["extraction"]["document_type"] == "Starter Permit"
+    assert metadata["identity"]["deduplication"] == {
+        "key_fields": ["category", "citation"],
+        "ignore_fields": ["notes"],
     }
-    assert 'normalization' not in metadata['extraction']
-    assert 'output' not in metadata
-    assert 'validation' not in metadata
-    assert 'strategy' not in metadata['identity']['deduplication']
-    assert starter_schema['title'] == 'Starter Permit Starter Schema'
-    assert 'examples' not in json.dumps(starter_schema)
-    assert 'enum' not in json.dumps(starter_schema)
-    assert 'default' not in json.dumps(starter_schema)
+    assert "normalization" not in metadata["extraction"]
+    assert "output" not in metadata
+    assert "validation" not in metadata
+    assert starter_schema["title"] == "Starter Permit Starter Schema"
+    assert "examples" not in json.dumps(starter_schema)
+    assert "enum" not in json.dumps(starter_schema)
+    assert "default" not in json.dumps(starter_schema)
 
 
 def test_init_domain_schema_cli_can_limit_main_array_fields(tmp_path) -> None:
-    reference_schema_path = tmp_path / 'reference_schema.json'
+    reference_schema_path = tmp_path / "reference_schema.json"
     _write_json(
         reference_schema_path,
         {
-            '$schema': 'http://json-schema.org/draft-07/schema#',
-            '$metadata': {
-                'domain': 'Reference Domain',
-                'version': '1.0.0',
-                'extraction': {
-                    'main_data_array': 'requirements',
-                    'identifier_fields': ['jurisdiction.county'],
-                    'context_objects': ['jurisdiction'],
-                    'document_type': 'Reference Ordinance',
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "domain": "Reference Domain",
+                "version": "1.0.0",
+                "extraction": {
+                    "main_data_array": "requirements",
+                    "context_objects": ["jurisdiction"],
+                    "document_type": "Reference Ordinance",
                 },
-                'identity': {
-                    'deduplication': {
-                        'key_fields': ['feature', 'citation'],
-                        'ignore_fields': ['notes'],
+                "identity": {
+                    "deduplication": {
+                        "key_fields": ["feature", "citation"],
+                        "ignore_fields": ["notes"],
                     }
                 },
             },
-            'type': 'object',
-            'properties': {
-                'jurisdiction': {
-                    'type': 'object',
-                    'properties': {'county': {'type': 'string'}},
+            "type": "object",
+            "properties": {
+                "jurisdiction": {
+                    "type": "object",
+                    "properties": {"county": {"type": "string"}},
                 },
-                'requirements': {
-                    'type': 'array',
-                    'items': {
-                        'type': 'object',
-                        'required': ['feature', 'citation', 'value'],
-                        'properties': {
-                            'feature': {'type': 'string'},
-                            'citation': {'type': 'string'},
-                            'value': {'type': 'string'},
-                            'units': {'type': 'string'},
-                            'notes': {'type': 'string'},
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["feature", "citation", "value"],
+                        "properties": {
+                            "feature": {"type": "string"},
+                            "citation": {"type": "string"},
+                            "value": {"type": "string"},
+                            "units": {"type": "string"},
+                            "notes": {"type": "string"},
                         },
                     },
                 },
@@ -231,60 +179,59 @@ def test_init_domain_schema_cli_can_limit_main_array_fields(tmp_path) -> None:
     )
 
     runner = CliRunner()
-    output_path = tmp_path / 'schemas/personal/trimmed_schema.json'
+    output_path = tmp_path / "config/trimmed/schema.json"
     result = runner.invoke(
         cli,
         [
-            'init-domain-schema',
-            '--name',
-            'trimmed_domain',
-            '--reference-schema',
+            "init-domain-schema",
+            "--name",
+            "trimmed_domain",
+            "--reference-schema",
             str(reference_schema_path),
-            '--include-field',
-            'feature',
-            '--include-field',
-            'value',
-            '--output',
+            "--include-field",
+            "feature",
+            "--include-field",
+            "value",
+            "--output",
             str(output_path),
-            '--report-format',
-            'json',
+            "--report-format",
+            "json",
         ],
     )
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload['created']['selected_fields'] == ['feature', 'value']
+    assert payload["created"]["selected_fields"] == ["feature", "value"]
 
-    starter_schema = json.loads(output_path.read_text(encoding='utf-8'))
-    requirement_properties = starter_schema['properties']['requirements']['items']['properties']
-    assert list(requirement_properties.keys()) == ['feature', 'value']
-    assert starter_schema['properties']['requirements']['items']['required'] == ['feature', 'value']
-    assert starter_schema['$metadata']['identity']['deduplication']['key_fields'] == ['feature']
-    assert 'ignore_fields' not in starter_schema['$metadata']['identity']['deduplication']
+    starter_schema = json.loads(output_path.read_text(encoding="utf-8"))
+    requirement_properties = starter_schema["properties"]["requirements"]["items"]["properties"]
+    assert list(requirement_properties.keys()) == ["feature", "value"]
+    assert starter_schema["properties"]["requirements"]["items"]["required"] == ["feature", "value"]
+    assert starter_schema["$metadata"]["identity"]["deduplication"]["key_fields"] == ["feature"]
+    assert "ignore_fields" not in starter_schema["$metadata"]["identity"]["deduplication"]
 
 
 def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) -> None:
-    schema_path = tmp_path / 'nested_metadata_schema.json'
+    schema_path = tmp_path / "nested_metadata_schema.json"
     _write_file(
         schema_path,
         json.dumps(
             {
-                '$schema': 'http://json-schema.org/draft-07/schema#',
-                '$metadata': {
-                    'extraction': {
-                        'main_data_array': 'items',
-                        'identifier_fields': ['jurisdiction.state', 'jurisdiction.county'],
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "$metadata": {
+                    "extraction": {
+                        "main_data_array": "items",
                     },
-                    'identity': {
-                        'deduplication': {
-                            'key_fields': ['name'],
+                    "identity": {
+                        "deduplication": {
+                            "key_fields": ["name"],
                         }
                     },
                 },
-                'type': 'object',
-                'properties': {
-                    'jurisdiction': {'type': 'object'},
-                    'items': {'type': 'array'},
+                "type": "object",
+                "properties": {
+                    "jurisdiction": {"type": "object"},
+                    "items": {"type": "array"},
                 },
             },
             indent=2,
@@ -292,92 +239,44 @@ def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) 
     )
 
     runner = CliRunner()
-    result = runner.invoke(cli, ['check-schema', str(schema_path)])
+    result = runner.invoke(cli, ["check-schema", str(schema_path)])
 
     assert result.exit_code == 0
-    assert 'Identifier fields: jurisdiction.state, jurisdiction.county' in result.output
-    assert 'Main data array: items' in result.output
-    assert 'Deduplication key fields: name' in result.output
-    assert "$metadata.extraction missing 'identifier_fields'" not in result.output
+    assert "Main data array: items" in result.output
+    assert "Deduplication key fields: name" in result.output
     assert "$metadata.extraction missing 'main_data_array'" not in result.output
-
-
-def test_run_validation_extraction_prints_compare_command_with_selected_lane(tmp_path, monkeypatch, capsys) -> None:
-    from psweep.config.model_registry import ModelRegistry
-
-    document_path = tmp_path / 'documents' / 'qa_doc.pdf'
-    document_path.parent.mkdir(parents=True, exist_ok=True)
-    document_path.write_text('placeholder', encoding='utf-8')
-
-    class _DummyResult:
-        def __init__(self, cost: float, processing_time: float, success: bool = True):
-            self.cost = cost
-            self.processing_time = processing_time
-            self.success = success
-
-    registry = ModelRegistry(
-        llm_config={'provider': 'openai', 'api_key': 'test-key'}
-    )
-    monkeypatch.setattr('psweep.extraction.document_utils.extract_text_from_document', lambda *args, **kwargs: 'doc text')
-    monkeypatch.setattr(
-        'psweep.validation.run_multi_model_extraction',
-        lambda **kwargs: {
-            'model-a': _DummyResult(cost=0.1, processing_time=1.0),
-            'model-b': _DummyResult(cost=0.2, processing_time=1.5),
-        },
-    )
-    monkeypatch.setattr('psweep.cli.commands_extract.ask_confirm', lambda *args, **kwargs: True)
-
-    _run_validation_extraction(
-        doc_files=[document_path],
-        loaded_schema={'type': 'object'},
-        schema_path=REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json',
-        output_dir=tmp_path / 'extracted',
-        registry=registry,
-        validation_models=['model-a', 'model-b'],
-        max_context=400000,
-        timeout_seconds=None,
-        page_range_map={},
-        verbosity='normal',
-        runtime_artifact=None,
-        run_id='run://test',
-    )
-
-    captured = capsys.readouterr().out
-    assert 'pixi run psweep validate' in captured
-    assert '--compare-only' in captured
 
 
 def test_build_dedup_preview_report_includes_duplicate_groups() -> None:
     report = _build_dedup_preview_report(
-        schema_info={'type': 'Test Schema', 'main_array_key': 'items'},
+        schema_info={"type": "Test Schema", "main_array_key": "items"},
         dedup_preview={
-            'duplicates_removed': 2,
-            'key_fields': ['name'],
-            'compare_columns': ['Name'],
-            'warnings': [],
-            'suspicious_groups_count': 1,
-            'suspicious_groups_by_severity': {'high': 1, 'medium': 0, 'low': 0},
-            'suspicious_groups': [
+            "duplicates_removed": 2,
+            "key_fields": ["name"],
+            "compare_columns": ["Name"],
+            "warnings": [],
+            "suspicious_groups_count": 1,
+            "suspicious_groups_by_severity": {"high": 1, "medium": 0, "low": 0},
+            "suspicious_groups": [
                 {
-                    'keep_index': 0,
-                    'drop_indices': [1, 2],
-                    'severity': 'high',
-                    'conflicting_columns': ['Value'],
-                    'conflicts': {'Value': ['10', '12']},
+                    "keep_index": 0,
+                    "drop_indices": [1, 2],
+                    "severity": "high",
+                    "conflicting_columns": ["Value"],
+                    "conflicts": {"Value": ["10", "12"]},
                 }
             ],
-            'duplicate_groups': [
+            "duplicate_groups": [
                 {
-                    'keep_index': 0,
-                    'drop_indices': [1, 2],
-                    'merged_count': 2,
-                    'note': 'Merged 2 duplicates',
-                    'sample_values': {'Name': 'Charge A'},
-                    'suspicious': True,
-                    'severity': 'high',
-                    'conflicting_columns': ['Value'],
-                    'conflicts': {'Value': ['10', '12']},
+                    "keep_index": 0,
+                    "drop_indices": [1, 2],
+                    "merged_count": 2,
+                    "note": "Merged 2 duplicates",
+                    "sample_values": {"Name": "Charge A"},
+                    "suspicious": True,
+                    "severity": "high",
+                    "conflicting_columns": ["Value"],
+                    "conflicts": {"Value": ["10", "12"]},
                 }
             ],
         },
@@ -385,36 +284,36 @@ def test_build_dedup_preview_report_includes_duplicate_groups() -> None:
     )
 
     assert report == {
-        'schema_type': 'Test Schema',
-        'main_array_key': 'items',
-        'rows_before_dedup': 5,
-        'rows_after_dedup': 3,
-        'duplicates_removed': 2,
-        'key_fields': ['name'],
-        'compare_columns': ['Name'],
-        'warnings': [],
-        'suspicious_groups_count': 1,
-        'suspicious_groups_by_severity': {'high': 1, 'medium': 0, 'low': 0},
-        'suspicious_groups': [
+        "schema_type": "Test Schema",
+        "main_array_key": "items",
+        "rows_before_dedup": 5,
+        "rows_after_dedup": 3,
+        "duplicates_removed": 2,
+        "key_fields": ["name"],
+        "compare_columns": ["Name"],
+        "warnings": [],
+        "suspicious_groups_count": 1,
+        "suspicious_groups_by_severity": {"high": 1, "medium": 0, "low": 0},
+        "suspicious_groups": [
             {
-                'keep_index': 0,
-                'drop_indices': [1, 2],
-                'severity': 'high',
-                'conflicting_columns': ['Value'],
-                'conflicts': {'Value': ['10', '12']},
+                "keep_index": 0,
+                "drop_indices": [1, 2],
+                "severity": "high",
+                "conflicting_columns": ["Value"],
+                "conflicts": {"Value": ["10", "12"]},
             }
         ],
-        'duplicate_groups': [
+        "duplicate_groups": [
             {
-                'keep_index': 0,
-                'drop_indices': [1, 2],
-                'merged_count': 2,
-                'note': 'Merged 2 duplicates',
-                'sample_values': {'Name': 'Charge A'},
-                'suspicious': True,
-                'severity': 'high',
-                'conflicting_columns': ['Value'],
-                'conflicts': {'Value': ['10', '12']},
+                "keep_index": 0,
+                "drop_indices": [1, 2],
+                "merged_count": 2,
+                "note": "Merged 2 duplicates",
+                "sample_values": {"Name": "Charge A"},
+                "suspicious": True,
+                "severity": "high",
+                "conflicting_columns": ["Value"],
+                "conflicts": {"Value": ["10", "12"]},
             }
         ],
     }
@@ -422,101 +321,105 @@ def test_build_dedup_preview_report_includes_duplicate_groups() -> None:
 
 def test_should_fail_on_suspicious_respects_thresholds() -> None:
     preview_report = {
-        'suspicious_groups_count': 2,
-        'suspicious_groups_by_severity': {'high': 1, 'medium': 1, 'low': 0},
+        "suspicious_groups_count": 2,
+        "suspicious_groups_by_severity": {"high": 1, "medium": 1, "low": 0},
     }
 
-    assert _should_fail_on_suspicious(preview_report, 'none') is False
-    assert _should_fail_on_suspicious(preview_report, 'high') is True
-    assert _should_fail_on_suspicious(preview_report, 'medium') is True
-    assert _should_fail_on_suspicious(preview_report, 'low') is True
+    assert _should_fail_on_suspicious(preview_report, "none") is False
+    assert _should_fail_on_suspicious(preview_report, "high") is True
+    assert _should_fail_on_suspicious(preview_report, "medium") is True
+    assert _should_fail_on_suspicious(preview_report, "low") is True
 
 
 def test_resolve_compilation_output_formats_honors_runtime_excel_override(schema_path) -> None:
-    assert SchemaMetadata.for_compilation(schema_path, {
-        'compilation_output': {'default_format': 'excel'},
-    }).get_output_formats() == ['excel']
+    assert SchemaMetadata.for_compilation(
+        schema_path,
+        {
+            "compilation_output": {"default_format": "excel"},
+        },
+    ).get_output_formats() == ["excel"]
 
 
 def test_resolve_compilation_output_formats_rejects_invalid_value(schema_path) -> None:
     from psweep.exceptions import SchemaMetadataError
 
-    with pytest.raises(SchemaMetadataError, match='default_format'):
-        SchemaMetadata.for_compilation(schema_path, {
-            'compilation_output': {'default_format': 'spreadsheet'},
-        })
+    with pytest.raises(SchemaMetadataError, match="default_format"):
+        SchemaMetadata.for_compilation(
+            schema_path,
+            {
+                "compilation_output": {"default_format": "spreadsheet"},
+            },
+        )
 
 
 @pytest.mark.parametrize("schema_format", [None, "excel"])
 def test_compile_cli_respects_schema_format_and_dual_default(tmp_path, schema_format) -> None:
-    schema_path = tmp_path / 'schema.json'
+    schema_path = tmp_path / "schema.json"
     _write_json(
         schema_path,
         {
-            '$schema': 'http://json-schema.org/draft-07/schema#',
-            '$metadata': {
-                'domain': 'Test',
-                'version': '1.0.0',
-                'extraction': {
-                    'main_data_array': 'items',
-                    'context_objects': ['metadata'],
-                    'identifier_fields': ['metadata.id'],
-                    'document_type': 'Test Document',
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "domain": "Test",
+                "version": "1.0.0",
+                "extraction": {
+                    "main_data_array": "items",
+                    "context_objects": ["metadata"],
+                    "document_type": "Test Document",
                 },
-                'identity': {
-                    'deduplication': {
-                        'key_fields': ['name'],
-                        'ignore_fields': [],
+                "identity": {
+                    "deduplication": {
+                        "key_fields": ["name"],
+                        "ignore_fields": [],
                     },
                 },
-                'compilation': {
-                    'output': {
-                        **({'default_format': schema_format} if schema_format else {}),
+                "compilation": {
+                    "output": {
+                        **({"default_format": schema_format} if schema_format else {}),
                     },
                 },
             },
-            'type': 'object',
-            'properties': {
-                'metadata': {'type': 'object'},
-                'items': {'type': 'array'},
+            "type": "object",
+            "properties": {
+                "metadata": {"type": "object"},
+                "items": {"type": "array"},
             },
         },
     )
 
-    extracted_dir = tmp_path / 'extracted/contracts'
-    output_dir = tmp_path / 'compiled/contracts'
+    extracted_dir = tmp_path / "extracted/contracts"
+    output_dir = tmp_path / "compiled/contracts"
     _write_json(
-        extracted_dir / 'doc1.json',
+        extracted_dir / "doc1.json",
         {
-            'record_id': 'record-2',
-            'contract_version': '1.0.0',
-            'document': {
-                'source_document_id': 'doc-2',
-                'source_path': 'documents/contracts/doc2.pdf',
-                'source_filename': 'doc2.pdf',
+            "record_id": "record-2",
+            "contract_version": "1.0.0",
+            "document": {
+                "source_document_id": "doc-2",
+                "source_path": "documents/contracts/doc2.pdf",
+                "source_filename": "doc2.pdf",
             },
-            'lineage': {
-                'run_id': 'run://contract123',
-                'artifact_id': 'artifact://runtime/contract123',
-                'profile_id': 'default',
-                'model': 'gpt-5',
-                'provider': 'azure',
-                'extracted_at': '2026-03-25T00:00:00Z',
+            "lineage": {
+                "run_id": "run://contract123",
+                "artifact_id": "artifact://runtime/contract123",
+                "model": "gpt-5",
+                "provider": "azure",
+                "extracted_at": "2026-03-25T00:00:00Z",
             },
-            'payload': {
-                'metadata': {
-                    'id': 'C-1',
-                    'jurisdiction': 'Example Borough',
+            "payload": {
+                "metadata": {
+                    "id": "C-1",
+                    "jurisdiction": "Example Borough",
                 },
-                'items': [
+                "items": [
                     {
-                        'name': 'Charge A',
-                        'value': 10,
+                        "name": "Charge A",
+                        "value": 10,
                     }
                 ],
             },
-            'quality': {'warnings': [], 'errors': []},
-            'processing_metrics': {'duration_seconds': 1.0, 'cost_usd': 0.01},
+            "quality": {"warnings": [], "errors": []},
+            "processing_metrics": {"duration_seconds": 1.0, "cost_usd": 0.01},
         },
     )
 
@@ -524,107 +427,104 @@ def test_compile_cli_respects_schema_format_and_dual_default(tmp_path, schema_fo
     result = runner.invoke(
         cli,
         [
-            'compile',
+            "compile",
             str(extracted_dir),
-            '--schema',
+            "--schema",
             str(schema_path),
-            '--output',
+            "--output",
             str(output_dir),
-            '--quiet',
+            "--quiet",
         ],
     )
 
     assert result.exit_code == 0
-    assert (output_dir / 'contracts.csv').exists() is (schema_format is None)
-    assert (output_dir / 'contracts.xlsx').exists()
+    assert (output_dir / "contracts.csv").exists() is (schema_format is None)
+    assert (output_dir / "contracts.xlsx").exists()
 
 
 def test_compile_cli_dry_run_previews_deduplication_without_writing_outputs(tmp_path) -> None:
-    schema_path = tmp_path / 'schema.json'
+    schema_path = tmp_path / "schema.json"
     _write_json(
         schema_path,
         {
-            '$schema': 'http://json-schema.org/draft-07/schema#',
-            '$metadata': {
-                'domain': 'Test',
-                'version': '1.0.0',
-                'extraction': {
-                    'main_data_array': 'items',
-                    'context_objects': ['metadata'],
-                    'identifier_fields': ['metadata.id'],
-                    'document_type': 'Test Document',
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "domain": "Test",
+                "version": "1.0.0",
+                "extraction": {
+                    "main_data_array": "items",
+                    "context_objects": ["metadata"],
+                    "document_type": "Test Document",
                 },
-                'identity': {
-                    'deduplication': {
-                        'key_fields': ['name'],
-                        'ignore_fields': ['notes'],
+                "identity": {
+                    "deduplication": {
+                        "key_fields": ["name"],
+                        "ignore_fields": ["notes"],
                     }
                 },
             },
-            'type': 'object',
-            'properties': {
-                'metadata': {'type': 'object'},
-                'items': {'type': 'array'},
+            "type": "object",
+            "properties": {
+                "metadata": {"type": "object"},
+                "items": {"type": "array"},
             },
         },
     )
 
-    extracted_dir = tmp_path / 'extracted/contracts'
-    output_dir = tmp_path / 'compiled/contracts'
+    extracted_dir = tmp_path / "extracted/contracts"
+    output_dir = tmp_path / "compiled/contracts"
     shared_payload = {
-        'metadata': {'id': 'C-1', 'jurisdiction': 'Example Borough'},
-        'items': [
+        "metadata": {"id": "C-1", "jurisdiction": "Example Borough"},
+        "items": [
             {
-                'name': 'Charge A',
-                'value': 10,
-                'notes': 'first copy',
+                "name": "Charge A",
+                "value": 10,
+                "notes": "first copy",
             }
         ],
     }
     _write_json(
-        extracted_dir / 'doc1.json',
+        extracted_dir / "doc1.json",
         {
-            'record_id': 'record-2',
-            'contract_version': '1.0.0',
-            'document': {
-                'source_document_id': 'doc-2',
-                'source_path': 'documents/contracts/doc2.pdf',
-                'source_filename': 'doc2.pdf',
+            "record_id": "record-2",
+            "contract_version": "1.0.0",
+            "document": {
+                "source_document_id": "doc-2",
+                "source_path": "documents/contracts/doc2.pdf",
+                "source_filename": "doc2.pdf",
             },
-            'lineage': {
-                'run_id': 'run://contract123',
-                'artifact_id': 'artifact://runtime/contract123',
-                'profile_id': 'default',
-                'model': 'gpt-5',
-                'provider': 'azure',
-                'extracted_at': '2026-03-25T00:00:00Z',
+            "lineage": {
+                "run_id": "run://contract123",
+                "artifact_id": "artifact://runtime/contract123",
+                "model": "gpt-5",
+                "provider": "azure",
+                "extracted_at": "2026-03-25T00:00:00Z",
             },
-            'payload': shared_payload,
-            'quality': {'warnings': [], 'errors': []},
-            'processing_metrics': {'duration_seconds': 1.0, 'cost_usd': 0.01},
+            "payload": shared_payload,
+            "quality": {"warnings": [], "errors": []},
+            "processing_metrics": {"duration_seconds": 1.0, "cost_usd": 0.01},
         },
     )
     _write_json(
-        extracted_dir / 'doc2.json',
+        extracted_dir / "doc2.json",
         {
-            'record_id': 'record-3',
-            'contract_version': '1.0.0',
-            'document': {
-                'source_document_id': 'doc-3',
-                'source_path': 'documents/contracts/doc3.pdf',
-                'source_filename': 'doc3.pdf',
+            "record_id": "record-3",
+            "contract_version": "1.0.0",
+            "document": {
+                "source_document_id": "doc-3",
+                "source_path": "documents/contracts/doc3.pdf",
+                "source_filename": "doc3.pdf",
             },
-            'lineage': {
-                'run_id': 'run://contract124',
-                'artifact_id': 'artifact://runtime/contract124',
-                'profile_id': 'default',
-                'model': 'gpt-5',
-                'provider': 'azure',
-                'extracted_at': '2026-03-25T00:00:00Z',
+            "lineage": {
+                "run_id": "run://contract124",
+                "artifact_id": "artifact://runtime/contract124",
+                "model": "gpt-5",
+                "provider": "azure",
+                "extracted_at": "2026-03-25T00:00:00Z",
             },
-            'payload': shared_payload,
-            'quality': {'warnings': [], 'errors': []},
-            'processing_metrics': {'duration_seconds': 1.0, 'cost_usd': 0.01},
+            "payload": shared_payload,
+            "quality": {"warnings": [], "errors": []},
+            "processing_metrics": {"duration_seconds": 1.0, "cost_usd": 0.01},
         },
     )
 
@@ -632,97 +532,95 @@ def test_compile_cli_dry_run_previews_deduplication_without_writing_outputs(tmp_
     result = runner.invoke(
         cli,
         [
-            'compile',
+            "compile",
             str(extracted_dir),
-            '--schema',
+            "--schema",
             str(schema_path),
-            '--output',
+            "--output",
             str(output_dir),
-            '--dry-run',
+            "--dry-run",
         ],
     )
 
     assert result.exit_code == 0
-    assert 'Deduplication Preview' in result.output
-    assert 'Duplicates Removed' in result.output
-    assert 'Dry run complete - no CSV/Excel files were written' in result.output
+    assert "Deduplication Preview" in result.output
+    assert "Duplicates Removed" in result.output
+    assert "Dry run complete - no CSV/Excel files were written" in result.output
     assert not output_dir.exists() or not any(output_dir.iterdir())
 
 
 def test_compile_cli_dry_run_json_report_is_machine_readable(tmp_path) -> None:
-    schema_path = tmp_path / 'schema.json'
+    schema_path = tmp_path / "schema.json"
     _write_json(
         schema_path,
         {
-            '$schema': 'http://json-schema.org/draft-07/schema#',
-            '$metadata': {
-                'domain': 'Test',
-                'version': '1.0.0',
-                'extraction': {
-                    'main_data_array': 'items',
-                    'context_objects': ['metadata'],
-                    'identifier_fields': ['metadata.id'],
-                    'document_type': 'Test Document',
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "domain": "Test",
+                "version": "1.0.0",
+                "extraction": {
+                    "main_data_array": "items",
+                    "context_objects": ["metadata"],
+                    "document_type": "Test Document",
                 },
-                'identity': {
-                    'deduplication': {
-                        'key_fields': ['name'],
-                        'ignore_fields': ['notes'],
+                "identity": {
+                    "deduplication": {
+                        "key_fields": ["name"],
+                        "ignore_fields": ["notes"],
                     }
                 },
             },
-            'type': 'object',
-            'properties': {
-                'metadata': {'type': 'object'},
-                'items': {'type': 'array'},
+            "type": "object",
+            "properties": {
+                "metadata": {"type": "object"},
+                "items": {"type": "array"},
             },
         },
     )
 
-    extracted_dir = tmp_path / 'extracted/contracts'
-    output_dir = tmp_path / 'compiled/contracts'
+    extracted_dir = tmp_path / "extracted/contracts"
+    output_dir = tmp_path / "compiled/contracts"
     shared_payload = {
-        'metadata': {'id': 'C-1', 'jurisdiction': 'Example Borough'},
-        'items': [
+        "metadata": {"id": "C-1", "jurisdiction": "Example Borough"},
+        "items": [
             {
-                'name': 'Charge A',
-                'value': 10,
-                'notes': 'first copy',
+                "name": "Charge A",
+                "value": 10,
+                "notes": "first copy",
             }
         ],
     }
     conflicting_payload = {
-        'metadata': {'id': 'C-2', 'jurisdiction': 'Example Borough'},
-        'items': [
+        "metadata": {"id": "C-2", "jurisdiction": "Example Borough"},
+        "items": [
             {
-                'name': 'Charge A',
-                'value': 12,
-                'notes': 'second copy',
+                "name": "Charge A",
+                "value": 12,
+                "notes": "second copy",
             }
         ],
     }
-    for filename, record_id in [('doc1.json', 'record-2'), ('doc2.json', 'record-3')]:
+    for filename, record_id in [("doc1.json", "record-2"), ("doc2.json", "record-3")]:
         _write_json(
             extracted_dir / filename,
             {
-                'record_id': record_id,
-                'contract_version': '1.0.0',
-                'document': {
-                    'source_document_id': record_id,
-                    'source_path': f'documents/contracts/{filename.replace(".json", ".pdf")}',
-                    'source_filename': filename.replace('.json', '.pdf'),
+                "record_id": record_id,
+                "contract_version": "1.0.0",
+                "document": {
+                    "source_document_id": record_id,
+                    "source_path": f"documents/contracts/{filename.replace('.json', '.pdf')}",
+                    "source_filename": filename.replace(".json", ".pdf"),
                 },
-                'lineage': {
-                    'run_id': f'run://{record_id}',
-                    'artifact_id': f'artifact://runtime/{record_id}',
-                    'profile_id': 'default',
-                    'model': 'gpt-5',
-                    'provider': 'azure',
-                    'extracted_at': '2026-03-25T00:00:00Z',
+                "lineage": {
+                    "run_id": f"run://{record_id}",
+                    "artifact_id": f"artifact://runtime/{record_id}",
+                    "model": "gpt-5",
+                    "provider": "azure",
+                    "extracted_at": "2026-03-25T00:00:00Z",
                 },
-                'payload': shared_payload if filename == 'doc1.json' else conflicting_payload,
-                'quality': {'warnings': [], 'errors': []},
-                'processing_metrics': {'duration_seconds': 1.0, 'cost_usd': 0.01},
+                "payload": shared_payload if filename == "doc1.json" else conflicting_payload,
+                "quality": {"warnings": [], "errors": []},
+                "processing_metrics": {"duration_seconds": 1.0, "cost_usd": 0.01},
             },
         )
 
@@ -730,103 +628,101 @@ def test_compile_cli_dry_run_json_report_is_machine_readable(tmp_path) -> None:
     result = runner.invoke(
         cli,
         [
-            'compile',
+            "compile",
             str(extracted_dir),
-            '--schema',
+            "--schema",
             str(schema_path),
-            '--output',
+            "--output",
             str(output_dir),
-            '--dry-run',
-            '--report-format',
-            'json',
+            "--dry-run",
+            "--report-format",
+            "json",
         ],
     )
 
     assert result.exit_code == 0
     report = json.loads(result.output)
-    assert report['schema_type'] == 'Test Document'
-    assert report['main_array_key'] == 'items'
-    assert report['rows_before_dedup'] == 2
-    assert report['rows_after_dedup'] == 1
-    assert report['duplicates_removed'] == 1
-    assert report['suspicious_groups_count'] == 1
-    assert report['suspicious_groups_by_severity'] == {'high': 1, 'medium': 0, 'low': 0}
-    assert report['key_fields'] == ['name']
-    assert report['compare_columns'] == ['Name']
-    assert len(report['duplicate_groups']) == 1
-    assert report['duplicate_groups'][0]['suspicious'] is True
-    assert report['duplicate_groups'][0]['severity'] == 'high'
-    assert report['duplicate_groups'][0]['conflicting_columns'] == ['Value']
-    assert report['warnings']
-    assert report['fail_on_suspicious'] == 'none'
-    assert report['would_fail_on_suspicious'] is False
+    assert report["schema_type"] == "Test Document"
+    assert report["main_array_key"] == "items"
+    assert report["rows_before_dedup"] == 2
+    assert report["rows_after_dedup"] == 1
+    assert report["duplicates_removed"] == 1
+    assert report["suspicious_groups_count"] == 1
+    assert report["suspicious_groups_by_severity"] == {"high": 1, "medium": 0, "low": 0}
+    assert report["key_fields"] == ["name"]
+    assert report["compare_columns"] == ["name"]
+    assert len(report["duplicate_groups"]) == 1
+    assert report["duplicate_groups"][0]["suspicious"] is True
+    assert report["duplicate_groups"][0]["severity"] == "high"
+    assert report["duplicate_groups"][0]["conflicting_columns"] == ["id", "value"]
+    assert report["warnings"]
+    assert report["fail_on_suspicious"] == "none"
+    assert report["would_fail_on_suspicious"] is False
     assert not output_dir.exists() or not any(output_dir.iterdir())
 
 
 def test_compile_cli_dry_run_json_report_can_fail_on_suspicious_threshold(tmp_path) -> None:
-    schema_path = tmp_path / 'schema.json'
+    schema_path = tmp_path / "schema.json"
     _write_json(
         schema_path,
         {
-            '$schema': 'http://json-schema.org/draft-07/schema#',
-            '$metadata': {
-                'domain': 'Test',
-                'version': '1.0.0',
-                'extraction': {
-                    'main_data_array': 'items',
-                    'context_objects': ['metadata'],
-                    'identifier_fields': ['metadata.id'],
-                    'document_type': 'Test Document',
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "domain": "Test",
+                "version": "1.0.0",
+                "extraction": {
+                    "main_data_array": "items",
+                    "context_objects": ["metadata"],
+                    "document_type": "Test Document",
                 },
-                'identity': {
-                    'deduplication': {
-                        'key_fields': ['name'],
-                        'ignore_fields': ['notes'],
+                "identity": {
+                    "deduplication": {
+                        "key_fields": ["name"],
+                        "ignore_fields": ["notes"],
                     }
                 },
             },
-            'type': 'object',
-            'properties': {
-                'metadata': {'type': 'object'},
-                'items': {'type': 'array'},
+            "type": "object",
+            "properties": {
+                "metadata": {"type": "object"},
+                "items": {"type": "array"},
             },
         },
     )
 
-    extracted_dir = tmp_path / 'extracted/contracts'
-    output_dir = tmp_path / 'compiled/contracts'
+    extracted_dir = tmp_path / "extracted/contracts"
+    output_dir = tmp_path / "compiled/contracts"
     payloads = [
         {
-            'metadata': {'id': 'C-1', 'jurisdiction': 'Example Borough'},
-            'items': [{'name': 'Charge A', 'value': 10, 'notes': 'first copy'}],
+            "metadata": {"id": "C-1", "jurisdiction": "Example Borough"},
+            "items": [{"name": "Charge A", "value": 10, "notes": "first copy"}],
         },
         {
-            'metadata': {'id': 'C-2', 'jurisdiction': 'Example Borough'},
-            'items': [{'name': 'Charge A', 'value': 12, 'notes': 'second copy'}],
+            "metadata": {"id": "C-2", "jurisdiction": "Example Borough"},
+            "items": [{"name": "Charge A", "value": 12, "notes": "second copy"}],
         },
     ]
     for index, payload in enumerate(payloads, start=1):
         _write_json(
-            extracted_dir / f'doc{index}.json',
+            extracted_dir / f"doc{index}.json",
             {
-                'record_id': f'record-{index}',
-                'contract_version': '1.0.0',
-                'document': {
-                    'source_document_id': f'doc-{index}',
-                    'source_path': f'documents/contracts/doc{index}.pdf',
-                    'source_filename': f'doc{index}.pdf',
+                "record_id": f"record-{index}",
+                "contract_version": "1.0.0",
+                "document": {
+                    "source_document_id": f"doc-{index}",
+                    "source_path": f"documents/contracts/doc{index}.pdf",
+                    "source_filename": f"doc{index}.pdf",
                 },
-                'lineage': {
-                    'run_id': f'run://record-{index}',
-                    'artifact_id': f'artifact://runtime/record-{index}',
-                    'profile_id': 'default',
-                    'model': 'gpt-5',
-                    'provider': 'azure',
-                    'extracted_at': '2026-03-25T00:00:00Z',
+                "lineage": {
+                    "run_id": f"run://record-{index}",
+                    "artifact_id": f"artifact://runtime/record-{index}",
+                    "model": "gpt-5",
+                    "provider": "azure",
+                    "extracted_at": "2026-03-25T00:00:00Z",
                 },
-                'payload': payload,
-                'quality': {'warnings': [], 'errors': []},
-                'processing_metrics': {'duration_seconds': 1.0, 'cost_usd': 0.01},
+                "payload": payload,
+                "quality": {"warnings": [], "errors": []},
+                "processing_metrics": {"duration_seconds": 1.0, "cost_usd": 0.01},
             },
         )
 
@@ -834,73 +730,78 @@ def test_compile_cli_dry_run_json_report_can_fail_on_suspicious_threshold(tmp_pa
     result = runner.invoke(
         cli,
         [
-            'compile',
+            "compile",
             str(extracted_dir),
-            '--schema',
+            "--schema",
             str(schema_path),
-            '--output',
+            "--output",
             str(output_dir),
-            '--dry-run',
-            '--report-format',
-            'json',
-            '--fail-on-suspicious',
-            'high',
+            "--dry-run",
+            "--report-format",
+            "json",
+            "--fail-on-suspicious",
+            "high",
         ],
     )
 
     assert result.exit_code == 2
     report = json.loads(result.output)
-    assert report['fail_on_suspicious'] == 'high'
-    assert report['would_fail_on_suspicious'] is True
+    assert report["fail_on_suspicious"] == "high"
+    assert report["would_fail_on_suspicious"] is True
     assert not output_dir.exists() or not any(output_dir.iterdir())
 
 
 @pytest.fixture
 def writer_metadata(tmp_path):
-    """Provide schema-owned identifiers/counts for record-writer tests."""
+    """Provide schema-owned counts for record-writer tests."""
     path = tmp_path / "record_domain.schema.json"
-    _write_json(path, {
-        "$metadata": {"extraction": {
-            "main_data_array": "items",
-            "identifier_fields": ["metadata.jurisdiction"],
-        }},
-        "type": "object",
-        "properties": {
-            "metadata": {"type": "object"}, "items": {"type": "array"},
+    _write_json(
+        path,
+        {
+            "$metadata": {
+                "extraction": {
+                    "main_data_array": "items",
+                }
+            },
+            "type": "object",
+            "properties": {
+                "metadata": {"type": "object"},
+                "items": {"type": "array"},
+            },
         },
-    })
+    )
     return SchemaMetadata(path)
 
 
 def test_write_extraction_record_includes_lineage_fields(
-    tmp_path, writer_metadata,
+    tmp_path,
+    writer_metadata,
 ) -> None:
     """Canonical writing preserves runtime-artifact and token lineage."""
     result = SimpleNamespace(
         data={
-            'metadata': {'jurisdiction': 'Example County'},
-            'items': [{'name': 'a'}, {'name': 'b'}],
+            "metadata": {"jurisdiction": "Example County"},
+            "items": [{"name": "a"}, {"name": "b"}],
         },
         cost=0.123,
         processing_time=4.5,
         completeness_score=0.95,
-        validation_notes=['ok'],
+        validation_notes=["ok"],
         input_tokens=111,
         output_tokens=222,
     )
 
     runtime_artifact = {
-        'artifact_id': 'artifact://runtime/abc123def4567890',
-        'contract_versions': {
-            'extraction_record': '1.0.0',
-            'modules_catalog': '1.0.0',
+        "artifact_id": "artifact://runtime/abc123def4567890",
+        "contract_versions": {
+            "extraction_record": "1.0.0",
+            "modules_catalog": "1.0.0",
         },
-        'lineage': {
-            'artifact_id': 'artifact://runtime/abc123def4567890',
-            'profile_id': 'default',
-            'pack_name': 'tariffs',
-            'pack_version': '1.0.0',
-            'compiled_at': '2026-03-24T12:00:00Z',
+        "lineage": {
+            "artifact_id": "artifact://runtime/abc123def4567890",
+            "pack_name": "tariffs",
+            "pack_version": "1.0.0",
+            "compiled_at": "2026-03-24T12:00:00Z",
         },
     }
 
@@ -909,62 +810,60 @@ def test_write_extraction_record_includes_lineage_fields(
     count = write_extraction_record(
         tmp_path / "example.json",
         doc_path=document,
+        source_document_id="doc.txt",
         result=result,
-        model='gpt-5',
+        model="gpt-5",
         schema_metadata=writer_metadata,
         runtime_artifact=runtime_artifact,
-        run_id='run://deterministic1234',
-        provider='azure',
-        schema_id='https://example.org/schema/tariffs',
+        run_id="run://deterministic1234",
+        provider="azure",
+        schema_id="https://example.org/schema/tariffs",
     )
 
     assert count == 2
 
-    output_path = tmp_path / 'example.json'
-    saved = json.loads(output_path.read_text(encoding='utf-8'))
-    assert saved['contract_version'] == '1.0.0'
+    output_path = tmp_path / "example.json"
+    saved = json.loads(output_path.read_text(encoding="utf-8"))
+    assert saved["contract_version"] == "1.1.0"
     assert saved["record_id"].startswith("record://deterministic1234/")
     assert len(saved["record_id"].rsplit("/", 1)[1]) == 64
-    assert saved['document']['source_filename'] == 'example.pdf'
-    # Identifier is schema-driven: the caller-supplied identifier field
-    # ('metadata.jurisdiction') selects the source_document_id — no domain
-    # term is hardcoded in the record writer.
-    assert saved['document']['source_document_id'] == 'Example County'
+    assert saved["document"]["source_filename"] == "example.pdf"
+    assert saved["document"]["source_document_id"] == "doc.txt"
     # Token metrics now flow through from the extraction result.
-    assert saved['processing_metrics']['input_tokens'] == 111
-    assert saved['processing_metrics']['output_tokens'] == 222
-    assert saved['lineage']['artifact_id'] == runtime_artifact['artifact_id']
-    assert saved['lineage']['profile_id'] == 'default'
-    assert saved['lineage']['run_id'] == 'run://deterministic1234'
-    assert saved['lineage']['provider'] == 'azure'
-    assert saved['lineage']['schema_id'] == 'https://example.org/schema/tariffs'
-    assert saved['payload']['items'][0]['name'] == 'a'
-    assert saved['quality']['overall_confidence'] == 0.95
-    assert saved['quality']['errors'] == []
-    assert saved['processing_metrics']['cost_usd'] == 0.123
+    assert saved["processing_metrics"]["input_tokens"] == 111
+    assert saved["processing_metrics"]["output_tokens"] == 222
+    assert saved["lineage"]["artifact_id"] == runtime_artifact["artifact_id"]
+    assert saved["lineage"]["run_id"] == "run://deterministic1234"
+    assert saved["lineage"]["provider"] == "azure"
+    assert saved["lineage"]["schema_id"] == "https://example.org/schema/tariffs"
+    assert saved["payload"]["items"][0]["name"] == "a"
+    assert saved["quality"]["completeness"] == 0.95
+    assert saved["quality"]["errors"] == []
+    assert saved["processing_metrics"]["cost_usd"] == 0.123
 
 
 def test_write_extraction_record_persists_structured_processing_errors(
-    tmp_path, writer_metadata,
+    tmp_path,
+    writer_metadata,
 ) -> None:
     """Structured processing errors survive atomic record publication."""
     result = SimpleNamespace(
-        data={'items': [{'name': 'a'}]},
+        data={"items": [{"name": "a"}]},
         cost=0.123,
         processing_time=4.5,
         completeness_score=0.4,
-        validation_notes=['partial extraction'],
+        validation_notes=["partial extraction"],
         processing_errors=[
             {
-                'stage': 'extract',
-                'category': 'document_processing',
-                'code': 'document_extraction_failed',
-                'message': 'OCR text quality degraded',
-                'retryable': False,
-                'source': {
-                    'document_path': 'example.pdf',
-                    'model': 'gpt-5',
-                    'provider': 'azure',
+                "stage": "extract",
+                "category": "document_processing",
+                "code": "document_extraction_failed",
+                "message": "OCR text quality degraded",
+                "retryable": False,
+                "source": {
+                    "document_path": "example.pdf",
+                    "model": "gpt-5",
+                    "provider": "azure",
                 },
             }
         ],
@@ -975,40 +874,17 @@ def test_write_extraction_record_persists_structured_processing_errors(
     write_extraction_record(
         tmp_path / "example.json",
         doc_path=document,
+        source_document_id="doc.txt",
         result=result,
-        model='gpt-5',
+        model="gpt-5",
         schema_metadata=writer_metadata,
         runtime_artifact=None,
-        run_id='run://deterministic1234',
-        provider='azure',
-        schema_id='https://example.org/schema/tariffs',
+        run_id="run://deterministic1234",
+        provider="azure",
+        schema_id="https://example.org/schema/tariffs",
     )
 
-    saved = json.loads((tmp_path / 'example.json').read_text(encoding='utf-8'))
-    assert saved['quality']['errors'][0]['category'] == 'document_processing'
-    assert saved['quality']['errors'][0]['code'] == 'document_extraction_failed'
-    assert saved['lineage']['artifact_id'] == 'artifact://runtime/deterministic1234'
-    assert saved['lineage']['profile_id'] == 'default'
-
-
-def test_validation_run_id_is_deterministic_for_same_inputs() -> None:
-    """Validation keeps order-independent IDs used by live QA callers."""
-    run_id_1 = generate_run_id(
-        schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
-        provider='azure',
-        model='gpt-5',
-        enable_validation=True,
-        doc_files=[Path('documents/tariffs/a.pdf'), Path('documents/tariffs/b.pdf')],
-        artifact_id='artifact://runtime/abc123def4567890',
-    )
-    run_id_2 = generate_run_id(
-        schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
-        provider='azure',
-        model='gpt-5',
-        enable_validation=True,
-        doc_files=[Path('documents/tariffs/b.pdf'), Path('documents/tariffs/a.pdf')],
-        artifact_id='artifact://runtime/abc123def4567890',
-    )
-
-    assert run_id_1 == run_id_2
-    assert run_id_1.startswith('run://')
+    saved = json.loads((tmp_path / "example.json").read_text(encoding="utf-8"))
+    assert saved["quality"]["errors"][0]["category"] == "document_processing"
+    assert saved["quality"]["errors"][0]["code"] == "document_extraction_failed"
+    assert saved["lineage"]["artifact_id"] == "artifact://runtime/deterministic1234"

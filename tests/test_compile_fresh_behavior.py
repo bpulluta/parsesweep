@@ -14,10 +14,16 @@ import pytest
 @pytest.fixture(autouse=True)
 def synthetic_schema(tmp_path, monkeypatch):
     schema = tmp_path / "schema.json"
-    schema.write_text(json.dumps({"$metadata": {
-        "extraction": {"main_data_array": "requirements", "identifier_fields": ["value"]},
-        "identity": {"deduplication": {"key_fields": ["value"]}},
-    }}))
+    schema.write_text(
+        json.dumps(
+            {
+                "$metadata": {
+                    "extraction": {"main_data_array": "requirements"},
+                    "identity": {"deduplication": {"key_fields": ["value"]}},
+                }
+            }
+        )
+    )
     monkeypatch.setitem(globals(), "SCHEMA_PATH", schema)
 
 
@@ -33,6 +39,7 @@ def _patch_compiler(monkeypatch):
 
     def _fake_save_csv(self, df, path, *, prepared=False):
         path.write_text("State,County,Value\nMA,Longmeadow,1\n", encoding="utf-8")
+
     def _fake_save_excel(self, df, path, *, prepared=False):
         path.write_bytes(b"")
 
@@ -54,7 +61,7 @@ def test_compile_fresh_clears_custom_output_directory(tmp_path: Path, monkeypatc
     _patch_compiler(monkeypatch)
     extracted_dir = tmp_path / "extracted"
     extracted_dir.mkdir(parents=True)
-    (extracted_dir / "dummy.json").write_text("{}", encoding="utf-8")
+    (extracted_dir / "dummy.json").write_text('{"payload": {"requirements": []}}', encoding="utf-8")
 
     output_dir = tmp_path / "custom-output"
     output_dir.mkdir(parents=True)
@@ -78,13 +85,11 @@ def test_compile_fresh_clears_custom_output_directory(tmp_path: Path, monkeypatc
     assert any(output_dir.glob("*.csv"))
 
 
-def test_compile_fresh_dry_run_does_not_clear_output_directory(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_compile_fresh_dry_run_does_not_clear_output_directory(tmp_path: Path, monkeypatch) -> None:
     _patch_compiler(monkeypatch)
     extracted_dir = tmp_path / "extracted"
     extracted_dir.mkdir(parents=True)
-    (extracted_dir / "dummy.json").write_text("{}", encoding="utf-8")
+    (extracted_dir / "dummy.json").write_text('{"payload": {"requirements": []}}', encoding="utf-8")
 
     output_dir = tmp_path / "custom-output"
     output_dir.mkdir(parents=True)

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
+from collections.abc import Iterable
 
 from psweep.exceptions import (
     CompilationError,
@@ -10,30 +11,17 @@ from psweep.exceptions import (
     SchemaMetadataError,
     SchemaValidationError,
 )
-
-
-def _is_retryable(message: str) -> bool:
-    lowered = message.lower()
-    retry_markers = (
-        "rate limit",
-        "429",
-        "timeout",
-        "temporarily unavailable",
-        "try again",
-        "connection reset",
-        "service unavailable",
-    )
-    return any(marker in lowered for marker in retry_markers)
+from psweep.utils.retry import CONNECTION_ERRORS, http_status, is_transient_error
 
 
 def build_error_record(
     exc: BaseException,
     *,
     stage: str,
-    document_path: Optional[str] = None,
-    model: Optional[str] = None,
-    provider: Optional[str] = None,
-) -> Dict[str, Any]:
+    document_path: str | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+) -> dict[str, Any]:
     """Convert a runtime exception into the canonical error payload."""
     message = str(exc)
     lowered_message = message.lower()
@@ -62,9 +50,15 @@ def build_error_record(
     elif isinstance(exc, ExtractionError):
         category = "extraction"
         code = "extraction_failed"
+    elif (status := http_status(exc)) is not None:
+        category = "network"
+        code = f"http_{status}"
     elif isinstance(exc, ValueError):
         category = "input_validation"
         code = "invalid_input"
+    elif isinstance(exc, CONNECTION_ERRORS):
+        category = "network"
+        code = "network_error"
     elif isinstance(exc, RuntimeError):
         if (
             "decode" in lowered_message
@@ -82,7 +76,7 @@ def build_error_record(
         "category": category,
         "code": code,
         "message": message,
-        "retryable": _is_retryable(message),
+        "retryable": is_transient_error(exc),
         "source": {
             "document_path": document_path,
             "model": model,
@@ -92,32 +86,30 @@ def build_error_record(
 
 
 def normalize_error_records(
-    errors: Optional[Iterable[Dict[str, Any]]],
-) -> List[Dict[str, Any]]:
+    errors: Iterable[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
     """Return a deterministic list of canonical error records."""
-    normalized: List[Dict[str, Any]] = []
+    normalized: list[dict[str, Any]] = []
     for error in errors or []:
         if not isinstance(error, dict):
             continue
-        source = (
-            error.get("source")
-            if isinstance(error.get("source"), dict)
-            else {}
-        )
-        normalized.append(
-            {
-                "stage": error.get("stage") or "unknown",
-                "category": error.get("category") or "internal",
-                "code": error.get("code") or "unexpected_processing_error",
-                "message": error.get("message") or "Unknown error",
-                "retryable": bool(error.get("retryable", False)),
-                "source": {
-                    "document_path": source.get("document_path"),
-                    "model": source.get("model"),
-                    "provider": source.get("provider"),
-                },
-            }
-        )
+        source = error.get("source") if isinstance(error.get("source"), dict) else {}
+        record = {
+            "stage": error.get("stage") or "unknown",
+            "category": error.get("category") or "internal",
+            "code": error.get("code") or "unexpected_processing_error",
+            "message": error.get("message") or "Unknown error",
+            "retryable": bool(error.get("retryable", False)),
+            "source": {
+                "document_path": source.get("document_path"),
+                "model": source.get("model"),
+                "provider": source.get("provider"),
+            },
+        }
+        # Discovery errors are attributed to their target (or ``_shared``).
+        if error.get("target_label"):
+            record["target_label"] = error["target_label"]
+        normalized.append(record)
 
     return sorted(
         normalized,
@@ -132,17 +124,15 @@ def normalize_error_records(
 
 
 def summarize_error_records(
-    errors: Optional[Iterable[Dict[str, Any]]],
-) -> Dict[str, Any]:
+    errors: Iterable[dict[str, Any]] | None,
+) -> dict[str, Any]:
     """Aggregate deterministic error totals for manifests and metadata."""
     records = normalize_error_records(errors)
-    by_category: Dict[str, int] = {}
-    by_code: Dict[str, int] = {}
+    by_category: dict[str, int] = {}
+    by_code: dict[str, int] = {}
 
     for error in records:
-        by_category[error["category"]] = (
-            by_category.get(error["category"], 0) + 1
-        )
+        by_category[error["category"]] = by_category.get(error["category"], 0) + 1
         by_code[error["code"]] = by_code.get(error["code"], 0) + 1
 
     return {

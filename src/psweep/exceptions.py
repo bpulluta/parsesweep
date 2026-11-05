@@ -47,9 +47,7 @@ class SchemaMetadataError(SchemaError):
         hint: str | None = None,
     ) -> None:
         self.schema_path = schema_path
-        full_message = (
-            f"{message}\n\nSchema file: {schema_path}" if schema_path else message
-        )
+        full_message = f"{message}\n\nSchema file: {schema_path}" if schema_path else message
         super().__init__(full_message, hint=hint)
 
 
@@ -91,9 +89,11 @@ class PipelineError(ParseSweepError):
         *,
         stage: str | None = None,
         hint: str | None = None,
+        returncode: int | None = None,
     ) -> None:
         super().__init__(message, hint=hint)
         self.stage = stage
+        self.returncode = returncode
 
 
 class APIKeyError(ConfigurationError):

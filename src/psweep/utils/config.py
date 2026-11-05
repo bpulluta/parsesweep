@@ -2,63 +2,27 @@
 
 import os
 from pathlib import Path
-from typing import Optional
 import logging
 
 from dotenv import load_dotenv
+
+from psweep.workspace import CONFIG_ROOT
 
 logger = logging.getLogger(__name__)
 
 
 class Config:
-    """
-    Global configuration for the ParseSweep toolkit.
+    """Global toolkit configuration: project paths and LLM provider settings."""
 
-    Manages paths for schemas, API keys, and other settings.
-    Can be initialized from environment variables or set programmatically.
-    """
-
-    def __init__(self, project_root: Optional[Path] = None):
-        """
-        Initialize configuration.
-
-        Parameters
-        ----------
-        project_root : Optional[Path]
-            Root directory of the project (auto-detected if None)
-        """
-        if project_root is None:
-            # Try to detect project root
-            self.project_root = self._detect_project_root()
-        else:
-            self.project_root = Path(project_root)
-
-        # Schema path
-        self.schema_dir = self.project_root / "schemas"
-        self.default_schema = (
-            self.schema_dir / "example_utility_rate_schema.json"
+    def __init__(self, project_root: Path | None = None):
+        self.project_root = (
+            Path(project_root) if project_root is not None else self._detect_project_root()
         )
-
-        # Multi-provider LLM configuration
+        self.config_dir = self.project_root / CONFIG_ROOT
         self.llm_config = self._load_llm_config()
 
     def _load_llm_config(self) -> dict:
-        """
-        Load LLM provider configuration from environment.
-
-        Supports:
-
-        - Any OpenAI-compatible endpoint (LLM_BASE_URL + LLM_API_KEY) — highest priority
-        - Azure OpenAI (AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, etc.)
-        - Anthropic Claude (ANTHROPIC_API_KEY)
-        - Google Gemini (GEMINI_API_KEY, GOOGLE_API_KEY)
-        - OpenAI (OPENAI_API_KEY)
-
-        Returns
-        -------
-        dict
-            dict with provider configuration
-        """
+        """Load LLM provider configuration from the environment and ``.env``."""
         config = {
             "provider": None,
             "model": None,
@@ -73,8 +37,8 @@ class Config:
         if env_file.exists():
             try:
                 load_dotenv(env_file, override=False)
-            except Exception as e:
-                logger.warning(f"Error reading .env file: {e}")
+            except Exception as e:  # noqa: BLE001 - a bad .env must not block startup
+                logger.warning("Error reading .env file: %s", e)
 
         env_vars = os.environ
 
@@ -83,7 +47,7 @@ class Config:
         #   1. LLM_BASE_URL — generic OpenAI-compatible endpoint override.
         #      Works with any proxy (LiteLLM, OpenRouter, Azure AI Foundry, vLLM, …).
         #      Set this + LLM_API_KEY to route all calls through a single endpoint.
-        #   2–5. Direct provider keys (Azure, Anthropic, Gemini, OpenAI).
+        #   2-5. Direct provider keys (Azure, Anthropic, Gemini, OpenAI).
         if env_vars.get("LLM_BASE_URL"):
             config["provider"] = "openai"  # OpenAI-compatible wire format
             config["model"] = env_vars.get("LLM_MODEL")
@@ -104,41 +68,31 @@ class Config:
             config["azure_api_version"] = env_vars.get(
                 "AZURE_OPENAI_API_VERSION", "2024-02-15-preview"
             )
-        elif env_vars.get("ANTHROPIC_API_KEY") or env_vars.get(
-            "ANTHROPIC_MODEL"
-        ):
+        elif env_vars.get("ANTHROPIC_API_KEY") or env_vars.get("ANTHROPIC_MODEL"):
             config["provider"] = "anthropic"
-            config["model"] = env_vars.get(
-                "ANTHROPIC_MODEL", "claude-3.5-sonnet"
-            )
+            config["model"] = env_vars.get("ANTHROPIC_MODEL", "claude-3.5-sonnet")
             config["api_key"] = env_vars.get("ANTHROPIC_API_KEY")
-        elif any(
-            env_vars.get(key)
-            for key in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_MODEL")
-        ):
+        elif any(env_vars.get(key) for key in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_MODEL")):
             config["provider"] = "gemini"
             config["model"] = env_vars.get("GEMINI_MODEL", "gemini-1.5-pro")
-            config["api_key"] = env_vars.get("GEMINI_API_KEY") or env_vars.get(
-                "GOOGLE_API_KEY"
-            )
+            config["api_key"] = env_vars.get("GEMINI_API_KEY") or env_vars.get("GOOGLE_API_KEY")
         elif env_vars.get("OPENAI_API_KEY") or env_vars.get("OPENAI_MODEL"):
             config["provider"] = "openai"
             # Single source of truth for the default model. Imported lazily:
             # ``llm_factory`` imports ``get_config`` (also lazily, at call time),
             # so a function-local import here avoids any import-order coupling.
-            from ..extraction.llm_factory import DEFAULT_MODEL
+            from psweep.extraction.llm_factory import DEFAULT_MODEL
 
             config["model"] = env_vars.get("OPENAI_MODEL", DEFAULT_MODEL)
             config["api_key"] = env_vars.get("OPENAI_API_KEY")
 
         if config["provider"]:
-            base_url_suffix = (
-                f", base_url={config['base_url']}"
-                if config.get("base_url")
-                else ""
-            )
+            base_url_suffix = f", base_url={config['base_url']}" if config.get("base_url") else ""
             logger.info(
-                f"Loaded LLM config: provider={config['provider']}, model={config['model']}{base_url_suffix}"
+                "Loaded LLM config: provider=%s, model=%s%s",
+                config["provider"],
+                config["model"],
+                base_url_suffix,
             )
         else:
             logger.warning("No LLM provider configured in environment")
@@ -154,13 +108,13 @@ class Config:
         markers = ["pyproject.toml", "setup.py", ".git", "src"]
 
         # Check current directory and parents
-        for parent in [current] + list(current.parents):
+        for parent in [current, *list(current.parents)]:
             if any((parent / marker).exists() for marker in markers):
-                logger.debug(f"Detected project root: {parent}")
+                logger.debug("Detected project root: %s", parent)
                 return parent
 
         # Default to current directory
-        logger.warning(f"Could not detect project root, using: {current}")
+        logger.warning("Could not detect project root, using: %s", current)
         return current
 
     def __repr__(self) -> str:
@@ -178,21 +132,9 @@ class Config:
 _global_config = None
 
 
-def get_config(project_root: Optional[Path] = None) -> Config:
-    """
-    Get the global configuration instance.
-
-    Parameters
-    ----------
-    project_root : Optional[Path]
-        Optional project root (used only on first call)
-
-    Returns
-    -------
-    Config
-        Config instance
-    """
-    global _global_config
+def get_config(project_root: Path | None = None) -> Config:
+    """Return the global Config (``project_root`` applies only on first call)."""
+    global _global_config  # noqa: PLW0603 - process-wide config singleton
     if _global_config is None:
         _global_config = Config(project_root)
     return _global_config

@@ -10,6 +10,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# The shipped runnable example: the only domain config the suite may read.
+EXAMPLE_CONFIG = Path(__file__).resolve().parents[1] / "config" / "example" / "run.yaml"
+
 
 def write_json(path: Path, content: dict) -> None:
     """Write ``content`` as indented JSON, creating parent dirs as needed."""
@@ -25,7 +28,8 @@ def synthetic_evidence_schema() -> dict:
         "county": dict(nullable_text),
         "locality": dict(nullable_text),
         "geographic_scope": {
-            "type": "string", "enum": ["unspecified", "state", "county", "locality"]
+            "type": "string",
+            "enum": ["unspecified", "state", "county", "locality"],
         },
         "geography_quote": dict(nullable_text),
         "project_name": dict(nullable_text),
@@ -52,13 +56,14 @@ def synthetic_evidence_schema() -> dict:
             "extraction": {
                 "main_data_array": "comments",
                 "context_objects": ["source"],
-                "identifier_fields": ["source.url"],
                 "document_type": "Evidence record",
             },
-            "identity": {"deduplication": {
-                "key_fields": [key for key in properties if key != "summary"],
-                "partition_fields": ["source.url"],
-            }},
+            "identity": {
+                "deduplication": {
+                    "key_fields": [key for key in properties if key != "summary"],
+                    "partition_fields": ["source.url"],
+                }
+            },
         },
         "type": "object",
         "required": ["source", "comments"],

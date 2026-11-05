@@ -10,6 +10,7 @@ import pymupdf
 from click.testing import CliRunner
 
 from psweep.cli.main import cli
+from psweep.outcomes import EXIT_FAILED, EXIT_PARTIAL
 from psweep.pipeline import extract_documents
 
 
@@ -20,7 +21,6 @@ def workflow(tmp_path, monkeypatch):
         "$metadata": {
             "extraction": {
                 "main_data_array": "items",
-                "identifier_fields": ["source.id"],
             }
         },
         "type": "object",
@@ -48,9 +48,7 @@ def workflow(tmp_path, monkeypatch):
             "output_tokens": 5,
         }
     )
-    monkeypatch.setattr(
-        "psweep.extraction.llm_client.LLMClient.extract", provider
-    )
+    monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", provider)
     monkeypatch.setattr("psweep.utils.config._global_config", None)
     monkeypatch.setenv("OPENAI_API_KEY", "fixture-key")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-fixture")
@@ -93,9 +91,9 @@ def _cli(documents, schema, output, *flags):
     )
 
 
-@pytest.mark.parametrize("failure", ["all", "partial"])
-def test_document_failures_exit_one(workflow, failure):
-    """Recorded failures must stop subprocess-driven downstream stages."""
+@pytest.mark.parametrize(("failure", "expected"), [("all", EXIT_FAILED), ("partial", EXIT_PARTIAL)])
+def test_document_failures_exit_nonzero(workflow, failure, expected):
+    """Total failure halts downstream stages; partial failure is distinguishable."""
     documents, schema, output, provider = workflow
     if failure == "partial":
         (documents / "beta.txt").write_text("Source beta")
@@ -106,16 +104,12 @@ def test_document_failures_exit_one(workflow, failure):
     else:
         provider.side_effect = RuntimeError("fixture failure")
     result = _cli(documents, schema, output)
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == expected, result.output
     assert list((output / "run_manifests").glob("*.json"))
 
 
-@pytest.mark.parametrize(
-    "invalid", ["missing_input", "invalid_pages", "missing_key"]
-)
-def test_fresh_preflight_failure_preserves_output(
-    workflow, monkeypatch, invalid
-):
+@pytest.mark.parametrize("invalid", ["missing_input", "invalid_pages", "missing_key"])
+def test_fresh_preflight_failure_preserves_output(workflow, monkeypatch, invalid):
     """A failed preflight never deletes the previous output corpus."""
     documents, schema, output, provider = workflow
     output.mkdir()
@@ -320,9 +314,7 @@ def test_parser_failure_has_zero_model_calls(workflow, monkeypatch):
     )
     result = _cli(documents, schema, output)
     assert result.exit_code == 1
-    manifest = json.loads(
-        next((output / "run_manifests").glob("*.json")).read_text()
-    )
+    manifest = json.loads(next((output / "run_manifests").glob("*.json")).read_text())
     assert manifest["costs"]["llm_calls"] == 0
     assert manifest["costs"]["unknown_cost_calls"] == 0
     provider.assert_not_called()

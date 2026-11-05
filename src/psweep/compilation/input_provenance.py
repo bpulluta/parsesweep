@@ -4,10 +4,33 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from psweep.security import protected_mode
 
 
 INTERNAL_RECORD_DIRS = {"validation", "run_manifests", "qa_qc"}
+INTERNAL_RECORD_FILES = {"metadata.json", "comparison_summary.json"}
 _UNRESOLVED_ARTIFACT_ID = "artifact://runtime/unresolved"
+
+
+def read_compile_record(path: Path) -> dict:
+    """Read the compilation envelope, rejecting invalid or missing payloads."""
+    try:
+        with path.open(encoding="utf-8") as handle:
+            record = json.load(handle)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{path}: cannot read extraction record ({type(exc).__name__})") from exc
+    if not isinstance(record, dict) or not isinstance(record.get("payload"), dict):
+        raise ValueError(  # noqa: TRY004 - callers handle ValueError
+            f"{path}: extraction record must contain an object payload"
+        )
+    if protected_mode():
+        from psweep.extraction.schema_utils import record_validator
+
+        if not record_validator().is_valid(record):
+            raise ValueError(
+                f"{path}: protected compilation requires a canonical extraction record"
+            )
+    return record
 
 
 def _canonical_path(path_value: str | Path, *, cwd: Path) -> Path:
@@ -22,9 +45,8 @@ def list_compile_record_files(input_dir: Path) -> list[Path]:
     return sorted(
         path
         for path in input_dir.rglob("*.json")
-        if not INTERNAL_RECORD_DIRS.intersection(
-            path.relative_to(input_dir).parts
-        )
+        if not INTERNAL_RECORD_DIRS.intersection(path.relative_to(input_dir).parts)
+        and path.name not in INTERNAL_RECORD_FILES
     )
 
 
@@ -57,17 +79,20 @@ def analyze_compile_input_provenance(input_dir: Path) -> list[str]:
     canonical_records: set[Path] = set()
     unresolved_artifact_records = 0
     missing_schema_id_records = 0
+    invalid_envelope_records = 0
+    invalid_envelope_names = []
+    from psweep.extraction.schema_utils import record_validator
 
     for record_path in record_files:
         canonical_records.add(record_path.resolve())
-        try:
-            payload = json.loads(record_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(payload, dict) or not isinstance(payload.get("payload"), dict):
-            continue
+        payload = read_compile_record(record_path)
+        if not record_validator().is_valid(payload):
+            invalid_envelope_records += 1
+            if len(invalid_envelope_names) < 5:
+                invalid_envelope_names.append(record_path.name)
         lineage = payload.get("lineage")
         if not isinstance(lineage, dict):
+            missing_schema_id_records += 1
             continue
         schema_id = lineage.get("schema_id")
         if isinstance(schema_id, str) and schema_id.strip():
@@ -85,23 +110,23 @@ def analyze_compile_input_provenance(input_dir: Path) -> list[str]:
             unresolved_artifact_records += 1
 
     file_count = len(canonical_records)
+    if invalid_envelope_records:
+        warnings.append(
+            f"invalid_record_envelope: {invalid_envelope_records} extraction record(s) "
+            "do not satisfy the canonical extraction-record schema "
+            f"({', '.join(invalid_envelope_names)})"
+        )
     if len(schema_ids) > 1:
         warnings.append(
-            _format_multi_value_warning(
-                label="schema_id", values=schema_ids, file_count=file_count
-            )
+            _format_multi_value_warning(label="schema_id", values=schema_ids, file_count=file_count)
         )
     if len(models) > 1:
         warnings.append(
-            _format_multi_value_warning(
-                label="model", values=models, file_count=file_count
-            )
+            _format_multi_value_warning(label="model", values=models, file_count=file_count)
         )
     if len(providers) > 1:
         warnings.append(
-            _format_multi_value_warning(
-                label="provider", values=providers, file_count=file_count
-            )
+            _format_multi_value_warning(label="provider", values=providers, file_count=file_count)
         )
     if missing_schema_id_records > 0:
         warnings.append(
@@ -125,7 +150,7 @@ def analyze_compile_input_provenance(input_dir: Path) -> list[str]:
     for manifest_path in manifest_files:
         try:
             manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 - corrupt manifests carry no evidence
             continue
         if not isinstance(manifest_data, dict):
             continue

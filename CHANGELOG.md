@@ -7,16 +7,119 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (breaking config)
+- Discovery `selection` target rules are renamed:
+  `target_identity_require_any_templates` → `target_require_any`,
+  `target_identity_require_all_templates` → `target_require_all`,
+  `target_identity_exclude_any_templates` → `target_exclude`.
+- Removed `selection.relevance_require_legal_marker_terms` (use
+  `selection.require_any`) and `selection.relevance_allowed_domain_patterns`, a
+  ranking boost (use `link_prioritization.domain_scores`, e.g.
+  `{"example.gov": 0.15}`). Old keys fail as unknown.
+- `extraction.pages.csv` resolves relative to the config file's folder, like
+  `targets` and `validation.references`; `--pages-csv` stays relative to the
+  working directory.
+- `extraction.pages` accepts only `csv`, `auto_locate` and `range`, and
+  `auto_locate` only its documented keys; unknown keys fail.
+- Schema `identity.deduplication.strategy` and `comparison_mode` (never used)
+  are removed and rejected as unknown keys.
+- `config/ADVANCED.yaml` is removed; `config/TEMPLATE.yaml` is a short, valid
+  starter covering all four stages, and every key is documented once in
+  `docs/config-reference.md`.
+
+### Fixed
+- `filelock` is overridden to 4.2.x (CVE-2026-112909, CVE-2026-112910);
+  LiteLLM's `<4` cap only affects its proxy CLI. The dependency audit is clean.
+- `selection.require_any` matches source URLs, titles and snippets, so opaque
+  downloads on unknown hosts remain eligible. Generated query reasons are not
+  source evidence.
+- Recordings found again by a later run are graded by document review: the
+  run's copy inherits the curated transcript (matched by SHA-256), so each file
+  is transcribed once.
+- A fully reused discovery run no longer creates an empty `documents/` folder.
+- Document review errors name the provider error category.
+- Roster state evidence also reads state-labelled table cells and a state code
+  alone after an exact roster-name line, so same-name targets in shared lists
+  resolve to the right state.
+- URLs with suffixes unknown to Python's MIME table (`.php`, `.aspx`, `.cfm`)
+  are server routes decided by the response MIME; only known non-document
+  types or encodings (`.jpg`, `.zip`, `.gz`) are rejected.
+- LLM calls retry every transient provider failure (408/429/5xx, connection
+  errors) through the shared retry helper; TLS failures stay terminal.
+- Reasoning models (`gpt-5*`, o-series, `reasoning_models`) get JSON mode like
+  every other model; only `temperature` is withheld. Without it, review,
+  extraction and judge replies intermittently came back as malformed JSON.
+- Error records label HTTP failures `network` / `http_<status>` and connection
+  failures `network` / `network_error` instead of `internal`.
+- Sampled bot challenges are retried within a run and final across runs.
+- Confirmed successful SerpApi searches with no Google results no longer abort
+  discovery or discard other queries' candidates. Provider failures remain
+  explicit; empty queries are recorded with zero results.
+- Compiled cells render lists and objects by one rule: a list of primitives is
+  one comma-joined cell, other lists and objects are compact JSON. Roster
+  cells, nested object fields and context fields previously showed Python
+  reprs. In roster mode an empty list or object is `NA`, like a null.
+
 ### Added
-- Short discovery-only starter template, with expanded settings in
-  `config/ADVANCED.yaml` and discovery-first onboarding documentation.
+- Public-only DNS-pinned acquisition, decoded response limits, verified local
+  TLS integration tests, and an opt-in external smoke-test layer.
+- Protected operating mode with an approved HTTPS model endpoint, private
+  POSIX workspace/cache checks, and an HPC acceptance/runbook checklist.
+- Compilation writer locks and interruption-recovery journals.
+- Discovery-first onboarding documentation and a source-patterns guide
+  (`docs/sources.md`).
+- `config/example/`: a runnable three-county demo that needs no search key.
 - Embedded documentation: NumPy docstrings rendered to a Sphinx site
   (autoapi + sphinx-click) and published to GitHub Pages via CI.
 - Provider/model mismatch warning in `llm_factory.build_llm_client()` when
   `--provider azure` is used with the default OpenAI model.
 - `CONTRIBUTING.md` and this `CHANGELOG.md`.
+- `psweep validate` and the `validation:` config block replace QA/QC. The
+  compiled primary is scored against challenger `models` (real extract and
+  compile) and human `references`, with an optional `judge` and a
+  `min_accuracy` gate (exit 1). The command writes `cells.csv`, `summary.csv`
+  and `summary.json`. `--sample N` writes a blind labelling template. `run`
+  appends validate after compile when the block exists.
+- Compile manifests record `build_fingerprint` and `table_sha256`, so stale
+  tables are detected. Extraction requires credentials only when documents are
+  pending.
 
 ### Changed
+- Municode recovery retains the requested code subtree and section headings,
+  rather than including unrelated neighboring articles or losing citations.
+  Amendment URLs are not misrepresented as current-code nodes.
+- Opted-in code-host headers also apply to initial acquisition; case-insensitive
+  operator overrides take precedence on pages and API calls.
+- Model transport uses client-scoped TLS for configured gateways and disables
+  hidden automatic retries, preserving explicit temperature-compatibility retry.
+- Extraction schema errors identify the violated schema rule without copying
+  rejected record values into diagnostics or chained tracebacks.
+- Comparative document review includes its complete response schema in the
+  model prompt, including required per-group reasons, before strict validation.
+- Extensionless downloads with missing/generic binary MIME are accepted as PDF
+  only when their streamed bytes start with a PDF signature; sniffed bytes and
+  response size limits are preserved.
+- Search-driven discovery uses the built-in HTTP SerpApi connector throughout;
+  startup no longer checks for the retired optional SerpApi SDK.
+- Python minimum is 3.12; refreshed Python/native locks and release CI.
+  Scheduled dependency audits remain fail-closed when advisories are unresolved.
+- TLS verification defaults to on. Explicit public-mode false settings remain
+  available with interception-risk warnings; protected mode rejects them.
+  Prefer system/approved CA roots. Acquisition ignores proxies and `.netrc`.
+- A single Click application replaces the Typer migration bridge. Commands,
+  interactive menu, subprocess entry point, and exit semantics are retained.
+  Pipeline subprocesses use the active interpreter, never an ambient Pixi
+  executable that could select another environment or fail outside the repo.
+- Browser discovery requires external isolation and a preinstalled driver;
+  it never disables Chrome's sandbox and is prohibited in protected mode.
+- Model credentials are per-client rather than process-global; provider
+  exceptions and raw model responses are not copied into application logs.
+- CSV evidence is formula-escaped; XLSX evidence is literal.
+- Compilation rejects malformed payloads before publication, expands nested
+  rows from schema rather than item order, and reports incomplete provenance.
+  Protected compilation requires canonical records and complete provenance.
+  Missing records fail without touching exports; valid zero-item `--fresh`
+  results use the same locked, recoverable publication path.
 - Extraction CLI/API share one workflow, model resolution, selection and outcomes.
   Omitted models inherit environment defaults; explicit providers and generic
   endpoint overrides no longer lose routing or borrow another provider's key.
@@ -55,8 +158,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   document-path fallback. Concrete provider/vendor source filters remain
   domain-config choices, not automatic parser-derived settings.
 - Discovery outcomes have verbosity-independent exit codes: error-free
-  `success`/`dry_run`/`reused` return 0, `failed`/`partial_failure` return 1
-  (including failure with zero downloads), and genuinely `empty` returns 2.
+  `success`/`dry_run`/`reused` return 0, `failed` returns 1 (including failure
+  with zero downloads), genuinely `empty` returns 2 and `partial_failure`
+  returns 3; `run` continues past partial stages and exits 3 at the end.
 - Checkpoint v2 reuse requires matching effective discovery config and artifact
   digest evidence, including curated files; changed/missing artifacts and v1
   entries reacquire. Publication locks reject concurrent corpus writers and
@@ -64,8 +168,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is not a general pipeline transaction or large-scale certification.
 - Strict robots/ToS enforcement cannot cover browser redirects/subresources
   and fails before unsupported browser navigation; use HTTP acquisition for
-  enforcement. TLS verification remains an explicit user environment choice
-  with unchanged SerpApi/download defaults of `false`.
+  enforcement. TLS verification is on by default; protected mode rejects
+  insecure environment settings.
 - OCR sidecars now use `.text/<filename>.txt` and `<filename>.meta.json`, and
   reviewer sidecars use `.review/<filename>.json`, avoiding same-stem format
   collisions. Old stem-only caches are not reused. Native extraction, OCR
@@ -74,8 +178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   config/CLI disable still wins. HTML and extensionless documents are eligible
   without disabling the supported-document filter; real MIME gates downloads.
 - Browser recovery and code-host adapters are now explicit opt-ins; threshold
-  blocks alone do not enable them. Existing dependent domain configs pin their
-  recovery settings. Search caching remains opt-in.
+  blocks alone do not enable them. Search caching remains opt-in.
 - Discovery validates nested options, booleans, regexes, and resource limits
   before execution. Quoted booleans and previously ignored `pipeline`,
   `scoring`, `dedupe`, `file_filters`, and `keyword_validation` blocks are
@@ -94,6 +197,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Robots and ToS policy default is now `warn` everywhere (previously the
   effective default drifted between `ignore` and `warn` across layers).
 - Docs toolchain switched from MkDocs to Sphinx.
+
+### Removed
+- Bundled domain configs are removed from the repository: `config/` ships only
+  `README.md`, `TEMPLATE.yaml` and `example/`, and domain folders you create
+  there are git-ignored.
+- The unused `psweep.utils.logger` module and the empty `psweep.core` package.
+- The README image.
 
 ### Fixed
 - Preserve selected pages across native/pypdf/OCR fallbacks, actual parsed scope,
@@ -121,7 +231,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unvalidated YAML.
 - Standardized all docstrings to NumPy style — `ruff check src/` reports 0
   enforced pydocstyle (D) violations (was 58).
-- README broken-image alt text.
 
 ## [2.0.1]
 

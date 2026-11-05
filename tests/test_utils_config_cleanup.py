@@ -5,10 +5,7 @@ def test_config_exposes_core_paths(tmp_path):
     cfg = Config(project_root=tmp_path)
 
     assert cfg.project_root == tmp_path
-    assert cfg.schema_dir == tmp_path / "schemas"
-    assert cfg.default_schema == (
-        tmp_path / "schemas" / "example_utility_rate_schema.json"
-    )
+    assert cfg.config_dir == tmp_path / "config"
     assert isinstance(cfg.llm_config, dict)
 
 

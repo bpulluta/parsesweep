@@ -14,7 +14,8 @@ section on verbosity. This centralizes what used to be scattered
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterator, Sequence
+from typing import TYPE_CHECKING
+from collections.abc import Iterator, Sequence
 
 if TYPE_CHECKING:
     from rich.progress import Progress
@@ -95,11 +96,12 @@ class RunView:
         ):
             yield
 
-    def make_progress(self) -> "Progress | None":
+    def make_progress(self) -> Progress | None:
         """Return a configured Progress bar, or None in quiet mode."""
         if self.is_quiet:
             return None
         from psweep.cli.ui import create_extraction_progress
+
         return create_extraction_progress()
 
     @contextmanager
@@ -154,9 +156,7 @@ class RunView:
         if not self.is_quiet:
             self.ui.detail(text)
 
-    def runtime_config_error(
-        self, exc: Exception, warnings: Sequence[str] | None = None
-    ) -> None:
+    def runtime_config_error(self, exc: Exception, warnings: Sequence[str] | None = None) -> None:
         """Print a runtime-config resolution error with optional warnings."""
         self.ui.runtime_config_error(exc, warnings)
 
@@ -190,7 +190,7 @@ class RunView:
             )
         self.console.print(self.ui.events_panel(shown, title=title))
 
-    def warnings(self, items: Sequence[str], *, title: str = "Warnings") -> None:
+    def warnings(self, items: Sequence[str]) -> None:
         """Print each warning as a status row (skipped in quiet mode)."""
         if self.is_quiet or not items:
             return

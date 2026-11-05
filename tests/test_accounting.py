@@ -11,11 +11,11 @@ from psweep.compilation.accounting import (
     build_pipeline_accounting,
     canonical_discovery_manifest_path,
     collect_discovery_manifests,
-    discover_domain_roots,
-    discovery_domain_root_from_manifest,
+    latest_compilation_manifest,
     write_compilation_run_manifest,
 )
-from datetime import datetime, timezone
+from psweep.workspace import Workspace
+from datetime import datetime, UTC
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -23,95 +23,43 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def test_discover_domain_roots_includes_cwd_and_extraction_parents(
-    monkeypatch, tmp_path
-):
-    """Accounting can locate discovery beside extracted inputs."""
+def test_collect_discovery_manifests_reads_workspace_runs_and_latest(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    extraction_dir = tmp_path / "extracted" / "widgets"
-    roots = discover_domain_roots(
-        domain="widgets",
-        extraction_dir=extraction_dir,
-        discovery_input_dir=None,
-    )
-    root_strs = {str(r) for r in roots}
-    assert str(tmp_path / "discovered" / "widgets") in root_strs
-
-
-def test_collect_discovery_manifests_dedupes_and_sorts(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    domain = "widgets"
-    run_manifest = (
-        tmp_path / "discovered" / domain / "runs" / "r1" / "manifest.json"
-    )
-    latest_manifest = (
-        tmp_path / "discovered" / domain / "latest" / "manifest.json"
-    )
+    discovered = Workspace("widgets").discovered
+    run_manifest = discovered / "runs" / "r1" / "manifest.json"
+    latest_manifest = discovered / "latest" / "manifest.json"
     _write_json(run_manifest, {"run_id": "r1"})
     _write_json(latest_manifest, {"run_id": "r1-latest"})
+    _write_json(Workspace("other").discovered / "runs" / "x" / "manifest.json", {})
 
-    manifests = collect_discovery_manifests(
-        domain=domain,
-        extraction_dir=tmp_path / "extracted" / domain,
-        discovery_input_dir=None,
-    )
-    manifest_strs = {str(m) for m in manifests}
-    assert str(run_manifest) in manifest_strs
-    assert str(latest_manifest) in manifest_strs
-    # No duplicate entries even though several roots resolve to the same tree.
-    assert len(manifests) == len(manifest_strs)
+    assert collect_discovery_manifests("widgets") == [latest_manifest, run_manifest]
 
 
-def test_discovery_domain_root_from_manifest_layouts(tmp_path):
-    domain = "widgets"
-    latest = tmp_path / "discovered" / domain / "latest" / "manifest.json"
-    runs = tmp_path / "discovered" / domain / "runs" / "r1" / "manifest.json"
-    assert discovery_domain_root_from_manifest(latest, domain) == (
-        tmp_path / "discovered" / domain
-    )
-    assert discovery_domain_root_from_manifest(runs, domain) == (
-        tmp_path / "discovered" / domain
-    )
-    # Unknown layout returns None.
-    assert (
-        discovery_domain_root_from_manifest(tmp_path / "manifest.json", domain)
-        is None
-    )
+def test_canonical_discovery_manifest_path_prefers_runs_over_latest(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    discovered = Workspace("widgets").discovered
+    canonical = discovered / "runs" / "r1" / "manifest.json"
+    latest = discovered / "latest" / "manifest.json"
+    _write_json(canonical, {"run_id": "r1"})
+    _write_json(latest, {"run_id": "r1"})
+
+    assert canonical_discovery_manifest_path("widgets", latest, "r1") == str(canonical)
+    assert canonical_discovery_manifest_path("widgets", latest, "missing") == str(latest)
 
 
-def test_canonical_discovery_manifest_path_prefers_runs_over_latest(tmp_path):
-    domain = "widgets"
-    run_id = "r1"
-    canonical = (
-        tmp_path / "discovered" / domain / "runs" / run_id / "manifest.json"
-    )
-    _write_json(canonical, {"run_id": run_id})
-    latest = tmp_path / "discovered" / domain / "latest" / "manifest.json"
-    _write_json(latest, {"run_id": run_id})
-
-    resolved = canonical_discovery_manifest_path(
-        manifest_path=latest,
-        domain=domain,
-        run_id=run_id,
-    )
-    assert resolved == str(canonical)
-
-
-def test_build_pipeline_accounting_from_extraction_run_manifest(
-    monkeypatch, tmp_path
-):
+def test_build_pipeline_accounting_from_extraction_run_manifest(monkeypatch, tmp_path):
     """Stage metadata and measured usage survive pipeline accounting."""
     monkeypatch.chdir(tmp_path)
     domain = "widgets"
-    extraction_dir = tmp_path / "extracted" / domain
-    output_dir = tmp_path / "compiled" / domain
+    extraction_dir = Workspace(domain).extracted
+    output_dir = Workspace(domain).compiled
     output_dir.mkdir(parents=True, exist_ok=True)
 
     _write_json(
         extraction_dir / "run_manifests" / "abc.manifest.json",
         {
             "run_id": "run://abc",
-            "mode": "single_model",
+            "mode": "rows",
             "costs": {
                 "total_cost_usd": 0.5,
                 "total_input_tokens": 100,
@@ -121,7 +69,7 @@ def test_build_pipeline_accounting_from_extraction_run_manifest(
             "lineage": {
                 "model": "gpt-x",
                 "provider": "azure",
-                "schema_id": "schemas/widgets.json",
+                "schema_id": "config/widgets/schema.json",
             },
             "timing": {
                 "started_at": "2026-01-01T00:00:00Z",
@@ -141,7 +89,6 @@ def test_build_pipeline_accounting_from_extraction_run_manifest(
             "duplicates_removed": 0,
             "output_format": "csv, excel",
         },
-        discovery_input_dir=None,
     )
 
     assert accounting["accounting_version"] == "2.0.0"
@@ -170,7 +117,7 @@ def test_accounting_uses_discovery_contract_dry_run_flag(
     """Status migrations cannot turn a dry-run into acquisition."""
     monkeypatch.chdir(tmp_path)
     _write_json(
-        tmp_path / "discovered/widgets/runs/r1/manifest.json",
+        Workspace("widgets").discovered / "runs/r1/manifest.json",
         {
             "run_id": "r1",
             "status": "dry_run",
@@ -180,34 +127,74 @@ def test_accounting_uses_discovery_contract_dry_run_flag(
     )
     accounting = build_pipeline_accounting(
         domain="widgets",
-        extraction_dir=tmp_path / "extracted/widgets",
-        output_dir=tmp_path / "compiled/widgets",
+        extraction_dir=Workspace("widgets").extracted,
+        output_dir=Workspace("widgets").compiled,
         compilation_stats={},
-        discovery_input_dir=None,
     )
     assert accounting["stages"]["discovery"]["runs"][0]["status"] == "dry_run"
 
 
 def test_write_compilation_run_manifest_roundtrip(tmp_path):
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
+    stats = {"records": 3, "columns": 6, "roster_targets": 3, "conflicts": 1}
     manifest_path = write_compilation_run_manifest(
         output_dir=tmp_path,
-        schema_id="schemas/widgets.json",
-        synthesis_active=False,
-        synthesis_model=None,
-        synthesis_provider=None,
-        synthesis_llm_calls=0,
-        records=5,
-        columns=4,
-        duplicates_removed=1,
-        output_formats=["csv", "excel"],
+        schema_id="config/widgets/schema.json",
+        mode="roster",
+        stats=stats,
         started_at=started_at,
+        build_fingerprint="f" * 64,
+        table_sha256="t" * 64,
     )
     assert manifest_path is not None
     assert manifest_path.parent == tmp_path / "run_manifests"
     saved = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert saved["manifest_version"] == "1.0.0"
-    assert saved["mode"] == "deterministic"
-    assert saved["outputs"]["records"] == 5
-    assert saved["outputs"]["duplicates_removed"] == 1
-    assert saved["costs"]["total_cost_usd"] == 0.0
+    assert saved["manifest_version"] == "2.0.0"
+    assert saved["mode"] == "roster"
+    assert saved["outputs"] == stats
+    assert "costs" not in saved
+    assert saved["lineage"]["build_fingerprint"] == "f" * 64
+    assert saved["lineage"]["table_sha256"] == "t" * 64
+    assert latest_compilation_manifest(tmp_path) == saved
+    assert latest_compilation_manifest(tmp_path / "missing") is None
+
+    accounting = build_pipeline_accounting(
+        domain="widgets",
+        extraction_dir=tmp_path / "missing",
+        output_dir=tmp_path,
+        compilation_stats=stats,
+    )
+    stage = accounting["stages"]["compilation"]
+    assert stage["conflicts"] == 1
+    assert stage["runs"][0]["mode"] == "roster"
+    assert stage["runs"][0]["roster_targets"] == 3
+    assert "aggregate" not in stage
+
+
+def test_extraction_stage_names_every_model_that_spent(monkeypatch, tmp_path):
+    """Transcription spend is named beside the extraction model."""
+    monkeypatch.chdir(tmp_path)
+    workspace = Workspace("widgets")
+    runs = workspace.extracted / "run_manifests"
+    for run_id, models in (("a", ["gemini-3.5-flash", "gpt-x"]), ("b", [])):
+        _write_json(
+            runs / f"{run_id}.manifest.json",
+            {
+                "run_id": run_id,
+                "costs": {"total_cost_usd": 0.5, "models": models},
+                "lineage": {"model": "gpt-x", "provider": "openai"},
+                "timing": {"finished_at": f"2026-01-01T00:0{len(models)}:00Z"},
+            },
+        )
+    accounting = build_pipeline_accounting(
+        domain="widgets",
+        extraction_dir=workspace.extracted,
+        output_dir=workspace.compiled,
+        compilation_stats={"records": 1},
+    )
+    stage = accounting["stages"]["extraction"]
+    assert stage["model"] == ["gemini-3.5-flash", "gpt-x"]
+    assert [run["model"] for run in stage["runs"]] == [
+        "gpt-x",
+        ["gemini-3.5-flash", "gpt-x"],
+    ]

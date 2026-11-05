@@ -4,7 +4,10 @@ A schema (JSON) defines *what* to extract — field names, types, and the
 descriptions the LLM uses as extraction instructions. Well-written field
 descriptions are the single biggest lever on extraction quality.
 
-The full best-practices guide is embedded below.
+Each domain keeps its schema beside its run config as `config/<domain>/schema.json`.
 
-```{include} ../../schemas/SCHEMA_BEST_PRACTICES.md
+```{toctree}
+:maxdepth: 2
+
+best-practices
 ```

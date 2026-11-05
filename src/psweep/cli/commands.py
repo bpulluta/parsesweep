@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import click
 from click.core import ParameterSource
@@ -18,29 +18,32 @@ from psweep.cli.ui import (
     print_header,
     set_verbosity,
 )
-from psweep.config import load_runtime_config_file, resolve_command_config
+from psweep.config import (
+    config_key_paths,
+    load_runtime_config_file,
+    resolve_command_config,
+)
 
 
-def _explicit_cli_overrides(param_names: List[str]) -> Dict[str, Any]:
+def _explicit_cli_overrides(param_names: list[str]) -> dict[str, Any]:
     """Return only values that were explicitly provided on the command line."""
     ctx = click.get_current_context(silent=True)
     if ctx is None:
         return {}
 
-    overrides: Dict[str, Any] = {}
+    overrides: dict[str, Any] = {}
     for name in param_names:
         if ctx.get_parameter_source(name) == ParameterSource.COMMANDLINE:
             overrides[name] = ctx.params.get(name)
     return overrides
 
 
-def _print_effective_config(
-    command_name: str, resolved_values: Dict[str, Any]
-) -> None:
-    """Print resolved runtime config values and their source layer."""
+def _print_effective_config(command_name: str, resolved_values: dict[str, Any]) -> None:
+    """Print resolved values under their config key paths with source layer."""
     sources = resolved_values.get("_config_sources", {})
+    paths = config_key_paths(command_name)
     display = {
-        key: f"{value} [dim]({sources.get(key, 'default')})[/dim]"
+        paths.get(key, key): (f"{value} [dim]({sources.get(key, 'default').split('.')[0]})[/dim]")
         for key, value in resolved_values.items()
         if not key.startswith("_")
     }
@@ -51,10 +54,9 @@ def _print_effective_config(
 def _resolve_runtime_command_inputs(
     *,
     command_name: str,
-    config_path: Optional[str],
-    strict: bool,
-    cli_values: Dict[str, Any],
-) -> Dict[str, Any]:
+    config_path: str | None,
+    cli_values: dict[str, Any],
+) -> dict[str, Any]:
     """Load and resolve command inputs from config files and CLI overrides."""
     config_data = None
 
@@ -65,14 +67,15 @@ def _resolve_runtime_command_inputs(
         command=command_name,
         cli_values=cli_values,
         config_data=config_data,
-        strict=strict,
     )
 
-    if config_data:
-        extraction_section = config_data.get("extraction") or {}
-        if extraction_section.get("input_dir"):
-            result["_extraction_input_dir"] = extraction_section["input_dir"]
+    from psweep.security import validate_protected_paths
+    from psweep.config import RuntimeConfigError
 
+    try:
+        validate_protected_paths(result)
+    except ValueError as exc:
+        raise RuntimeConfigError(str(exc)) from exc
     return result
 
 

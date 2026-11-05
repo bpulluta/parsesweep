@@ -6,8 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 import requests
+from psweep.discovery import network
 
 from psweep.discovery.network import NetworkPolicyError, send_get
+from psweep.utils.retry import is_transient_error
 from psweep.discovery.policies import (
     DiscoveryPolicyEvaluator,
     PolicyCheckResult,
@@ -39,8 +41,8 @@ def test_denied_request_is_never_sent(monkeypatch, denial):
     """A boolean or policy-result denial fails before the transport."""
     calls = []
     monkeypatch.setattr(
-        requests,
-        "get",
+        network,
+        "request_get",
         lambda *args, **_kwargs: calls.append(args),
     )
     with pytest.raises(NetworkPolicyError):
@@ -59,7 +61,7 @@ def test_redirect_preserves_response_cookies(monkeypatch):
         calls.append(kwargs)
         return first if len(calls) == 1 else Response(url)
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     response, _ = send_get(first.url)
     jar = calls[-1]["cookies"]
     prepared = requests.Request(
@@ -91,9 +93,18 @@ def test_gate_failure_is_not_retried(monkeypatch):
     assert checks == ["https://county.gov/"]
 
 
-@pytest.mark.parametrize(
-    "location", ["/private", "https://outside.org/private"]
-)
+def test_sampled_bot_challenge_is_retried(monkeypatch):
+    """Cloudflare challenges some identical requests; the next may pass."""
+    challenged = Response("https://county.gov/doc.pdf", status=403)
+    challenged.headers["cf-mitigated"] = "challenge"
+    responses = [challenged, Response("https://county.gov/doc.pdf")]
+    monkeypatch.setattr(network, "request_get", lambda *_a, **_k: responses.pop(0))
+    response, attempts = send_get("https://county.gov/doc.pdf", retry=(3, 0, 0))
+    assert (response.status_code, attempts) == (200, 2)
+    assert challenged.closed
+
+
+@pytest.mark.parametrize("location", ["/private", "https://outside.org/private"])
 def test_redirect_target_is_checked_before_fetch(monkeypatch, location):
     """Disallowed redirect paths and hosts are not contacted."""
     initial = Response("https://county.gov/hub", status=302, location=location)
@@ -103,7 +114,7 @@ def test_redirect_target_is_checked_before_fetch(monkeypatch, location):
         calls.append((url, kwargs))
         return initial
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     with pytest.raises(NetworkPolicyError):
         send_get(
             initial.url,
@@ -132,18 +143,19 @@ def test_redirect_and_retry_share_pacing_and_request_options(monkeypatch):
         calls.append((url, kwargs))
         return responses[len(calls) - 1]
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     monkeypatch.setattr("psweep.discovery.network.time.sleep", sleeps.append)
     response, attempts = send_get(
         "https://county.gov/hub",
         headers={"User-Agent": "configured"},
         timeout=7,
-        verify=False,
+        verify=True,
         stream=True,
         gate=checks.append,
         response_url_gate=final_checks.append,
         limiter=SimpleNamespace(wait=lambda: waits.append(True)),
         retry=(3, 0.25, 1),
+        max_bytes=1234,
     )
     assert attempts == 2
     assert response is responses[-1]
@@ -156,9 +168,10 @@ def test_redirect_and_retry_share_pacing_and_request_options(monkeypatch):
         == {
             "headers": {"User-Agent": "configured"},
             "timeout": 7,
-            "verify": False,
+            "verify": True,
             "stream": True,
             "allow_redirects": False,
+            "max_bytes": 1234,
         }
         for _, options in calls
     )
@@ -175,7 +188,7 @@ def test_final_url_denial_closes_response(monkeypatch):
         calls.append(args)
         return response
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     with pytest.raises(NetworkPolicyError):
         send_get(response.url, response_url_gate=lambda _url: False)
     assert len(calls) == 1
@@ -185,11 +198,9 @@ def test_final_url_denial_closes_response(monkeypatch):
 def test_unexpected_response_url_is_request_gated(monkeypatch):
     """A transport reporting an unexpected final URL cannot bypass the gate."""
     response = Response("https://outside.org/doc")
-    monkeypatch.setattr(requests, "get", lambda *_args, **_kwargs: response)
+    monkeypatch.setattr(network, "request_get", lambda *_args, **_kwargs: response)
     with pytest.raises(NetworkPolicyError):
-        send_get(
-            "https://county.gov/hub", gate=lambda url: "county.gov" in url
-        )
+        send_get("https://county.gov/hub", gate=lambda url: "county.gov" in url)
     assert response.closed
 
 
@@ -202,7 +213,7 @@ def test_redirect_cycle_is_bounded_and_closed(monkeypatch):
         responses.append(response)
         return response
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     with pytest.raises(requests.TooManyRedirects):
         send_get("https://county.gov/hub")
     assert len(responses) <= requests.sessions.DEFAULT_REDIRECT_LIMIT + 1
@@ -216,12 +227,10 @@ def test_cross_origin_redirect_does_not_forward_credentials(monkeypatch):
     def get(url, **kwargs):
         calls.append(kwargs["headers"])
         if len(calls) == 1:
-            return Response(
-                url, status=302, location="https://outside.org/doc"
-            )
+            return Response(url, status=302, location="https://outside.org/doc")
         return Response(url)
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     send_get(
         "https://county.gov/hub",
         headers={"Authorization": "secret", "Cookie": "session", "X-App": "x"},
@@ -242,11 +251,11 @@ def test_robots_uses_shared_gate_free_timeout_and_pacing(monkeypatch):
         calls.append((url, kwargs))
         return response
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     evaluator = DiscoveryPolicyEvaluator()
     result = evaluator.evaluate(
         url="https://county.gov/private",
-        ssl_verify=False,
+        ssl_verify=True,
         robots_policy_mode="enforce",
         tos_policy_mode="ignore",
         timeout_seconds=9,
@@ -255,21 +264,56 @@ def test_robots_uses_shared_gate_free_timeout_and_pacing(monkeypatch):
     assert not result.allowed
     assert result.blocking_code == "robots_disallowed"
     assert calls[0][1]["timeout"] == 9
-    assert calls[0][1]["verify"] is False
+    assert calls[0][1]["verify"] is True
     assert waits == [True]
     assert response.closed
     evaluator.evaluate(
         url="https://county.gov/public",
-        ssl_verify=False,
+        ssl_verify=True,
         tos_policy_mode="ignore",
     )
     assert len(calls) == 1
 
 
+def test_user_agent_is_honest_and_browser_compatible():
+    """WAFs reject agents without a Mozilla prefix or with URLs/"discovery"."""
+    from psweep import __version__
+    from psweep.discovery.constants import ROBOTS_AGENT, USER_AGENT
+
+    assert f"Mozilla/5.0 (compatible; {ROBOTS_AGENT}/{__version__})" == USER_AGENT
+    for blocked in ("http", "www.", "@", "discovery", "Chrome", "Safari"):
+        assert blocked not in USER_AGENT
+
+
+@pytest.mark.parametrize(
+    "robots, allowed",
+    [
+        ("User-agent: ParseSweep\nDisallow: /private\n\nUser-agent: *\nAllow: /\n", False),
+        ("User-agent: Mozilla\nDisallow: /\n", True),
+    ],
+)
+def test_robots_groups_match_the_product_token_not_the_header(monkeypatch, robots, allowed):
+    """Robots rules name ParseSweep whatever User-Agent the request sends."""
+    sent = []
+
+    def get(url, **kwargs):
+        sent.append(kwargs["headers"])
+        return Response(url, text=robots)
+
+    monkeypatch.setattr(network, "request_get", get)
+    result = DiscoveryPolicyEvaluator().evaluate(
+        url="https://county.gov/private",
+        ssl_verify=True,
+        request_headers={"User-Agent": "Operator/1"},
+        robots_policy_mode="enforce",
+        tos_policy_mode="ignore",
+    )
+    assert result.allowed is allowed
+    assert sent == [{"User-Agent": "Operator/1"}]
+
+
 @pytest.mark.parametrize("mode, allowed", [("warn", True), ("enforce", False)])
-def test_policy_modes_do_not_change_the_gate_contract(
-    monkeypatch, mode, allowed
-):
+def test_policy_modes_do_not_change_the_gate_contract(monkeypatch, mode, allowed):
     """Warn records disallows while enforce blocks before page acquisition."""
     calls = []
 
@@ -277,7 +321,7 @@ def test_policy_modes_do_not_change_the_gate_contract(
         calls.append(url)
         return Response(url, text="User-agent: *\nDisallow: /private\n")
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     evaluator = DiscoveryPolicyEvaluator()
 
     def gate(url):
@@ -303,13 +347,18 @@ def test_policy_modes_do_not_change_the_gate_contract(
         assert calls == ["https://county.gov/robots.txt"]
 
 
-@pytest.mark.parametrize("status, allowed", [(404, True), (503, False)])
+@pytest.mark.parametrize(
+    "status, allowed, retryable",
+    [(404, True, False), (403, False, False), (503, False, True)],
+)
 def test_robots_missing_rules_and_fetch_failures_keep_semantics(
-    monkeypatch, status, allowed
+    monkeypatch, status, allowed, retryable
 ):
-    """Missing rules allow access; unavailable rules fail under enforce."""
+    """Missing rules allow access; unavailable rules fail under enforce, and
+    only a transient robots failure is retryable.
+    """
     response = Response("https://county.gov/robots.txt", status=status)
-    monkeypatch.setattr(requests, "get", lambda *_args, **_kwargs: response)
+    monkeypatch.setattr(network, "request_get", lambda *_args, **_kwargs: response)
     result = DiscoveryPolicyEvaluator().evaluate(
         url="https://county.gov/doc",
         ssl_verify=True,
@@ -318,13 +367,40 @@ def test_robots_missing_rules_and_fetch_failures_keep_semantics(
     )
     assert result.allowed is allowed
     assert result.blocking_code == (None if allowed else "robots_unavailable")
+    assert result.retryable is retryable
     assert response.closed
+
+
+def test_robots_timeout_is_retryable_and_cached_per_host(monkeypatch):
+    """A timed-out robots.txt is probed once per host and stays retryable."""
+    calls = []
+
+    def get(url, **_kwargs):
+        calls.append(url)
+        raise requests.ReadTimeout("read timed out")
+
+    monkeypatch.setattr(network, "request_get", get)
+    evaluator = DiscoveryPolicyEvaluator()
+    results = [
+        evaluator.evaluate(
+            url=f"https://county.gov/{name}.pdf",
+            ssl_verify=True,
+            robots_policy_mode="enforce",
+            tos_policy_mode="ignore",
+        )
+        for name in ("a", "b")
+    ]
+    assert [r.retryable for r in results] == [True, True]
+    assert all(r.blocking_code == "robots_unavailable" for r in results)
+    assert len(calls) == 1
+    error = NetworkPolicyError("https://county.gov/a.pdf", "robots", results[0])
+    assert is_transient_error(error)
 
 
 def test_get_status_errors_are_closed_without_exempting_404(monkeypatch):
     """Only the robots caller, not general acquisitions, interprets 404."""
     response = Response("https://county.gov/doc", status=404)
-    monkeypatch.setattr(requests, "get", lambda *_args, **_kwargs: response)
+    monkeypatch.setattr(network, "request_get", lambda *_args, **_kwargs: response)
     with pytest.raises(requests.HTTPError):
         send_get(response.url)
     assert response.closed
@@ -341,7 +417,7 @@ def test_gate_checks_serialized_request_url(monkeypatch, path, redirect):
         calls.append(url)
         return response
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     with pytest.raises(NetworkPolicyError):
         send_get(
             response.url if redirect else "https://county.gov" + path,
@@ -357,8 +433,8 @@ def test_invalid_gate_result_fails_closed(monkeypatch, invalid):
     """Malformed truthy callback values cannot silently authorize requests."""
     calls = []
     monkeypatch.setattr(
-        requests,
-        "get",
+        network,
+        "request_get",
         lambda *args, **_kwargs: calls.append(args),
     )
     with pytest.raises(NetworkPolicyError, match="must return"):

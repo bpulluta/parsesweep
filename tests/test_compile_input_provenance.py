@@ -21,7 +21,6 @@ def _record(path: Path, *, schema_id: str, model: str, provider: str) -> None:
             "lineage": {
                 "run_id": "run://abc",
                 "artifact_id": "artifact://runtime/abc",
-                "profile_id": "default",
                 "schema_id": schema_id,
                 "model": model,
                 "provider": provider,
@@ -75,9 +74,7 @@ def test_warns_on_orphan_records_when_manifests_exist(tmp_path: Path) -> None:
             "records": [(extracted / "a.json").as_posix()],
         },
     }
-    (manifest_dir / "abc.manifest.json").write_text(
-        json.dumps(manifest), encoding="utf-8"
-    )
+    (manifest_dir / "abc.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     warnings = analyze_compile_input_provenance(extracted)
     assert any(w.startswith("orphan_extraction_records:") for w in warnings)
@@ -107,7 +104,6 @@ def test_warns_on_unresolved_and_missing_lineage_fields(tmp_path: Path) -> None:
             "lineage": {
                 "run_id": "run://abc",
                 "artifact_id": "artifact://runtime/unresolved",
-                "profile_id": "default",
                 "schema_id": None,
                 "model": "gpt-5.6-terra",
                 "provider": "openai",

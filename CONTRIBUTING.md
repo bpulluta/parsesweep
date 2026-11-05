@@ -21,6 +21,14 @@ pixi install
 Configure LLM credentials in a `.env` file (see
 [Getting Started](docs/getting-started.md)) before running the pipeline.
 
+## Repository layout
+
+Tracked: `src/`, `tests/`, `docs/`, `config/README.md`, `config/TEMPLATE.yaml`,
+`config/example/`, and CI/packaging files (`.github/`, `pyproject.toml`,
+`pixi.toml`, `pixi.lock`). Your domains under `config/`, `outputs/` and
+`documents/` are git-ignored; personal scratch folders belong in
+`.git/info/exclude`, not `.gitignore`.
+
 ## Branching
 
 - Always work on a feature branch — never commit directly to `main`.
@@ -35,19 +43,33 @@ Run the full suite before opening a PR:
 pixi run test
 ```
 
+Ordinary tests block external sockets and disable dotenv loading. Local
+HTTP/TLS servers use synthetic data; external endpoint tests require an
+explicit `--live` opt-in:
+
+```bash
+pixi run test -m integration
+pixi run test -m live --live
+```
+
+Use the `unit`, `contract`, `integration`, and `live` markers for new tests.
+Mock the narrow remote transport boundary, not entire installed modules.
+Keep regression invariants when consolidating repeated fixtures. Release
+validation must also run a synthetic subprocess CLI pipeline and inspect its
+actual outputs; passing mocked requests is not an end-to-end smoke test.
+Never use real credentials or sensitive documents in tests.
+
 Lint and format with ruff (docstrings are enforced NumPy-style):
 
 ```bash
-pixi run -e dev ruff check src/
-pixi run -e dev ruff format --check src/
+pixi run lint
 ```
 
-Tests must pass and source docstrings must have zero pydocstyle (`D`)
-violations, matching the CI gate. The repository has existing non-docstring
-lint and formatting debt: inspect the commands above, avoid adding findings
-in changed code, and do not reformat unrelated files just to make a check
-pass. A complete Ruff run is not currently a clean baseline. Report existing
-failures, skipped tests, or blocked checks explicitly in the PR.
+`pixi run lint` runs `ruff check` and `ruff format --check` on `src/` and
+`tests/` under the config in `pyproject.toml`; it must pass, and CI runs the
+same task. Apply formatting with `pixi run -e dev ruff format src tests`. When a
+rule is a false positive, prefer a line-level `# noqa: CODE - reason` over a
+new ignore. Report skipped tests or blocked checks explicitly in the PR.
 
 ## Building the docs
 
@@ -57,9 +79,9 @@ from the live Click objects (sphinx-click), so **the code is the source of
 truth** — write clear docstrings rather than separate prose.
 
 ```bash
-pixi run -e docs docs-build     # sphinx-build -W (warnings are errors)
-pixi run -e docs docs-serve     # serve docs/_build/html at :8000
-pixi run -e docs docs-clean     # remove docs/_build
+pixi run docs-build     # sphinx-build -W (warnings are errors)
+pixi run docs-serve     # serve docs/_build/html at :8000
+pixi run docs-clean     # remove docs/_build
 ```
 
 The build runs with `-W`, so a broken docstring or dead cross-reference fails
@@ -82,8 +104,7 @@ Guidelines:
 - Field descriptions are the LLM's instructions; write them precisely.
 
 See [Schema Authoring](docs/schemas/index.md) for the full best-practices guide
-and [Configuration Reference](docs/config-reference.md) for the annotated
-config template.
+and [Configuration Reference](docs/config-reference.md) for every config key.
 
 ## Code quality standards
 

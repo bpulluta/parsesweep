@@ -14,7 +14,6 @@ import pandas as pd
 import pytest
 from pathlib import Path
 import json
-import tempfile
 
 from psweep.compilation.deduplicator import Deduplicator
 from psweep.utils.schema_metadata import SchemaMetadata
@@ -30,7 +29,6 @@ def minimal_schema_path(tmp_path):
             "version": "2.0.0",
             "extraction": {
                 "main_data_array": "requirements",
-                "identifier_fields": ["state", "county"],
                 "context_objects": [],
             },
             "identity": {
@@ -70,7 +68,7 @@ def minimal_schema_path(tmp_path):
         },
     }
     schema_file = tmp_path / "test_schema.json"
-    with open(schema_file, "w") as f:
+    with Path(schema_file).open("w", encoding="utf-8") as f:
         json.dump(schema, f)
     return schema_file
 
@@ -130,7 +128,7 @@ def test_approval_redundancy_zoning_districts_removed(minimal_metadata):
     assert result.iloc[0]["feature"] == "permit_approval"
     assert result.iloc[0]["applies_to"] == "Compressor station"
     assert "Removed redundant" in result.iloc[0]["Notes"]
-    print(f"✓ Test passed: zoning_districts removed, permit_approval kept")
+    print("✓ Test passed: zoning_districts removed, permit_approval kept")
     print(f"  Annotation: {result.iloc[0]['Notes']}")
 
 
@@ -341,16 +339,26 @@ def test_approval_redundancy_no_features_present(minimal_metadata):
 
     Expected: Returns empty DataFrame.
     """
-    df = pd.DataFrame(columns=[
-        "state", "county", "feature", "applies_to", "obligation",
-        "value", "rule_kind", "value_category", "summary", "Notes"
-    ])
+    df = pd.DataFrame(
+        columns=[
+            "state",
+            "county",
+            "feature",
+            "applies_to",
+            "obligation",
+            "value",
+            "rule_kind",
+            "value_category",
+            "summary",
+            "Notes",
+        ]
+    )
 
     dedup = Deduplicator(minimal_metadata)
     result = dedup.deduplicate(df)
 
     assert len(result) == 0
-    print(f"✓ Empty DataFrame handled correctly")
+    print("✓ Empty DataFrame handled correctly")
 
 
 def test_cross_feature_redundancy_is_noop_without_schema_block(tmp_path):
@@ -366,7 +374,6 @@ def test_cross_feature_redundancy_is_noop_without_schema_block(tmp_path):
             "version": "2.0.0",
             "extraction": {
                 "main_data_array": "requirements",
-                "identifier_fields": ["state", "county"],
                 "context_objects": [],
             },
             "identity": {

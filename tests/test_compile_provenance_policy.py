@@ -21,7 +21,6 @@ def _write_min_schema(path: Path) -> None:
                 "extraction": {
                     "main_data_array": "items",
                     "context_objects": ["metadata"],
-                    "identifier_fields": ["metadata.id"],
                     "document_type": "Demo Document",
                 },
                 "identity": {
@@ -54,7 +53,6 @@ def _write_bad_record(path: Path) -> None:
             "lineage": {
                 "run_id": "run://bad",
                 "artifact_id": "artifact://runtime/unresolved",
-                "profile_id": "default",
                 "schema_id": None,
                 "model": "gpt-5.6-terra",
                 "provider": "openai",

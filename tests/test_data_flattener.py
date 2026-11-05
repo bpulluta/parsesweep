@@ -1,21 +1,18 @@
-"""DataFlattener is domain-neutral and config-gated.
+"""Compiled cells: field names kept, lists and objects rendered by one rule, units normalized."""
 
-The flattener used to hardcode energy/tariff field names (charge_type, season,
-rate) and unit conversions (feet/inches/dBA). These tests prove that (a) with no
-schema config the documented defaults still apply, and (b) a NON-energy schema
-can redirect grouping, distinguishers, value/unit detection, and unit
-normalization entirely through `compilation.flattening` config — no code change.
-"""
 from __future__ import annotations
 
-import pandas as pd
+import json
 
-from psweep.compilation.data_flattener import DataFlattener
+import pandas as pd
+import pytest
+
+from psweep.compilation.data_compiler import DataCompiler
+from psweep.compilation.data_flattener import DataFlattener, to_cell
+from psweep.utils.schema_metadata import SchemaMetadata
 
 
 class _FakeSchema:
-    """Minimal stand-in exposing only get_flattening_config()."""
-
     def __init__(self, cfg: dict):
         self._cfg = cfg
 
@@ -23,72 +20,97 @@ class _FakeSchema:
         return self._cfg
 
 
-def test_defaults_preserve_legacy_energy_behavior():
-    """No schema config -> legacy grouping + unit normalization defaults hold."""
-    flat = DataFlattener()
-    row = flat.flatten_item(
+@pytest.mark.parametrize(
+    ("value", "cell"),
+    [
+        (["site plan", "one-line diagram"], "site plan, one-line diagram"),
+        ([300, True], "300, True"),
+        ([], ""),
+        ([{"rate": 1}], '[{"rate":1}]'),
+        ([["a"]], '[["a"]]'),
+        ({"amount": 300, "unit": "café"}, '{"amount":300,"unit":"café"}'),
+        ("text", "text"),
+        (2.5, 2.5),
+        (None, None),
+    ],
+)
+def test_to_cell_joins_primitive_lists_and_keeps_nested_values_as_json(value, cell):
+    assert to_cell(value) == cell
+
+
+def test_flatten_item_keeps_field_names():
+    row = DataFlattener(_FakeSchema({})).flatten_item(
         {
-            "charges": [
-                {"charge_type": "Demand", "season": "Summer", "rate": 12},
-                {"charge_type": "Demand", "season": "Winter", "rate": 8},
-            ]
+            "rate_name": "R-1",
+            "location": {"city": "Mesa", "zip": "85201", "areas": ["N", "S"]},
+            "tags": ["a", "b"],
+            "charges": [{"rate": 1}],
+            "notes": None,
+            "blank": "  ",
         }
     )
-    # Grouped by charge_type, disambiguated by season (a default distinguisher).
-    assert row["Charges Demand Summer Rate"] == 12
-    assert row["Charges Demand Winter Rate"] == 8
-
-    df = pd.DataFrame([{"Unit": "ft"}, {"Unit": "'"}])
-    out = flat.normalize_units(df)
-    assert out["Unit"].tolist() == ["feet", "feet"]
-
-
-def test_config_redirects_grouping_and_distinguisher():
-    """A non-energy schema drives grouping/distinguisher via config alone."""
-    cfg = {
-        "type_fields": ["part_type"],
-        "distinguishing_fields": ["grade"],
+    assert row == {
+        "rate_name": "R-1",
+        "location_city": "Mesa",
+        "location_zip": "85201",
+        "location_areas": "N, S",
+        "tags": "a, b",
+        "charges": '[{"rate":1}]',
+        "notes": "",
+        "blank": "",
     }
-    flat = DataFlattener(schema_metadata=_FakeSchema(cfg))
-    row = flat.flatten_item(
-        {
-            "specs": [
-                {"part_type": "Bolt", "grade": "A", "torque": 5},
-                {"part_type": "Bolt", "grade": "B", "torque": 9},
-            ]
-        }
+
+
+def test_rows_mode_context_values_render_like_item_values(tmp_path):
+    schema = {
+        "type": "object",
+        "properties": {
+            "utility": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "counties": {"type": "array", "items": {"type": "string"}},
+                    "contact": {"type": "object"},
+                },
+            },
+            "rates": {
+                "type": "array",
+                "items": {"type": "object", "properties": {"rate_name": {"type": "string"}}},
+            },
+        },
+        "$metadata": {
+            "extraction": {"main_data_array": "rates", "context_objects": ["utility"]},
+            "identity": {"deduplication": {"key_fields": ["rate_name"]}},
+        },
+    }
+    (tmp_path / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
+    records = tmp_path / "records"
+    records.mkdir()
+    payload = {
+        "utility": {"name": "Metro", "counties": ["Pima", "Pinal"], "contact": {"phone": "555"}},
+        "rates": [{"rate_name": "R-1"}],
+    }
+    (records / "a.json").write_text(json.dumps({"payload": payload}), encoding="utf-8")
+    compiler = DataCompiler(SchemaMetadata(tmp_path / "schema.json"), verbose=False)
+    frame, _ = compiler.compile_from_directory(records)
+    row = frame.iloc[0]
+    assert (row["name"], row["counties"], row["contact"]) == (
+        "Metro",
+        "Pima, Pinal",
+        '{"phone":"555"}',
     )
-    assert row["Specs Bolt A Torque"] == 5
-    assert row["Specs Bolt B Torque"] == 9
-    # The legacy energy field names no longer drive anything.
-    assert not any("Demand" in c for c in row)
 
 
-def test_config_drives_unit_normalization_map():
-    """unit_normalizations is fully replaceable for a domain's own units."""
-    cfg = {"unit_normalizations": {"psi": "pounds_per_sq_inch"}}
-    flat = DataFlattener(schema_metadata=_FakeSchema(cfg))
-    df = pd.DataFrame([{"Unit": "psi"}, {"Unit": "ft"}])
-    out = flat.normalize_units(df)
-    # Domain map applied; the old feet/inches defaults are gone.
-    assert out["Unit"].tolist() == ["pounds_per_sq_inch", "ft"]
-
-
-def test_empty_unit_map_opts_out_of_normalization():
-    """An explicit empty map disables unit normalization entirely."""
-    flat = DataFlattener(schema_metadata=_FakeSchema({"unit_normalizations": {}}))
-    df = pd.DataFrame([{"Unit": "ft"}])
-    out = flat.normalize_units(df)
-    assert out["Unit"].tolist() == ["ft"]
-
-
-def test_expand_thresholds_are_configurable():
-    """expand_max_items forces a summary instead of expanded columns."""
-    cfg = {"expand_max_items": 1, "type_fields": ["kind"], "value_fields": ["v"]}
-    flat = DataFlattener(schema_metadata=_FakeSchema(cfg))
-    row = flat.flatten_item(
-        {"rows": [{"kind": "A", "v": 1}, {"kind": "B", "v": 2}]}
+def test_unit_normalization_applies_only_to_named_fields():
+    flat = DataFlattener(
+        _FakeSchema({"unit_fields": ["units"], "unit_normalizations": {"ft": "feet"}})
     )
-    # 2 items > max of 1 -> summarized into a single readable string column.
-    assert "Rows" in row
-    assert "A: 1" in row["Rows"] and "B: 2" in row["Rows"]
+    df = pd.DataFrame([{"units": "ft", "other": "ft"}, {"units": "psi", "other": "x"}])
+    out = flat.normalize_units(df)
+    assert out["units"].tolist() == ["feet", "psi"]
+    assert out["other"].tolist() == ["ft", "x"]
+
+
+def test_no_unit_config_is_a_noop():
+    df = pd.DataFrame([{"units": "ft"}])
+    assert DataFlattener(_FakeSchema({})).normalize_units(df)["units"].tolist() == ["ft"]

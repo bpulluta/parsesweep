@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -35,6 +34,21 @@ class TestContentSamplerTextExtraction:
         assert "information" in text.lower()
         assert len(text) > 50
 
+    def test_json_uses_the_shared_document_extractor(self, tmp_path, monkeypatch):
+        """Sampling/review read JSON exports as extraction renders them."""
+        from psweep.extraction import document_utils
+
+        export = tmp_path / "permits.json"
+        export.write_text('{"rows": []}', encoding="utf-8")
+        seen = []
+        monkeypatch.setattr(
+            document_utils,
+            "extract_text_from_document",
+            lambda path: seen.append(path) or "rendered rows",
+        )
+        assert ContentSampler.extract_text(str(export)) == "rendered rows"
+        assert seen == [export]
+
     def test_extract_text_unsupported_format_raises_error(self):
         """Test that unsupported formats raise ValueError."""
         with pytest.raises(ValueError):
@@ -42,7 +56,7 @@ class TestContentSamplerTextExtraction:
 
     def test_extract_text_nonexistent_file_raises_error(self):
         """Test that nonexistent files raise error."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="Failed to extract"):
             ContentSampler.extract_text("/nonexistent/path/file.txt")
 
 
@@ -115,7 +129,9 @@ class TestContentSamplerValidation:
     def test_validate_content_insufficient_extraction_length(self):
         """Test validation fails when insufficient text is extracted."""
         # Create a very small test file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            encoding="utf-8", mode="w", suffix=".txt", delete=False
+        ) as f:
             f.write("x")
             temp_path = f.name
 
@@ -127,7 +143,7 @@ class TestContentSamplerValidation:
             assert result.success is False
             assert result.error is not None or "too short" in " ".join(result.reasons).lower()
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_validate_content_min_required_matches_threshold(self):
         """Test min_required_matches threshold enforcement."""

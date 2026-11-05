@@ -1,63 +1,20 @@
-# Minimal discovery setup — copy to config/<your_domain>/run.yaml.
-# Set SERPAPI_API_KEY in your environment or .env (never in YAML).
-# Run: pixi run psweep discover --config config/<your_domain>/run.yaml
-# No extraction schema or LLM credentials are needed for discovery alone.
-# Expanded stage options: config/ADVANCED.yaml and docs/config-reference.md.
-# Only this file is loaded; move retired adjacent section overrides into it.
-
+# Copy to config/<domain>/run.yaml beside schema.json and targets.csv.
+# Every key, default and rule: docs/config-reference.md. Keys go in .env.
 domain: my_domain
+models:                               # aliases used by every stage
+  primary: gpt-4o
+  secondary: gpt-4o-mini
 discovery:
+  targets: targets.csv                # columns fill {placeholders}
   queries:
-    - "industrial pump installation manual filetype:pdf"
-
-  # Common choices — uncomment only when changing the defaults.
-  # Queries auto-enable SerpApi when search is omitted; explicit false wins.
-  # Seed-only alternative: remove queries above and use seeds (no auto search).
-  # seeds: [https://example.org/documents/manual.pdf]
-  # search:
-  #   max_results: 10            # unique candidates PER QUERY, not downloads
-  #   cache: false               # OFF by default; true opts into search caching
-  # selection:
-  #   max_per_target: 1          # acquisition count per target; not LLM review
-  #   exclude: [news, blog, press release]
-
-  # Strict source scope needs both host and URL-path restrictions.
-  # Provider site:/filetype: hints alone do not enforce scope.
-  # allowed_domains: [example.org]
-  # discovery_rules:
-  #   include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
-
-  # PDF candidates are preferred when present. HTML/HTM and extensionless
-  # HTTP(S) URLs are provisionally eligible; GET/MIME verifies ambiguity.
-  # Direct acquisition (no crawl), concurrency 2, retry attempts 3, policy warn.
-  # Browser mode and recovery are OFF; each recovery path needs explicit opt-in.
-  # browser_escalation: {enabled: true}
-  # code_host_adapters: {enabled: true}
-  # Strict robots/ToS enforcement fails before unsupported browser navigation:
-  # browser redirects/subresources cannot be certified; use HTTP enforcement.
-
-  # Optional PAID LLM review; never auto-enabled. Requires LLM credentials.
-  # document_review:
-  #   model: your-model-name
-  #   document_description: "the manufacturer's installation manual"
-  #   keep_top: 1                # review retention, separate from acquisition count
-
-# Inspect discovered/my_domain/runs/<run_id>/curated and the consolidated
-# discovered/my_domain/curated before configuring extraction.
-# Search caps include live/cached/news candidates; no hidden pagination/refill.
-# Use search/max_results and selection.max_per_target/require_any/exclude.
-# No built-in legal draft, vendor authority, shopping, or US discovery alias lists.
-# Supply geographic target fields explicitly or use partition_by; no query inference.
-# SerpApi/download TLS verification defaults remain false; configure
-# SERPAPI_SSL_VERIFY and DISCOVERY_SSL_VERIFY in the environment if needed.
-
-# Optional later stages — create your own schema and configure LLM credentials.
-# extraction:
-#   schema: schemas/personal/my_schema.json
-#   input_dir: discovered/my_domain/curated
-#   output_dir: extracted/my_domain
-#   model: your-model-name
-# compilation:
-#   schema: schemas/personal/my_schema.json
-#   input_dir: extracted/my_domain
-#   output_dir: compiled/my_domain
+    - '"{name}" {state} installation manual filetype:pdf'
+  partition_by: [state, name]         # curated/by_state/<s>/by_name/<n>/
+  selection:
+    max_per_target: 2
+extraction:
+  model: primary
+compilation:
+  output:
+    default_format: csv               # csv | excel | both
+validation:
+  models: [secondary]                 # contender; add references: [labels.csv]

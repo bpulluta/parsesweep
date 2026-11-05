@@ -51,8 +51,7 @@ def test_cleanup_ocr_errors_applies_configured_rules_in_order():
     """Configured rules apply in order, honoring ignore_case."""
     rules = [
         {"pattern": r"\bIbs\b", "replacement": "lbs"},
-        {"pattern": "emissionsfrom", "replacement": "emissions from",
-         "ignore_case": True},
+        {"pattern": "emissionsfrom", "replacement": "emissions from", "ignore_case": True},
     ]
     out = pdf_utils._cleanup_ocr_errors("Ibs Emissionsfrom stack", rules)
     assert "lbs" in out
@@ -85,17 +84,13 @@ def test_native_pdf_selected_pages_and_clamped_metadata(tmp_path, monkeypatch):
     doc = _Doc([_Page(native=f"PAGE{i} " * 150) for i in range(1, 4)])
     monkeypatch.setattr(pdf_utils, "PYMUPDF_AVAILABLE", True)
     monkeypatch.setattr(pdf_utils.pymupdf, "open", lambda _p: doc)
-    text, meta = pdf_utils.extract_text_from_pdf(
-        pdf, (-2, 2), return_meta=True
-    )
+    text, meta = pdf_utils.extract_text_from_pdf(pdf, (-2, 2), return_meta=True)
     assert "PAGE1" in text and "PAGE2" in text and "PAGE3" not in text
     assert meta["page_range"] == (1, 2)
     assert meta["extracted_pages"] == [1, 2]
 
 
-def test_ocr_skipped_pages_are_actual_not_requested_coverage(
-    tmp_path, monkeypatch
-):
+def test_ocr_skipped_pages_are_actual_not_requested_coverage(tmp_path, monkeypatch):
     """Coverage omits failed scan pages instead of claiming extraction."""
 
     class BadPage(_Page):
@@ -104,9 +99,7 @@ def test_ocr_skipped_pages_are_actual_not_requested_coverage(
 
     pdf = tmp_path / "scan.pdf"
     pdf.write_bytes(b"fake")
-    doc = _Doc(
-        [_Page(ocr="first " * 200), BadPage(), _Page(ocr="last " * 200)]
-    )
+    doc = _Doc([_Page(ocr="first " * 200), BadPage(), _Page(ocr="last " * 200)])
     monkeypatch.setattr(pdf_utils, "PYMUPDF_AVAILABLE", True)
     monkeypatch.setattr(pdf_utils.pymupdf, "open", lambda _p: doc)
     monkeypatch.setattr(pdf_utils, "PYPDF_AVAILABLE", False)
@@ -115,21 +108,14 @@ def test_ocr_skipped_pages_are_actual_not_requested_coverage(
     assert meta["page_count"] == 3
 
 
-def test_pypdf_fallback_honors_range_and_reports_clamped_scope(
-    tmp_path, monkeypatch
-):
+def test_pypdf_fallback_honors_range_and_reports_clamped_scope(tmp_path, monkeypatch):
     """The pypdf fallback preserves selection and reports clamped bounds."""
     pdf = tmp_path / "selected.pdf"
     pdf.write_bytes(b"fake")
-    pages = [
-        SimpleNamespace(extract_text=lambda i=i: f"PAGE{i} " * 150)
-        for i in range(1, 4)
-    ]
+    pages = [SimpleNamespace(extract_text=lambda i=i: f"PAGE{i} " * 150) for i in range(1, 4)]
     monkeypatch.setattr(pdf_utils, "PYMUPDF_AVAILABLE", False)
     monkeypatch.setattr(pdf_utils, "PYPDF_AVAILABLE", True)
-    monkeypatch.setattr(
-        pdf_utils, "PdfReader", lambda _f: SimpleNamespace(pages=pages)
-    )
+    monkeypatch.setattr(pdf_utils, "PdfReader", lambda _f: SimpleNamespace(pages=pages))
     text, meta = pdf_utils.extract_text_from_pdf(pdf, (2, 9), return_meta=True)
     assert "PAGE1" not in text and "PAGE2" in text and "PAGE3" in text
     assert meta["page_range"] == (2, 3)
@@ -158,16 +144,12 @@ def test_ocr_honors_range_and_returns_raw_text_metadata(tmp_path, monkeypatch):
     assert "PAGE2 RAW" in meta["raw_ocr_text"]
 
 
-@pytest.mark.parametrize(
-    "page_range", [(8, 9), (3, 2), (0, 0), (-2, -1), (1.5, 2), (True, 2)]
-)
+@pytest.mark.parametrize("page_range", [(8, 9), (3, 2), (0, 0), (-2, -1), (1.5, 2), (True, 2)])
 def test_invalid_pdf_scope_rejected(tmp_path, monkeypatch, page_range):
     """Invalid requests cannot silently fall back to a different PDF scope."""
     pdf = tmp_path / "source.pdf"
     pdf.write_bytes(b"fake")
-    monkeypatch.setattr(
-        pdf_utils.pymupdf, "open", lambda _p: _Doc([_Page("native")] * 3)
-    )
+    monkeypatch.setattr(pdf_utils.pymupdf, "open", lambda _p: _Doc([_Page("native")] * 3))
     monkeypatch.setattr(pdf_utils, "PYMUPDF_AVAILABLE", True)
     with pytest.raises(ValueError, match="page"):
         pdf_utils.extract_text_from_pdf(pdf, page_range, return_meta=True)

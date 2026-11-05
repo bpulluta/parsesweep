@@ -2,7 +2,7 @@
 
 Covers the three-part fix for litellm.nlr.gov-style proxy deployments:
   1. openai/ prefix in _format_model_for_litellm forces /chat/completions routing.
-  2. response_format is omitted in proxy mode (proxy support varies per model).
+  2. response_format is JSON mode in proxy mode (strict schemas need a direct provider).
   3. Response content is stripped before empty-check and JSON parsing.
 
 These tests are proxy-agnostic and apply to any OpenAI-compatible endpoint:
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -23,6 +23,17 @@ from psweep.exceptions import ExtractionError
 
 BASE_URL = "https://proxy.example.com/v1"
 SCHEMA = {"type": "object", "properties": {}}
+
+
+def test_connection_error_remains_actionable_without_provider_details():
+    message = str(
+        LLMClient._provider_error(
+            RuntimeError("Connection error. private-endpoint.example synthetic-secret")
+        )
+    )
+    assert "connection error" in message
+    assert "private-endpoint" not in message
+    assert "synthetic-secret" not in message
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -57,15 +68,10 @@ class TestProxyModelFormatting:
     def test_anthropic_prefixed_model_wrapped_for_openrouter(self):
         # OpenRouter-style: "anthropic/claude-3-sonnet" must stay intact at the
         # proxy. We wrap with openai/ so LiteLLM strips it and forwards the rest.
-        assert (
-            _client("anthropic/claude-3-sonnet").model
-            == "openai/anthropic/claude-3-sonnet"
-        )
+        assert _client("anthropic/claude-3-sonnet").model == "openai/anthropic/claude-3-sonnet"
 
     def test_gemini_prefixed_model_wrapped(self):
-        assert (
-            _client("gemini/gemini-pro").model == "openai/gemini/gemini-pro"
-        )
+        assert _client("gemini/gemini-pro").model == "openai/gemini/gemini-pro"
 
     def test_already_openai_prefixed_is_idempotent(self):
         # User who already puts "openai/" in their config: no double-wrap.
@@ -98,10 +104,12 @@ class TestProxyApiParams:
     def _extract_with_capture(self, model, **client_kwargs):
         client = _client(model, **client_kwargs)
         ok_response = _make_response(json.dumps({"items": []}))
-        with patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c, \
-             patch("psweep.extraction.llm_client.completion_cost", return_value=0.0):
+        with (
+            patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c,
+            patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        ):
             client.extract("some text", SCHEMA)
-        return mock_c.call_args[1] if mock_c.call_args[1] else mock_c.call_args[0][0]
+        return mock_c.call_args[1] or mock_c.call_args[0][0]
 
     def test_base_url_forwarded(self):
         params = self._extract_with_capture("gpt-4o-mini")
@@ -128,38 +136,38 @@ class TestProxyApiParams:
         params = self._extract_with_capture("claude-haiku-4-5")
         assert params.get("temperature") == 0
 
-    def test_reasoning_model_omits_temperature(self):
-        # Reasoning model detection uses the formatted model name.
-        # "openai/gpt-5-turbo" contains "gpt-5" → is_reasoning_model=True.
+    def test_reasoning_model_omits_temperature_but_keeps_json_mode(self):
+        # "openai/gpt-5-turbo" contains "gpt-5" → reasoning: no temperature. JSON
+        # mode stays on; without it reasoning models intermittently emit
+        # malformed JSON (e.g. a dropped closing brace).
         params = self._extract_with_capture("gpt-5-turbo")
         assert "temperature" not in params
-        assert "response_format" not in params
+        assert params.get("response_format") == {"type": "json_object"}
 
     def test_config_reasoning_marker_omits_temperature(self):
         # A model unknown to the built-in markers is treated as reasoning when
         # the deployment declares it via reasoning_models.
         base = self._extract_with_capture("halo-reason-01")
         assert base.get("temperature") == 0  # not reasoning by default
-        configured = self._extract_with_capture(
-            "halo-reason-01", reasoning_models=["halo-reason"]
-        )
+        configured = self._extract_with_capture("halo-reason-01", reasoning_models=["halo-reason"])
         assert "temperature" not in configured
-        assert "response_format" not in configured
+        assert configured.get("response_format") == {"type": "json_object"}
 
     def test_config_markers_supplement_builtin_defaults(self):
         # Declaring a custom marker must not disable the built-in ones.
-        params = self._extract_with_capture(
-            "gpt-5-turbo", reasoning_models=["halo-reason"]
-        )
+        params = self._extract_with_capture("gpt-5-turbo", reasoning_models=["halo-reason"])
         assert "temperature" not in params
 
-    def test_no_api_key_in_params_when_not_provided(self):
+    def test_no_api_key_in_params_when_not_provided(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "synthetic-sdk-environment-key")
         client = LLMClient(model="gpt-4o-mini", base_url=BASE_URL)
         ok_response = _make_response(json.dumps({"items": []}))
-        with patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c, \
-             patch("psweep.extraction.llm_client.completion_cost", return_value=0.0):
+        with (
+            patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c,
+            patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        ):
             client.extract("text", SCHEMA)
-        params = mock_c.call_args[1] if mock_c.call_args[1] else mock_c.call_args[0][0]
+        params = mock_c.call_args[1] or mock_c.call_args[0][0]
         assert "api_key" not in params
 
     def test_timeout_in_params(self):
@@ -169,13 +177,20 @@ class TestProxyApiParams:
         assert isinstance(params["timeout"], int)
 
     def test_timeout_constructor_kwarg_overrides_default(self):
-        client = LLMClient(model="gpt-4o-mini", base_url=BASE_URL, timeout=30)
+        client = LLMClient(
+            api_key="test-key",
+            model="gpt-4o-mini",
+            base_url=BASE_URL,
+            timeout=30,
+        )
         assert client.timeout == 30
         ok_response = _make_response(json.dumps({"items": []}))
-        with patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c, \
-             patch("psweep.extraction.llm_client.completion_cost", return_value=0.0):
+        with (
+            patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c,
+            patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        ):
             client.extract("text", SCHEMA)
-        params = mock_c.call_args[1] if mock_c.call_args[1] else mock_c.call_args[0][0]
+        params = mock_c.call_args[1] or mock_c.call_args[0][0]
         assert params["timeout"] == 30
 
     def test_timeout_env_var_overrides_default(self, monkeypatch):
@@ -189,16 +204,16 @@ class TestProxyApiParams:
         assert client.timeout == LLMClient.DEFAULT_TIMEOUT
 
     def test_direct_provider_sends_response_format(self):
-        # Non-proxy mode (no base_url): response_format is sent for non-reasoning models.
+        # Non-proxy mode (no base_url): response_format is sent.
         client = LLMClient(api_key="k", model="gpt-4o-mini", provider="openai")
         ok_response = _make_response(json.dumps({"items": []}))
-        with patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c, \
-             patch("psweep.extraction.llm_client.completion_cost", return_value=0.0):
+        with (
+            patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c,
+            patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        ):
             client.extract("text", SCHEMA)
-        params = mock_c.call_args[1] if mock_c.call_args[1] else mock_c.call_args[0][0]
+        params = mock_c.call_args[1] or mock_c.call_args[0][0]
         assert params.get("response_format") == {"type": "json_object"}
-
-
 
 
 # ── response content robustness ───────────────────────────────────────────────
@@ -240,8 +255,10 @@ class TestMarkdownFenceStripping:
         client = _client("claude-haiku-4-5")
         fenced = '```json\n{"items": [{"name": "test"}]}\n```'
         resp = _make_response(fenced)
-        with patch("psweep.extraction.llm_client.completion", return_value=resp), \
-             patch("psweep.extraction.llm_client.completion_cost", return_value=0.0):
+        with (
+            patch("psweep.extraction.llm_client.completion", return_value=resp),
+            patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        ):
             out = client.extract("text", SCHEMA)
         assert out["data"] == {"items": [{"name": "test"}]}
 
@@ -252,8 +269,10 @@ class TestResponseContentHandling:
     def _run(self, content):
         client = _client("gpt-4o-mini")
         resp = _make_response(content)
-        with patch("psweep.extraction.llm_client.completion", return_value=resp), \
-             patch("psweep.extraction.llm_client.completion_cost", return_value=0.0):
+        with (
+            patch("psweep.extraction.llm_client.completion", return_value=resp),
+            patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        ):
             return client.extract("text", SCHEMA)
 
     def test_valid_json_succeeds(self):
@@ -282,9 +301,11 @@ class TestResponseContentHandling:
         client = _client("gpt-4o-mini")
         resp = MagicMock()
         resp.choices = []
-        with patch("psweep.extraction.llm_client.completion", return_value=resp):
-            with pytest.raises(ExtractionError, match="Empty response"):
-                client.extract("text", SCHEMA)
+        with (
+            patch("psweep.extraction.llm_client.completion", return_value=resp),
+            pytest.raises(ExtractionError, match="Empty response"),
+        ):
+            client.extract("text", SCHEMA)
 
     def test_invalid_json_raises_extraction_error(self):
         # Model returned non-JSON text (preamble, markdown fence, etc.)
@@ -301,10 +322,12 @@ class TestJsonPromptInjection:
     def _capture_messages(self, model, user_text="some text"):
         client = _client(model)
         ok_response = _make_response(json.dumps({"items": []}))
-        with patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c, \
-             patch("psweep.extraction.llm_client.completion_cost", return_value=0.0):
+        with (
+            patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c,
+            patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        ):
             client.extract(user_text, SCHEMA)
-        params = mock_c.call_args[1] if mock_c.call_args[1] else mock_c.call_args[0][0]
+        params = mock_c.call_args[1] or mock_c.call_args[0][0]
         return params.get("messages", [])
 
     def test_json_instruction_injected_when_absent(self):
@@ -313,9 +336,7 @@ class TestJsonPromptInjection:
         assert "json" in all_content
 
     def test_json_instruction_not_duplicated_when_already_present(self):
-        messages = self._capture_messages(
-            "claude-haiku-4-5", user_text="return JSON output"
-        )
+        messages = self._capture_messages("claude-haiku-4-5", user_text="return JSON output")
         combined = " ".join(m["content"] for m in messages).lower()
         # Only one occurrence of the injection phrase (not doubled).
         assert combined.count("respond with a json object") <= 1
@@ -331,18 +352,14 @@ class TestReasoningModelMarkers:
         )
 
         client = _client("gpt-4o-mini")
-        assert set(DEFAULT_REASONING_MODEL_MARKERS) <= set(
-            client.reasoning_model_markers
-        )
+        assert set(DEFAULT_REASONING_MODEL_MARKERS) <= set(client.reasoning_model_markers)
 
     def test_config_markers_unioned_and_lowercased(self):
         from psweep.extraction.llm_client import (
             DEFAULT_REASONING_MODEL_MARKERS,
         )
 
-        client = _client(
-            "gpt-4o-mini", reasoning_models=["HALO-Reason", "gpt-5"]
-        )
+        client = _client("gpt-4o-mini", reasoning_models=["HALO-Reason", "gpt-5"])
         markers = client.reasoning_model_markers
         assert "halo-reason" in markers  # new, lowercased
         assert set(DEFAULT_REASONING_MODEL_MARKERS) <= set(markers)

@@ -9,6 +9,7 @@ Per-target limits keep larger candidate pools from crowding out others.
 
 from __future__ import annotations
 
+import mimetypes
 import re
 from datetime import date
 from pathlib import Path
@@ -18,6 +19,10 @@ from urllib.parse import urlparse
 from .constants import DOCUMENT_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
 from .models import DiscoveryCandidate
 from .urls import matches_url_exclusion, normalize_url_text, url_extension
+
+# Python's built-in type table only; system mime files would make
+# selection depend on the host.
+_KNOWN_FILE_TYPES = mimetypes.MimeTypes()
 
 # ---------------------------------------------------------------------------
 # CandidateSelector
@@ -42,62 +47,40 @@ class CandidateSelector:
         exclude_draft: bool = True,
         draft_patterns: list[str] | None = None,
         relevance_require_any_terms: list[str] | None = None,
-        relevance_require_legal_marker_terms: list[str] | None = None,
         relevance_exclude_any_terms: list[str] | None = None,
         exclude_url_patterns: list[str] | None = None,
         exclude_text_patterns: list[str] | None = None,
         require_supported_document: bool = True,
         max_per_host_per_target: int = 0,
-        target_identity_require_any_templates: list[str] | None = None,
-        target_identity_require_all_templates: list[str] | None = None,
-        target_identity_exclude_any_templates: list[str] | None = None,
+        target_require_any: list[str] | None = None,
+        target_require_all: list[str] | None = None,
+        target_exclude: list[str] | None = None,
     ) -> None:
         self._exclude_draft = exclude_draft
         self._draft_re: list[re.Pattern[str]] = [
             re.compile(p, re.IGNORECASE) for p in (draft_patterns or [])
         ]
         self._relevance_require_any_terms = [
-            t.strip().lower()
-            for t in (relevance_require_any_terms or [])
-            if t and t.strip()
-        ]
-        self._relevance_require_legal_marker_terms = [
-            t.strip().lower()
-            for t in (relevance_require_legal_marker_terms or [])
-            if t and t.strip()
+            t.strip().lower() for t in (relevance_require_any_terms or []) if t and t.strip()
         ]
         self._relevance_exclude_any_terms = [
-            t.strip().lower()
-            for t in (relevance_exclude_any_terms or [])
-            if t and t.strip()
+            t.strip().lower() for t in (relevance_exclude_any_terms or []) if t and t.strip()
         ]
         self._exclude_url_patterns = [
-            re.compile(p, re.IGNORECASE)
-            for p in (exclude_url_patterns or [])
-            if p and p.strip()
+            re.compile(p, re.IGNORECASE) for p in (exclude_url_patterns or []) if p and p.strip()
         ]
         self._exclude_text_patterns = [
-            re.compile(p, re.IGNORECASE)
-            for p in (exclude_text_patterns or [])
-            if p and p.strip()
+            re.compile(p, re.IGNORECASE) for p in (exclude_text_patterns or []) if p and p.strip()
         ]
         self._require_supported_document = require_supported_document
         self._max_per_host_per_target = max(0, int(max_per_host_per_target or 0))
-        self._target_identity_require_any_templates = [
-            t.strip()
-            for t in (target_identity_require_any_templates or [])
-            if t and t.strip()
+        self._target_require_any = [
+            t.strip() for t in (target_require_any or []) if t and t.strip()
         ]
-        self._target_identity_require_all_templates = [
-            t.strip()
-            for t in (target_identity_require_all_templates or [])
-            if t and t.strip()
+        self._target_require_all = [
+            t.strip() for t in (target_require_all or []) if t and t.strip()
         ]
-        self._target_identity_exclude_any_templates = [
-            t.strip()
-            for t in (target_identity_exclude_any_templates or [])
-            if t and t.strip()
-        ]
+        self._target_exclude = [t.strip() for t in (target_exclude or []) if t and t.strip()]
 
     # ------------------------------------------------------------------
     # Public API
@@ -109,6 +92,7 @@ class CandidateSelector:
         primary_per_target: int = 1,
         target_contexts: list[dict[str, object]] | None = None,
         include_metrics: bool = False,
+        labels: list[str] | None = None,
     ) -> (
         tuple[list[DiscoveryCandidate], list[str]]
         | tuple[list[DiscoveryCandidate], list[str], list[dict[str, Any]]]
@@ -133,6 +117,8 @@ class CandidateSelector:
             used to enrich selection notes and metrics.
         include_metrics:
             When ``True``, also return the per-target selection metrics.
+        labels:
+            Optional per-target display names for notes (default ``#<n>``).
 
         Returns
         -------
@@ -151,12 +137,12 @@ class CandidateSelector:
         notes: list[str] = []
         target_metrics: list[dict[str, Any]] = []
 
-        for target_idx, target_candidates in enumerate(candidates_by_target):
+        for target_idx, seeker_candidates in enumerate(candidates_by_target):
+            target_candidates = seeker_candidates
+            name = labels[target_idx] if labels else f"#{target_idx + 1}"
             original_count = len(target_candidates)
             if not target_candidates:
-                notes.append(
-                    f"Target {target_idx}: seeker returned 0 candidates; nothing to select."
-                )
+                notes.append(f"{name}: seeker returned 0 candidates; nothing to select.")
                 target_metrics.append(
                     {
                         "target_index": target_idx,
@@ -175,34 +161,28 @@ class CandidateSelector:
 
             # 1. Draft / exclusion filters
             if self._exclude_draft:
-                filtered = [
-                    c for c in target_candidates if not self._is_draft(c)
-                ]
+                filtered = [c for c in target_candidates if not self._is_draft(c)]
                 draft_count = original_count - len(filtered)
                 if draft_count > 0:
                     notes.append(
-                        f"Target {target_idx}: draft filter excluded {draft_count} of "
+                        f"{name}: draft filter excluded {draft_count} of "
                         f"{original_count} candidate(s)."
                     )
                 target_candidates = filtered
 
             if self._exclude_url_patterns or self._exclude_text_patterns:
-                filtered = [
-                    c
-                    for c in target_candidates
-                    if not self._matches_exclusion_patterns(c)
-                ]
+                filtered = [c for c in target_candidates if not self._matches_exclusion_patterns(c)]
                 excluded_count = len(target_candidates) - len(filtered)
                 if excluded_count > 0:
                     notes.append(
-                        f"Target {target_idx}: configured exclusion patterns excluded {excluded_count} of "
+                        f"{name}: configured exclusion patterns excluded {excluded_count} of "
                         f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = filtered
 
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: all {original_count} candidate(s) excluded as draft/stale; "
+                    f"{name}: all {original_count} candidate(s) excluded as draft/stale; "
                     "nothing selected."
                 )
                 target_metrics.append(
@@ -216,30 +196,21 @@ class CandidateSelector:
                 continue
 
             # 2. Target identity filter (templated rules from target context)
-            if (
-                self._target_identity_require_any_templates
-                or self._target_identity_require_all_templates
-                or self._target_identity_exclude_any_templates
-            ):
+            if self._target_require_any or self._target_require_all or self._target_exclude:
                 identity_filtered = [
-                    c
-                    for c in target_candidates
-                    if self._matches_target_identity(c, target_context)
+                    c for c in target_candidates if self._matches_target_identity(c, target_context)
                 ]
-                identity_excluded_count = len(target_candidates) - len(
-                    identity_filtered
-                )
+                identity_excluded_count = len(target_candidates) - len(identity_filtered)
                 if identity_excluded_count > 0:
                     notes.append(
-                        f"Target {target_idx}: identity filter excluded {identity_excluded_count} of "
+                        f"{name}: identity filter excluded {identity_excluded_count} of "
                         f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = identity_filtered
 
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: all candidate(s) excluded by identity rules; "
-                    "nothing selected."
+                    f"{name}: all candidate(s) excluded by identity rules; nothing selected."
                 )
                 target_metrics.append(
                     {
@@ -252,30 +223,21 @@ class CandidateSelector:
                 continue
 
             # 3. Relevance filter (strict include/exclude term gates)
-            if (
-                self._relevance_require_any_terms
-                or self._relevance_require_legal_marker_terms
-                or self._relevance_exclude_any_terms
-            ):
+            if self._relevance_require_any_terms or self._relevance_exclude_any_terms:
                 relevance_filtered = [
-                    c
-                    for c in target_candidates
-                    if self._is_relevant_candidate(c)
+                    c for c in target_candidates if self._is_relevant_candidate(c)
                 ]
-                relevance_excluded_count = len(target_candidates) - len(
-                    relevance_filtered
-                )
+                relevance_excluded_count = len(target_candidates) - len(relevance_filtered)
                 if relevance_excluded_count > 0:
                     notes.append(
-                        f"Target {target_idx}: relevance filter excluded {relevance_excluded_count} of "
+                        f"{name}: relevance filter excluded {relevance_excluded_count} of "
                         f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = relevance_filtered
 
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: all candidate(s) excluded by relevance rules; "
-                    "nothing selected."
+                    f"{name}: all candidate(s) excluded by relevance rules; nothing selected."
                 )
                 target_metrics.append(
                     {
@@ -290,23 +252,20 @@ class CandidateSelector:
             # 4. Supported-document filter
             if self._require_supported_document:
                 supported_only = [
-                    c
-                    for c in target_candidates
-                    if self._is_supported_document_url(c)
+                    c for c in target_candidates if self._is_supported_document_url(c)
                 ]
-                unsupported_excluded_count = len(target_candidates) - len(
-                    supported_only
-                )
+                unsupported_excluded_count = len(target_candidates) - len(supported_only)
                 if unsupported_excluded_count > 0:
                     notes.append(
-                        f"Target {target_idx}: supported-document filter excluded {unsupported_excluded_count} of "
+                        f"{name}: supported-document filter "
+                        f"excluded {unsupported_excluded_count} of "
                         f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = supported_only
 
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: all candidate(s) excluded as unsupported document type; "
+                    f"{name}: all candidate(s) excluded as unsupported document type; "
                     "nothing selected."
                 )
                 target_metrics.append(
@@ -327,18 +286,13 @@ class CandidateSelector:
                 key=lambda item: (
                     url_extension(item[0].url) not in DOCUMENT_EXTENSIONS,
                     # Prefer definite files to provisional web content.
-                    item[1]
-                    is None,  # False (dated) sorts before True (undated)
-                    -(
-                        item[1].toordinal() if item[1] else 0
-                    ),  # more recent first
+                    item[1] is None,  # False (dated) sorts before True (undated)
+                    -(item[1].toordinal() if item[1] else 0),  # more recent first
                 )
             )
 
             # 6. Take top primary_per_target with optional per-host diversity cap
-            top_items = self._take_top_with_host_cap(
-                dated, primary_per_target
-            )
+            top_items = self._take_top_with_host_cap(dated, primary_per_target)
             top_candidates = [c for c, _ in top_items]
             if target_context:
                 for c in top_candidates:
@@ -349,18 +303,18 @@ class CandidateSelector:
             date_info = [str(d) for _, d in top_items if d is not None]
             if date_info:
                 notes.append(
-                    f"Target {target_idx}: selected {len(top_candidates)} of "
+                    f"{name}: selected {len(top_candidates)} of "
                     f"{len(target_candidates)} candidate(s); "
                     f"effective date(s): {', '.join(date_info)}."
                 )
             else:
                 notes.append(
-                    f"Target {target_idx}: selected {len(top_candidates)} of "
+                    f"{name}: selected {len(top_candidates)} of "
                     f"{len(target_candidates)} candidate(s) (no effective date detected in URL)."
                 )
             if self._max_per_host_per_target > 0:
                 notes.append(
-                    f"Target {target_idx}: per-host cap={self._max_per_host_per_target} "
+                    f"{name}: per-host cap={self._max_per_host_per_target} "
                     f"applied to selected candidates."
                 )
 
@@ -388,9 +342,7 @@ class CandidateSelector:
         that a word-boundary ``draft`` pattern catches ``some_draft_doc.pdf`` as
         well as ``some draft doc.pdf``.
         """
-        combined = re.sub(
-            r"[_\-/]", " ", self._candidate_artifact_text(candidate)
-        )
+        combined = re.sub(r"[_\-/]", " ", self._candidate_artifact_text(candidate))
         return any(rx.search(combined) for rx in self._draft_re)
 
     def _take_top_with_host_cap(
@@ -437,20 +389,10 @@ class CandidateSelector:
                 if term in text or term in url_text:
                     return False
 
-        if self._relevance_require_any_terms:
-            if not any(
-                term in text for term in self._relevance_require_any_terms
-            ):
-                return False
-
-        if self._relevance_require_legal_marker_terms:
-            if not any(
-                term in url_text
-                for term in self._relevance_require_legal_marker_terms
-            ):
-                return False
-
-        return True
+        return not (
+            self._relevance_require_any_terms
+            and not any(term in text for term in self._relevance_require_any_terms)
+        )
 
     def _matches_target_identity(
         self,
@@ -458,11 +400,7 @@ class CandidateSelector:
         target_context: dict[str, object],
     ) -> bool:
         """Return True when candidate matches templated target identity rules."""
-        if not (
-            self._target_identity_require_any_templates
-            or self._target_identity_require_all_templates
-            or self._target_identity_exclude_any_templates
-        ):
+        if not (self._target_require_any or self._target_require_all or self._target_exclude):
             return True
 
         normalized_context = self._normalize_template_context(target_context)
@@ -470,34 +408,30 @@ class CandidateSelector:
         text_compact = re.sub(r"[^a-z0-9]+", "", text)
 
         require_any_terms = self._resolve_templates(
-            self._target_identity_require_any_templates,
+            self._target_require_any,
             normalized_context,
         )
         require_all_terms = self._resolve_templates(
-            self._target_identity_require_all_templates,
+            self._target_require_all,
             normalized_context,
         )
         exclude_any_terms = self._resolve_templates(
-            self._target_identity_exclude_any_templates,
+            self._target_exclude,
             normalized_context,
         )
 
         if require_any_terms and not any(
-            self._text_matches_term(text, text_compact, term)
-            for term in require_any_terms
+            self._text_matches_term(text, text_compact, term) for term in require_any_terms
         ):
             return False
         if require_all_terms and not all(
-            self._text_matches_term(text, text_compact, term)
-            for term in require_all_terms
+            self._text_matches_term(text, text_compact, term) for term in require_all_terms
         ):
             return False
-        if exclude_any_terms and any(
-            self._text_matches_term(text, text_compact, term)
-            for term in exclude_any_terms
-        ):
-            return False
-        return True
+        return not (
+            exclude_any_terms
+            and any(self._text_matches_term(text, text_compact, term) for term in exclude_any_terms)
+        )
 
     @staticmethod
     def _text_matches_term(text: str, text_compact: str, term: str) -> bool:
@@ -506,9 +440,7 @@ class CandidateSelector:
             return True
 
         compact_term = re.sub(r"[^a-z0-9]+", "", term)
-        if compact_term and compact_term in text_compact:
-            return True
-        return False
+        return bool(compact_term and compact_term in text_compact)
 
     @staticmethod
     def _normalize_template_context(
@@ -528,9 +460,7 @@ class CandidateSelector:
         return normalized
 
     @staticmethod
-    def _resolve_templates(
-        templates: list[str], target_context: dict[str, str]
-    ) -> list[str]:
+    def _resolve_templates(templates: list[str], target_context: dict[str, str]) -> list[str]:
         """Render simple {field} templates into lowercase search terms."""
         if not templates:
             return []
@@ -544,9 +474,7 @@ class CandidateSelector:
             rendered = template
             for placeholder in re.findall(r"\{([a-zA-Z0-9_]+)\}", template):
                 replacement = target_context.get(placeholder, "")
-                rendered = rendered.replace(
-                    "{" + placeholder + "}", replacement
-                )
+                rendered = rendered.replace("{" + placeholder + "}", replacement)
 
             cleaned = re.sub(r"\s+", " ", rendered).strip()
             if cleaned and "{" not in cleaned and "}" not in cleaned:
@@ -588,7 +516,7 @@ class CandidateSelector:
         try:
             parsed = urlparse(raw_url)
             filename = Path(parsed.path).name
-        except Exception:
+        except ValueError:
             filename = raw_url
 
         # US date: MM.DD.YYYY or MM-DD-YYYY or MM_DD_YYYY or MM/DD/YYYY
@@ -608,7 +536,7 @@ class CandidateSelector:
                 pass
 
         # Named month: Apr_2024, April-2024, apr2024, etc.
-        _MONTHS = {
+        months = {
             "jan": 1,
             "feb": 2,
             "mar": 3,
@@ -629,7 +557,7 @@ class CandidateSelector:
             re.IGNORECASE,
         )
         if m:
-            month = _MONTHS.get(m.group(1).lower()[:3])
+            month = months.get(m.group(1).lower()[:3])
             if month:
                 try:
                     return date(int(m.group(2)), month, 1)
@@ -648,6 +576,12 @@ class CandidateSelector:
 
     @staticmethod
     def _is_supported_document_url(candidate: DiscoveryCandidate) -> bool:
-        """Allow supported files and provisional web documents."""
+        """Reject only URLs naming a known file type that cannot be read.
+
+        Unrecognised suffixes (``.php``, ``.aspx``, ``.cfm`` ...) are server
+        routes; the download decides their type from the response MIME.
+        """
         extension = url_extension(candidate.url or "")
-        return not extension or extension in DOWNLOADABLE_EXTENSIONS
+        if not extension or extension in DOWNLOADABLE_EXTENSIONS:
+            return True
+        return _KNOWN_FILE_TYPES.guess_type(f"file{extension}", strict=False) == (None, None)

@@ -14,7 +14,6 @@ import inspect
 
 from psweep.cli.main import cli
 from psweep.discovery import (
-    DEFAULT_PARTITION_MODE,
     DEFAULT_ROBOTS_POLICY_MODE,
     DEFAULT_TOS_POLICY_MODE,
     DiscoveryRequest,
@@ -34,19 +33,15 @@ def _option_defaults(command_name: str) -> dict[str, object]:
     return {p.name: p.default for p in cli.commands[command_name].params}
 
 
-def test_policy_and_partition_constant_values():
+def test_policy_constant_values():
     """The intended defaults are the safe, production-facing values."""
     assert DEFAULT_ROBOTS_POLICY_MODE == "warn"
     assert DEFAULT_TOS_POLICY_MODE == "warn"
-    assert DEFAULT_PARTITION_MODE == "auto"
 
 
 def test_discovery_request_defaults_match_constants():
     """DiscoveryRequest field defaults come from the shared constants."""
-    field_defaults = {
-        f.name: f.default for f in dataclasses.fields(DiscoveryRequest)
-    }
-    assert field_defaults["partition_mode"] == DEFAULT_PARTITION_MODE
+    field_defaults = {f.name: f.default for f in dataclasses.fields(DiscoveryRequest)}
     assert field_defaults["robots_policy_mode"] == DEFAULT_ROBOTS_POLICY_MODE
     assert field_defaults["tos_policy_mode"] == DEFAULT_TOS_POLICY_MODE
 
@@ -58,14 +53,6 @@ def test_policy_evaluator_signature_matches_constants():
     assert params["tos_policy_mode"].default == DEFAULT_TOS_POLICY_MODE
 
 
-def test_discover_cli_option_defaults_match_constants():
-    """discover --help defaults equal the shared constants (no drift/lying)."""
-    defaults = _option_defaults("discover")
-    assert defaults["partition_mode"] == DEFAULT_PARTITION_MODE
-    assert defaults["robots_policy_mode"] == DEFAULT_ROBOTS_POLICY_MODE
-    assert defaults["tos_policy_mode"] == DEFAULT_TOS_POLICY_MODE
-
-
 def test_extract_cli_option_defaults_are_single_sourced():
     """extract --model and --max-context come from the shared constants."""
     defaults = _option_defaults("extract")
@@ -75,23 +62,14 @@ def test_extract_cli_option_defaults_are_single_sourced():
 
 
 def test_max_context_default_is_single_sourced_across_layers():
-    """CLI, public pipeline API, and DocumentExtractor share DEFAULT_MAX_CONTEXT.
-
-    Guards against the pre-audit drift where ``extract``/``run`` used 600k but
-    ``validate`` and the library API used 400k — validating on less context than
-    extraction produced.
-    """
+    """CLI, public pipeline API, and DocumentExtractor share DEFAULT_MAX_CONTEXT."""
     from psweep.extraction.document_extractor import DocumentExtractor
     from psweep.pipeline import extract_documents
-    from psweep.validation.multi_model_extractor import (
-        run_multi_model_extraction,
-    )
 
     assert DEFAULT_MAX_CONTEXT == 600000
     for func, param in (
         (extract_documents, "max_context"),
         (DocumentExtractor.__init__, "max_context_chars"),
-        (run_multi_model_extraction, "max_context_chars"),
     ):
         sig = inspect.signature(func)
         assert sig.parameters[param].default == DEFAULT_MAX_CONTEXT

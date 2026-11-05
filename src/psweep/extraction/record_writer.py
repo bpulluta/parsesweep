@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
-from collections.abc import Sequence
 
 from psweep.exceptions import SchemaValidationError
 from psweep.utils.error_taxonomy import normalize_error_records
@@ -19,7 +18,10 @@ from psweep.extraction.schema_utils import (
 )
 
 if TYPE_CHECKING:
+    from psweep.extraction.provenance import SourceContext
     from psweep.utils.schema_metadata import SchemaMetadata
+
+CONTRACT_VERSION = "1.1.0"
 
 
 def _resolve_lineage_artifact_id(
@@ -31,9 +33,7 @@ def _resolve_lineage_artifact_id(
     artifact_id = (runtime_artifact or {}).get("artifact_id")
     if isinstance(artifact_id, str) and artifact_id.strip():
         return artifact_id
-    lineage_artifact = ((runtime_artifact or {}).get("lineage") or {}).get(
-        "artifact_id"
-    )
+    lineage_artifact = ((runtime_artifact or {}).get("lineage") or {}).get("artifact_id")
     if isinstance(lineage_artifact, str) and lineage_artifact.strip():
         return lineage_artifact
     run_fragment = (run_id or default_fragment).replace("run://", "")
@@ -57,29 +57,12 @@ def build_lineage(
             run_id=run_id,
             default_fragment=default_run_fragment,
         ),
-        "profile_id": ((runtime_artifact or {}).get("lineage") or {}).get(
-            "profile_id"
-        )
-        or "default",
         "run_id": run_id or f"run://{default_run_fragment}",
         "model": model,
         "provider": provider or "unknown",
         "schema_id": schema_id,
         "extracted_at": extracted_at,
     }
-
-
-def _extract_identifier(
-    data: dict[str, Any],
-    identifier_fields: Sequence[str],
-) -> str:
-    """Join declared scalar identifiers, retaining zero and false."""
-    parts = []
-    for field in identifier_fields:
-        value = get_nested_value(data, field)
-        if isinstance(value, (str, int, float)) and str(value).strip():
-            parts.append(str(value).strip())
-    return "-".join(parts)
 
 
 def record_extraction_scope(
@@ -102,8 +85,7 @@ def record_extraction_scope(
     if section_filtered:
         coverage["section_filtered"] = True
         warnings.append(
-            "Extraction limited to selected sections; "
-            "not a full-document coverage guarantee."
+            "Extraction limited to selected sections; not a full-document coverage guarantee."
         )
     scope = parser_scope or {}
     if scope.get("page_count") is not None:
@@ -130,6 +112,8 @@ def record_extraction_scope(
 def build_extraction_record(
     *,
     doc_path: Path,
+    source_document_id: str,
+    source: SourceContext | None = None,
     result: Any,
     model: str,
     provider: str | None,
@@ -143,31 +127,20 @@ def build_extraction_record(
     item_array_key = schema_metadata.get_main_data_array()
     items = get_nested_value(result.data, item_array_key)
     if not isinstance(items, list):
-        message = (
-            f"Schema-declared main data array '{item_array_key}' "
-            "must be an array."
-        )
+        message = f"Schema-declared main data array '{item_array_key}' must be an array."
         raise SchemaValidationError(message)
     num_items = len(items)
-    identifier = _extract_identifier(
-        result.data,
-        schema_metadata.get_identifier_fields(),
-    )
     if input_fingerprint is not None and (
         not isinstance(input_fingerprint, str)
         or not re.fullmatch(r"[0-9a-f]{64}", input_fingerprint)
     ):
-        message = (
-            "Extraction input_fingerprint must be a lowercase SHA-256 digest."
-        )
+        message = "Extraction input_fingerprint must be a lowercase SHA-256 digest."
         raise ValueError(message)
     source_identity = hashlib.sha256(
         doc_path.resolve().as_posix().encode("utf-8"),
     ).hexdigest()
     source_sha256 = artifact_sha256(doc_path)
-    extracted_at = (
-        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    )
+    extracted_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     lineage = build_lineage(
         runtime_artifact=runtime_artifact,
@@ -185,21 +158,26 @@ def build_extraction_record(
     record = {
         "record_id": f"record://{run_fragment}/{source_identity}",
         "item_count": num_items,
-        "contract_version": "1.0.0",
+        "contract_version": CONTRACT_VERSION,
         "document": {
-            "source_document_id": identifier or doc_path.stem,
+            "source_document_id": source_document_id,
             "source_path": doc_path.as_posix(),
             "source_filename": doc_path.name,
             "source_sha256": source_sha256,
+            "source_url": source.url if source else None,
+            "source_scope": source.scope if source else None,
+            "target_id": source.target_id if source else None,
         },
         "lineage": lineage,
         "payload": result.data,
         "quality": {
-            "overall_confidence": getattr(result, "completeness_score", None),
+            "status": getattr(result, "status", "extracted"),
+            "completeness": getattr(result, "completeness_score", None),
+            "unverified_quotes": getattr(result, "unverified_quotes", 0),
+            "off_candidate_items": getattr(result, "off_candidate_items", 0),
             "warnings": list(getattr(result, "validation_notes", []) or []),
             "errors": normalize_error_records(
-                getattr(result, "processing_errors", None)
-                or getattr(result, "errors", None)
+                getattr(result, "processing_errors", None) or getattr(result, "errors", None)
             ),
         },
         "processing_metrics": {
@@ -215,10 +193,12 @@ def build_extraction_record(
     return record, num_items
 
 
-def write_extraction_record(  # noqa: PLR0913 - canonical record context + validator
+def write_extraction_record(
     output_path: Path,
     *,
     doc_path: Path,
+    source_document_id: str,
+    source: SourceContext | None = None,
     result: Any,
     model: str,
     provider: str | None,
@@ -232,6 +212,8 @@ def write_extraction_record(  # noqa: PLR0913 - canonical record context + valid
     """Publish a record atomically and return its item count."""
     record, num_items = build_extraction_record(
         doc_path=doc_path,
+        source_document_id=source_document_id,
+        source=source,
         result=result,
         model=model,
         provider=provider,

@@ -10,64 +10,67 @@ import pytest
 from discovery_helpers import FakeResponse, make_candidate
 
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
+from psweep.discovery.targets import identify_target
 from psweep.discovery.document_reviewer import DocumentReviewer
 from psweep.discovery.publication import (
-    artifact_sha256, effective_discovery_fingerprint,
+    artifact_sha256,
+    effective_discovery_fingerprint,
 )
 from psweep.extraction.provenance import (
     build_source_context_map,
     prepend_source_context,
+    source_context,
 )
 from psweep.pipeline import _extract_one_document, compile_extractions
 from psweep.utils.schema_metadata import SchemaMetadata
 
 
+DOMAIN_DIR = Path("outputs/synthetic/discovered")
+
+
+@pytest.fixture(autouse=True)
+def _outputs_in_tmp(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+
 def _request(tmp_path, **overrides):
-    values = dict(
-        domain="synthetic", seed_urls=[], query=None, enable_serpapi=False,
-        output_documents=tmp_path / "domain/runs/probe/documents",
-        output_manifest=tmp_path / "domain/runs/probe/manifest.json",
-        dry_run=False, robots_policy_mode="ignore", tos_policy_mode="ignore",
-    )
+    values = {
+        "domain": "synthetic",
+        "dry_run": False,
+        "robots_policy_mode": "ignore",
+        "tos_policy_mode": "ignore",
+    }
     values.update(overrides)
     return DiscoveryRequest(**values)
 
 
 def _download(engine, request, candidate, browser=None):
     return engine._download_single_candidate(
-        idx=1, candidate=candidate, request=request,
-        documents_dir=request.output_documents, ssl_verify=True,
-        retry_policy={"max_attempts": 1, "initial_backoff_seconds": 0,
-                      "max_backoff_seconds": 0},
-        rate_limiter=None, browser=browser,
+        idx=1,
+        candidate=candidate,
+        request=request,
+        documents_dir=Path("documents"),
+        ssl_verify=True,
+        retry_policy={"max_attempts": 1, "initial_backoff_seconds": 0, "max_backoff_seconds": 0},
+        rate_limiter=None,
+        browser=browser,
     )
-
-
-@pytest.mark.parametrize("url", [
-    "https://agency.gov/conf/comment.pdf",
-    "https://agency.gov/%63onf/comment.pdf",
-    "https://agency.gov/comment.pdf?token=blocked",
-    "https://agency.gov/comment.pdf?token\\u003dblocked",
-])
-def test_excluded_seed_never_fetches(monkeypatch, tmp_path, url):
-    fetch = Mock(side_effect=AssertionError("excluded seed was fetched"))
-    monkeypatch.setattr("requests.get", fetch)
-    request = _request(tmp_path, seed_urls=[url],
-                       selection_exclude_url_patterns=[r"/conf/", r"token=blocked"])
-    result = DiscoveryEngine().run(request)
-    assert fetch.call_count == 0
-    assert json.loads(result.manifest_path.read_text())["candidates"] == []
 
 
 @pytest.mark.parametrize("browser", [False, True])
 def test_final_redirect_policy_blocks_download(monkeypatch, tmp_path, browser):
     final = "https://unapproved.example.org/conf/comment.pdf"
-    request = _request(tmp_path, allowed_domains=["agency.gov"],
-                       selection_exclude_url_patterns=[r"/conf/"])
-    monkeypatch.setattr("requests.get", lambda *args, **kwargs: FakeResponse(url=final))
+    request = _request(
+        tmp_path, allowed_domains=["agency.gov"], selection_exclude_url_patterns=[r"/conf/"]
+    )
+    monkeypatch.setattr(
+        "psweep.discovery.network.request_get", lambda *args, **kwargs: FakeResponse(url=final)
+    )
     session = SimpleNamespace(download_bytes=lambda url: (b"PDF", "application/pdf", final))
     _, record, error, downloaded, _ = _download(
-        DiscoveryEngine(), request, make_candidate("https://agency.gov/comment.pdf"),
+        DiscoveryEngine(),
+        request,
+        make_candidate("https://agency.gov/comment.pdf"),
         session if browser else None,
     )
     assert not downloaded and error is None
@@ -79,7 +82,10 @@ def test_final_redirect_policy_blocks_download(monkeypatch, tmp_path, browser):
 def test_browser_unknown_final_origin_is_not_invented(tmp_path):
     browser = SimpleNamespace(download_bytes=lambda url: (b"PDF", "application/pdf", ""))
     _, record, error, downloaded, _ = _download(
-        DiscoveryEngine(), _request(tmp_path), make_candidate("https://agency.gov/comment.pdf"), browser,
+        DiscoveryEngine(),
+        _request(tmp_path),
+        make_candidate("https://agency.gov/comment.pdf"),
+        browser,
     )
     assert not downloaded
     assert error is not None
@@ -89,45 +95,24 @@ def test_browser_unknown_final_origin_is_not_invented(tmp_path):
 def test_label_collision_does_not_share_checkpoint_identity():
     first = {"label": "shared", "state": "CA"}
     second = {"label": "shared", "state": "CO"}
-    assert DiscoveryEngine._target_checkpoint_key(first) != DiscoveryEngine._target_checkpoint_key(second)
+    assert identify_target(first) != identify_target(second)
 
 
-def test_host_only_seed_attribution_is_unresolved(tmp_path):
-    candidates = [make_candidate("https://agency.gov/GetDocument.pdf")]
-    DiscoveryEngine._attribute_seeds_to_targets(candidates, [{"label": "Agency", "agency": "agency.gov"}])
-    assert not candidates[0].target_metadata
-
-
-def test_shared_host_seed_attribution_is_ambiguous(tmp_path):
-    targets = [
-        {"label": "Project Alpha", "agency": "agency.gov"},
-        {"label": "Project Beta", "agency": "agency.gov"},
-    ]
-    candidates = [make_candidate("https://agency.gov/GetDocument.pdf")]
-    DiscoveryEngine._attribute_seeds_to_targets(candidates, targets)
-    assert not candidates[0].target_metadata
-
-
-def test_resumed_global_seeds_do_not_reintroduce_completed_target(tmp_path):
+def test_resumed_target_urls_do_not_reintroduce_completed_target(tmp_path):
     engine = DiscoveryEngine()
-    request = _request(
-        tmp_path,
-        dry_run=True,
-        seed_urls=[
-            "https://agency.gov/alpha.pdf",
-            "https://agency.gov/beta.pdf",
-        ],
-        targets=[{"label": "alpha"}, {"label": "beta"}],
-    )
+    alpha = {"label": "alpha", "urls": ["https://agency.gov/alpha.pdf"]}
+    beta = {"label": "beta", "urls": ["https://agency.gov/beta.pdf"]}
+    request = _request(tmp_path, dry_run=True, targets=[alpha, beta])
     manifest = tmp_path / "old-manifest.json"
     index = tmp_path / "old-index.csv"
     manifest.write_text("{}")
     index.write_text("path\n")
     engine._save_checkpoint_entries(
-        tmp_path / "domain/checkpoint.json",
+        DOMAIN_DIR / "checkpoint.json",
         {
-            "alpha": {
+            identify_target(alpha): {
                 "run_id": "old",
+                "input_digest": engine._input_digest(request, alpha),
                 "artifacts": {
                     str(manifest): artifact_sha256(manifest),
                     str(index): artifact_sha256(index),
@@ -139,27 +124,29 @@ def test_resumed_global_seeds_do_not_reintroduce_completed_target(tmp_path):
     )
     result = engine.run(request)
     candidates = json.loads(result.manifest_path.read_text())["candidates"]
-    assert [candidate["url"] for candidate in candidates] == [
-        "https://agency.gov/beta.pdf"
-    ]
+    assert [candidate["url"] for candidate in candidates] == ["https://agency.gov/beta.pdf"]
     assert candidates[0]["target_metadata"] == {"label": "beta"}
 
 
-def test_all_completed_targets_do_not_trigger_unscoped_search(
-    monkeypatch, tmp_path
-):
+def test_all_completed_targets_do_not_trigger_unscoped_search(monkeypatch, tmp_path):
     """Validated complete targets cannot trigger an unscoped search."""
-    request = _request(tmp_path, dry_run=True, targets=[{"label": "alpha"}])
+    request = _request(
+        tmp_path,
+        dry_run=True,
+        queries=["{label}"],
+        targets=[{"label": "alpha"}],
+    )
     engine = DiscoveryEngine()
     manifest = tmp_path / "old-manifest.json"
     index = tmp_path / "old-index.csv"
     manifest.write_text("{}")
     index.write_text("path\n")
     engine._save_checkpoint_entries(
-        tmp_path / "domain/checkpoint.json",
+        DOMAIN_DIR / "checkpoint.json",
         {
-            "alpha": {
+            identify_target({"label": "alpha"}): {
                 "run_id": "old",
+                "input_digest": engine._input_digest(request, {"label": "alpha"}),
                 "artifacts": {
                     str(manifest): artifact_sha256(manifest),
                     str(index): artifact_sha256(index),
@@ -199,13 +186,15 @@ def test_promotion_index_only_tracks_promoted_files_and_prunes_cleared(
         "partition/same.pdf,https://unrelated.gov/rejected.pdf,downloaded,False\n"
     )
     DiscoveryEngine._promote_to_consolidated_curated(
-        run_curated_dir=run_curated, domain_dir=domain,
+        run_curated_dir=run_curated,
+        domain_dir=domain,
     )
     with domain_index.open() as stream:
         by_path = {row["relative_path"]: row for row in csv.DictReader(stream)}
     assert by_path["partition/same.pdf"]["url"] == "https://agency.gov/old.pdf"
     DiscoveryEngine._promote_to_consolidated_curated(
-        run_curated_dir=run_curated, domain_dir=domain,
+        run_curated_dir=run_curated,
+        domain_dir=domain,
         attempted_partitions={Path("partition")},
     )
     with domain_index.open() as stream:
@@ -219,11 +208,15 @@ def test_source_context_ambiguous_basename_never_picks_last_row(tmp_path):
         "documents/a/report.pdf,a/report.pdf,https://agency.gov/a.pdf\n"
         "documents/b/report.pdf,b/report.pdf,https://agency.gov/b.pdf\n"
     )
-    context = build_source_context_map(None, str(index))
+    context = build_source_context_map(index.parent)
     assert "report.pdf" not in context
-    assert prepend_source_context("BODY", tmp_path / "elsewhere/report.pdf", context) == "BODY"
+    assert (
+        prepend_source_context("BODY", source_context(tmp_path / "elsewhere/report.pdf", context))
+        == "BODY"
+    )
     assert "https://agency.gov/a.pdf" in prepend_source_context(
-        "BODY", tmp_path / "curated/a/../a/report.pdf", context,
+        "BODY",
+        source_context(tmp_path / "curated/a/../a/report.pdf", context),
     )
 
 
@@ -234,20 +227,29 @@ def test_source_context_canonical_collision_is_explicit(tmp_path):
         "documents/report.pdf,https://agency.gov/a.pdf\n"
         "documents/../documents/report.pdf,https://agency.gov/b.pdf\n"
     )
-    with pytest.raises(ValueError, match="[Cc]onflict|[Aa]mbiguous"):
-        build_source_context_map(None, str(index))
+    with pytest.raises(ValueError, match=r"[Cc]onflict|[Aa]mbiguous"):
+        build_source_context_map(index.parent)
 
 
 @pytest.mark.parametrize("change", ["target", "model_alias", "max_chars", "keywords"])
 def test_grade_cache_includes_all_effective_inputs(tmp_path, change):
     path = tmp_path / "comment.pdf"
     path.write_text("synthetic content")
-    record = {"status": "downloaded", "path": str(path), "url": "https://agency.gov/comment.pdf",
-              "target_metadata": {"label": "alpha"}}
-    config = dict(document_description="public comments", model="review", models={"review": "gpt-fixture-a"})
+    record = {
+        "status": "downloaded",
+        "path": str(path),
+        "url": "https://agency.gov/comment.pdf",
+        "target_metadata": {"label": "alpha"},
+    }
+    config = {
+        "document_description": "public comments",
+        "model": "review",
+        "models": {"review": "gpt-fixture-a"},
+        "cache_dir": tmp_path / ".review_cache",
+    }
     grade = {"is_primary": True, "relevance": 0.9, "doc_kind": "comment", "reason": "raw grade"}
     first = DocumentReviewer(**config)
-    first._ensure_client = lambda: object()
+    first._ensure_client = object
     first._grade = lambda *args, **kwargs: grade
     first.review([dict(record)], [])
     if change == "target":
@@ -259,7 +261,7 @@ def test_grade_cache_includes_all_effective_inputs(tmp_path, change):
     else:
         config["review_keywords"] = ["deep evidence"]
     second = DocumentReviewer(**config)
-    second._ensure_client = lambda: object()
+    second._ensure_client = object
     second._grade = Mock(return_value=grade)
     second.review([record], [])
     assert second._grade.call_count == 1
@@ -273,22 +275,37 @@ def test_llm_urls_hide_credentials_but_retain_document_identifiers(monkeypatch, 
     path = tmp_path / "comment.pdf"
     path.write_text("synthetic")
     url = "https://user:password@agency.gov/view?id=42&X-Amz-Signature=secret&token=credential#access_token=fragment"
-    client = SimpleNamespace(extract=Mock(return_value={"data": {
-        "is_primary": True, "relevance": 0.9, "doc_kind": "comment", "reason": "raw",
-    }}))
-    reviewer = DocumentReviewer(document_description="comments")
+    client = SimpleNamespace(
+        extract=Mock(
+            return_value={
+                "data": {
+                    "doc_kind": "comment",
+                    "reason": "raw",
+                    "grade": 4,
+                }
+            }
+        )
+    )
+    reviewer = DocumentReviewer(
+        document_description="comments", cache_dir=tmp_path / ".review_cache"
+    )
     reviewer._client = client
-    record = {"status": "downloaded", "path": str(path), "url": url,
-              "target_metadata": {"label": "alpha", "source": url}}
+    record = {
+        "status": "downloaded",
+        "path": str(path),
+        "url": url,
+        "target_metadata": {"label": "alpha", "source": url},
+    }
     reviewer.review([record], [])
     prompt = client.extract.call_args.kwargs["user_prompt"]
     assert "id=42" in prompt
     for secret in ("user:password", "secret", "credential", "fragment"):
         assert secret not in prompt
-    sidecar = json.loads((tmp_path / ".review/comment.pdf.json").read_text())
-    assert sidecar["source_url"] == url
-    assert sidecar["llm"]["reason"] == "raw"
-    assert sidecar["coverage"]["sampled_chars"] <= sidecar["coverage"]["document_chars"]
+    (entry,) = (tmp_path / ".review_cache").iterdir()
+    cached = json.loads(entry.read_text())
+    assert cached["llm"]["reason"] == "raw"
+    assert cached["coverage"]["sampled_chars"] <= cached["coverage"]["document_chars"]
+    assert "secret" not in entry.read_text()
 
 
 def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monkeypatch, tmp_path):
@@ -297,9 +314,13 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     from psweep.discovery.connectors.serpapi_seeker import SerpApiSeeker
 
     monkeypatch.setenv("SERPAPI_API_KEY", "fixture")
-    monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(
-        lambda request: ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
-    ))
+    monkeypatch.setattr(
+        DiscoveryEngine,
+        "_resolve_serpapi_state",
+        staticmethod(
+            lambda request: ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
+        ),
+    )
 
     def search(params):
         label = params["q"]
@@ -313,23 +334,40 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
         final = "https://outside.example.org/report.pdf" if "/redirect/" in url else url
         return FakeResponse(url=final, chunks=[b"%PDF\n" + url.encode()])
 
-    monkeypatch.setattr("requests.get", fetch)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fetch)
     monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda self: object())
-    monkeypatch.setattr(DocumentReviewer, "_grade", lambda self, *args, **kwargs: {
-        "is_primary": True, "relevance": 0.9, "doc_kind": "synthetic", "reason": "raw grade",
-    })
-    request = _request(
-        tmp_path, enable_serpapi=True, query_templates=["{label}"],
-        targets=[{"label": name} for name in ("first", "second", "partial", "redirect")],
-        seed_urls=["https://agency.gov/partial/report.pdf"],
-        allowed_domains=["agency.gov"], partition_by=["label"], retry_max_attempts=1,
-        document_review={"document_description": "synthetic records", "keep_top": 1,
-                         "deduplicate_redundant": False},
+    monkeypatch.setattr(
+        DocumentReviewer,
+        "_grade",
+        lambda self, *args, **kwargs: {
+            "is_primary": True,
+            "relevance": 0.9,
+            "doc_kind": "synthetic",
+            "reason": "raw grade",
+        },
     )
-    prior = tmp_path / "domain/curated/by_label/partial/report.pdf"
+    request = _request(
+        tmp_path,
+        queries=["{label}"],
+        targets=[
+            {"label": "first"},
+            {"label": "second"},
+            {"label": "partial", "urls": ["https://agency.gov/partial/report.pdf"]},
+            {"label": "redirect"},
+        ],
+        allowed_domains=["agency.gov"],
+        partition_by=["label"],
+        retry_max_attempts=1,
+        document_review={
+            "document_description": "synthetic records",
+            "keep_top": 1,
+            "deduplicate_redundant": False,
+        },
+    )
+    prior = tmp_path / DOMAIN_DIR / "curated/by_label/partial/report.pdf"
     prior.parent.mkdir(parents=True)
     prior.write_bytes(b"prior complete evidence")
-    (tmp_path / "domain/download_index.csv").write_text(
+    (tmp_path / DOMAIN_DIR / "download_index.csv").write_text(
         "relative_path,url\nby_label/partial/report.pdf,https://agency.gov/prior.pdf\n"
     )
     result = DiscoveryEngine().run(request)
@@ -337,16 +375,22 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     assert manifest["status"] == "partial_failure"
     assert prior.read_bytes() == b"prior complete evidence"
     assert result.curated_count == 3
-    assert not (tmp_path / "domain/curated/by_label/redirect/report.pdf").exists()
-    context = build_source_context_map(tmp_path / "domain/curated", None)
+    assert not (tmp_path / DOMAIN_DIR / "curated/by_label/redirect/report.pdf").exists()
+    context = build_source_context_map(tmp_path / DOMAIN_DIR / "curated")
     assert "report.pdf" not in context
     for label in ("first", "second"):
-        path = tmp_path / f"domain/curated/by_label/{label}/report.pdf"
+        path = tmp_path / DOMAIN_DIR / f"curated/by_label/{label}/report.pdf"
         assert path.exists()
-        assert f"https://agency.gov/{label}/report.pdf" in prepend_source_context("BODY", path, context)
-    assert "https://agency.gov/prior.pdf" in prepend_source_context("BODY", prior, context)
-    checkpoint = DiscoveryEngine._load_checkpoint(tmp_path / "domain/checkpoint.json")
-    assert set(checkpoint) == {"first", "second"}
+        assert f"https://agency.gov/{label}/report.pdf" in prepend_source_context(
+            "BODY", source_context(path, context)
+        )
+    assert "https://agency.gov/prior.pdf" in prepend_source_context(
+        "BODY", source_context(prior, context)
+    )
+    checkpoint = DiscoveryEngine._load_checkpoint(tmp_path / DOMAIN_DIR / "checkpoint.json")
+    assert set(checkpoint) == {  # an off-domain redirect is a final outcome
+        identify_target({"label": label}) for label in ("first", "second", "redirect")
+    }
 
     # Continue through the shared UI-free extraction worker.
     import pandas as pd
@@ -364,10 +408,20 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     def extract(text, schema, **kwargs):
         url = text.split("SOURCE_URL: ", 1)[1].splitlines()[0]
         seen_origins.append(url)
-        return {"data": {"source": {"url": url}, "comments": [{
-            "type": "statement", "summary": "Synthetic statement",
-            "evidence_quote": "Exact fixture statement", "evidence_locator": "Page 1",
-        }]}, "cost": 0.0}
+        return {
+            "data": {
+                "source": {"url": url},
+                "comments": [
+                    {
+                        "type": "statement",
+                        "summary": "Synthetic statement",
+                        "evidence_quote": "Exact fixture statement",
+                        "evidence_locator": "Page 1",
+                    }
+                ],
+            },
+            "cost": 0.0,
+        }
 
     monkeypatch.setattr(extractor.client, "extract", extract)
 
@@ -381,20 +435,38 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     )
     output = tmp_path / "extracted"
     output.mkdir()
+    root = tmp_path / DOMAIN_DIR / "curated"
     for label in ("first", "second", "partial"):
         (output / label).mkdir()
-        document = tmp_path / f"domain/curated/by_label/{label}/report.pdf"
+        document = root / f"by_label/{label}/report.pdf"
+        plan = {
+            "llm": {"model": "gpt-fixture", "provider": "openai"},
+            "inputs": {},
+            "outputs": {document: output / label / "report.json"},
+            "roster": None,
+            "candidates": {},
+            "anchors": {},
+            "roster_errors": {},
+            "context": context,
+            "root": root,
+            "schema": schema,
+            "schema_path": schema_path,
+            "metadata": metadata,
+            "evidence_paths": [],
+            "quote_rows": None,
+            "fingerprints": {document: "a" * 64},
+        }
         result = _extract_one_document(
-            document, extractor=extractor, loaded_schema=schema,
-            schema_metadata=metadata, schema_path=schema_path,
-            output_path=output / label / "report.json", model="gpt-fixture",
-            run_id="run://integration", provider="openai",
-            input_fingerprint="a" * 64,
-            page_range=(1, 1), source_context_map=context,
+            document,
+            plan,
+            extractor=extractor,
+            run_id="run://integration",
+            page_range=(1, 1),
         )
         assert result["success"], result
     assert set(seen_origins) == {
-        "https://agency.gov/first/report.pdf", "https://agency.gov/second/report.pdf",
+        "https://agency.gov/first/report.pdf",
+        "https://agency.gov/second/report.pdf",
         "https://agency.gov/prior.pdf",
     }
     compiled = compile_extractions(
@@ -418,11 +490,15 @@ def test_browser_render_redirect_cannot_bypass_source_policy(monkeypatch, tmp_pa
     shell.write_text("<html><body>shell</body></html>")
     browser = SimpleNamespace(
         fetch_html=Mock(return_value="<html><body>" + "rendered " * 2000 + "</body></html>"),
-        current_url="https://outside.example.org/document", close=lambda: None,
+        current_url="https://outside.example.org/document",
+        close=lambda: None,
     )
-    monkeypatch.setattr(DiscoveryEngine, "_open_browser_for_download", lambda self: (browser, "fixture"))
+    monkeypatch.setattr(
+        DiscoveryEngine, "_open_browser_for_download", lambda self, request: (browser, "fixture")
+    )
     request = _request(
-        tmp_path, allowed_domains=["agency.gov"],
+        tmp_path,
+        allowed_domains=["agency.gov"],
         browser_escalation={"enabled": True},
     )
     records = [{"path": str(shell), "status": "downloaded", "url": "https://agency.gov/document"}]
@@ -462,35 +538,41 @@ def test_review_failure_does_not_curate_every_download_or_reuse_stale_grade(tmp_
     if failure == "unavailable":
         reviewer._ensure_client = Mock(side_effect=ValueError("no credentials"))
     else:
-        reviewer._ensure_client = lambda: object()
+        reviewer._ensure_client = object
         reviewer._grade = lambda *args, **kwargs: None
     reviewer.review([record], [])
     assert record.get("review_failed") is True
     assert not record.get("review_selected")
     _, count, _ = DiscoveryEngine._materialize_curated(
-        documents_dir=tmp_path, download_records=[record],
+        documents_dir=tmp_path,
+        download_records=[record],
     )
     assert count == 0
 
 
 def test_cached_raw_grade_is_independent_of_pdf_dedup_selection(tmp_path):
     records = []
-    for name, score in (("one.pdf", 0.9), ("two.pdf", 0.8)):
+    for name in ("one.pdf", "two.pdf"):
         path = tmp_path / name
         path.write_text(name)
-        records.append({"path": str(path), "status": "downloaded", "target_metadata": {"label": "alpha"}})
-    reviewer = DocumentReviewer(document_description="records", keep_top=2)
-    reviewer._ensure_client = lambda: object()
+        records.append(
+            {"path": str(path), "status": "downloaded", "target_metadata": {"label": "alpha"}}
+        )
+    reviewer = DocumentReviewer(
+        document_description="records", keep_top=2, cache_dir=tmp_path / ".review_cache"
+    )
+    reviewer._ensure_client = object
     reviewer._grade = lambda path, **kwargs: {
-        "is_primary": True, "relevance": 0.9 if path.endswith("one.pdf") else 0.8,
-        "doc_kind": "record", "reason": "original raw grade",
+        "is_primary": True,
+        "relevance": 0.9 if path.endswith("one.pdf") else 0.8,
+        "doc_kind": "record",
+        "reason": "original raw grade",
     }
     reviewer._find_redundant_docs = lambda records, context: {1}
     reviewer.review(records, [])
     assert sum(record["review_selected"] for record in records) == 1
-    sidecar = json.loads((tmp_path / ".review/two.pdf.json").read_text())
-    assert sidecar["llm"]["reason"] == "original raw grade"
-    assert sidecar["selection"]["redundant"]
+    assert records[1]["review_grade"]["reason"] == "original raw grade"
+    assert records[1]["review_redundant"]
     reviewer._deduplicate_redundant = False
     reviewer._grade = Mock(side_effect=AssertionError("must reuse raw grade"))
     reviewer.review(records, [])
@@ -499,23 +581,27 @@ def test_cached_raw_grade_is_independent_of_pdf_dedup_selection(tmp_path):
 
 
 def test_failed_download_retains_target_and_prior_curation(monkeypatch, tmp_path):
-    from requests.exceptions import ConnectionError
+    from requests.exceptions import ConnectionError as RequestsConnectionError
 
     target = {"label": "alpha"}
     engine = DiscoveryEngine()
     request = _request(tmp_path, targets=[target], partition_by=["label"], retry_max_attempts=1)
-    candidates = [make_candidate("https://agency.gov/good.pdf"), make_candidate("https://agency.gov/bad.pdf")]
+    candidates = [
+        make_candidate("https://agency.gov/good.pdf"),
+        make_candidate("https://agency.gov/bad.pdf"),
+    ]
     for candidate in candidates:
         candidate.target_metadata = target
+        candidate.target_id = identify_target(target)
     monkeypatch.setattr(engine, "_run_seeker", lambda *args: (candidates, [], [], [], [], 0))
 
     def fetch(url, **kwargs):
         if url.endswith("bad.pdf"):
-            raise ConnectionError("fixture failure")
+            raise RequestsConnectionError("fixture failure")
         return FakeResponse(url=url, chunks=[b"%PDF good"])
 
-    monkeypatch.setattr("requests.get", fetch)
-    prior = tmp_path / "domain/curated/by_label/alpha/prior.pdf"
+    monkeypatch.setattr("psweep.discovery.network.request_get", fetch)
+    prior = tmp_path / DOMAIN_DIR / "curated/by_label/alpha/prior.pdf"
     prior.parent.mkdir(parents=True)
     prior.write_bytes(b"prior complete")
     result = engine.run(request)
@@ -523,7 +609,7 @@ def test_failed_download_retains_target_and_prior_curation(monkeypatch, tmp_path
     failed = next(record for record in records if record["status"] == "failed")
     assert failed["target_metadata"] == target
     assert prior.read_bytes() == b"prior complete"
-    assert not engine._load_checkpoint(tmp_path / "domain/checkpoint.json")
+    assert not engine._load_checkpoint(tmp_path / DOMAIN_DIR / "checkpoint.json")
 
 
 def test_review_failure_is_local_to_failed_records(tmp_path):
@@ -533,14 +619,29 @@ def test_review_failure_is_local_to_failed_records(tmp_path):
     bad = good.parent / "bad.pdf"
     bad.write_bytes(b"ungraded")
     records = [
-        {"path": str(good), "relative_path": "good.pdf", "status": "downloaded", "review_selected": True},
-        {"path": str(bad), "relative_path": "bad.pdf", "status": "downloaded", "review_selected": False, "review_failed": True},
+        {
+            "path": str(good),
+            "relative_path": "good.pdf",
+            "status": "downloaded",
+            "review_selected": True,
+        },
+        {
+            "path": str(bad),
+            "relative_path": "bad.pdf",
+            "status": "downloaded",
+            "review_selected": False,
+            "review_failed": True,
+        },
     ]
-    curated, count, errors = DiscoveryEngine._materialize_curated(documents_dir=good.parent, download_records=records)
+    curated, count, errors = DiscoveryEngine._materialize_curated(
+        documents_dir=good.parent, download_records=records
+    )
     assert count == 1 and errors == 0
     assert (curated / "good.pdf").exists()
     assert not (curated / "bad.pdf").exists()
-    DiscoveryEngine._apply_document_retention(mode="curated", documents_dir=good.parent, curated_dir=curated, download_records=records)
+    DiscoveryEngine._apply_document_retention(
+        mode="curated", documents_dir=good.parent, curated_dir=curated, download_records=records
+    )
     assert good.exists()
 
 
@@ -550,7 +651,9 @@ def test_root_promotion_does_not_clear_new_descendants(tmp_path):
     (run_curated / "partition").mkdir(parents=True)
     (run_curated / "root.pdf").write_bytes(b"root")
     (run_curated / "partition/report.pdf").write_bytes(b"report")
-    DiscoveryEngine._promote_to_consolidated_curated(run_curated_dir=run_curated, domain_dir=domain, attempted_partitions={Path("partition")})
+    DiscoveryEngine._promote_to_consolidated_curated(
+        run_curated_dir=run_curated, domain_dir=domain, attempted_partitions={Path("partition")}
+    )
     assert (domain / "curated/partition/report.pdf").read_bytes() == b"report"
 
 
@@ -559,12 +662,42 @@ def test_nested_promotion_keeps_root_provenance(tmp_path):
     run_curated = domain / "runs/probe/curated"
     (run_curated / "county").mkdir(parents=True)
     (run_curated / "county/new.pdf").write_bytes(b"new")
-    (domain / "download_index.csv").write_text("relative_path,url\nroot.pdf,https://agency.gov/root.pdf\ncounty/old.pdf,https://agency.gov/old.pdf\n")
-    (run_curated.parent / "download_index.csv").write_text("relative_path,url\ncounty/new.pdf,https://agency.gov/new.pdf\n")
-    DiscoveryEngine._promote_to_consolidated_curated(run_curated_dir=run_curated, domain_dir=domain)
+    (domain / "download_index.csv").write_text(
+        "relative_path,url\nroot.pdf,https://agency.gov/root.pdf\ncounty/old.pdf,https://agency.gov/old.pdf\n"
+    )
+    (run_curated.parent / "download_index.csv").write_text(
+        "relative_path,url\ncounty/new.pdf,https://agency.gov/new.pdf\n"
+    )
+    DiscoveryEngine._promote_to_consolidated_curated(
+        run_curated_dir=run_curated,
+        domain_dir=domain,
+        attempted_partitions={Path("county")},
+    )
     with (domain / "download_index.csv").open() as stream:
         rows = {row["relative_path"] for row in csv.DictReader(stream)}
     assert rows == {"root.pdf", "county/new.pdf"}
+
+
+def test_unattempted_promotion_adds_files_without_replacing_partition(tmp_path):
+    """Resumed runs publish file by file; other documents in the partition stay."""
+    domain = tmp_path / "domain"
+    run_curated = domain / "runs/probe/curated"
+    (run_curated / "county").mkdir(parents=True)
+    (run_curated / "county/new.pdf").write_bytes(b"new")
+    (domain / "curated/county").mkdir(parents=True)
+    (domain / "curated/county/old.pdf").write_bytes(b"old")
+    (domain / "download_index.csv").write_text(
+        "relative_path,url\ncounty/old.pdf,https://agency.gov/old.pdf\n"
+    )
+    (run_curated.parent / "download_index.csv").write_text(
+        "relative_path,url\ncounty/new.pdf,https://agency.gov/new.pdf\n"
+    )
+    DiscoveryEngine._promote_to_consolidated_curated(run_curated_dir=run_curated, domain_dir=domain)
+    assert (domain / "curated/county/old.pdf").read_bytes() == b"old"
+    assert (domain / "curated/county/new.pdf").read_bytes() == b"new"
+    with (domain / "download_index.csv").open() as stream:
+        rows = {row["relative_path"] for row in csv.DictReader(stream)}
+    assert rows == {"county/old.pdf", "county/new.pdf"}
 
 
 def test_embedded_redaction_handles_uppercase_schemes_and_commas():
@@ -576,9 +709,71 @@ def test_embedded_redaction_handles_uppercase_schemes_and_commas():
     assert "password" not in redacted and "secret" not in redacted and "remaining" not in redacted
 
 
-def test_retry_groups_use_complete_target_identity():
+def test_retry_groups_use_target_id_and_skip_shared_records():
     records = [
-        {"target_metadata": {"label": "shared", "state": "CA"}, "review_selected": True},
-        {"target_metadata": {"label": "shared", "state": "CO"}, "review_selected": False},
+        {"target_id": "ca", "target_metadata": {"label": "same"}, "review_selected": True},
+        {"target_id": "co", "target_metadata": {"label": "same"}, "review_selected": False},
+        {"target_id": None, "review_selected": False},
     ]
-    assert len(DiscoveryEngine._group_records_by_target_label(records)) == 2
+    assert set(DiscoveryEngine._group_records_by_target(records)) == {"ca", "co"}
+
+
+def test_configured_urls_are_always_kept_while_crawled_children_are_filtered(
+    monkeypatch,
+    tmp_path,
+):
+    """Configured URLs bypass selection, review and caps; crawled links do not."""
+    hub = "https://agency.gov/hub.html"
+    pages = {
+        hub: (
+            '<a href="/docs/best.pdf">best</a> <a href="/docs/weak.pdf">weak</a>'
+            ' <a href="/archive/old.pdf">old</a>'
+        )
+    }
+
+    def fetch(url, **kwargs):
+        if url in pages:
+            return FakeResponse(url=url, content_type="text/html", text=pages[url])
+        return FakeResponse(url=url, chunks=[b"%PDF\n" + url.encode()])
+
+    def grade(self, path, target_context="", source_url=""):
+        relevance = 0.9 if source_url.endswith("best.pdf") else 0.2
+        return {
+            "is_primary": relevance > 0.5,
+            "relevance": relevance,
+            "doc_kind": "synthetic",
+            "reason": "fixture",
+        }
+
+    monkeypatch.setattr("psweep.discovery.network.request_get", fetch)
+    monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda self: object())
+    monkeypatch.setattr(DocumentReviewer, "_grade", grade)
+    request = _request(
+        tmp_path,
+        sources=["https://shared.gov/archive/shared.pdf"],
+        targets=[{"label": "t1", "urls": ["https://agency.gov/archive/own.pdf", hub]}],
+        max_depth=1,
+        partition_by=["label"],
+        retry_max_attempts=1,
+        selection_exclude_url_patterns=["archive"],
+        selection_primary_per_target=1,
+        document_review={
+            "document_description": "synthetic records",
+            "keep_top": 1,
+            "deduplicate_redundant": False,
+        },
+    )
+
+    result = DiscoveryEngine().run(request)
+
+    curated = tmp_path / DOMAIN_DIR / "curated"
+    assert sorted(p.relative_to(curated).as_posix() for p in curated.rglob("*.pdf")) == [
+        "_shared/shared.pdf",
+        "by_label/t1/best.pdf",
+        "by_label/t1/own.pdf",
+    ]
+    manifest = json.loads(result.manifest_path.read_text())
+    downloaded = {
+        Path(r["url"]).name for r in manifest["downloads"] if r.get("status") == "downloaded"
+    }
+    assert "old.pdf" not in downloaded

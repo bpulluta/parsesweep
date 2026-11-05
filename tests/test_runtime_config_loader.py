@@ -15,21 +15,7 @@ def test_load_runtime_config_file_rejects_unknown_top_level(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text("unknown_key: true\n", encoding="utf-8")
 
-    with pytest.raises(RuntimeConfigError, match="Unknown top-level config keys"):
-        load_runtime_config_file(config_path)
-
-
-def test_load_runtime_config_file_rejects_renamed_qaqc_section(tmp_path: Path):
-    """A pre-rename 'qaqc:' section fails with a clear migration message."""
-    config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        "domain: x\nqaqc:\n  models: [a, b]\n", encoding="utf-8"
-    )
-
-    with pytest.raises(
-        RuntimeConfigError,
-        match="'qaqc' config section was renamed to 'validation'",
-    ):
+    with pytest.raises(RuntimeConfigError, match="unknown key 'unknown_key'"):
         load_runtime_config_file(config_path)
 
 
@@ -37,10 +23,10 @@ def test_resolve_command_config_merges_cli_and_file_values(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+domain: my_domain
+schema: config/my_domain/schema.json
 extraction:
-  input_dir: documents/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
-  output_dir: processed/geothermal_ordinances
+  skip_existing: true
   max_context: 111111
   timeout_seconds: 480
 """,
@@ -52,12 +38,12 @@ extraction:
         command="extract",
         cli_values={"max_context": 222222},
         config_data=config_data,
-        strict=True,
     )
 
-    assert resolved["path"] == "documents/geothermal_ordinances"
-    assert resolved["schema"] == "schemas/personal/geothermal_ordinance_schema.json"
-    assert resolved["output"] == "processed/geothermal_ordinances"
+    assert resolved["path"] == "outputs/my_domain/discovered/curated"
+    assert resolved["schema"] == "config/my_domain/schema.json"
+    assert resolved["output"] == "outputs/my_domain/extracted"
+    assert resolved["_config_sources"]["output"] == "derived"
     assert resolved["max_context"] == 222222
     assert resolved["timeout_seconds"] == 480
     assert resolved["_config_sources"]["max_context"] == "cli"
@@ -67,21 +53,19 @@ def test_resolve_command_config_strict_unknown_section_key_raises(tmp_path: Path
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+schema: config/my_domain/schema.json
 compilation:
-  input_dir: processed/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
   random_flag: true
 """,
         encoding="utf-8",
     )
     config_data = load_runtime_config_file(config_path)
 
-    with pytest.raises(RuntimeConfigError, match="Unknown keys in 'compilation' section"):
+    with pytest.raises(RuntimeConfigError, match=r"unknown key 'compilation.random_flag'"):
         resolve_command_config(
             command="compile",
             cli_values={},
             config_data=config_data,
-            strict=True,
         )
 
 
@@ -91,15 +75,14 @@ def test_load_runtime_config_file_rejects_invalid_compilation_provenance_policy(
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+schema: config/my_domain/schema.json
 compilation:
-  input_dir: processed/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
   provenance_policy: maybe
 """,
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeConfigError, match="compilation.provenance_policy"):
+    with pytest.raises(RuntimeConfigError, match=r"compilation.provenance_policy"):
         load_runtime_config_file(config_path)
 
 
@@ -107,9 +90,8 @@ def test_resolve_command_config_maps_compilation_provenance_policy(tmp_path: Pat
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+schema: config/my_domain/schema.json
 compilation:
-  input_dir: processed/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
   provenance_policy: FAIL
 """,
         encoding="utf-8",
@@ -120,10 +102,37 @@ compilation:
         command="compile",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
 
     assert resolved["provenance_policy"] == "fail"
+
+
+def test_runtime_catalog_is_derived_from_the_config_schemas():
+    from psweep.config import VARIABLE_CATALOG
+    from psweep.config.discovery_config import DISCOVERY_SCHEMA
+    from psweep.config.runtime_config_loader import (
+        _ALLOWED_SECTION_FIELDS,
+        _ALLOWED_TOP_LEVEL,
+    )
+
+    names = {
+        section: [entry["name"] for entry in entries]
+        for section, entries in VARIABLE_CATALOG.items()
+    }
+    assert names["discovery"] == list(DISCOVERY_SCHEMA)
+    assert {"search", "link_prioritization", "retry_policy", "partition_by"} <= set(
+        names["discovery"]
+    )
+    for section, allowed in _ALLOWED_SECTION_FIELDS.items():
+        assert set(names[section]) == set(allowed), section
+    assert set(names["global"]) == _ALLOWED_TOP_LEVEL - set(_ALLOWED_SECTION_FIELDS) - {"discovery"}
+    assert all(len(set(entries)) == len(entries) for entries in names.values())
+
+
+@pytest.mark.parametrize("command", ["discovery", "extraction", "compilation", "validation"])
+def test_commands_resolve_by_command_name_only(command: str):
+    with pytest.raises(RuntimeConfigError, match="Unsupported command"):
+        catalog_for_command(command)
 
 
 def test_catalog_for_command_contains_required_and_advanced_fields():
@@ -131,29 +140,28 @@ def test_catalog_for_command_contains_required_and_advanced_fields():
     names = {entry["name"] for entry in entries}
     levels = {entry["name"]: entry["level"] for entry in entries}
 
-    assert "input_dir" in names
+    assert "input_dir" not in names
+    assert "max_concurrent" in names
     assert "schema" in names
-    assert levels["input_dir"] == "required"
+    assert levels["schema"] == "optional"
     assert levels["max_context"] == "advanced"
     assert levels["timeout_seconds"] == "advanced"
 
 
 @pytest.mark.parametrize("timeout_value", [0, -1, True, "600"])
-def test_load_runtime_config_file_rejects_invalid_extraction_timeout(
-    tmp_path: Path, timeout_value
-):
+def test_load_runtime_config_file_rejects_invalid_extraction_timeout(tmp_path: Path, timeout_value):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
+schema: config/my_domain/schema.json
 extraction:
-  input_dir: documents/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  skip_existing: true
   timeout_seconds: {timeout_value!r}
 """,
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeConfigError, match="extraction.timeout_seconds"):
+    with pytest.raises(RuntimeConfigError, match=r"extraction.timeout_seconds"):
         load_runtime_config_file(config_path)
 
 
@@ -161,9 +169,9 @@ def test_load_runtime_config_file_accepts_ocr_corrections(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+schema: config/my_domain/schema.json
 extraction:
-  input_dir: documents/x
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  skip_existing: true
   ocr_corrections:
     - {pattern: '\\bIbs\\b', replacement: 'lbs'}
     - {pattern: 'gaspowered', replacement: 'gas powered', ignore_case: true}
@@ -191,9 +199,9 @@ def test_load_runtime_config_file_rejects_invalid_ocr_corrections(
 ):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
+        "schema: config/my_domain/schema.json\n"
         "extraction:\n"
-        "  input_dir: documents/x\n"
-        "  schema: schemas/personal/geothermal_ordinance_schema.json\n"
+        "  skip_existing: true\n"
         "  ocr_corrections:\n" + rules_block,
         encoding="utf-8",
     )
@@ -202,35 +210,33 @@ def test_load_runtime_config_file_rejects_invalid_ocr_corrections(
 
 
 def test_load_runtime_config_file_accepts_valid_discovery_section(tmp_path: Path):
-        config_path = tmp_path / "run.yaml"
-        config_path.write_text(
-                """
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        """
 discovery:
-    seeds:
-        - https://example.org/docs
-    topology:
-        mode: hybrid
-    query_families:
-        geothermal_generic:
-            - "{jurisdiction} {state} geothermal ordinance pdf"
-    runtime:
-        max_pages: 50
-        max_concurrent_downloads: 3
-        min_request_interval_ms: 150
-    policy:
-        robots_mode: warn
-        tos_mode: enforce
-        acknowledged_tos_domains:
-            - county.gov
+  sources:
+    - https://example.org/docs
+  queries:
+    - "{jurisdiction} {state} geothermal ordinance pdf"
+  crawl:
+    max_depth: 1
+    max_pages: 50
+  runtime:
+    max_concurrent_downloads: 3
+    min_request_interval_ms: 150
+  policy:
+    robots_mode: warn
+    tos_mode: enforce
+    acknowledged_tos_domains:
+      - county.gov
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        loaded = load_runtime_config_file(config_path)
-        assert loaded["discovery"]["topology"]["mode"] == "hybrid"
-        assert loaded["discovery"]["runtime"]["max_concurrent_downloads"] == 3
-        assert loaded["discovery"]["runtime"]["min_request_interval_ms"] == 150
-        assert loaded["discovery"]["policy"]["robots_mode"] == "warn"
+    loaded = load_runtime_config_file(config_path)
+    assert loaded["discovery"]["crawl"]["max_depth"] == 1
+    assert loaded["discovery"]["runtime"]["max_concurrent_downloads"] == 3
+    assert loaded["discovery"]["policy"]["robots_mode"] == "warn"
 
 
 @pytest.mark.parametrize(
@@ -241,8 +247,8 @@ discovery:
             "discovery.runtime.max_concurrent_downloads",
         ),
         ("  policy:\n    robots_mode: maybe\n", "discovery.policy.robots_mode"),
-        ("  topology:\n    mode: unknown_mode\n", "discovery.topology.mode"),
-        ("  - not\n  - an\n  - object\n", "'discovery' section must be an object"),
+        ("  crawl:\n    provider: crawlee\n", "discovery.crawl.provider"),
+        ("  - not\n  - an\n  - object\n", "'discovery' must be an object"),
     ],
 )
 def test_load_runtime_config_file_rejects_invalid_discovery_config(
@@ -256,18 +262,16 @@ def test_load_runtime_config_file_rejects_invalid_discovery_config(
 
 
 @pytest.mark.parametrize("flag", [True, False])
-def test_load_runtime_config_file_accepts_browser_escalation_bool(
-    tmp_path: Path, flag: bool
-):
+def test_load_runtime_config_file_accepts_browser_escalation_bool(tmp_path: Path, flag: bool):
     """The documented bool shorthand for browser_escalation loads (regression)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        f"discovery:\n  browser_escalation: {str(flag).lower()}\n",
+        f"discovery:\n  crawl:\n    browser_escalation: {str(flag).lower()}\n",
         encoding="utf-8",
     )
 
     loaded = load_runtime_config_file(config_path)
-    assert loaded["discovery"]["browser_escalation"] is flag
+    assert loaded["discovery"]["crawl"]["browser_escalation"] is flag
 
 
 def test_load_runtime_config_file_accepts_browser_escalation_mapping(
@@ -276,33 +280,28 @@ def test_load_runtime_config_file_accepts_browser_escalation_mapping(
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         "discovery:\n"
-        "  browser_escalation:\n"
-        "    enabled: true\n"
-        "    min_shell_chars: 8000\n"
-        "    min_rendered_chars: 10000\n"
-        "    settle_seconds: 20\n",
+        "  crawl:\n"
+        "    browser_escalation:\n"
+        "      enabled: true\n"
+        "      min_shell_chars: 8000\n"
+        "      min_rendered_chars: 10000\n"
+        "      settle_seconds: 20\n",
         encoding="utf-8",
     )
 
     loaded = load_runtime_config_file(config_path)
-    assert loaded["discovery"]["browser_escalation"]["min_shell_chars"] == 8000
+    assert loaded["discovery"]["crawl"]["browser_escalation"]["min_shell_chars"] == 8000
 
 
 @pytest.mark.parametrize(
     ("escalation_block", "match"),
     [
         (
-            "    enabled: true\n    bogus_key: 1\n",
+            "      enabled: true\n      bogus_key: 1\n",
             "unknown key",
         ),
-        (
-            "    min_shell_chars: -5\n",
-            "min_shell_chars must be >= 0",
-        ),
-        (
-            "    min_shell_chars: not-an-int\n",
-            "min_shell_chars must be an integer",
-        ),
+        ("      min_shell_chars: -5\n", "min_shell_chars' must be an integer >= 0"),
+        ("      min_shell_chars: x\n", "min_shell_chars' must be an integer >= 0"),
     ],
 )
 def test_load_runtime_config_file_rejects_invalid_browser_escalation(
@@ -311,7 +310,7 @@ def test_load_runtime_config_file_rejects_invalid_browser_escalation(
     """Inner-key validation now runs at load time (single source of truth)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        f"discovery:\n  browser_escalation:\n{escalation_block}",
+        f"discovery:\n  crawl:\n    browser_escalation:\n{escalation_block}",
         encoding="utf-8",
     )
 
@@ -327,21 +326,20 @@ def test_load_runtime_config_file_rejects_invalid_browser_escalation(
     ],
 )
 def test_load_runtime_config_file_rejects_split_processing_override(
-    tmp_path: Path, override_body: str,
+    tmp_path: Path,
+    override_body: str,
 ):
     """Flat and wrapped overrides must be migrated into the run config."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "extraction:\n"
-        "  input_dir: documents/geothermal_ordinances\n"
-        "  schema: schemas/personal/geothermal_ordinance_schema.json\n"
-        "  output_dir: processed/from-run\n",
+        "schema: config/my_domain/schema.json\nextraction:\n  skip_existing: true\n",
         encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(override_body, encoding="utf-8")
 
     with pytest.raises(
-        RuntimeConfigError, match="Implicit section override files",
+        RuntimeConfigError,
+        match="Implicit section override files",
     ) as exc:
         load_runtime_config_file(run_path)
     assert "extraction.yaml" in str(exc.value)
@@ -354,260 +352,88 @@ def test_load_runtime_config_file_rejects_all_split_files_for_same_section(
     """Every conflicting override is listed in the migration error."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "extraction:\n  input_dir: docs\n  schema: s.json\n", encoding="utf-8",
+        "schema: s.json\nextraction:\n  skip_existing: true\n",
+        encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(
-        "output_dir: one\n", encoding="utf-8",
+        "output_dir: one\n",
+        encoding="utf-8",
     )
     (tmp_path / "extraction.json").write_text(
-        '{"output_dir": "two"}', encoding="utf-8",
+        '{"output_dir": "two"}',
+        encoding="utf-8",
     )
 
     with pytest.raises(
-        RuntimeConfigError, match="Implicit section override files",
+        RuntimeConfigError,
+        match="Implicit section override files",
     ) as exc:
         load_runtime_config_file(run_path)
     assert "extraction.yaml" in str(exc.value)
     assert "extraction.json" in str(exc.value)
 
 
-def test_resolve_command_config_supports_acquire_alias(tmp_path: Path):
+def test_resolve_command_config_maps_crawl_and_runtime_fields(tmp_path: Path):
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
         """
-domain: geothermal_ordinances
+domain: demo
 discovery:
-  seeds:
-    - https://example.org/a
-  query: geothermal ordinance
-  output:
-    documents_dir: documents/geothermal_ordinances/acquired
-    manifest_path: output/discovery/geothermal_ordinances/manifest.json
-""",
-        encoding="utf-8",
-    )
-
-    config_data = load_runtime_config_file(run_path)
-    resolved = resolve_command_config(
-        command="discover",
-        cli_values={},
-        config_data=config_data,
-        strict=True,
-    )
-
-    assert resolved["seed_urls"] == ["https://example.org/a"]
-    assert resolved["query"] == "geothermal ordinance"
-    assert resolved["output_documents"] == "documents/geothermal_ordinances/acquired"
-    assert resolved["output_manifest"] == "output/discovery/geothermal_ordinances/manifest.json"
-    assert resolved["domain"] == "geothermal_ordinances"
-
-
-def test_resolve_command_config_sets_serpapi_flag_from_search_provider(tmp_path: Path):
-    run_path = tmp_path / "run.yaml"
-    run_path.write_text(
-        """
-discovery:
-  seeds:
-    - https://example.org/a
-  search:
-    provider: serpapi
-    enabled: true
-""",
-        encoding="utf-8",
-    )
-
-    config_data = load_runtime_config_file(run_path)
-    resolved = resolve_command_config(
-        command="discover",
-        cli_values={},
-        config_data=config_data,
-        strict=True,
-    )
-
-    assert resolved["enable_serpapi"] is True
-
-
-def test_resolve_command_config_maps_discovery_topology_and_runtime_fields(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
-    seeds:
-        - https://county.gov/hub
-    topology:
-        mode: distributed
-    digger:
-        allowed_domains:
-            - county.gov
-        discovery_rules:
-            include_url_patterns:
-                - \\.pdf$
-            include_link_text_patterns:
-                - ordinance
-    runtime:
-        max_depth: 4
-        max_pages: 25
-        max_files: 8
-        timeout_seconds: 12
-        max_concurrent_downloads: 4
-        min_request_interval_ms: 120
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["topology_mode"] == "distributed"
-        assert resolved["allowed_domains"] == ["county.gov"]
-        assert resolved["include_url_patterns"] == [r"\.pdf$"]
-        assert resolved["include_link_text_patterns"] == ["ordinance"]
-        assert resolved["max_depth"] == 4
-        assert resolved["max_pages"] == 25
-        assert resolved["max_files"] == 8
-        assert resolved["timeout_seconds"] == 12
-        assert resolved["max_concurrent_downloads"] == 4
-        assert resolved["min_request_interval_ms"] == 120
-
-
-def test_resolve_command_config_maps_centralized_hub_sweep_fields(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
-    hub_pages:
-        - https://docs.county.gov/index.html
-    topology:
-        mode: centralized
-    routing:
-        index_links:
-            - url: https://docs.county.gov/geothermal-ordinance.pdf
-              text: Geothermal Ordinance
-    digger:
-        index_page_mode:
-            enabled: true
-            collect_all_matching_links: true
-        discovery_rules:
-            include_url_patterns:
-                - \\.pdf$
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["topology_mode"] == "centralized"
-        assert resolved["hub_pages"] == ["https://docs.county.gov/index.html"]
-        assert resolved["index_page_mode"] == {
-                "enabled": True,
-                "collect_all_matching_links": True,
-        }
-        assert resolved["index_links"] == [
-                {
-                        "url": "https://docs.county.gov/geothermal-ordinance.pdf",
-                        "text": "Geothermal Ordinance",
-                }
-        ]
-
-
-def test_resolve_command_config_maps_request_headers(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
+  sources:
+    - https://county.gov/hub
+  crawl:
+    provider: selenium
+    max_depth: 2
+    max_pages: 25
+    allowed_domains:
+      - county.gov
+    include_url_patterns:
+      - \\.pdf$
+    include_link_text_patterns:
+      - ordinance
     request_headers:
-            User-Agent: "ParseSweep/2.0 (custom contact: example@example.com)"
-            Accept-Language: "en-US,en;q=0.9"
+      User-Agent: "ParseSweep/2.0 (contact: example@example.com)"
+  runtime:
+    max_files: 8
+    timeout_seconds: 12
+    max_concurrent_downloads: 4
+    min_request_interval_ms: 120
+  retry_policy:
+    max_attempts: 5
+    initial_backoff_seconds: 2
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=load_runtime_config_file(run_path),
+    )
 
-        assert resolved["request_headers"] == {
-                "User-Agent": "ParseSweep/2.0 (custom contact: example@example.com)",
-                "Accept-Language": "en-US,en;q=0.9",
-        }
-
-
-def test_resolve_command_config_maps_digger_connector_and_retry_policy(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
-    seeds:
-        - https://example.org/hub
-    digger:
-        connector: crawlee_playwright
-    retry_policy:
-        max_attempts: 5
-        initial_backoff_seconds: 2
-        max_backoff_seconds: 16
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["digger_provider"] == "crawlee_playwright"
-        assert resolved["retry_max_attempts"] == 5
-        assert resolved["retry_initial_backoff_seconds"] == 2
-
-
-def test_resolve_command_config_maps_digger_provider_alias(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
-    seeds:
-        - https://example.org/hub
-    digger:
-        provider: http
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["digger_provider"] == "http"
-        assert resolved["_config_sources"]["digger_provider"] == "config.discovery.digger.provider"
+    assert resolved["sources"] == ["https://county.gov/hub"]
+    assert resolved["crawl_provider"] == "selenium"
+    assert resolved["_config_sources"]["crawl_provider"] == "config.discovery.crawl.provider"
+    assert resolved["allowed_domains"] == ["county.gov"]
+    assert resolved["include_url_patterns"] == [r"\.pdf$"]
+    assert resolved["include_link_text_patterns"] == ["ordinance"]
+    assert resolved["request_headers"] == {
+        "User-Agent": "ParseSweep/2.0 (contact: example@example.com)"
+    }
+    assert (resolved["max_depth"], resolved["max_pages"], resolved["max_files"]) == (2, 25, 8)
+    assert resolved["timeout_seconds"] == 12
+    assert resolved["max_concurrent_downloads"] == 4
+    assert resolved["min_request_interval_ms"] == 120
+    assert resolved["retry_max_attempts"] == 5
+    assert resolved["retry_initial_backoff_seconds"] == 2
 
 
 def test_resolve_command_config_maps_link_prioritization_block(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
-    seeds:
+    sources:
         - https://example.org/hub
     link_prioritization:
         mode: heuristic
@@ -618,69 +444,59 @@ discovery:
         domain_scores:
             utility.com: 0.95
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["link_prioritization_mode"] == "heuristic"
-        assert resolved["link_top_k"] == 12
-        assert resolved["link_prioritization_keywords"] == ["tariff", "rate schedule"]
-        assert resolved["link_prioritization_domain_scores"] == {"utility.com": 0.95}
+    assert resolved["link_prioritization_mode"] == "heuristic"
+    assert resolved["link_top_k"] == 12
+    assert resolved["link_prioritization_keywords"] == ["tariff", "rate schedule"]
+    assert resolved["link_prioritization_domain_scores"] == {"utility.com": 0.95}
 
 
 def test_resolve_command_config_maps_selection_relevance_terms(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
-    seeds:
+    sources:
         - https://example.org/hub
     selection:
         require_any:
             - ordinance
             - municipal code
-        relevance_require_legal_marker_terms:
-            - title
-            - chapter
         exclude:
             - state brief
             - specific plan
-        relevance_allowed_domain_patterns:
-            - county.gov
-            - ecode360.com
         require_supported_document: true
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["selection_relevance_require_any_terms"] == ["ordinance", "municipal code"]
-        assert resolved["selection_relevance_require_legal_marker_terms"] == ["title", "chapter"]
-        assert resolved["selection_relevance_exclude_any_terms"] == ["state brief", "specific plan"]
-        assert resolved["selection_relevance_allowed_domain_patterns"] == ["county.gov", "ecode360.com"]
-        assert resolved["selection_require_supported_document"] is True
+    assert resolved["selection_relevance_require_any_terms"] == ["ordinance", "municipal code"]
+    assert resolved["selection_relevance_exclude_any_terms"] == ["state brief", "specific plan"]
+    assert resolved["selection_require_supported_document"] is True
 
 
 def test_resolve_command_config_maps_split_selection_exclusions(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
-  seeds:
+  sources:
         - https://example.org/a
   selection:
         max_per_host_per_target: 2
@@ -689,28 +505,27 @@ discovery:
         exclude_text_patterns:
           - preliminary
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["selection_max_per_host_per_target"] == 2
-        assert resolved["selection_exclude_url_patterns"] == ["archive"]
-        assert resolved["selection_exclude_text_patterns"] == ["preliminary"]
+    assert resolved["selection_max_per_host_per_target"] == 2
+    assert resolved["selection_exclude_url_patterns"] == ["archive"]
+    assert resolved["selection_exclude_text_patterns"] == ["preliminary"]
 
 
 def test_resolve_command_config_maps_generic_selection_templates(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
-    seeds:
+    sources:
         - https://example.org/hub
     selection:
         max_per_target: 3
@@ -718,31 +533,30 @@ discovery:
         draft_patterns:
             - draft
             - proposed
-        target_identity_require_any_templates:
+        target_require_any:
             - "{jurisdiction}"
             - "{manufacturer}"
-        target_identity_require_all_templates:
+        target_require_all:
             - "{state}"
-        target_identity_exclude_any_templates:
+        target_exclude:
             - "sample"
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["selection_primary_per_target"] == 3
-        assert resolved["selection_exclude_draft"] is False
-        assert resolved["selection_draft_patterns"] == ["draft", "proposed"]
-        assert resolved["selection_target_identity_require_any_templates"] == ["{jurisdiction}", "{manufacturer}"]
-        assert resolved["selection_target_identity_require_all_templates"] == ["{state}"]
-        assert resolved["selection_target_identity_exclude_any_templates"] == ["sample"]
+    assert resolved["selection_primary_per_target"] == 3
+    assert resolved["selection_exclude_draft"] is False
+    assert resolved["selection_draft_patterns"] == ["draft", "proposed"]
+    assert resolved["selection_target_require_any"] == ["{jurisdiction}", "{manufacturer}"]
+    assert resolved["selection_target_require_all"] == ["{state}"]
+    assert resolved["selection_target_exclude"] == ["sample"]
 
 
 def test_discovery_selection_max_per_target_must_cover_review_keep_top(
@@ -753,7 +567,7 @@ def test_discovery_selection_max_per_target_must_cover_review_keep_top(
     run_path.write_text(
         """
 discovery:
-  seeds:
+  sources:
         - https://example.org/hub
   selection:
         max_per_target: 2
@@ -771,37 +585,36 @@ discovery:
 
 
 def test_discovery_selection_and_review_accept_equal_limits(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-            """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
-  seeds:
+  sources:
         - https://example.org/hub
   selection:
         max_per_target: 3
   document_review:
         keep_top: 3
 """,
-            encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-            command="discover",
-            cli_values={},
-            config_data=data,
-            strict=True,
-        )
-        assert resolved["selection_primary_per_target"] == 3
-        assert resolved["document_review"]["keep_top"] == 3
+    data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=data,
+    )
+    assert resolved["selection_primary_per_target"] == 3
+    assert resolved["document_review"]["keep_top"] == 3
 
 
 def test_resolve_command_config_maps_discovery_policy_fields(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
-    seeds:
+    sources:
         - https://example.org/hub
     policy:
         robots_mode: enforce
@@ -809,40 +622,6 @@ discovery:
         acknowledged_tos_domains:
             - example.org
             - county.gov
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["robots_policy_mode"] == "enforce"
-        assert resolved["tos_policy_mode"] == "warn"
-        assert resolved["acknowledged_tos_domains"] == ["example.org", "county.gov"]
-
-
-def test_resolve_command_config_maps_targets_and_query_family_controls(tmp_path: Path):
-    run_path = tmp_path / "run.yaml"
-    run_path.write_text(
-        """
-discovery:
-  targets:
-    - manufacturer: Generac
-      power_class_kw: 200-300
-    - manufacturer: John Deere
-      power_class_kw: 200-300
-  query_families:
-    generator_similar_power:
-      - "{manufacturer} {power_class_kw} kW generator spec pdf"
-  search:
-    provider: serpapi
-    use_query_family: generator_similar_power
-    max_results: 7
 """,
         encoding="utf-8",
     )
@@ -852,14 +631,43 @@ discovery:
         command="discover",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
 
-    assert isinstance(resolved["targets"], list)
+    assert resolved["robots_policy_mode"] == "enforce"
+    assert resolved["tos_policy_mode"] == "warn"
+    assert resolved["acknowledged_tos_domains"] == ["example.org", "county.gov"]
+
+
+def test_resolve_command_config_maps_targets_queries_and_search(tmp_path: Path):
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
+discovery:
+  targets:
+    - manufacturer: Generac
+      power_class_kw: 200-300
+    - manufacturer: John Deere
+      power_class_kw: 200-300
+  queries:
+    - "{manufacturer} {power_class_kw} kW generator spec pdf"
+  search:
+    max_results: 7
+    params:
+      tbm: nws
+""",
+        encoding="utf-8",
+    )
+
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=load_runtime_config_file(run_path),
+    )
+
     assert len(resolved["targets"]) == 2
-    assert resolved["query_families"]["generator_similar_power"][0].startswith("{manufacturer}")
-    assert resolved["use_query_family"] == "generator_similar_power"
+    assert resolved["queries"][0].startswith("{manufacturer}")
     assert resolved["seeker_max_results"] == 7
+    assert resolved["seeker_params"] == {"tbm": "nws"}
 
 
 def test_models_block_flows_to_every_command(tmp_path: Path):
@@ -872,21 +680,18 @@ models:
   accurate: gpt-5
 discovery:
   queries: ["a"]
+schema: config/x/schema.json
 extraction:
-  input_dir: documents/demo
-  schema: schemas/personal/x.json
+  skip_existing: true
 compilation:
-  input_dir: processed/demo
-  schema: schemas/personal/x.json
+  dry_run: false
 """,
         encoding="utf-8",
     )
     data = load_runtime_config_file(config_path)
     assert data["models"] == {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
     for command in ("discover", "extract", "compile"):
-        merged = resolve_command_config(
-            command=command, cli_values={}, config_data=data, strict=True
-        )
+        merged = resolve_command_config(command=command, cli_values={}, config_data=data)
         assert merged["models"] == {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
 
 
@@ -921,12 +726,10 @@ def _write(tmp_path: Path, body: str) -> Path:
         ("pages:\n    auto_locate:\n      trigger_chars: -5\n", "trigger_chars"),
     ],
 )
-def test_processing_validator_rejects_invalid_fields(
-    tmp_path: Path, snippet: str, match: str
-):
+def test_processing_validator_rejects_invalid_fields(tmp_path: Path, snippet: str, match: str):
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n  " + snippet,
+        "schema: s.json\nextraction:\n  skip_existing: true\n  " + snippet,
     )
     with pytest.raises(RuntimeConfigError, match=match):
         load_runtime_config_file(cfg)
@@ -935,7 +738,7 @@ def test_processing_validator_rejects_invalid_fields(
 def test_processing_validator_accepts_valid_block(tmp_path: Path):
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n  max_context: 600000\n"
+        "schema: s.json\nextraction:\n  skip_existing: true\n  max_context: 600000\n"
         "  provider: azure\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
@@ -950,7 +753,10 @@ def test_processing_validator_accepts_valid_block(tmp_path: Path):
     ("pages_block", "expected_csv", "expected_section_description"),
     [
         (
-            "  pages:\n    csv: ranges.csv\n    auto_locate:\n      section_description: rate tables\n      trigger_chars: 200000\n",
+            (
+                "  pages:\n    csv: ranges.csv\n    auto_locate:\n"
+                "      section_description: rate tables\n      trigger_chars: 200000\n"
+            ),
             "ranges.csv",
             "rate tables",
         ),
@@ -970,7 +776,7 @@ def test_pages_block_variants(
 ):
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n" + pages_block,
+        "schema: s.json\nextraction:\n  skip_existing: true\n" + pages_block,
     )
     loaded = load_runtime_config_file(cfg)
     ext = loaded["extraction"]
@@ -978,23 +784,20 @@ def test_pages_block_variants(
     if expected_csv is None:
         assert "pages_csv" not in ext
     else:
-        assert ext["pages_csv"] == expected_csv
+        assert ext["pages_csv"] == (tmp_path / expected_csv).as_posix()
 
     if expected_section_description is None:
         assert "page_targeting" not in ext
     else:
         assert ext["page_targeting"]["enabled"] is True
-        assert (
-            ext["page_targeting"]["section_description"]
-            == expected_section_description
-        )
+        assert ext["page_targeting"]["section_description"] == expected_section_description
 
 
 def test_pages_auto_locate_accepts_save_discovered(tmp_path: Path):
     """save_discovered is consumed by extract; a bool must be accepted."""
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  skip_existing: true\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
         "      save_discovered: true\n",
@@ -1007,27 +810,75 @@ def test_pages_auto_locate_rejects_non_bool_save_discovered(tmp_path: Path):
     """A mistyped (non-bool) save_discovered fails loudly instead of no-op'ing."""
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  skip_existing: true\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
         "      save_discovered: yesplease\n",
     )
+    with pytest.raises(RuntimeConfigError, match="save_discovered must be a boolean"):
+        load_runtime_config_file(cfg)
+
+
+@pytest.mark.parametrize(
+    ("pages_block", "match"),
+    [
+        ("  pages:\n    csvv: r.csv\n", "unknown key 'extraction.pages.csvv' — did you mean 'csv'"),
+        (
+            "  pages:\n    auto_locate:\n      section_description: x\n      trigger_char: 5\n",
+            (
+                "unknown key 'extraction.pages.auto_locate.trigger_char' — "
+                "did you mean 'trigger_chars'"
+            ),
+        ),
+    ],
+)
+def test_pages_block_rejects_unknown_sub_keys(tmp_path: Path, pages_block: str, match: str):
+    cfg = _write(tmp_path, "schema: s.json\nextraction:\n" + pages_block)
+    with pytest.raises(RuntimeConfigError, match=match):
+        load_runtime_config_file(cfg)
+
+
+def test_pages_csv_resolves_relative_to_the_config_directory(tmp_path: Path, monkeypatch):
+    config_dir = tmp_path / "config" / "demo"
+    config_dir.mkdir(parents=True)
+    cfg = _write(config_dir, "schema: s.json\nextraction:\n  pages:\n    csv: ranges.csv\n")
+    monkeypatch.chdir(tmp_path)
+
+    loaded = load_runtime_config_file(cfg)
+    resolved = resolve_command_config(command="extract", cli_values={}, config_data=loaded)
+
+    assert loaded["extraction"]["pages_csv"] == (config_dir / "ranges.csv").as_posix()
+    assert resolved["pages_csv"] == (config_dir / "ranges.csv").as_posix()
+
+
+def test_old_flat_pages_keys_rejected_beside_the_pages_block(tmp_path: Path):
+    cfg = _write(
+        tmp_path,
+        "schema: s.json\nextraction:\n  pages:\n    csv: r.csv\n  pages_csv: old.csv\n",
+    )
     with pytest.raises(
-        RuntimeConfigError, match="save_discovered must be a boolean"
+        RuntimeConfigError, match=r"unknown key 'extraction.pages_csv' — did you mean 'pages'"
     ):
         load_runtime_config_file(cfg)
 
 
+@pytest.mark.parametrize("value", ["10-35", "[1, 2]", "true"])
+def test_pages_must_be_a_mapping(tmp_path: Path, value: str):
+    cfg = _write(tmp_path, f"schema: s.json\nextraction:\n  pages: {value}\n")
+    with pytest.raises(RuntimeConfigError, match=r"extraction.pages must be a mapping"):
+        load_runtime_config_file(cfg)
+
+
 def test_old_flat_pages_keys_rejected(tmp_path: Path):
-    """Old pages_csv / page_targeting keys are no longer accepted."""
+    """Internal pages_csv / page_targeting keys fail like any unknown key."""
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  skip_existing: true\n"
         "  pages_csv: old.csv\n"
         "  page_targeting:\n    enabled: true\n"
         "    section_description: old style\n",
     )
-    with pytest.raises(RuntimeConfigError, match="no longer supported"):
+    with pytest.raises(RuntimeConfigError, match=r"unknown key 'extraction.pages_csv'"):
         load_runtime_config_file(cfg)
 
 
@@ -1035,12 +886,10 @@ def test_model_context_windows_validates_and_passes_through(tmp_path: Path):
     cfg = _write(
         tmp_path,
         "model_context_windows:\n  my-deploy: 300000\n"
-        "extraction:\n  schema: s.json\n  input_dir: d\n",
+        "schema: s.json\nextraction:\n  skip_existing: true\n",
     )
     config_data = load_runtime_config_file(cfg)
-    resolved = resolve_command_config(
-        command="extract", cli_values={}, config_data=config_data, strict=True
-    )
+    resolved = resolve_command_config(command="extract", cli_values={}, config_data=config_data)
     assert resolved["model_context_windows"] == {"my-deploy": 300000}
 
 
@@ -1053,157 +902,29 @@ def test_model_context_windows_rejects_non_positive(tmp_path: Path):
         load_runtime_config_file(cfg)
 
 
-# ── compilation.synthesis validation ──────────────────────────────
-# The synthesis block was previously an unchecked passthrough, so a mistyped
-# key (e.g. group_bye) silently produced empty output. These lock the guard.
+def test_compilation_synthesis_block_is_rejected(tmp_path: Path):
+    from psweep.config.runtime_config_loader import resolve_command_config
 
-_VALID_SYNTHESIS = (
-    "compilation:\n"
-    "  input_dir: d\n"
-    "  schema: s.json\n"
-    "  synthesis:\n"
-    "    enabled: true\n"
-    "    min_sources_for_llm: 2\n"
-    "    group_by: [entity.name]\n"
-    "    identity_fields: [entity.city]\n"
-    "    relevance_flag: applicability.on_topic\n"
-    "    citation_field: provenance.url\n"
-    "    reconcile_fields:\n"
-    "      - {field: start, evidence: ev_start}\n"
-    "      - {field: end}\n"
-    "    ordering_constraint: [start, end]\n"
-    "    narrative_fields: [status]\n"
-)
-
-
-def test_synthesis_block_accepts_valid_config(tmp_path: Path):
-    config_data = load_runtime_config_file(_write(tmp_path, _VALID_SYNTHESIS))
-    resolved = resolve_command_config(
-        command="compile",
-        cli_values={},
-        config_data=config_data,
-        strict=True,
+    cfg = load_runtime_config_file(
+        _write(tmp_path, "schema: s.json\ncompilation:\n  synthesis: {enabled: true}\n")
     )
-    assert resolved["synthesis"]["group_by"] == ["entity.name"]
+    with pytest.raises(RuntimeConfigError, match="synthesis"):
+        resolve_command_config(command="compile", cli_values={}, config_data=cfg)
 
 
-def test_synthesis_accepts_branching_ordering_and_exclusive_pairs(tmp_path: Path):
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    group_by: [x]\n"
-        "    reconcile_fields:\n"
-        "      - {field: a}\n"
-        "      - {field: b}\n"
-        "      - {field: c}\n"
-        "    ordering_constraints: [[a, b], [b, c]]\n"
-        "    ordering_exclusive_pairs: [[b, c]]\n"
-        "    ordering_infer_precision_from_pins: false\n"
+def test_compile_inputs_carry_discovery_roster(tmp_path: Path):
+    from psweep.config.runtime_config_loader import resolve_command_config
+
+    (tmp_path / "targets.csv").write_text("state,ahj\nAZ,Pima County\n", encoding="utf-8")
+    cfg = load_runtime_config_file(
+        _write(
+            tmp_path,
+            "schema: s.json\ndiscovery:\n  targets: targets.csv\n  partition_by: [state, ahj]\n",
+        )
     )
-    config_data = load_runtime_config_file(_write(tmp_path, body))
-    resolved = resolve_command_config(
-        command="compile",
-        cli_values={},
-        config_data=config_data,
-        strict=True,
-    )
-    assert resolved["synthesis"]["ordering_constraints"] == [["a", "b"], ["b", "c"]]
-
-
-def test_synthesis_accepts_item_group_by(tmp_path: Path):
-    """item_group_by is an optional list of item-level paths that splits each
-    entity into one row per sub-entity."""
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    enabled: true\n    group_by: [entity.name]\n"
-        "    item_group_by: [phase_label]\n"
-    )
-    config_data = load_runtime_config_file(_write(tmp_path, body))
-    resolved = resolve_command_config(
-        command="compile",
-        cli_values={},
-        config_data=config_data,
-        strict=True,
-    )
-    assert resolved["synthesis"]["item_group_by"] == ["phase_label"]
-
-
-@pytest.mark.parametrize(
-    ("case_id", "body", "match"),
-    [
-        (
-            "item_group_by_must_be_string_list",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    group_by: [x]\n    item_group_by: [\"\"]\n",
-            "item_group_by must be a list of non-empty strings",
-        ),
-        (
-            "item_group_by_may_not_shadow_group_by_column",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    group_by: [entity.name]\n"
-            "    item_group_by: [phase.name]\n",
-            "collide with group_by output column\\(s\\): name",
-        ),
-        (
-            "unknown_key",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    enabled: true\n    group_by: [x]\n    group_bye: [x]\n",
-            "Unknown keys in 'compilation.synthesis'",
-        ),
-        (
-            "enabled_requires_group_by",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    enabled: true\n",
-            "group_by is required",
-        ),
-        (
-            "reconcile_fields_require_field_key",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    group_by: [x]\n"
-            "    reconcile_fields:\n      - {evidence: ev}\n",
-            "non-empty string 'field'",
-        ),
-        (
-            "ordering_must_reference_reconciled_fields",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    group_by: [x]\n"
-            "    reconcile_fields:\n      - {field: start}\n"
-            "    ordering_constraint: [start, missing]\n",
-            "not in reconcile_fields: missing",
-        ),
-        (
-            "min_sources_must_be_non_negative_int",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    group_by: [x]\n    min_sources_for_llm: -1\n",
-            "min_sources_for_llm",
-        ),
-        (
-            "invalid_ordering_exclusive_pairs_shape",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    group_by: [x]\n"
-            "    reconcile_fields:\n      - {field: a}\n      - {field: b}\n"
-            "    ordering_exclusive_pairs: [[a, b, c]]\n",
-            "ordering_exclusive_pairs must be a list of 2-item string lists",
-        ),
-        (
-            "unknown_fields_in_ordering_constraints",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
-            "  synthesis:\n    group_by: [x]\n"
-            "    reconcile_fields:\n      - {field: start}\n"
-            "    ordering_constraints: [[start, missing]]\n",
-            "ordering_constraints references field\\(s\\) not in reconcile_fields: missing",
-        ),
-    ],
-)
-def test_synthesis_block_rejects_invalid_config(
-    tmp_path: Path, case_id: str, body: str, match: str
-):
-    """compilation.synthesis validation rejects malformed blocks loudly.
-
-    Previously the block was an unchecked passthrough, so typos silently
-    produced empty output. Each case locks one guard.
-    """
-    with pytest.raises(RuntimeConfigError, match=match):
-        load_runtime_config_file(_write(tmp_path, body))
+    resolved = resolve_command_config(command="compile", cli_values={}, config_data=cfg)
+    assert resolved["partition_by"] == ["state", "ahj"]
+    assert resolved["targets"]
 
 
 def _resolve_discovery(body: str) -> dict:
@@ -1218,20 +939,16 @@ def _resolve_discovery(body: str) -> dict:
     ("block", "match"),
     [
         (
-            "  search:\n    provider: serpapi\n    max_result: 7\n",
-            "Unknown keys in 'discovery.search': max_result",
-        ),
-        (
-            "  search:\n    provider: serpapi\n    maxresults: 5\n",
-            "Unknown keys in 'discovery.search': maxresults",
+            "  search:\n    max_result: 7\n",
+            "unknown key 'discovery.search.max_result' — did you mean 'max_results'",
         ),
         (
             "  retry_policy:\n    max_attempt: 3\n",
-            "Unknown keys in 'discovery.retry_policy': max_attempt",
+            "unknown key 'discovery.retry_policy.max_attempt'",
         ),
         (
             "  document_review:\n    keep_topp: 1\n",
-            "Unknown keys in 'discovery.document_review': keep_topp",
+            "unknown key 'discovery.document_review.keep_topp'",
         ),
     ],
 )
@@ -1241,7 +958,7 @@ def test_load_runtime_config_file_rejects_unknown_subblock_key(
     """A typo inside a consumed discovery sub-block fails loudly (not no-op)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        "discovery:\n  seeds:\n    - https://example.org/a\n" + block,
+        "discovery:\n  sources:\n    - https://example.org/a\n" + block,
         encoding="utf-8",
     )
     with pytest.raises(RuntimeConfigError, match=match):
@@ -1249,15 +966,14 @@ def test_load_runtime_config_file_rejects_unknown_subblock_key(
 
 
 def test_load_runtime_config_file_accepts_known_subblock_keys(tmp_path: Path):
-    """serpapi_params stays an unrestricted passthrough (shallow check only)."""
+    """search.params stays an unrestricted passthrough (shallow check only)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         "discovery:\n"
-        "  seeds:\n    - https://example.org/a\n"
+        "  sources:\n    - https://example.org/a\n"
         "  search:\n"
-        "    provider: serpapi\n"
         "    max_results: 5\n"
-        "    serpapi_params:\n"
+        "    params:\n"
         "      tbm: nws\n"
         "      any_verbatim_key: ok\n",
         encoding="utf-8",
@@ -1269,7 +985,7 @@ def test_load_runtime_config_file_accepts_known_subblock_keys(tmp_path: Path):
 def test_browser_escalation_resolves_to_discovery_inputs():
     """discovery.browser_escalation reaches the engine request payload."""
     resolved = _resolve_discovery(
-        "discovery:\n  query: q\n  browser_escalation:\n"
+        "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation:\n"
         "    min_shell_chars: 1500\n    settle_seconds: 20\n"
     )
     assert resolved["browser_escalation"] == {
@@ -1282,20 +998,29 @@ def test_browser_escalation_resolves_to_discovery_inputs():
     ("body", "match"),
     [
         (
-            "discovery:\n  query: q\n  browser_escalation:\n    min_shel_chars: 1500\n",
+            (
+                "discovery:\n  queries: [q]\n  crawl:\n"
+                "   browser_escalation:\n    min_shel_chars: 1500\n"
+            ),
             "unknown key",
         ),
         (
-            "discovery:\n  query: q\n  browser_escalation:\n    min_shell_chars: abc\n",
-            "must be an integer",
+            (
+                "discovery:\n  queries: [q]\n  crawl:\n"
+                "   browser_escalation:\n    min_shell_chars: abc\n"
+            ),
+            "must be an integer >= 0",
         ),
         (
-            "discovery:\n  query: q\n  browser_escalation:\n    settle_seconds: -1\n",
-            "must be >= 0",
+            (
+                "discovery:\n  queries: [q]\n  crawl:\n"
+                "   browser_escalation:\n    settle_seconds: -1\n"
+            ),
+            "must be a finite number >= 0",
         ),
         (
-            "discovery:\n  query: q\n  browser_escalation: [1]\n",
-            "must be a mapping or bool",
+            "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation: [1]\n",
+            "must be an object",
         ),
     ],
 )
@@ -1308,7 +1033,7 @@ def test_browser_escalation_rejects_invalid_config(body: str, match: str):
 def test_code_host_adapters_resolves_to_discovery_inputs():
     """discovery.code_host_adapters reaches the engine request payload."""
     resolved = _resolve_discovery(
-        "discovery:\n  query: q\n  code_host_adapters:\n    enabled: false\n"
+        "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters:\n    enabled: false\n"
     )
     assert resolved["code_host_adapters"] == {"enabled": False}
 
@@ -1316,7 +1041,7 @@ def test_code_host_adapters_resolves_to_discovery_inputs():
 def test_code_host_adapters_bool_shorthand_resolves():
     """The bool shorthand toggles the whole adapter layer."""
     resolved = _resolve_discovery(
-        "discovery:\n  query: q\n  code_host_adapters: false\n"
+        "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters: false\n"
     )
     assert resolved["code_host_adapters"] == {"enabled": False}
 
@@ -1325,13 +1050,15 @@ def test_code_host_adapters_bool_shorthand_resolves():
     ("body", "match"),
     [
         (
-            "discovery:\n  query: q\n  code_host_adapters:\n"
-            "    enabled: true\n    bogus_key: 1\n",
+            (
+                "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters:\n"
+                "    enabled: true\n    bogus_key: 1\n"
+            ),
             "unknown key",
         ),
         (
-            "discovery:\n  query: q\n  code_host_adapters: [1]\n",
-            "must be a mapping or bool",
+            "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters: [1]\n",
+            "must be an object",
         ),
     ],
 )
@@ -1347,7 +1074,7 @@ def test_load_runtime_config_file_rejects_invalid_code_host_adapters(
     """Inner-key validation runs at load time too (single source of truth)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        "discovery:\n  code_host_adapters:\n    enabled: true\n    typo: 1\n",
+        "discovery:\n  crawl:\n    code_host_adapters:\n      enabled: true\n      typo: 1\n",
         encoding="utf-8",
     )
     with pytest.raises(RuntimeConfigError, match="unknown key"):
@@ -1359,7 +1086,7 @@ def test_link_prioritization_shopping_keywords_resolve(tmp_path: Path):
     run_path.write_text(
         """
 discovery:
-  seeds:
+  sources:
     - https://example.com/hub
   link_prioritization:
     keywords:
@@ -1375,7 +1102,6 @@ discovery:
         command="discover",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
     assert resolved["link_prioritization_shopping_keywords"] == [
         "wishlist",
@@ -1388,7 +1114,7 @@ def test_link_prioritization_shopping_keywords_must_be_str_list(tmp_path: Path):
     run_path.write_text(
         """
 discovery:
-  seeds:
+  sources:
     - https://example.com/hub
   link_prioritization:
     shopping_path_keywords:
@@ -1396,9 +1122,7 @@ discovery:
 """,
         encoding="utf-8",
     )
-    with pytest.raises(
-        RuntimeConfigError, match="shopping_path_keywords"
-    ):
+    with pytest.raises(RuntimeConfigError, match="shopping_path_keywords"):
         load_runtime_config_file(run_path)
 
 
@@ -1407,7 +1131,7 @@ def test_link_prioritization_rejects_unknown_inner_key(tmp_path: Path):
     run_path.write_text(
         """
 discovery:
-  seeds:
+  sources:
     - https://example.com/hub
   link_prioritization:
     power_range_kw: [200, 300]
@@ -1425,9 +1149,9 @@ def test_reasoning_models_passthrough_and_resolve(tmp_path: Path):
 reasoning_models:
   - halo-reason
   - my-thinker
+schema: config/x/schema.json
 extraction:
-  input_dir: documents/x
-  schema: schemas/personal/x.json
+  skip_existing: true
 """,
         encoding="utf-8",
     )
@@ -1436,7 +1160,6 @@ extraction:
         command="extract",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
     assert resolved["reasoning_models"] == ["halo-reason", "my-thinker"]
 
@@ -1447,11 +1170,223 @@ def test_reasoning_models_must_be_str_list(tmp_path: Path):
         """
 reasoning_models:
   - 5
+schema: config/x/schema.json
 extraction:
-  input_dir: documents/x
-  schema: schemas/personal/x.json
+  skip_existing: true
 """,
         encoding="utf-8",
     )
     with pytest.raises(RuntimeConfigError, match="reasoning_models"):
         load_runtime_config_file(run_path)
+
+
+# ── validation: section (strict, resolved at load time) ──
+
+_EVIDENCE = {
+    "type": "object",
+    "required": ["value", "quote"],
+    "properties": {"value": {"type": ["number", "null"]}, "quote": {"type": ["string", "null"]}},
+}
+
+
+def _validation_config(
+    tmp_path: Path, validation, *, rows: bool = False, fmt: str = "csv", models=None
+) -> Path:
+    import json
+
+    if rows:
+        items = {f: {"type": ["string", "null"]} for f in ("feature", "value", "verbatim")}
+        schema = {
+            "$metadata": {
+                "extraction": {"main_data_array": "rules", "context_objects": ["place"]},
+                "identity": {"deduplication": {"key_fields": ["feature", "value"]}},
+            },
+            "properties": {
+                "place": {"type": "object", "properties": {"state": {"type": "string"}}},
+                "rules": {"type": "array", "items": {"type": "object", "properties": items}},
+            },
+        }
+    else:
+        schema = {
+            "$metadata": {
+                "extraction": {"main_data_array": "sites"},
+                "identity": {"deduplication": {"key_fields": ["state", "site"]}},
+            },
+            "properties": {
+                "sites": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "state": {"type": "string", "title": "State"},
+                            "site": {"type": "string", "title": "Site"},
+                            "x": {**_EVIDENCE, "title": "X"},
+                        },
+                    },
+                }
+            },
+        }
+    (tmp_path / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
+    (tmp_path / "targets.csv").write_text("state,site,region\nCO,Alder,r1\n", encoding="utf-8")
+    (tmp_path / "samples").mkdir(exist_ok=True)
+    for name in ("s", "primary", "match", "x_quote", "bad name", "a", "site"):
+        (tmp_path / "samples" / f"{name}.csv").write_text("State,Site\n", encoding="utf-8")
+    run = {
+        "domain": "probe",
+        "models": models or {"primary": "m-p", "a": "m-a", "second": "m-b", "judge": "m-j"},
+        "extraction": {"model": "primary"},
+        "compilation": {"output": {"default_format": fmt}},
+        "validation": validation,
+    }
+    if not rows:
+        run["discovery"] = {
+            "targets": "targets.csv",
+            "queries": ["{site}"],
+            "partition_by": ["state", "site"],
+        }
+    path = tmp_path / "run.yaml"
+    path.write_text(yaml.safe_dump(run), encoding="utf-8")
+    return path
+
+
+def _resolve_validate(path: Path) -> dict:
+    """Load a config and resolve the validate stage (schema-dependent checks)."""
+    return resolve_command_config(
+        command="validate", cli_values={}, config_data=load_runtime_config_file(path)
+    )
+
+
+@pytest.mark.parametrize(
+    ("validation", "message"),
+    [
+        ({}, "'validation' section must be a non-empty mapping"),
+        ({"references": ["samples/s.csv"], "judg": "judge"}, "did you mean 'judge'"),
+        ({"fields": ["x"]}, "validation needs models or references to compare"),
+        ({"models": []}, "validation.models must be a non-empty list of names"),
+        ({"models": ["a", "a"]}, "validation.models lists 'a' twice"),
+        ({"models": ["a"], "min_accuracy": 0.9}, "min_accuracy needs validation.references"),
+        ({"references": ["samples/s.csv"], "min_accuracy": 1.5}, r"must be in \(0, 1\]"),
+        ({"references": ["samples/s.csv"], "min_accuracy": True}, r"must be in \(0, 1\]"),
+        ({"models": ["secnd"]}, "'secnd' is not a models: alias — did you mean 'second'"),
+        ({"models": ["a"], "judge": "jduge"}, "validation.judge: 'jduge' is not a models: alias"),
+        ({"models": ["primary"]}, "extraction.model is always a contender"),
+        ({"references": ["samples/none.csv"]}, "samples/none.csv is not a CSV file"),
+        ({"references": ["targets.csv", "schema.json"]}, "schema.json is not a CSV file"),
+        ({"models": ["a"], "key_fields": ["state"]}, "roster mode keys rows by roster identity"),
+        ({"models": ["a"], "quote_field": "x"}, "roster mode reads quotes from the evidence"),
+        ({"models": ["a"], "fields": ["site"]}, "'site' is a key field"),
+        ({"models": ["a"], "fields": ["region"]}, "'region' is a targets passthrough column"),
+        ({"models": ["a"], "fields": ["xx"]}, "'xx' is not a scorable field"),
+    ],
+)
+def test_validation_section_rejects(tmp_path: Path, validation, message):
+    with pytest.raises(RuntimeConfigError, match=message):
+        _resolve_validate(_validation_config(tmp_path, validation))
+
+
+def test_validation_models_must_differ(tmp_path: Path):
+    models = {"primary": "m-p", "a": "m-a", "b": "m-a"}
+    path = _validation_config(tmp_path, {"models": ["a", "b"]}, models=models)
+    with pytest.raises(RuntimeConfigError, match="'a' and 'b' resolve to the same model"):
+        load_runtime_config_file(path)
+
+
+def test_validation_requires_csv_output(tmp_path: Path):
+    path = _validation_config(tmp_path, {"models": ["a"]}, fmt="excel")
+    load_runtime_config_file(path)  # schema checks wait for the validate stage
+    with pytest.raises(RuntimeConfigError, match="validation reads the compiled CSV"):
+        _resolve_validate(path)
+
+
+@pytest.mark.parametrize(
+    ("validation", "message"),
+    [
+        ({"models": ["a"]}, "rows mode needs validation.key_fields"),
+        ({"models": ["a"], "key_fields": ["feture"]}, "did you mean 'feature'"),
+        (
+            {"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "verbatm"},
+            "'verbatm' is not an item field — did you mean 'verbatim'",
+        ),
+        (
+            {"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "feature"},
+            "'feature' is also a key field",
+        ),
+        (
+            {"models": ["a"], "key_fields": ["feature"], "quote_field": "verbatim"},
+            "quote_field matching needs a scope",
+        ),
+        (
+            {"models": ["a"], "key_fields": ["state", "feature"], "fields": ["state"]},
+            "'state' is a key field",
+        ),
+    ],
+)
+def test_validation_rows_mode_rejects(tmp_path: Path, validation, message):
+    with pytest.raises(RuntimeConfigError, match=message):
+        _resolve_validate(_validation_config(tmp_path, validation, rows=True))
+
+
+@pytest.mark.parametrize("command", ["validate", "extract"])
+def test_schema_aware_validation_checks_run_for_stages_that_use_them(tmp_path: Path, command: str):
+    """``extract`` consumes validation.quote_field, so it gets the checks too."""
+    cfg = load_runtime_config_file(
+        _validation_config(
+            tmp_path,
+            {"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "verbatm"},
+            rows=True,
+        )
+    )
+    with pytest.raises(RuntimeConfigError, match="'verbatm' is not an item field"):
+        resolve_command_config(command=command, cli_values={}, config_data=cfg)
+
+
+@pytest.mark.parametrize(
+    "validation",
+    [
+        {"references": ["samples/primary.csv"]},
+        {"references": ["samples/match.csv"]},
+        {"references": ["samples/x_quote.csv"]},
+        {"references": ["samples/bad name.csv"]},
+        {"references": ["samples/site.csv"]},  # a key title, case-insensitively
+        {"models": ["a"], "references": ["samples/a.csv"]},
+    ],
+)
+def test_validation_labels_must_not_collide(tmp_path: Path, validation):
+    with pytest.raises(RuntimeConfigError, match=r"collides with a cells.csv column"):
+        _resolve_validate(_validation_config(tmp_path, validation))
+
+
+def test_validation_section_resolves(tmp_path: Path):
+    path = _validation_config(tmp_path, {"models": ["a"], "references": ["samples/s.csv"]})
+    settings = resolve_command_config(
+        command="validate", cli_values={}, config_data=load_runtime_config_file(path)
+    )["validation"]
+    assert settings == {
+        "models": ["a"],
+        "references": [(tmp_path / "samples/s.csv").as_posix()],
+        "judge": None,
+        "fields": [],
+        "key_fields": [],
+        "quote_field": None,
+        "min_accuracy": None,
+    }
+
+
+@pytest.mark.parametrize(
+    ("validation", "expected"),
+    [
+        (
+            {"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "verbatim"},
+            "verbatim",
+        ),
+        ({"models": ["a"], "key_fields": ["state", "feature"]}, None),
+    ],
+)
+def test_rows_quote_field_reaches_extraction(tmp_path: Path, validation, expected):
+    path = _validation_config(tmp_path, validation, rows=True)
+    extract = resolve_command_config(
+        command="extract", cli_values={}, config_data=load_runtime_config_file(path)
+    )
+    assert extract.get("quote_field") == expected
+    if expected:
+        assert extract["_config_sources"]["quote_field"] == "config.validation.quote_field"

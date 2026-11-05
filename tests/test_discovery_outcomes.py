@@ -21,8 +21,9 @@ from discovery_helpers import FakeResponse, make_candidate
         (
             "partial_failure",
             [{"stage": "discovery.download", "message": "HTTP403"}],
-            1,
+            3,
         ),
+        ("success", [{"stage": "discovery.download", "message": "HTTP403"}], 1),
         ("empty", [], 2),
     ],
 )
@@ -36,9 +37,7 @@ def test_cli_exit_matches_manifest_at_every_verbosity(
 ):
     """Quiet output cannot bypass recorded failure or empty results."""
     manifest = tmp_path / "manifest.json"
-    manifest.write_text(
-        json.dumps({"status": status, "errors": errors, "notes": []})
-    )
+    manifest.write_text(json.dumps({"status": status, "errors": errors, "notes": []}))
     monkeypatch.setattr(
         DiscoveryEngine,
         "run",
@@ -51,7 +50,7 @@ def test_cli_exit_matches_manifest_at_every_verbosity(
             review_index_path=None,
         ),
     )
-    result = CliRunner().invoke(discover, ["--query", "fixture", *flags])
+    result = CliRunner().invoke(discover, ["--domain", "fixture", "--query", "fixture", *flags])
     assert result.exit_code == expected, result.output
     if "-q" in flags:
         assert str(manifest) in result.output
@@ -73,7 +72,7 @@ def test_bad_manifest_fails_closed(monkeypatch, tmp_path, body):
             documents_dir=tmp_path,
         ),
     )
-    result = CliRunner().invoke(discover, ["--query", "fixture", "-q"])
+    result = CliRunner().invoke(discover, ["--domain", "fixture", "--query", "fixture", "-q"])
     assert result.exit_code == 1
     assert "manifest" in result.output.lower()
 
@@ -88,14 +87,10 @@ def test_stream_failure_does_not_leave_final_document(monkeypatch, tmp_path):
 
     response = BrokenStream(url="https://example.org/doc.pdf")
     response.close = Mock()
-    monkeypatch.setattr("requests.get", Mock(return_value=response))
+    monkeypatch.setattr("psweep.discovery.network.request_get", Mock(return_value=response))
     request = DiscoveryRequest(
         domain="fixture",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=False,
-        output_documents=None,
-        output_manifest=None,
+        sources=[],
         dry_run=False,
         robots_policy_mode="ignore",
         tos_policy_mode="ignore",
@@ -105,7 +100,7 @@ def test_stream_failure_does_not_leave_final_document(monkeypatch, tmp_path):
         candidate=make_candidate(response.url),
         request=request,
         documents_dir=tmp_path,
-        ssl_verify=False,
+        ssl_verify=True,
         retry_policy={
             "max_attempts": 1,
             "initial_backoff_seconds": 0,

@@ -1,0 +1,9 @@
+# Runnable example: residential solar permitting in three counties.
+#   pixi run psweep run --config config/example/run.yaml
+# Needs one LLM provider in .env; its default model is used unless you set
+# extraction.model. The target URLs need no search key.
+# Result: outputs/example/compiled/example.csv (and .xlsx), one row per county.
+domain: example
+discovery:
+  targets: targets.csv                # one row per county; `urls` is its permit page
+  partition_by: [state, name]         # equals the schema's key_fields: one row per target

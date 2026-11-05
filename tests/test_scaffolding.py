@@ -4,16 +4,13 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
 from psweep.scaffolding import (
     ConfigValidationError,
     apply_main_array_field_selection,
     available_main_array_fields,
-    build_scaffold_extract_command,
     build_schema_starter_from_reference,
-    config_run_yaml_content,
-    suggest_page_ranges_filename,
+    default_schema_output_path,
 )
 
 
@@ -28,8 +25,6 @@ def _reference_schema() -> dict:
             "extraction": {
                 "main_data_array": "widgets",
                 "context_objects": [],
-                "identifier_fields": ["widget_id"],
-                "display_name_template": "{widget_id}",
                 "document_type": "Widget Catalog",
             },
             "identity": {
@@ -74,6 +69,7 @@ def test_build_schema_starter_from_reference_derives_lean_metadata(tmp_path):
     meta = starter["$metadata"]
     assert meta["version"] == "0.1.0"
     assert meta["extraction"]["main_data_array"] == "widgets"
+    assert set(meta["extraction"]) == {"main_data_array", "context_objects", "document_type"}
     # Inherited identity/deduplication carried over from the reference.
     assert meta["identity"]["deduplication"]["key_fields"] == ["widget_id"]
     # Example values are pruned out of the starter.
@@ -105,25 +101,7 @@ def test_apply_main_array_field_selection_rejects_unknown_fields():
         apply_main_array_field_selection(schema, ["does_not_exist"])
 
 
-def test_suggest_page_ranges_filename_picks_extension():
-    assert suggest_page_ranges_filename("SEC HTML Filing").endswith(".html")
-    assert suggest_page_ranges_filename("Utility Rate Tariff").endswith(".pdf")
-
-
-def test_build_scaffold_extract_command_composes_flags():
-    cmd = build_scaffold_extract_command(
-        documents_ref="documents/widgets",
-        schema_ref="schemas/widgets.json",
-        page_ranges_ref="config/widgets/page_ranges.csv",
+def test_default_schema_output_path_is_domain_config_sibling(tmp_path):
+    assert default_schema_output_path(tmp_path, "widgets") == (
+        tmp_path / "config" / "widgets" / "schema.json"
     )
-    assert cmd.startswith("pixi run psweep extract documents/widgets/")
-    assert "--schema schemas/widgets.json" in cmd
-    assert "--pages-csv config/widgets/page_ranges.csv" in cmd
-
-
-def test_config_run_yaml_content_is_valid_yaml():
-    text = config_run_yaml_content("widgets", schema_ref="schemas/widgets.json")
-    parsed = yaml.safe_load(text)
-    assert parsed["domain"] == "widgets"
-    assert parsed["extraction"]["schema"] == "schemas/widgets.json"
-    assert parsed["compilation"]["output_dir"] == "compiled/widgets"

@@ -3,24 +3,21 @@
 from .base import (
     BaseDiggerConnector,
     BaseSeekerConnector,
+    CrawlResult,
     DiggerArtifact,
     DiggerInput,
     SeekerInput,
 )
-from .digger import (
-    HttpDiggerConnector,
-    NullDiggerConnector,
-    resolve_digger_connector,
-)
+from .digger import HttpDiggerConnector, resolve_digger_connector
 from .serpapi_seeker import SerpApiSeeker
 
 __all__ = [
     "BaseDiggerConnector",
     "BaseSeekerConnector",
+    "CrawlResult",
     "DiggerArtifact",
     "DiggerInput",
     "HttpDiggerConnector",
-    "NullDiggerConnector",
     "SeekerInput",
     "SerpApiSeeker",
     "resolve_digger_connector",

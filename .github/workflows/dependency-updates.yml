@@ -1,0 +1,52 @@
+name: Refresh dependency lock
+
+on:
+  schedule:
+    - cron: "53 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-lock-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.83.0
+          run-install: false
+          cache: false
+
+      # This job deliberately resolves updates; validation jobs use --locked.
+      - run: pixi update
+
+      - uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          branch: automation/pixi-lock
+          add-paths: pixi.lock
+          delete-branch: true
+          draft: true
+          commit-message: "build: refresh all-platform dependency lock"
+          title: "build: refresh all-platform dependency lock"
+          body: |
+            Refreshes Python and native dependencies for all configured platforms
+            within the reviewed manifest constraints. No advisory is suppressed.
+
+            GitHub does not trigger PR workflows for changes made with GITHUB_TOKEN.
+            Before merging, dispatch CI, Docs, and Dependency audit on this branch;
+            review audit/SBOM artifacts and any unsupported native-library coverage.
+            Manifest constraints must be reviewed separately when an update is blocked.
