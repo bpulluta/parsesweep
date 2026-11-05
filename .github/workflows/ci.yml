@@ -56,10 +56,15 @@ jobs:
         shell: bash
         run: |
           pixi run --locked -e dev python - <<'PY' > wheel-constraints.txt
+          import tomllib
           from importlib.metadata import distributions
+          # pip cannot apply pixi's dependency-overrides; let it resolve those per wheel metadata.
+          with open("pixi.toml", "rb") as fh:
+              overrides = tomllib.load(fh).get("pypi-options", {}).get("dependency-overrides", {})
+          skip = {"psweep", *(n.lower() for n in overrides)}
           for dist in distributions():
               name = dist.metadata["Name"]
-              if name and name.lower() != "psweep":
+              if name and name.lower() not in skip:
                   print(f"{name}=={dist.version}")
           PY
           pixi run --locked -e dev python -m venv --without-pip .wheel-smoke
