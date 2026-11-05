@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/config-reference.md`.
 
 ### Fixed
+- `filelock` is overridden to 4.2.x (CVE-2026-112909, CVE-2026-112910);
+  LiteLLM's `<4` cap only affects its proxy CLI. The dependency audit is clean.
 - `selection.require_any` matches source URLs, titles and snippets, so opaque
   downloads on unknown hosts remain eligible. Generated query reasons are not
   source evidence.

@@ -7,13 +7,10 @@ data** and not a claim of zero vulnerabilities, FIPS validation, compliance,
 or HPC certification. Python 3.12/macOS ARM64 is the locally executed baseline;
 other locked platforms require execution on their target systems.
 
-The refreshed Python audit still reports two advisories against
-`filelock 3.20.3` (CVE-2026-112909 and CVE-2026-112910). This compatible
-release avoids later 3.x lock regressions. The fixed release is `4.2.1`, but the current
-LiteLLM dependency constrains it below 4. No incompatible override or advisory
-suppression is used. Many findings require an attacker-writable local lock/cache
-directory; that limits applicability, not the audit result. Keep the release
-gate closed pending an upstream-compatible fix or a formal site exception.
+The Python audit is clean. `filelock` is overridden to `>=4.2.1,<5` in
+`pixi.toml` (`[pypi-options]`) to fix CVE-2026-112909 and CVE-2026-112910:
+LiteLLM still declares `filelock<4`, but uses it only in its proxy CLI, which
+psweep never calls. Remove the override once LiteLLM allows 4.x.
 Native libraries were refreshed, not comprehensively vulnerability-scanned.
 
 ### Trust model
@@ -110,7 +107,7 @@ Before any real sensitive workload, the site owner must verify:
 - [ ] Network namespace/firewall egress only to approved inference/DNS services;
       no public internet, metadata service, browser, or credentialed proxy path.
 - [ ] Immutable reviewed image/environment, native-library SBOM and advisory
-      scan, dependency provenance, and explicit handling of the filelock blocker.
+      scan, dependency provenance, and review of the `filelock` override.
 - [ ] Scheduler/cgroup CPU, memory, process, file-descriptor, file-size, and wall
       limits. Native PDF/OCR work needs OS isolation, not only Python timeouts.
 - [ ] Separate read-only input mount and bounded output/temp mounts; parser

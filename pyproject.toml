@@ -37,9 +37,6 @@ dependencies = [
     "pypdf>=6.21.3,<7",
     "openai>=2.20.0,<3",
     "litellm>=1.96.2,<2",
-    # Avoid later 3.x lock regressions while LiteLLM excludes fixed 4.2.1.
-    # Two local-filesystem advisories still affect this compatible release.
-    "filelock==3.20.3",
     "langextract>=1.0.0,<2",
     "pydantic>=2.5.0,<3",
     "jsonschema>=4.20.0,<5",
