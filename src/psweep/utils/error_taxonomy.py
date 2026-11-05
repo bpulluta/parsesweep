@@ -11,7 +11,7 @@ from psweep.exceptions import (
     SchemaMetadataError,
     SchemaValidationError,
 )
-from psweep.utils.retry import is_transient_error
+from psweep.utils.retry import CONNECTION_ERRORS, http_status, is_transient_error
 
 
 def build_error_record(
@@ -50,9 +50,15 @@ def build_error_record(
     elif isinstance(exc, ExtractionError):
         category = "extraction"
         code = "extraction_failed"
+    elif (status := http_status(exc)) is not None:
+        category = "network"
+        code = f"http_{status}"
     elif isinstance(exc, ValueError):
         category = "input_validation"
         code = "invalid_input"
+    elif isinstance(exc, CONNECTION_ERRORS):
+        category = "network"
+        code = "network_error"
     elif isinstance(exc, RuntimeError):
         if (
             "decode" in lowered_message

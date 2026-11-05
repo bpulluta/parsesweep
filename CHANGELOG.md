@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   types or encodings (`.jpg`, `.zip`, `.gz`) are rejected.
 - LLM calls retry every transient provider failure (408/429/5xx, connection
   errors) through the shared retry helper; TLS failures stay terminal.
+- Reasoning models (`gpt-5*`, o-series, `reasoning_models`) get JSON mode like
+  every other model; only `temperature` is withheld. Without it, review,
+  extraction and judge replies intermittently came back as malformed JSON.
+- Error records label HTTP failures `network` / `http_<status>` and connection
+  failures `network` / `network_error` instead of `internal`.
 - Sampled bot challenges are retried within a run and final across runs.
 - Confirmed successful SerpApi searches with no Google results no longer abort
   discovery or discard other queries' candidates. Provider failures remain

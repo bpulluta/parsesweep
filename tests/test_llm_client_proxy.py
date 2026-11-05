@@ -2,7 +2,7 @@
 
 Covers the three-part fix for litellm.nlr.gov-style proxy deployments:
   1. openai/ prefix in _format_model_for_litellm forces /chat/completions routing.
-  2. response_format is omitted in proxy mode (proxy support varies per model).
+  2. response_format is JSON mode in proxy mode (strict schemas need a direct provider).
   3. Response content is stripped before empty-check and JSON parsing.
 
 These tests are proxy-agnostic and apply to any OpenAI-compatible endpoint:
@@ -136,12 +136,13 @@ class TestProxyApiParams:
         params = self._extract_with_capture("claude-haiku-4-5")
         assert params.get("temperature") == 0
 
-    def test_reasoning_model_omits_temperature(self):
-        # Reasoning model detection uses the formatted model name.
-        # "openai/gpt-5-turbo" contains "gpt-5" → is_reasoning_model=True.
+    def test_reasoning_model_omits_temperature_but_keeps_json_mode(self):
+        # "openai/gpt-5-turbo" contains "gpt-5" → reasoning: no temperature. JSON
+        # mode stays on; without it reasoning models intermittently emit
+        # malformed JSON (e.g. a dropped closing brace).
         params = self._extract_with_capture("gpt-5-turbo")
         assert "temperature" not in params
-        assert "response_format" not in params
+        assert params.get("response_format") == {"type": "json_object"}
 
     def test_config_reasoning_marker_omits_temperature(self):
         # A model unknown to the built-in markers is treated as reasoning when
@@ -150,7 +151,7 @@ class TestProxyApiParams:
         assert base.get("temperature") == 0  # not reasoning by default
         configured = self._extract_with_capture("halo-reason-01", reasoning_models=["halo-reason"])
         assert "temperature" not in configured
-        assert "response_format" not in configured
+        assert configured.get("response_format") == {"type": "json_object"}
 
     def test_config_markers_supplement_builtin_defaults(self):
         # Declaring a custom marker must not disable the built-in ones.
@@ -203,7 +204,7 @@ class TestProxyApiParams:
         assert client.timeout == LLMClient.DEFAULT_TIMEOUT
 
     def test_direct_provider_sends_response_format(self):
-        # Non-proxy mode (no base_url): response_format is sent for non-reasoning models.
+        # Non-proxy mode (no base_url): response_format is sent.
         client = LLMClient(api_key="k", model="gpt-4o-mini", provider="openai")
         ok_response = _make_response(json.dumps({"items": []}))
         with (

@@ -51,7 +51,7 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "reasoning_models": (
             "advanced",
-            "Extra model-name markers for reasoning models (no temperature/response_format).",
+            "Extra model-name markers for reasoning models (sent without temperature).",
         ),
     },
     "extraction": {
@@ -273,8 +273,8 @@ def _validate_reasoning_models_block(markers: Any) -> None:
     """Validate the optional top-level ``reasoning_models`` list.
 
     Extra substring markers (unioned with the built-in defaults) identifying
-    reasoning models — those that reject the temperature / response_format
-    params. Must be a list of non-empty strings. Only provider-neutral
+    reasoning models — those that reject a non-default temperature.
+    Must be a list of non-empty strings. Only provider-neutral
     defaults live in code; anything else is declared here.
     """
     if markers is None:

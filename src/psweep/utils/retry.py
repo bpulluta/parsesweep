@@ -35,6 +35,15 @@ _TRANSIENT_MARKERS: tuple[str, ...] = (
     "net::err_empty_response",
 )
 _URL = re.compile(r"\S+://\S+")
+# Failures before any response arrived; a later attempt may connect.
+CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
+    requests.exceptions.Timeout,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    openai.APIConnectionError,
+    TimeoutError,
+    ConnectionError,
+)
 # Edge bot-manager challenges (Cloudflare, Vercel, AWS WAF) answer 403/429/503.
 # Edges sample them (Cloudflare challenged ~1 in 3 identical requests to county
 # sites), so a run repeats one, but a URL challenged on every attempt is final.
@@ -98,25 +107,21 @@ def is_transient_error(exc: BaseException) -> bool:
         return declared or (cause is not None and is_transient_error(cause))
     if _tls_failure(exc):
         return False
-    if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
-        return _transient_status(exc.response.status_code) and not _is_challenge(exc)
-    status = getattr(exc, "status_code", None)
-    if isinstance(status, int):
-        return _transient_status(status)
-    if isinstance(
-        exc,
-        (
-            requests.exceptions.Timeout,
-            requests.exceptions.ConnectionError,
-            requests.exceptions.ChunkedEncodingError,
-            openai.APIConnectionError,
-            TimeoutError,
-            ConnectionError,
-        ),
-    ):
+    status = http_status(exc)
+    if status is not None:
+        return _transient_status(status) and not _is_challenge(exc)
+    if isinstance(exc, CONNECTION_ERRORS):
         return True
     message = _URL.sub("", str(exc)).lower()
     return any(marker in message for marker in _TRANSIENT_MARKERS)
+
+
+def http_status(exc: BaseException) -> int | None:
+    """HTTP status a failed request answered with, or None when none arrived."""
+    if isinstance(exc, requests.exceptions.HTTPError):
+        return exc.response.status_code if exc.response is not None else None
+    status = getattr(exc, "status_code", None)
+    return status if isinstance(status, int) else None
 
 
 def _tls_failure(exc: BaseException | None) -> bool:
