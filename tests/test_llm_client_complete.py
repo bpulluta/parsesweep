@@ -292,3 +292,34 @@ def test_only_transient_provider_failures_are_retried(
         else:
             assert client.complete(MESSAGES).content == "ok"
     assert sent.call_count == sent_calls
+
+
+@pytest.mark.parametrize(
+    ("failure", "retryable"),
+    [
+        (litellm.RateLimitError("secret-key sk-123 slow down", "openai", "m"), True),
+        (litellm.ServiceUnavailableError("busy https://internal.example", "openai", "m"), True),
+        (litellm.Timeout("took too long", "m", "openai"), True),
+        (litellm.AuthenticationError("bad key sk-123", "openai", "m"), False),
+    ],
+)
+def test_extraction_error_records_classify_provider_failures(
+    monkeypatch, failure, retryable
+):
+    """Error records judge the provider failure, not the sanitized message."""
+    from psweep.utils.error_taxonomy import build_error_record
+
+    monkeypatch.setattr("psweep.extraction.llm_client.time.sleep", lambda _: None)
+    client = _proxy()
+    with (
+        patch("psweep.extraction.llm_client.completion", side_effect=failure),
+        patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        pytest.raises(ExtractionError) as caught,
+    ):
+        client.complete(MESSAGES)
+
+    record = build_error_record(caught.value, stage="extract")
+    assert record["retryable"] is retryable
+    assert record["category"] == "extraction"
+    assert record["message"].startswith("LLM request failed: ")
+    assert "sk-123" not in record["message"] and "://" not in record["message"]

@@ -235,6 +235,26 @@ def test_reused_none_retention_never_deletes_consolidated(
     assert editable["status"] == "success" and editable["downloads"]
 
 
+def test_fully_reused_run_creates_no_documents_dir(monkeypatch, tmp_path):
+    """A reused run writes only its outcomes snapshot, never an empty documents/."""
+    _fake_search(
+        monkeypatch,
+        {"organic_results": [{"link": "https://example.org/a.pdf"}]},
+    )
+    monkeypatch.setattr(
+        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
+    )
+    request = _request(tmp_path, selection_primary_per_target=1)
+    first = DiscoveryEngine().run(request)
+    assert first.documents_dir.is_dir()
+    result = DiscoveryEngine().run(request)
+    assert result.status == "reused"
+    run_dir = result.documents_dir.parent
+    assert result.manifest_path.is_file()
+    assert not result.documents_dir.exists()
+    assert sorted(p.name for p in run_dir.iterdir()) == ["outcomes"]
+
+
 def test_failed_final_publication_preserves_fixed_local_outputs(
     monkeypatch, tmp_path
 ):

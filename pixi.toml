@@ -3,7 +3,6 @@ authors = ["Super Team"]
 channels = ["conda-forge"]
 name = "psweep"
 platforms = ["win-64", "osx-arm64", "osx-64", "linux-64"]
-version = "2.0.1"
 
 [dependencies]
 # Native tools stay in Conda; pyproject.toml owns Python runtime requirements.
@@ -31,6 +30,9 @@ psweep = { path = ".", editable = true, extras = ["docs"] }
 # `python -m pytest` works in every env; the bare `pytest` console script is not
 # on the default env's PATH. Run the full suite with `pixi run test`.
 test = "python -m pytest"
+
+# Docs tasks live in the docs feature, so `pixi run docs-build` selects that env.
+[feature.docs.tasks]
 # Clean first: autoapi's build-finished step can crash on stale incremental
 # state, so a from-scratch build is the reliable one (and matches CI).
 docs-build = { cmd = "sphinx-build -b html docs docs/_build/html -W", depends-on = ["docs-clean"] }

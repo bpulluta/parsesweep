@@ -37,9 +37,8 @@ Native libraries were refreshed, not comprehensively vulnerability-scanned.
   fail in both modes. Stage-specific settings override the global fallback;
   explicit request arguments override those settings in public mode.
   Disabling verification never relaxes public-address or redirect checks.
-* Responses count decoded bytes: files streamed to disk stop at 1 GiB
-  (positive integer `PSWEEP_MAX_RESPONSE_BYTES` overrides it), responses read
-  into memory at a fixed 50 MiB. The configured request timeout bounds socket
+* Responses are capped in decoded bytes
+  ([limits](config-reference.md#document-types-and-limits)). The configured request timeout bounds socket
   waits, the elapsed time of in-memory responses, and stalls (time without
   data) of file downloads. It is **not a hard whole-job deadline**:
   DNS, native parsing, decompression internals, and OS scheduling need external

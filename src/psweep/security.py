@@ -194,3 +194,20 @@ def validate_protected_paths(values: dict) -> None:
         if not Path(value).resolve().is_relative_to(root):
             msg = "Protected references must remain inside the private workspace"
             raise ValueError(msg)
+
+
+_PROVIDER_ERROR_MARKERS = (
+    "context_length_exceeded", "context_window_exceeded",
+    "maximum context length", "rate limit", "429", "timeout",
+    "certificate verify failed", "connection error", "connection reset",
+    "service unavailable", "authentication",
+)
+
+
+def provider_error_category(error: Exception) -> str:
+    """Return a fixed failure category without copying untrusted provider text."""
+    message = str(error).lower()
+    return next(
+        (marker for marker in _PROVIDER_ERROR_MARKERS if marker in message),
+        "provider failure",
+    )

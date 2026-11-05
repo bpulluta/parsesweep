@@ -1,4 +1,4 @@
-"""Regression tests for discovery engine crawl, retry budget, and checkpointing."""
+"""Regression tests for discovery engine crawl, code-hosting retry, and checkpointing."""
 
 from __future__ import annotations
 
@@ -190,7 +190,7 @@ def _uncurated_record(label: str, url: str) -> dict[str, object]:
     }
 
 
-def _run_code_hosting_retry(cap):
+def _run_code_hosting_retry():
     """Run the code-hosting retry with a fake seeker; return #targets queried."""
     engine = DiscoveryEngine()
 
@@ -205,7 +205,7 @@ def _run_code_hosting_retry(cap):
         def discover(self, seeker_input):  # noqa: ANN001
             self.queries_run += 1
             self.queries.extend(seeker_input.queries)
-            return []  # no results -> no downloads, isolates the target-count cap
+            return []  # no results -> no downloads, isolates the target count
 
     import psweep.discovery.connectors.serpapi_seeker as ss_mod
 
@@ -221,7 +221,6 @@ def _run_code_hosting_retry(cap):
         request = _base_request(
             link_prioritization_domain_scores={"municode.com": 1.0},
         )
-        budget = engine_mod._RetryBudget(cap)
         engine._retry_failed_targets_on_code_hosting(
             request=request,
             download_records=records,
@@ -229,7 +228,6 @@ def _run_code_hosting_retry(cap):
             documents_dir=Path("/tmp"),
             review_cfg={},
             classifier_keywords=["oil"],
-            budget=budget,
         )
     finally:
         ss_mod.SerpApiSeeker = orig
@@ -237,87 +235,131 @@ def _run_code_hosting_retry(cap):
     return sum(len(s.queries) for s in _FakeSeeker.instances)
 
 
-def test_retry_cap_bounds_targets_when_set():
-    assert _run_code_hosting_retry(cap=1) == 1
-    assert _run_code_hosting_retry(cap=2) == 2
+def test_code_hosting_retry_queries_every_failed_target():
+    assert _run_code_hosting_retry() == 3
 
 
-def test_retry_cap_unset_is_unbounded():
-    # None budget limit -> every failed target is retried (current behavior).
-    assert _run_code_hosting_retry(cap=None) == 3
+_CODE_HOST_SCORES = {
+    "municode.com": 0.2,
+    ".gov": 0.15,
+    ".us": 0.15,
+    "spam-codes.com": -0.3,
+    "zeroed.com": 0.0,
+}
+_CODE_HOST_URLS = {
+    "subdomain": "https://library.municode.com/tx/austin/codes",
+    "exact": "https://municode.com/ca/fresno/codes",
+    "lookalike": "https://notmunicode.com.evil.org/x/y/z",
+    "suffix_gov": "https://county.example.gov/zoning/code/ch1",
+    "suffix_us": "https://town.example.us/zoning/code/ch1",
+    "negative": "https://spam-codes.com/a/b/c",
+    "zero": "https://zeroed.com/a/b/c",
+}
 
 
-def test_retry_budget_shared_across_both_stages(monkeypatch):
-    """The orchestrator threads ONE budget through both retry stages, sized from
-    request.retry_max_retry_targets."""
-    engine = DiscoveryEngine()
-    seen: dict[str, object] = {}
+def _shell_record(label: str, url: str, tmp_path: Path) -> dict[str, object]:
+    page = tmp_path / f"{label}.html"
+    page.write_text("<html></html>")
+    return {**_uncurated_record(label, url), "path": str(page)}
 
-    def _fake_code(*, budget, download_records, notes, **_kw):
-        seen["code"] = budget
-        return download_records, notes
 
-    def _fake_js(*, budget, download_records, notes, **_kw):
-        seen["js"] = budget
-        return download_records, notes
+def test_code_host_domains_are_positive_host_entries_only():
+    request = _base_request(link_prioritization_domain_scores={
+        **_CODE_HOST_SCORES, " MuniCode.com. ": 0.1,
+    })
+    assert DiscoveryEngine._code_host_domains(request) == ("municode.com",)
+    assert DiscoveryEngine._code_host_domains(_base_request()) == ()
 
-    monkeypatch.setattr(
-        engine, "_retry_failed_targets_on_code_hosting", _fake_code
+
+def test_code_hosting_retry_targets_only_code_host_entries(monkeypatch, tmp_path):
+    import psweep.discovery.connectors.serpapi_seeker as ss_mod
+
+    queries: list[str] = []
+
+    class _Seeker:
+        queries_run = 0
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def discover(self, seeker_input):  # noqa: ANN001
+            queries.extend(seeker_input.queries)
+            return []
+
+    monkeypatch.setattr(ss_mod, "SerpApiSeeker", _Seeker)
+    DiscoveryEngine()._retry_failed_targets_on_code_hosting(
+        request=_base_request(link_prioritization_domain_scores=_CODE_HOST_SCORES),
+        download_records=[
+            _uncurated_record(label, url) for label, url in _CODE_HOST_URLS.items()
+        ],
+        notes=[],
+        documents_dir=tmp_path,
+        review_cfg={},
+        classifier_keywords=["zoning"],
     )
-    monkeypatch.setattr(engine, "_retry_js_shells_with_digger", _fake_js)
+    scoped = sorted(q.split()[0] for q in queries)
+    assert scoped == [
+        "site:library.municode.com/tx/austin/codes",
+        "site:municode.com/ca/fresno/codes",
+    ]
 
+
+def test_js_shell_retry_targets_only_code_host_entries(monkeypatch, tmp_path):
+    import psweep.discovery.connectors.digger as digger_mod
+
+    crawled: list[str] = []
+
+    class _Digger:
+        def discover(self, digger_input):  # noqa: ANN001
+            crawled.extend(digger_input.sources)
+            return CrawlResult(artifacts=[])
+
+    monkeypatch.setattr(digger_mod, "HttpDiggerConnector", _Digger)
+    DiscoveryEngine()._retry_js_shells_with_digger(
+        request=_base_request(
+            link_prioritization_domain_scores=_CODE_HOST_SCORES,
+            browser_escalation=True,
+            document_classifier={"nice_to_have_keywords": ["zoning"]},
+        ),
+        download_records=[
+            _shell_record(label, url, tmp_path)
+            for label, url in _CODE_HOST_URLS.items()
+        ],
+        notes=[],
+        documents_dir=tmp_path,
+        review_cfg={},
+    )
+    assert sorted(crawled) == sorted(
+        [_CODE_HOST_URLS["subdomain"], _CODE_HOST_URLS["exact"]]
+    )
+
+
+def test_suffix_only_domain_scores_skip_paid_retries(monkeypatch, tmp_path):
+    engine = DiscoveryEngine()
+    calls: list[str] = []
+    monkeypatch.setattr(
+        engine, "_retry_failed_targets_on_code_hosting",
+        lambda **kw: calls.append("serpapi") or (kw["download_records"], kw["notes"]),
+    )
+    monkeypatch.setattr(
+        engine, "_retry_js_shells_with_digger",
+        lambda **kw: (kw["download_records"], kw["notes"]),
+    )
     request = _base_request(
-        link_prioritization_domain_scores={"municode.com": 1.0},
-        retry_max_retry_targets=1,
+        link_prioritization_domain_scores={".gov": 0.15, "bad.com": -0.2}
     )
     engine._run_post_review_retries(
-        request=request,
-        download_records=[],
-        notes=[],
-        documents_dir=Path("/tmp"),
-        review_cfg={},
-        classifier_keywords=["oil"],
+        request=request, download_records=[], notes=[], documents_dir=tmp_path,
+        review_cfg={}, classifier_keywords=["zoning"],
     )
-
-    assert seen["code"] is seen["js"]  # same budget instance
-    assert isinstance(seen["code"], engine_mod._RetryBudget)
-    assert seen["code"].unbounded is False
+    assert calls == []
 
 
-def test_retry_budget_unbounded_when_unset(monkeypatch):
-    engine = DiscoveryEngine()
-    seen: dict[str, object] = {}
+def test_request_has_no_unwired_retry_target_cap():
+    from dataclasses import fields
 
-    monkeypatch.setattr(
-        engine,
-        "_retry_failed_targets_on_code_hosting",
-        lambda *, budget, download_records, notes, **_kw: (
-            seen.__setitem__("code", budget),
-            (download_records, notes),
-        )[1],
-    )
-    monkeypatch.setattr(
-        engine,
-        "_retry_js_shells_with_digger",
-        lambda *, budget, download_records, notes, **_kw: (
-            seen.__setitem__("js", budget),
-            (download_records, notes),
-        )[1],
-    )
-
-    request = _base_request(
-        link_prioritization_domain_scores={"municode.com": 1.0},
-    )
-    engine._run_post_review_retries(
-        request=request,
-        download_records=[],
-        notes=[],
-        documents_dir=Path("/tmp"),
-        review_cfg={},
-        classifier_keywords=["oil"],
-    )
-    assert seen["code"] is seen["js"]
-    assert seen["code"].unbounded is True
+    assert "retry_max_retry_targets" not in {f.name for f in fields(DiscoveryRequest)}
+    assert not hasattr(engine_mod, "_RetryBudget")
 
 
 # ---------------------------------------------------------------------------

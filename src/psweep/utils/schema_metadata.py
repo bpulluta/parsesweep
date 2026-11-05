@@ -360,8 +360,6 @@ class SchemaMetadata:
             "ignore_fields",
             "fuzzy_key_fields",
             "partition_fields",
-            "strategy",
-            "comparison_mode",
             "cross_feature_redundancy",
         }
         unknown = sorted(set(dedup) - allowed)
@@ -373,13 +371,6 @@ class SchemaMetadata:
 
         for key in ("key_fields", "ignore_fields", "partition_fields"):
             self._require_str_list_meta(dedup.get(key), f"{loc}.{key}")
-
-        for key in ("strategy", "comparison_mode"):
-            value = dedup.get(key)
-            if value is not None and (not isinstance(value, str) or not value):
-                self._raise_meta(
-                    f"{loc}.{key} must be a non-empty string."
-                )
 
         # fuzzy_key_fields accepts a mixed list of plain field-name strings and
         # objects of the form {"field": "...", "normalize": "..."} (see

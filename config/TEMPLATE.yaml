@@ -1,49 +1,20 @@
-# Minimal discovery setup — copy to config/<your_domain>/run.yaml.
-# Set SERPAPI_API_KEY in your environment or .env (never in YAML).
-# Run: pixi run psweep discover --config config/<your_domain>/run.yaml
-# No extraction schema or LLM credentials are needed for discovery alone.
-# Expanded stage options: config/ADVANCED.yaml and docs/config-reference.md.
-# Only this file is loaded; move retired adjacent section overrides into it.
-
+# Copy to config/<domain>/run.yaml beside schema.json and targets.csv.
+# Every key, default and rule: docs/config-reference.md. Keys go in .env.
 domain: my_domain
+models:                               # aliases used by every stage
+  primary: gpt-4o
+  secondary: gpt-4o-mini
 discovery:
+  targets: targets.csv                # columns fill {placeholders}
   queries:
-    - "industrial pump installation manual filetype:pdf"
-
-  # Common choices — uncomment only when changing the defaults.
-  # Search runs only when queries (or a target `query`) are set.
-  # Direct-URL alternative: remove queries above and list sources (always kept).
-  # sources: [https://example.org/documents/manual.pdf]
-  # search:
-  #   max_results: 10            # unique candidates PER QUERY, not downloads
-  #   cache: false               # true caches search results
-  # selection:
-  #   max_per_target: 1          # acquisition count per target; not LLM review
-  #   exclude: [news, blog, press release]
-
-  # Link following is off by default (crawl.max_depth: 0).
-  # crawl:
-  #   max_depth: 1
-  #   allowed_domains: [example.org]
-  #   include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
-  #   browser_escalation: {enabled: true}   # opt-in JS-shell recovery
-
-  # Optional PAID LLM review; never auto-enabled. Requires LLM credentials.
-  # document_review:
-  #   model: your-model-name
-  #   document_description: "the manufacturer's installation manual"
-  #   keep_top: 1                # review retention, separate from acquisition count
-
-# Inspect outputs/my_domain/discovered/runs/<run_id>/curated and the consolidated
-# outputs/my_domain/discovered/curated before configuring extraction.
-# Search caps include live/cached/news candidates; no hidden pagination/refill.
-# Use search/max_results and selection.max_per_target/require_any/exclude.
-# No built-in legal draft, vendor authority, shopping, or US discovery alias lists.
-# Supply geographic target fields explicitly or use partition_by; no query inference.
-# SerpApi/download TLS verification defaults remain false; configure
-# SERPAPI_SSL_VERIFY and DISCOVERY_SSL_VERIFY in the environment if needed.
-
-# Optional later stages — add config/my_domain/schema.json and configure LLM
-# credentials. Outputs are derived: outputs/my_domain/{discovered,extracted,compiled}.
-# extraction:
-#   model: your-model-name
+    - '"{name}" {state} installation manual filetype:pdf'
+  partition_by: [state, name]         # curated/by_state/<s>/by_name/<n>/
+  selection:
+    max_per_target: 2
+extraction:
+  model: primary
+compilation:
+  output:
+    default_format: csv               # csv | excel | both
+validation:
+  models: [secondary]                 # contender; add references: [labels.csv]

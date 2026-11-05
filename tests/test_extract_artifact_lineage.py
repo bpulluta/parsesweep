@@ -50,7 +50,6 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
                 'extraction': {
                     'main_data_array': 'items',
                     'context_objects': ['jurisdiction'],
-                    'display_name_template': '{jurisdiction.county}',
                     'document_type': 'Reference Permit',
                     'normalization': {'trim_strings': True},
                 },
@@ -58,7 +57,6 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
                     'deduplication': {
                         'key_fields': ['category', 'citation'],
                         'ignore_fields': ['notes'],
-                        'strategy': 'smart',
                     }
                 },
                 'output': {'default_format': 'excel'},
@@ -129,7 +127,6 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
     assert 'normalization' not in metadata['extraction']
     assert 'output' not in metadata
     assert 'validation' not in metadata
-    assert 'strategy' not in metadata['identity']['deduplication']
     assert starter_schema['title'] == 'Starter Permit Starter Schema'
     assert 'examples' not in json.dumps(starter_schema)
     assert 'enum' not in json.dumps(starter_schema)

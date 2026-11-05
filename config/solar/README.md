@@ -1,33 +1,23 @@
 # Solar Ordinances
 
-Document type: Solar Ordinance  
-Domain: `solar`
+Domain `solar`: extraction and compilation of solar ordinances from local
+documents (no discovery section).
 
----
-
-## Files
-
-- `run.yaml` — full pipeline config (create this from `config/TEMPLATE.yaml`)
-- `page_ranges.csv` — optional manual page-range overrides per document
-
----
-
-## Workflow
+- `run.yaml` — extraction and compilation settings
+- `schema.json` — extraction contract
+- `page_ranges.csv` — optional manual page ranges for large PDFs
 
 ```bash
-# 1. Put source documents in documents/solar/
-
-# 2. Extract
-pixi run psweep extract --config config/solar/run.yaml
-
-# 3. Compile into Excel
+pixi run psweep extract documents/solar/ --config config/solar/run.yaml
 pixi run psweep compile --config config/solar/run.yaml
 ```
 
-To target specific pages in large PDFs, edit `page_ranges.csv` and reference it from `run.yaml`:
+To use the page ranges, add to `run.yaml`:
 
 ```yaml
 extraction:
   pages:
-    csv: config/solar/page_ranges.csv
+    csv: page_ranges.csv
 ```
+
+Keys: [Configuration Reference](../../docs/config-reference.md).

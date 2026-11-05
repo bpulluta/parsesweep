@@ -13,9 +13,7 @@
     "identity": {
       "deduplication": {
         "key_fields": ["record_id", "lineage.artifact_id", "lineage.run_id"],
-        "ignore_fields": ["quality", "processing_metrics"],
-        "strategy": "latest",
-        "comparison_mode": "exact"
+        "ignore_fields": ["quality", "processing_metrics"]
       }
     }
   },

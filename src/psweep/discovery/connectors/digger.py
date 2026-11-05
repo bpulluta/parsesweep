@@ -17,7 +17,7 @@ from psweep.discovery.network import (
 from ..urls import (
     compile_url_patterns, is_http_url, matches_allowed_domain, url_extension,
 )
-from ..retry import browser_may_recover, is_transient_error
+from psweep.utils.retry import browser_may_recover, is_transient_error
 from .base import BaseDiggerConnector, CrawlResult, DiggerArtifact, DiggerInput
 
 # Patterns that indicate an HTML response is a JS-rendered shell

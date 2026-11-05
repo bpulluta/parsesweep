@@ -25,7 +25,6 @@ def _reference_schema() -> dict:
             "extraction": {
                 "main_data_array": "widgets",
                 "context_objects": [],
-                "display_name_template": "{widget_id}",
                 "document_type": "Widget Catalog",
             },
             "identity": {
@@ -70,6 +69,7 @@ def test_build_schema_starter_from_reference_derives_lean_metadata(tmp_path):
     meta = starter["$metadata"]
     assert meta["version"] == "0.1.0"
     assert meta["extraction"]["main_data_array"] == "widgets"
+    assert set(meta["extraction"]) == {"main_data_array", "context_objects", "document_type"}
     # Inherited identity/deduplication carried over from the reference.
     assert meta["identity"]["deduplication"]["key_fields"] == ["widget_id"]
     # Example values are pruned out of the starter.

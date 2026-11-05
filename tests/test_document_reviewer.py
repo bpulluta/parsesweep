@@ -673,3 +673,38 @@ class TestRecordings:
             "1 document(s) had too little text to review; JS-rendered pages "
             "need discovery.crawl.browser_escalation." in notes
         )
+
+    def test_rediscovered_recording_is_graded_on_the_extraction_transcript(
+        self, tmp_path: Path
+    ):
+        """A transcript cached on the curated copy grades the run's same bytes."""
+        from psweep.discovery.engine import DiscoveryEngine
+
+        curated = tmp_path / "curated"
+        published = curated / "county-a" / "meeting.mp3"
+        published.parent.mkdir(parents=True)
+        published.write_bytes(b"ID3 recording bytes")
+        document_utils.write_text_cache(
+            published, self.TRANSCRIPT, method="transcript:fixture:v1"
+        )
+        run_copy = tmp_path / "run" / "county-a" / "meeting.mp3"
+        run_copy.parent.mkdir(parents=True)
+        run_copy.write_bytes(b"ID3 recording bytes")
+        changed = tmp_path / "run" / "county-a" / "other.mp3"
+        changed.write_bytes(b"ID3 different bytes")
+        records = [
+            {**_record(tmp_path, "unused.txt", "County A"),
+             "path": path.as_posix(), "relative_path": f"county-a/{path.name}"}
+            for path in (run_copy, changed)
+        ]
+
+        DiscoveryEngine._seed_recording_transcripts(curated, records)
+
+        assert document_utils.read_text_cache(run_copy) == self.TRANSCRIPT
+        assert document_utils.read_text_cache(changed) is None
+        client = _LevelClient(4)
+        reviewer = DocumentReviewer(document_description="public comments")
+        reviewer._client = client
+        reviewer.review(records[:1], [])
+        assert client.prompts[0].endswith(self.TRANSCRIPT)
+        assert records[0]["review_relevance"] == 1.0

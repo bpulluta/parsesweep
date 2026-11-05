@@ -76,7 +76,7 @@ def test_engine_run_emits_scaffold_candidates(tmp_path: Path):
     payload = result.manifest_path.read_text(encoding="utf-8")
 
     assert result.manifest_path.exists()
-    assert result.documents_dir.exists()
+    assert not result.documents_dir.exists()
     assert '"status": "dry_run"' in payload
     assert '"acceptance_class"' in payload
     assert payload.count('"source": "configured"') == 2

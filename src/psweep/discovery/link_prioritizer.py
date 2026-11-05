@@ -97,6 +97,29 @@ class PrioritizedCandidate:
         }
 
 
+def domain_score_patterns(
+    domain_scores: dict[str, float] | None,
+) -> list[tuple[str, float]]:
+    """Normalize ``link_prioritization.domain_scores`` into ``(pattern, score)``."""
+    return [
+        (key.lower().strip().rstrip("."), float(score))
+        for key, score in (domain_scores or {}).items()
+        if key.strip().rstrip(".")
+    ]
+
+
+def host_matches_domain_pattern(host: str, pattern: str) -> bool:
+    """Match a host against a normalized ``domain_scores`` pattern.
+
+    Leading-dot patterns match hostname suffixes; host patterns match the host
+    itself or any of its subdomains.
+    """
+    host = host.lower().rstrip(".")
+    if pattern.startswith("."):
+        return host.endswith(pattern)
+    return host == pattern or host.endswith("." + pattern)
+
+
 # ---------------------------------------------------------------------------
 # LinkPrioritizer
 # ---------------------------------------------------------------------------
@@ -138,11 +161,7 @@ class LinkPrioritizer:
         self._keywords: list[str] = [
             k.lower().strip() for k in (keywords or []) if k.strip()
         ]
-        self._authority_patterns: list[tuple[str, float]] = [
-            (k.lower().strip().rstrip("."), float(v))
-            for k, v in (domain_authority_overrides or {}).items()
-            if k.strip().rstrip(".")
-        ]
+        self._authority_patterns = domain_score_patterns(domain_authority_overrides)
         self._top_k = top_k
         self._shopping_patterns: list[tuple[str, re.Pattern[str]]] = [
             (term, re.compile(rf"(?<![^\W_]){re.escape(term)}(?![^\W_])"))
@@ -340,12 +359,7 @@ class LinkPrioritizer:
         matched: list[str] = []
 
         for pattern, adj in self._authority_patterns:
-            matches = (
-                host.endswith(pattern)
-                if pattern.startswith(".")
-                else host == pattern or host.endswith("." + pattern)
-            )
-            if matches:
+            if host_matches_domain_pattern(host, pattern):
                 total += adj
                 matched.append(f"{pattern}={adj:+.2f}")
 

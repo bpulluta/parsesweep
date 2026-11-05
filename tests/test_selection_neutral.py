@@ -104,11 +104,11 @@ def test_exclude_draft_false_disables_explicit_patterns():
     assert selected == [candidate]
 
 
-def test_marker_gate_has_no_builtin_legal_vocabulary():
-    """The existing optional marker gate works with non-legal domain terms."""
+def test_require_any_has_no_builtin_legal_vocabulary():
+    """The require_any gate works with non-legal domain terms."""
     sensor = make_candidate("https://example.com/sensor.pdf")
     ordinance = make_candidate("https://example.com/ordinance.pdf")
     selected, _ = CandidateSelector(
-        relevance_require_legal_marker_terms=["sensor"]
+        relevance_require_any_terms=["sensor"]
     ).select([[ordinance, sensor]], primary_per_target=2)
     assert selected == [sensor]

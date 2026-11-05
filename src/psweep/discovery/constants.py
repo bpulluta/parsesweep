@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from psweep import __version__
+from psweep._version import __version__
 from psweep.extraction import document_utils
 
 DEFAULT_MAX_CONCURRENT_DOWNLOADS = 2

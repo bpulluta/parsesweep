@@ -43,7 +43,12 @@ def cli() -> None:
 @click.option("--config", "config_path", required=True, type=click.Path(path_type=Path),
               help="Path to the domain run configuration.")
 @click.option("--fresh", is_flag=True, help="Re-run discovery, extraction, and compilation.")
-@click.option("--target-limit", "-n", type=click.IntRange(min=1), help="Limit discovery targets.")
+@click.option(
+    "--target-limit",
+    "-n",
+    type=click.IntRange(min=1),
+    help="Use only the first N targets (pilot runs).",
+)
 @click.option("--skip-discover", is_flag=True, help="Use existing curated documents.")
 @click.option("--skip-extract", is_flag=True, help="Compile existing extracted records.")
 @click.option("--validate-config", "validate_config_only", is_flag=True,

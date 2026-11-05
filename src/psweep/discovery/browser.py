@@ -36,11 +36,11 @@ class BrowserUnavailableError(RuntimeError):
 
 
 class BrowserDownloadError(RuntimeError):
-    """An in-browser ``fetch()`` failed; ``status`` is None when it rejected."""
+    """An in-browser ``fetch()`` failed; ``status_code`` is None when it rejected."""
 
-    def __init__(self, message: str, *, status: int | None = None) -> None:
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
         super().__init__(message)
-        self.status = status
+        self.status_code = status_code
 
 
 class BrowserNavigationError(RuntimeError):
@@ -231,7 +231,9 @@ class BrowserSession:
             status = payload.get("status")
             detail = payload.get("error") or f"HTTP {status}"
             msg = f"Browser download failed for {url}: {detail}"
-            raise BrowserDownloadError(msg, status=int(status) if status else None)
+            raise BrowserDownloadError(
+                msg, status_code=int(status) if status else None
+            )
         return (
             base64.b64decode(payload.get("data") or ""),
             payload.get("ct"),

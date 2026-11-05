@@ -29,6 +29,7 @@ class NetworkPolicyError(RuntimeError):
         self.url = url
         self.result = result
         self.blocking_code = getattr(result, "blocking_code", None)
+        self.retryable = bool(getattr(result, "retryable", False))
         parsed = urlsplit(url)
         origin = f"{parsed.scheme}://{parsed.hostname or 'unknown-host'}"
         super().__init__(

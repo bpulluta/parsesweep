@@ -26,12 +26,12 @@ import litellm
 from litellm import completion, completion_cost, cost_per_token
 
 from ..security import (
-    ca_bundle, protected_mode, require_model_endpoint, resolve_tls_verification,
-    tls_context,
+    ca_bundle, protected_mode, provider_error_category, require_model_endpoint,
+    resolve_tls_verification, tls_context,
 )
 from ..exceptions import ExtractionError
 from .llm_factory import DEFAULT_MODEL, detect_provider
-from ..discovery.retry import compute_backoff, is_transient_error
+from ..utils.retry import compute_backoff, is_transient_error
 from .schema_utils import strict_compatible
 from .text_processor import find_data_arrays
 
@@ -372,7 +372,7 @@ class LLMClient:
                 logger.error(
                     f"LLM request failed (provider={self.provider}, model={self.model})"
                 )
-                raise ExtractionError(self._safe_provider_error(e)) from None
+                raise self._provider_error(e) from None
             request = dict(request)
             request.pop("temperature", None)
             self._count(calls=1)
@@ -384,7 +384,7 @@ class LLMClient:
                     f"LLM request failed after retry without temperature "
                     f"(provider={self.provider}, model={self.model})"
                 )
-                raise ExtractionError(self._safe_provider_error(retry_error)) from None
+                raise self._provider_error(retry_error) from None
 
         usage = getattr(response, "usage", None)
         measured = {
@@ -579,17 +579,13 @@ class LLMClient:
         return cleaned
 
     @staticmethod
-    def _safe_provider_error(error: Exception) -> str:
-        """Retain useful failure categories without copying untrusted provider text."""
-        message = str(error).lower()
-        markers = (
-            "context_length_exceeded", "context_window_exceeded",
-            "maximum context length", "rate limit", "429", "timeout",
-            "certificate verify failed", "connection error", "connection reset",
-            "service unavailable", "authentication",
+    def _provider_error(error: Exception) -> ExtractionError:
+        """Wrap a provider failure without its untrusted text, keeping its retryability."""
+        wrapped = ExtractionError(
+            f"LLM request failed: {provider_error_category(error)} ({type(error).__name__})"
         )
-        category = next((marker for marker in markers if marker in message), "provider failure")
-        return f"LLM request failed: {category} ({type(error).__name__})"
+        wrapped.retryable = is_transient_error(error)
+        return wrapped
 
     @staticmethod
     def _should_retry_without_temperature(

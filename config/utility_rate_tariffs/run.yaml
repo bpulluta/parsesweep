@@ -120,7 +120,7 @@ extraction:
                                            # targeting only fires for docs that would
                                            # be truncated (zero-regression approach)
   pages:                                   # page targeting for large PDFs
-    # csv: config/utility_rate_tariffs/page_ranges.csv  # manual ranges win over auto_locate
+    # csv: page_ranges.csv  # manual ranges win over auto_locate
     auto_locate:                           # LLM fallback for uncovered docs
       model: secondary                     # pin to an alias — avoid silent .env fallback
       section_description: >-

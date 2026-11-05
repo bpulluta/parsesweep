@@ -14,7 +14,7 @@ For authoring, use this mental model:
 - `Schema` (`config/<domain>/schema.json`): The **extraction contract**. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in `properties`), not in `$metadata`.
 - `Runtime config` (`config/<domain>/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, and all compilation output settings (column order, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
 
-**Separation rule:** `$metadata` in the schema owns `extraction.*` and `identity.deduplication` (data identity — what makes a record unique). Everything else — output formatting, normalization, model tiers — lives only in `config/<domain>/run.yaml`. Output config in `$metadata` is not supported and will be rejected by `check-schema`.
+**Separation rule:** `$metadata` in the schema owns `extraction.*`, `identity.deduplication` (data identity — what makes a record unique) and `compilation.flattening` (row shape). Everything else — output formatting, normalization, model tiers — lives only in `config/<domain>/run.yaml`; `check-schema` flags output or normalization settings placed in `$metadata`.
 
 ---
 
@@ -149,16 +149,13 @@ This example shows the full metadata surface that belongs in the schema. All out
         "utility_info",
         "document_applicability"
       ],
-      "display_name_template": "{utility_name} ({state})",
       "document_type": "Utility Tariff"
     },
     
     "identity": {
       "deduplication": {
         "key_fields": ["rate_name", "charge_type", "season"],
-        "ignore_fields": ["notes", "extracted_text"],
-        "strategy": "latest",
-        "comparison_mode": "exact"
+        "ignore_fields": ["notes", "extracted_text"]
       }
     }
   }
@@ -215,191 +212,66 @@ Context objects (`utility_info`) are included in every row.
 
 ---
 
-## Data Structure Design
+## How Rows and Columns Are Built
 
-### Nested Arrays: Automatic Expansion vs Summarization
+Compilation turns every `main_data_array` item into one row; columns keep the
+schema field names.
 
-The compiler automatically decides based on array characteristics:
+- **Context objects** listed in `context_objects` are copied into every row.
+- **Nested objects** become `parent_child` columns (`location.county` →
+  `location_county`).
+- **Arrays of primitives** become one comma-joined cell.
+- **One nested array of objects** in the main item becomes the *row array*:
+  each child yields a row that repeats the parent fields. With several such
+  arrays, name one in `$metadata.compilation.flattening.row_array`, or set it
+  to `null` to keep every array as a compact-JSON cell. A child field that
+  collides with a parent or context column fails compilation, so give child
+  fields distinct names.
 
-#### ✅ Expands to Columns (Best for Analysis)
-
-**Criteria:**
-- ≤15 items
-- ≤20 fields per item
-- Consistent structure (same fields across items)
-
-**Example:**
 ```json
-"charges": [
-  {"type": "Customer", "rate": 7.10, "unit": "$"},
-  {"type": "Energy", "rate": 0.1038, "unit": "$/kWh"},
-  {"type": "Demand", "rate": 5.00, "unit": "$/kW"}
-]
+"$metadata": {
+  "extraction": {"main_data_array": "rate_schedules", "context_objects": ["utility_info"]},
+  "compilation": {"flattening": {"row_array": "charges"}}
+}
 ```
 
-**Result:** Separate columns for each charge type
-- `Charges Customer Rate` = 7.10
-- `Charges Customer Unit` = $
-- `Charges Energy Rate` = 0.1038
-- `Charges Energy Unit` = $/kWh
-- `Charges Demand Rate` = 5.00
-- `Charges Demand Unit` = $/kW
-
-#### ✅ Summarizes to Text (Best for Context)
-
-**Criteria:**
-- >15 items, OR
-- >20 fields per item, OR
-- Inconsistent structure
-
-**Example:**
-```json
-"permit_history": [
-  {"date": "2023-01-15", "action": "Applied", "officer": "J. Smith"},
-  {"date": "2023-02-20", "action": "Reviewed", "officer": "M. Jones"},
-  ... 28 more items
-]
-```
-
-**Result:** Single column with summary text
-- `Permit History` = "Applied: 2023-01-15 (J. Smith); Reviewed: 2023-02-20 (M. Jones); ..."
-
----
+With `rate_schedules[].charges[]`, each charge becomes a row carrying its
+schedule's fields and `utility_info`. `flattening` also accepts `unit_fields`
+and `unit_normalizations` (a `{raw: canonical}` map applied to those columns).
+All other presentation (column order, formats) lives in `run.yaml`
+`compilation.output`.
 
 ## Design Patterns
 
-### Pattern 1: Entity-Based (Recommended)
+1. **Choose the row level deliberately.** `main_data_array` should be the
+   entity you analyze (rate schedules, requirements, permits), not a container
+   above it or a detail below it.
+2. **Include distinguishing context** in each item (season, tier, time period,
+   condition) so rows that differ are not deduplicated together and stay
+   readable without the source.
+3. **Keep item fields consistent** across items: the same names, types and
+   units. Separate values from units.
+4. **Keep nesting shallow.** Two levels below the item are enough; deeper
+   objects produce long `a_b_c` column names.
 
-**Best for:** Most use cases where you have a clear primary entity
+## Evidence and Negative Answers
 
-✅ **Good:**
-```json
-{
-  "$metadata": {
-    "extraction": {
-      "main_data_array": "rate_schedules",
-      "context_objects": ["utility_info"]
-    }
-  },
-  "utility_info": {
-    "utility_name": "Metro Electric",
-    "state": "CA"
-  },
-  "rate_schedules": [
-    {
-      "rate_name": "Residential",
-      "charges": [
-        {"type": "Customer", "rate": 7.10},
-        {"type": "Energy", "rate": 0.1038}
-      ]
-    }
-  ]
-}
-```
+The model fills fields from the document text, so descriptions must stop it
+from inventing negatives:
 
-**Result:** One row per rate schedule, with charges expanded as columns
+- **"No"/"Never"/"Prohibited" only when a quote supports it.** A negative
+  value needs the same verbatim evidence as a positive one; otherwise use
+  `null` (not stated).
+- **Absence from a list is never "No".** A target missing from a published
+  list, table or export means *not stated*, not *not allowed*; lists can be
+  incomplete or stale.
+- **The quote must state the fact for this target.** Evidence about another
+  jurisdiction, a neighbouring entity, or a general statute does not answer
+  the field for the target being extracted.
 
-❌ **Bad:**
-```json
-{
-  "$metadata": {
-    "extraction": {
-      "main_data_array": "charges"
-    }
-  },
-  "charges": [
-    {"rate_name": "Residential", "type": "Customer", "rate": 7.10},
-    {"rate_name": "Residential", "type": "Energy", "rate": 0.1038},
-    {"rate_name": "Commercial", "type": "Customer", "rate": 9.50},
-    ... 50 more charges
-  ]
-}
-```
-
-**Problem:** Creates 50+ rows instead of a few organized rate schedules
-
-### Pattern 2: Include Distinguishing Context
-
-Always include fields that differentiate similar items.
-
-✅ **Good:**
-```json
-{
-  "type": "Energy",
-  "rate": 0.1038,
-  "season": "Summer",
-  "time_period": "On-peak",
-  "tier": "1"
-}
-```
-
-**Result:** Clear column names
-- `Charges Energy Summer On-Peak Tier 1 Rate`
-
-❌ **Bad:**
-```json
-{
-  "type": "Energy",
-  "rate": 0.1038
-}
-```
-
-**Problem:** Lost context - which season? which time period?
-
-### Pattern 3: Consistent Field Structure
-
-Use the same fields across all items in an array.
-
-✅ **Good:**
-```json
-"requirements": [
-  {"category": "Setback", "value": 1320, "unit": "feet"},
-  {"category": "Height", "value": 35, "unit": "feet"},
-  {"category": "Noise", "value": 50, "unit": "dBA"}
-]
-```
-
-**Result:** Clean expansion with predictable columns
-
-❌ **Bad:**
-```json
-"requirements": [
-  {"category": "Setback", "distance": 1320, "from": "residence"},
-  {"category": "Height", "max_height": 35},
-  {"category": "Noise", "limit_day": 50, "limit_night": 45}
-]
-```
-
-**Problem:** Inconsistent fields → forced to summarize instead of expand
-
----
-
-## Optimization Guidelines
-
-### For Quantitative Analysis
-
-**Goal:** Structured, analyzable columns
-
-1. **Keep nested arrays small** (≤15 items)
-2. **Use consistent field names** across all array items
-3. **Include distinguishing context** (season, tier, period, type)
-4. **Separate values from units**
-
-**Example:**
-```json
-"charges": [
-  {
-    "charge_type": "Energy",
-    "rate": 0.1038,
-    "unit": "$/kWh",
-    "season": "Summer",
-    "time_period": "On-peak",
-    "tier": "1"
-  }
-]
-```
-
----
+State these rules in the field descriptions, for example: "Use 'No' only when
+the quoted text explicitly states it for this jurisdiction; null if the
+document is silent."
 
 ## Temporal Metadata Best Practices
 
@@ -512,29 +384,6 @@ fields, guard the negated branch with `required` so it applies only when present
 
 ---
 
-### For Qualitative/Contextual Data
-
-**Goal:** Readable summaries
-
-1. **Use descriptive name/type fields**
-2. **Let large arrays summarize automatically**
-3. **Include important details in text**
-
-**Example:**
-```json
-"inspection_notes": [
-  {
-    "date": "2024-01-15",
-    "inspector": "J. Smith",
-    "findings": "Equipment in good condition",
-    "action_required": "None"
-  },
-  ... many more notes
-]
-```
-
----
-
 ## Common Mistakes
 
 ### ❌ Missing `$metadata` Section
@@ -602,7 +451,7 @@ fields, guard the negated branch with `required` so it applies only when present
 }
 ```
 
-**Result:** `Rate Schedules Details Info Basics Rate Name` (too long!)
+**Result:** `details_info` columns holding nested JSON-like values that are hard to read.
 
 ✅ **Better:** Keep to 2-3 levels maximum
 ```json
@@ -659,7 +508,7 @@ fields, guard the negated branch with `required` so it applies only when present
 }
 ```
 
-**Result:** 20+ rows per rate schedule instead of 1 row with expanded charge columns
+**Result:** the schedule-level fields are lost or repeated by hand in every charge
 
 ✅ **Better:**
 ```json
@@ -716,7 +565,7 @@ open outputs/samples/compiled/samples.xlsx
 
 Verify:
 - Correct number of rows
-- Nested arrays expanded/summarized as expected
+- The row array (if any) produced one row per child as expected
 - Column names are clear and readable
 - Data properly deduplicated
 

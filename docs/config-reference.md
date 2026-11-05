@@ -1,400 +1,463 @@
 # Configuration Reference
 
-A ParseSweep run is driven by a YAML config containing any subset of
-`extraction`, `compilation`, and `discovery`. Loading validates
-all supplied sections; each command executes only its own section. Only the
-explicitly selected config file is loaded. Adjacent section override files
-beside `run.yaml`, `run.yml`, or `run.json` are retired: move their settings into
-the corresponding sections of the run config and remove those adjacent files,
-or load a section-wrapped config explicitly with `--config`. The loader names
-the files to migrate rather than silently ignoring them.
+This page is the single reference for `run.yaml`. Every key, default and rule
+below is taken from the loaders that enforce them; the
+[Command Reference](commands/index.md) renders every CLI option from the live
+command definitions.
 
-## Start small, add as you need
+## The run config
 
-Discovery alone needs no schema or LLM configuration:
+A domain lives in `config/<domain>/`:
 
-```yaml
-domain: my_domain
-discovery:
-  queries:
-    - "industrial pump installation manual filetype:pdf"
+```text
+config/<domain>/
+├── run.yaml       # this file: runtime behavior for every stage
+├── schema.json    # extraction contract (see Schema Authoring)
+├── targets.csv    # optional roster: one row per target
+└── samples/       # optional human reference sheets for validation
 ```
 
-Set `SERPAPI_API_KEY` in the environment or `.env`, then run
-`pixi run psweep discover --config config/my_domain/run.yaml`.
-Search runs only when `discovery.queries` (or a target `query`) is set.
-Replace `queries` with `sources: [https://example.org/documents/manual.pdf]`
-for known document URLs; configured URLs are always downloaded and kept.
+Only the config passed with `--config` is loaded. Each command runs its own
+section and validates all supplied sections. Loading is strict at every level:
+unknown keys fail with a did-you-mean suggestion naming the file and key path;
+quoted booleans (`"false"`), invalid regexes, non-http(s) URLs and out-of-range
+limits fail before any work starts. Relative `targets`, `pages.csv` and
+`validation.references` paths resolve against the config directory. Credentials never go in YAML; set them in the environment or `.env`
+(see [Environment variables](#environment-variables)).
 
-Start from `config/TEMPLATE.yaml`; use `config/ADVANCED.yaml` for expanded
-stage settings. The existing `init-domain-schema` scaffold creates a schema,
-not a discovery wizard or a new config mode.
+Check a config without network calls or run artifacts:
 
-Once you have suitable documents, extraction needs only a schema: put it at
-`config/my_domain/schema.json` (or set top-level `schema:`). Inputs default to
-`outputs/my_domain/discovered/curated`; all outputs are derived under
-`outputs/my_domain/`. For local documents, pass the path positionally:
-`pixi run psweep extract documents/my_domain/ --config config/my_domain/run.yaml`.
-
-Extraction requires LLM credentials; discovery does not unless you explicitly
-configure paid `document_review`. Add a setting only when you have a reason
-to change its default. The [Getting Started guide](getting-started.md) walks
-through discovery first, and [Tuning & Iteration](tuning.md) covers later tuning.
-
-## Defaults at a glance
-
-These are the values that apply when you omit a key. Defaults come from
-shared runtime definitions; templates show explicit choices separately.
-
-| Setting | Section | Default | Change it when… |
-|---------|---------|---------|-----------------|
-| `search.max_results` | discovery | `10` unique candidates per query | Change the candidate budget, not the download count |
-| `search.cache` | discovery | `false` | Opt into search-result caching |
-| `selection.max_per_target` | discovery | `1` | Acquire more candidates per target |
-| `crawl.max_depth` | discovery | `0` (no link following) | Crawl index pages |
-| `crawl.provider` | discovery | `http` | Use `selenium` for JS/bot-protected pages |
-| `runtime.max_files` | discovery | unbounded (configured URLs never count) | Cap downloads |
-| `runtime.max_concurrent_downloads` | discovery | `2` | Change download concurrency |
-| `retry_policy.max_attempts` | discovery | `3` total attempts | Change the retry budget |
-| `crawl.browser_downloads` | discovery | `false` | Download through a headless browser |
-| `crawl.browser_escalation.enabled` | discovery | `false` | Opt into browser recovery of JS shells and refused (401/403/429/451) pages and downloads |
-| `crawl.code_host_adapters.enabled` | discovery | `false` | Opt into supported code-host API recovery |
-| `document_review` | discovery | Not configured (no LLM review) | Add explicit paid model-based curation |
-| `partition_by` | discovery | `_targets/<id>/` per target, `_shared/` for sources | You need a metadata-based output layout |
-| `policy.robots_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
-| `policy.tos_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
-| `model` | extraction | `.env` model → `gpt-4o-mini` | You want a stronger/cheaper tier |
-| `max_context` | extraction | `600000` | Output is truncated on large docs |
-| `schema` | top level | `schema.json` beside the config | The schema lives elsewhere |
-| `max_concurrent` | extraction | `4` | Provider rate limits allow more (or fewer) parallel documents |
-| `skip_existing` | extraction | `true` | Validated record reuse; `--fresh` resets whole output after preflight |
-| `timeout_seconds` | extraction | `120` (`LLM_TIMEOUT` env) | Very large docs time out |
-| `provider` | extraction | `auto` | Auto-detection picks the wrong one |
-| `pages.auto_locate.trigger_chars` | extraction | `200000` | Target only docs above a size |
-| `pages.auto_locate.max_selected_pages` | extraction | `30` | Sections span more/fewer pages |
-| `output.default_format` | compilation | `both` when unset | You want only `csv` or `excel` |
-| dedup `key_fields` | schema `$metadata.identity.deduplication` | none | Compiled sheet has duplicate rows |
-| `judge` | validation | none (no judging) | Disputed cells need a verdict |
-| `fields` | validation | every scorable field | Focus scoring on a few columns |
-| `min_accuracy` | validation | none (no gate) | `validate` must fail below a reference accuracy |
-
-The [Command Reference](commands/index.md) also renders every CLI option's
-default directly from the live command definitions.
-
-## Discovery budgets, scope, and review
-
-`search.max_results` caps **unique candidates per rendered query**, locally,
-across live/cached results and enabled news results. Provider `num` is a request
-hint, not an authoritative limit. There is no hidden pagination or refill.
-`selection.max_per_target` is the **acquisition count per target**, after scope
-and candidate selection; it is separate from `document_review.keep_top`, which
-controls optional post-acquisition LLM curation. Neither cap guarantees that
-many successful downloads or establishes search recall.
-
-Search cache is off by default. With `search.cache: true`, a cache hit makes
-zero live search calls. Browser recovery also remains off until explicitly
-enabled, including when threshold settings are supplied:
-
-```yaml
-discovery:
-  crawl:
-    browser_escalation:
-      enabled: true
-      min_shell_chars: 8000
-    code_host_adapters:
-      enabled: true
+```bash
+pixi run psweep run --config config/<domain>/run.yaml --validate-config
+pixi run psweep discover --config config/<domain>/run.yaml --show-effective-config
 ```
 
-HTML/HTM and extensionless HTTP(S) URLs are provisionally eligible with the
-default `selection.require_supported_document`; you do not need to set it to
-`false` to discover web documents. Known non-document binaries are excluded;
-GET/MIME checks verify ambiguous candidates. PDF candidates are preferred to
-web pages when present. Ranking and MIME validation do not certify document
-relevance or semantic accuracy.
-
-For strict sources, combine `crawl.allowed_domains` with a URL-path regex:
-
-```yaml
-discovery:
-  queries:
-    - "site:example.org installation manual filetype:pdf"
-  crawl:
-    allowed_domains: [example.org]
-    include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
-```
-
-Configured URLs (`sources` and target `urls`) bypass selection, the
-classifier's `action: filter`, and `document_review.keep_top`; shared sources
-do not count against any target's caps. Links crawled from them (with
-`crawl.max_depth > 0`) are ordinary candidates, except query variants of a
-configured page (its pagination), which are that configured page.
-
-Without `crawl.include_link_text_patterns`, a crawl follows non-navigation
-links. With it, only links whose text matches are followed, and each matching
-page is also kept, so a paginated listing is collected page by page:
-
-```yaml
-discovery:
-  crawl:
-    max_depth: 10                       # longest page chain to follow
-    include_link_text_patterns: ['^next$']
-```
-
-Every non-document candidate (search results included) is fetched once at
-depth 0 to look for matching links, and `crawl.max_pages` is one budget for the
-whole run: size it above the number of HTML candidates plus listing pages.
-
-Scope applies before top-one selection and to final redirects. Search `site:`
-and `filetype:` hints are not scope/type guarantees.
-`selection.relevance_allowed_domain_patterns` is a ranking boost, not a host
-allowlist. `selection.exclude_url_patterns` is a case-insensitive regex guard
-on URLs, not a substitute for positive source scope. Concrete provider/vendor
-source filters belong in domain configs; a document parser does not configure
-them automatically.
-
-Selection uses `require_any` and `exclude` for literal relevance terms, and
-`exclude_text_patterns` for candidate-text regex guards. Domain-authored
-`draft_patterns` with `exclude_draft: true` express draft filtering; there is
-no built-in legal draft list. Ranking has no built-in vendor/government
-authority table or shopping-path list: configure `link_prioritization.domain_scores`
-and `shopping_path_keywords` when needed. Configured ranking `keywords`
-replace the generic `document`/`download`/`guide`/`report` fallback.
-
-Output layout comes from explicit target fields via `partition_by`, never from
-query text. Each document records `source_scope` (`shared` or `target`), its
-`target_id`, and the page it was crawled from (`source_url`).
-
-`document_review` is never enabled by query inference or model aliases. Add an
-explicit `document_description` and `model`, and configure LLM credentials,
-only when you want paid model-based curation. Without it, acquisition uses
-heuristics; inspect the files before extraction. Run-scoped selected files are
-under `outputs/<domain>/discovered/runs/<run_id>/curated`; the consolidated downstream
-folder is `outputs/<domain>/discovered/curated`.
-
-Credentials belong only in environment variables or `.env`, not YAML.
-TLS verification defaults to true. `SERPAPI_SSL_VERIFY` and
-`DISCOVERY_SSL_VERIFY` override the `PSWEEP_SSL_VERIFY` fallback for search and
-downloads; models use `PSWEEP_SSL_VERIFY`. Explicit request arguments take
-precedence. False values are allowed with a warning only in public mode;
-protected mode rejects any configured false value, even if overridden.
-Invalid boolean values fail. Prefer `REQUESTS_CA_BUNDLE` (or `SSL_CERT_FILE`)
-for approved VPN/private roots instead of disabling verification. Discovery
-ignores environment proxies and `.netrc` credentials.
-Files streamed to disk stop at 1 GiB decoded (positive integer
-`PSWEEP_MAX_RESPONSE_BYTES` overrides it) and abort only after
-`runtime.timeout_seconds` without data; pages, search and API responses read
-into memory stop at a fixed 50 MiB and must finish within the timeout. An
-oversized document is a failed download (`partial_failure`), never a skip;
-after raising the limit, rediscover with `--fresh`.
-See [Security and protected operation](security.md) for network/resource limits.
-
-## Discovery configuration validation
-
-Config is always strict: unknown keys at any level fail with a did-you-mean
-suggestion naming the file and key path. Quoted booleans such as `"false"`,
-invalid regular expressions, non-http(s) URLs, and invalid limits also fail
-before acquisition. `crawl.max_depth: 0` disables link following; result
-counts, page/file budgets, timeouts, and per-target selection counts must be
-positive. `search.params` is an open map except the reserved `q`, `num`, and
-`api_key`.
-
-`discover --validate-config` uses the same input-plan check as execution,
-without contacting providers or writing run artifacts. It requires `sources`,
-`queries`, or target rows with `query`/`urls`. The `run` CLI and Python
-`run_pipeline` perform this check before starting discovery. Validation does
-not establish provider availability, credentials, or live network reliability.
-
-`discovery.crawl.request_headers` reaches every HTTP request (pages, crawl,
-robots.txt, code-host APIs). The default `User-Agent` is
-`Mozilla/5.0 (compatible; ParseSweep/<version>)`; robots.txt rules are matched
-on the `ParseSweep` token whatever `User-Agent` is sent. Browser sessions send
-the same `User-Agent` (the only header Chrome lets them set). Do not store
-secrets in configs or print secret-bearing headers with
-effective-config/validation output. Explicit CLI options (`--domain`,
-`--source`, `--query`) override config values.
-
-Strict robots/ToS enforcement is available for HTTP acquisition. It cannot
-certify browser redirects or subresource requests and therefore fails before
-unsupported browser navigation, including escalation. Keep HTTP acquisition
-when enforcement is required; browser opt-in is not enforcement support.
-
-### Outcomes, resume, and discovery publication
-
-Outcome and exit code do not depend on quiet/default/verbose rendering:
-
-| Manifest status | Exit code | Meaning |
-|-----------------|-----------|---------|
-| `success`, `dry_run`, `reused` | `0` | Successful acquisition, valid plan, or validated reuse with no errors. |
-| `failed` | `1` | Acquisition failed; zero downloads caused by failure are not an empty success. |
-| `empty` | `2` | No usable results and no acquisition failure. |
-| `partial_failure` | `3` | Usable results plus recorded errors; `run` continues downstream and a re-run retries the failures. |
-
-Checkpoint **v2** requires the effective discovery config fingerprint and
-SHA-256 artifact evidence, including curated files, to match before reuse.
-Config changes, missing/changed artifacts, and old v1 entries cause
-reacquisition. Search-result caching remains a separate opt-in mechanism. Targets and shared `sources` are checkpointed one by one and are not part
-of the fingerprint, so adding one fetches only the new item; a target also
-re-runs when its `urls` or rendered queries change. Resumed runs
-publish file by file; only `--fresh` replaces whole curated partitions.
-
-An item left incomplete (retryable failure, unfinished search or crawl, or the
-`runtime.max_files` budget) publishes its downloads so far additively — same
-names are replaced, nothing is withdrawn — and its checkpoint entry keeps the
-final outcome of each child URL. The next run re-fetches the listing or search,
-reuses every earlier download whose file still matches its SHA-256 without a
-request and without using a `max_files` slot, does not re-request terminal
-outcomes (e.g. HTTP 404), and fetches only the remaining children. A capped
-listing therefore converges batch by batch, and a run with one transient child
-failure re-fetches only that child. Run notes report reused and fetched counts
-and why partitions are still incomplete. A completed item makes no requests;
-`psweep discover --fresh` re-checks completed listings and ignores all reuse.
-
-Corpus publication rejects concurrent writers with a lock and journals the
-known curated/provenance swaps. The next writer recovers an interrupted
-publication; corrupt recovery evidence fails closed rather than overwriting
-prior files. This is a small discovery-specific protocol, not a general
-pipeline or output transaction.
-
-OCR pairs use `.text/<filename>.txt` and `.text/<filename>.meta.json`, so
-`report.pdf` and `report.html` do not share a cache. Readers verify source
-size/mtime and source SHA-256 plus cached-text SHA-256. Partial/stale/mismatched
-pairs are misses; temporary-file replacement publishes metadata last. Old
-stem-only pairs are not reused. Republished discovery files (including
-`--fresh`) inherit the OCR/transcript text of a replaced file with the same
-SHA-256, so unchanged scans and recordings are not processed again. LLM review grades are cached by document content
-and grading inputs in `discovered/.review_cache/<key>.json` and reused across
-runs. OCR caches now hold raw text, applying current corrections
-on consumption; older corrected entries invalidate rather than silently reuse.
-Page/section products fingerprint source content and resolved model/settings;
-section cache pairs use full filenames, text digests, and metadata-last staging.
-Native, pypdf, and OCR paths honor selected page bounds and retain actual scope.
-
-Extraction reuses records only when source/schema/settings and record-byte
-evidence match. Missing proof or invalid JSON triggers re-extraction, without a
-new resume setting. Valid reuse needs no provider credentials or calls. `--fresh`
-resets the whole resolved output after successful preflight; filtered/limited
-fresh runs rebuild only that subset. Overlapping output/input paths are rejected.
-Exit 0 means success/reuse (including valid zero-item payloads); exit 1 is
-failure; empty selection exits 2; partial failure exits 3. `run` (and
-`run_pipeline`) halt on 1 or 2, continue past 3, and exit 3 at the end.
-Atomic per-file record/manifest replacement is not a whole-run transaction or
-concurrent-writer certification. Inert category/profile settings and YAML schema
-pack unwrapping are retired; use direct JSON schemas and supported string aliases.
-
-### Advanced: column-flattening overrides
-
-Nested objects flatten to `parent_child` columns and scalar lists join with
-commas. The schema's `$metadata.compilation.flattening` block accepts only
-`row_array` (which nested object array expands to one row per child),
-`unit_fields`, and `unit_normalizations` (an opt-in value map applied to the
-named unit fields, e.g. `{"ft": "feet"}`).
-
-## Schema-driven compilation
-
-Output columns come from the domain schema, not a fixed opinion, project, or
-geographic record layout. A manual can declare numeric measurements and units;
-a regulation can declare requirements; a public-comment schema can declare
-sentiment and evidence. Fields absent from that domain are not invented as
-empty consumer columns.
-
-Each output header is the schema field's `title`, or the field name when no
-title is set — rename a column by setting its `title`. `compilation.output`
-prioritizes or excludes columns by those exact headers; unknown headers fail
-validation. For example, a measurement schema whose `measurement_quote` field
-has `"title": "Evidence"` can use:
-
-```yaml
-compilation:
-  output:
-    default_format: csv
-    column_order: [manufacturer, rated_power_kw, Evidence]
-```
-
-`column_order` is a priority prefix, not an exact column selection; remaining
-schema fields are retained. `exclude_fields` removes unwanted headers.
-`compilation.normalization` keys (`state_column`, `county_fips: {state, county}`)
-name schema fields instead.
-
-When `discovery` declares `targets` and `partition_by`, compile switches to
-roster mode: one row per target in roster order, extra target columns passed
-through, and `sources`, `confidence`, and `evidence` columns per row. Nested
-flattening uses the schema's existing `compilation.flattening` settings.
-Canonical extraction JSON remains the source for lossless arrays/objects,
-quality warnings, coverage, document identity, and lineage. Spreadsheet output
-is a presentation, not a replacement for that record.
-
-Runtime compilation settings override schema `$metadata.compilation` settings.
-With no format setting, CLI and Python API emit CSV and Excel. Compilation and
-`run --validate-config` validate the merged contract before scanning records,
-or clearing outputs with `--fresh`. Excel batches
-above 1,048,575 data rows or with cells over 32,767 characters fail before
-either export; select CSV to preserve full evidence. Requested files are written
-to staging before publication; caught writer/publication failures restore prior
-output where possible. If restoration fails, recoverable backups are retained
-and their paths appear in the error. This is not a crash-safe multi-file
-transaction: do not run concurrent writers into the same output directory.
-
-Semantic summaries and classifications belong in the extraction schema's
-instructions and constraints. Roster compilation reconciles values across
-documents deterministically. Deterministic code validates structure,
-provenance, identity, and export contracts; JSON Schema validation, including
-declared calendar-date formats, does **not** certify quotation authenticity,
-sentiment, or geographical support. US county-FIPS derivation remains an
-explicit, optional wide-output normalization, not a requirement of any domain.
-
-Page/section selection and context truncation are preserved as limitations in
-canonical records and extraction manifests. Incomplete searches only add to
-previous good curated partitions; they never withdraw files. A seeded or capped
-sample is not a recall or population estimate.
-
-### Scale boundary
-
-The compiler prepares one export frame for CSV/Excel, but global identity and
-deduplication still require an in-memory frame. Complete exact/fuzzy keys use
-indexed grouping rather than pairwise scans. Null-as-wildcard fuzzy matching
-also uses indexed candidates while preserving ordered matching semantics;
-highly ambiguous multidimensional identity buckets can still be expensive.
-Prefer CSV for large batches; measure representative record sizes and
-duplicate distributions before scaling. Schemas without
-identity keys do not deduplicate; choose domain-appropriate keys explicitly
-rather than inferring them in core code. Configured keys missing from both the
-schema and compiled columns fail instead of silently deduplicating on fewer
-fields. Atomic checkpoint snapshots avoid repeated whole-file writes, and
-review caches avoid repeated parsing/model calls when grading inputs are
-unchanged. Neither feature bounds acquisition latency or whole-pipeline
-memory. Synthetic record, checkpoint, and mocked timeout tests do not establish
-100,000-target, large-document, fuzzy-dedup, or live-API readiness.
-
-## Validation
-
-The `validation:` block (`models`, `references`, `judge`, `fields`,
-`min_accuracy`, and rows-mode `key_fields`/`quote_field`) is strict: unknown
-aliases, fields, or reference paths fail at load with a did-you-mean
-suggestion. Challengers go through the real extract and compile path into
-`validated/<alias>/`. Records, compiled tables, and judge verdicts are reused
-while they stay fresh. A stale primary extraction or table is an error (run
-`extract` or `compile`), and `--fresh` clears `validated/`. `validate --sample N`
-draws a seeded blind labelling sheet; it is a sample, not a population estimate.
-Accuracy carries a 95% Wilson interval.
-
-## Minimal discovery template
-
-Copy this short template to `config/<your_domain>/run.yaml`. Only discovery is
-active; common choices and minimal later extraction/compilation blocks are
-commented out. The active starter remains just `domain` and `discovery.queries`.
+`config/TEMPLATE.yaml` is a valid starting point covering all four stages:
 
 ```{literalinclude} ../config/TEMPLATE.yaml
 :language: yaml
 :caption: config/TEMPLATE.yaml
 ```
 
-## Advanced annotated reference
+### Top-level keys
 
-The expanded reference retains the original extraction, compilation, discovery,
-model, and page-targeting examples. Copy only the sections you need;
-placeholder models and schema paths must be replaced before those stages run.
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `domain` | required | Names the run; every output is derived under `outputs/<domain>/`. |
+| `schema` | `schema.json` beside the config | Extraction schema path. |
+| `models` | — | Alias → model-name map. Stages reference aliases (`primary`, `secondary`, …) so a model is changed in one place. |
+| `model_context_windows` | — | Model name → context window (positive integer) for models the runtime does not know. |
+| `reasoning_models` | — | Model names to treat as reasoning models (no `temperature` / `response_format`). |
+| `discovery` | — | [Discovery](#discovery). |
+| `extraction` | — | [Extraction](#extraction). |
+| `compilation` | — | [Compilation](#compilation). |
+| `validation` | — | [Validation](#validation); `run` adds the validate stage when present. |
 
-```{literalinclude} ../config/ADVANCED.yaml
-:language: yaml
-:caption: config/ADVANCED.yaml
+## Discovery
+
+Discovery finds, downloads and curates documents. It needs no schema and no
+LLM credentials unless `document_review` is configured; search needs
+`SERPAPI_API_KEY`.
+
+### Inputs
+
+| Key | Meaning |
+|-----|---------|
+| `targets` | `.csv`/`.json` path, inline list of rows, or `{cross_product: {dimensions: [...]}}`. |
+| `sources` | Shared http(s) URLs downloaded for every run and always kept (saved under `_shared/`). |
+| `queries` | Search templates: `{field}` is required, `{field?}` optional. Search runs only when `queries` or a target `query` is set. |
+| `partition_by` | Target fields that lay out curated output as `by_<f1>/<v1>/by_<f2>/<v2>/`. Without it a target's files go under `_targets/<id>/`. |
+
+Each target row is one target. Every column except `urls` and `query` is
+metadata: it fills query templates, partitions output and is recorded as
+provenance. `urls` lists the target's own documents or pages (a list, or `a|b`
+in a CSV cell) and is always downloaded and kept; `query` replaces `queries`
+for that row. Discovery never infers geography from query text. CSV headers
+may carry a UTF-8 BOM.
+
+A target's identity is its `partition_by` values (every metadata column when
+`partition_by` is unset). Identity names the target in checkpoints, review
+prompts and curated ownership, so it must be unique: duplicate rows fail with
+both row locations. `--target-limit/-n N` runs only the first N targets.
+
+```yaml
+discovery:
+  targets:
+    - {jurisdiction: Chaffee County, state: CO,
+       urls: [https://www.chaffeecounty.org/land_use_code.pdf]}
+    - {manufacturer: Generac, query: "Generac 250kW generator manual pdf"}
+  # or: targets: targets.csv
+  # or: targets: {cross_product: {dimensions: [
+  #       {name: state, values: [CO, NM]},
+  #       {name: county, dataset: counties.csv, column: county}]}}
+  queries:
+    - "{jurisdiction} {state} geothermal ordinance pdf"
 ```
+
+### `search`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `max_results` | `10` | Unique candidates kept **per rendered query** (live, cached and news results together). No hidden pagination or refill. |
+| `cache` | `false` | Cache results on disk; a hit makes no live call. |
+| `cache_ttl_minutes` | `0` | Cache expiry; `0` never expires. |
+| `params` | — | Extra SerpApi parameters sent verbatim (`{engine: bing}`, `{tbm: nws}`); `q`, `num`, `api_key` are reserved. |
+
+For Google, `params: {udm: web}` (the "Web" tab) is recommended: without it
+Google often ignores quoted names and `site:`. `site:`/`filetype:` are hints,
+not guarantees. Tracking parameters (`utm_*`, `gclid`, `srsltid`, …) are
+dropped from candidate URLs.
+
+### `crawl`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `provider` | `http` | `http` or `selenium` (needs Chrome; see [Security](security.md)). |
+| `max_depth` | `0` | Link depth from each HTML candidate; `0` disables crawling. |
+| `max_pages` | `50` | HTML pages fetched for the **whole run**. |
+| `allowed_domains` | source hosts | Host scope for crawled links and downloads. |
+| `include_url_patterns` | — | Regexes; matching links are treated as documents. |
+| `include_link_text_patterns` | — | Regexes on link text; when set, only matching links are followed and each matching page is kept. |
+| `browser_downloads` | `false` | Download through headless Chrome. |
+| `browser_escalation` | off | `true` or `{enabled, settle_seconds, min_shell_chars, min_rendered_chars}`: re-fetch JS shells and refused (401/403/429/451) pages and downloads in a browser. Thresholds alone do not enable it. |
+| `code_host_adapters` | off | `true` or `{enabled: true}`: fetch code-host content (Municode) through its API. |
+| `request_headers` | — | Extra HTTP headers on every request (pages, robots.txt, APIs). Never credentials. |
+
+When `max_depth > 0`, every HTML candidate (configured URL or search result) is
+fetched once to look for links; crawled links are ordinary candidates, except
+query variants of a configured page (its pagination), which belong to that page.
+
+### `runtime` and `retry_policy`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `runtime.max_files` | unbounded | Download budget per run; configured URLs never count. |
+| `runtime.timeout_seconds` | engine default | Request timeout, and the stall limit (time without data) for file downloads. |
+| `runtime.max_concurrent_downloads` | `2` | Parallel downloads. |
+| `runtime.min_request_interval_ms` | `0` | Minimum delay between outbound requests. |
+| `retry_policy.max_attempts` | `3` | Total attempts per request. |
+| `retry_policy.initial_backoff_seconds` | `1.0` | Attempt N waits `initial · 2^(N−2)` … |
+| `retry_policy.max_backoff_seconds` | `8.0` | … capped here. |
+
+### `selection` and `link_prioritization`
+
+Selection decides which search results and crawled links are downloaded.
+Configured URLs (`sources`, target `urls`) bypass it and never count against a
+target's caps.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `max_per_target` | `1` | Acquisition count per target. Must be ≥ `document_review.keep_top`. |
+| `max_per_host_per_target` | `0` (off) | Host-diversity cap per target. |
+| `require_any` | — | Candidate text must contain one of these terms. |
+| `exclude` | — | Terms that disqualify a candidate (also checked on the final URL at download). |
+| `exclude_url_patterns` | — | Case-insensitive regexes on the URL. |
+| `exclude_text_patterns` | — | Case-insensitive regexes on candidate text. |
+| `exclude_draft` | `true` | Apply `draft_patterns`. |
+| `draft_patterns` | — | Domain-authored draft/non-final regexes (there is no built-in list). |
+| `require_supported_document` | `true` | Keep only [eligible URLs](#document-types-and-limits). |
+| `target_require_any` | — | Templates rendered per target (`"{jurisdiction}"`); the candidate must match one. |
+| `target_require_all` | — | Rendered templates the candidate must all match. |
+| `target_exclude` | — | Rendered templates that disqualify a candidate. |
+
+| `link_prioritization` key | Default | Meaning |
+|-----|---------|---------|
+| `mode` | `heuristic` | `heuristic` ranks candidates before download; `off` disables ranking. |
+| `top_k` | `0` (no cap) | Optional global ranking cap. |
+| `keywords` | `document`, `download`, `guide`, `report` | Terms that raise a candidate's score; replace the fallback. |
+| `domain_scores` | — | Domain → score adjustment (`{"municode.com": 0.2, ".gov": 0.15}`). A hostname matches itself and its subdomains; a leading-dot suffix matches every host ending in it; negative scores demote. |
+| `shopping_path_keywords` | — | URL path terms that lower a candidate's score. |
+
+The heuristic score weighs file type (35%), `domain_scores` (25%) and keywords
+(25%); PDFs are preferred to web pages. Ranking is a boost, never a scope: for
+strict sources combine `crawl.allowed_domains` with `include_url_patterns`.
+Positive hostname entries (not `.gov`-style suffixes) also name the code hosts
+for the two post-review retries of targets left without a curated document: a
+SerpApi `site:` search under the code-host path already found, and a browser
+crawl of JavaScript-shell code-host pages. Both run only with
+`document_review` and `document_classifier.nice_to_have_keywords`; the browser
+crawl also needs a browser (`crawl.browser_escalation` or
+`crawl.browser_downloads`).
+
+### `document_classifier`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `required_keywords` | — | Terms looked for in the first pages of each download. |
+| `nice_to_have_keywords` | — | Terms that raise the score; also the default `document_review.keywords`. |
+| `min_required_matches` | `1` | Required terms that must appear. |
+| `action` | `warn` | `warn` records the result; `filter` rejects failing downloads (never configured URLs). |
+
+### `document_review`
+
+Optional, paid LLM curation; it runs only when `document_description` is set.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `document_description` | — | What a correct document is; may use `{field}` target templates. |
+| `model` | default model | `models:` alias or model name. |
+| `keep_top` | `1` | Primary documents kept per target. |
+| `max_chars` | `12000` | Text sent per document. |
+| `keywords` | classifier keywords | Terms used to pick the excerpt sent for review. |
+| `deduplicate_redundant` | `true` | Drop redundant copies before keeping the top ones. |
+| `deduplication.key_fields` | — | Fields that identify redundant copies (e.g. `[path_basename, review_doc_kind]`). |
+
+The reviewer grades each document 0–4 against an anchored rubric. In
+`review.csv`, `relevance` = grade / 4 and `llm_is_primary` = grade ≥ 3;
+selection keeps the top `keep_top` non-redundant primaries per target, ranked by
+relevance. Grades are cached by content and grading inputs in
+`discovered/.review_cache/` and reused across runs. Recordings are graded on
+their transcript: a run's copy inherits the curated copy's transcript (matched
+by SHA-256) before review. A recording not yet transcribed (first run) is kept
+without review and transcribed at extraction. Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
+`psweep curate --config …` to republish the curated selection.
+
+### `policy` and `retention`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `policy.robots_mode` | `warn` | `ignore`, `warn` or `enforce` robots.txt (matched on the `ParseSweep` token). |
+| `policy.tos_mode` | `warn` | `ignore`, `warn` or `enforce` terms-of-service checks. |
+| `policy.acknowledged_tos_domains` | — | Hosts whose terms you have reviewed. |
+| `retention.documents` | `all` | `all` keeps every download; `curated` deletes the run's non-curated downloads; `none` also deletes the run's documents and curated copy (rejected by `run` when extraction follows). |
+
+`curated` and `none` keep the files and text caches of incomplete targets and
+sources, which the next run resumes from, and remove superseded run files once
+the checkpoint is written. Fully reused runs delete nothing.
+
+Strict robots/ToS enforcement covers HTTP acquisition only and fails before any
+browser navigation. The default `User-Agent` is
+`Mozilla/5.0 (compatible; ParseSweep/<version>)`.
+
+## Extraction
+
+Extraction reads `outputs/<domain>/discovered/curated/` (or a path passed
+positionally) and writes one JSON record per document to
+`outputs/<domain>/extracted/`. It needs LLM credentials.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `model` | `LLM_MODEL` → `gpt-4o-mini` | `models:` alias or model name. |
+| `provider` | `auto` | `openai`, `azure`, `anthropic`, `gemini` or `auto`. |
+| `transcription_model` | — | `models:` alias that transcribes audio; required when audio is present. |
+| `limit` | — | Process only the first N documents. |
+| `skip_existing` | `true` | Reuse verified records (see [Reuse](#runs-reuse-and-exit-codes)). |
+| `max_context` | `600000` | Characters of document text sent per call. |
+| `max_concurrent` | `4` | Documents extracted in parallel (also concurrent transcription chunks). |
+| `timeout_seconds` | `120` (`LLM_TIMEOUT`) | Per-request LLM timeout. |
+| `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR text only. |
+| `pages` | — | Page selection for large documents (below). |
+
+### Page selection
+
+```yaml
+extraction:
+  pages:
+    csv: page_ranges.csv          # file_path,start_page,end_page (1-based, inclusive)
+    auto_locate:                  # LLM fallback for documents the CSV does not cover
+      section_description: "the residential rate schedules"
+      trigger_chars: 200000       # default; only larger documents are targeted
+      max_selected_pages: 30      # default
+      keywords: [rate schedule]   # optional cheap pre-filter
+      model: secondary            # optional locator model
+      save_discovered: true       # write found ranges for review
+```
+
+`pages` accepts only `csv`, `auto_locate` and `range`, and `auto_locate` only
+the keys shown plus `enabled`; anything else fails validation. `pages.csv`
+resolves against the config folder (the `--pages-csv` CLI flag against the
+working directory). A row's `file_path` matches a document by path, by path
+relative to the input folder, or by file name. CSV rows win; leave both pages
+empty to force the full document. `pages.range`
+(or `--pages 615-759`) selects one range for a single file. Located ranges are
+cached in `.pages/` beside the document; any failure falls back to the full
+document.
+
+### LLM calls
+
+Every transient provider failure — HTTP 408, 429 and 5xx, timeouts and dropped
+connections — is retried up to 4 attempts in total with exponential backoff
+(2 s, capped at 30 s). TLS failures and other 4xx errors are terminal.
+
+### Roster-anchored extraction
+
+When the schema's `identity.deduplication.key_fields` equal
+`discovery.partition_by`, extraction runs in roster mode: entity names in the
+text are matched exactly (after normalization) against the roster's last
+`partition_by` field. A name shared by targets in different states is assigned
+by state evidence near the match, falling back to the whole document:
+addresses (`, AZ` or `AZ 85001`), full state names, state-labelled table cells
+(`State: CA`), or a state code alone on the line after a line that is exactly a
+roster name. Without evidence every candidate is kept. Names unique to one
+target are never dropped. Partial overlap between `key_fields` and
+`partition_by` is an error.
+
+### Audio
+
+Recordings (`.mp3 .m4a .wav .ogg .flac`) are documents. Set
+`extraction.transcription_model` to a `models:` alias of a transcription
+model. ffmpeg (installed by pixi) transcodes each recording to mono 16 kHz MP3
+and splits it into ~5-minute chunks cut at the quietest point; chunks are
+transcribed in parallel and each starts with an exact `[hh:mm:ss]` offset.
+Measured cost is about **$0.22 per audio hour**. Transcripts are cached beside
+the recording in `.text/<filename>.txt` (with `.meta.json`), like OCR text, so
+each file is transcribed once.
+
+## Compilation
+
+Compilation merges `outputs/<domain>/extracted/` into
+`outputs/<domain>/compiled/<domain>.csv` / `.xlsx` and makes no LLM calls.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `output.default_format` | `both` | `csv`, `excel` or `both`. Validation needs a CSV. |
+| `output.column_order` | — | Priority prefix of output headers; other columns follow. |
+| `output.exclude_fields` | — | Headers to drop. |
+| `output.freeze_columns` | — | Excel frozen columns. |
+| `output.auto_width` | — | Excel column auto-width. |
+| `output.annotation_column` | `Notes` | Column that deduplication annotates. |
+| `output.center_align_columns` / `center_align_max_length` | — | Excel centering. |
+| `normalization.state_column` | — | Field normalized to a state abbreviation. |
+| `normalization.county_fips` | — | `{state, county}` fields used to add a county FIPS code. |
+| `severity_tokens` | — | `{high: [...], medium: [...]}` field-name tokens that rank suspicious dedup groups. |
+| `dry_run` | `false` | Preview deduplication without writing. |
+| `report_format` | `text` | Dry-run report: `text` or `json`. |
+| `fail_on_suspicious` | `none` | `low`, `medium` or `high`: fail the dry run at this severity. |
+| `provenance_policy` | `warn` | `warn` or `fail` on provenance warnings. |
+
+Headers are the schema field's `title` (or its name); unknown headers fail.
+Row shape (`$metadata.compilation.flattening`) and deduplication keys belong in
+the schema — see [Schema Authoring](schemas/best-practices.md).
+
+**Roster mode.** When `discovery` declares `targets` and `partition_by`,
+compile emits one row per target in roster order. Agreeing values win; conflicts
+prefer target-scoped sources, then the value backed by most sources; missing
+values are `NA`. Extra target columns pass through, plus `sources`,
+`confidence` (`high` ≥ 2 agreeing sources, `medium`, `low` on conflict,
+`none`) and `evidence` (`{field: {value, quote, url}}`).
+
+Excel batches above 1,048,575 rows or with cells over 32,767 characters fail
+before export; use CSV for large outputs.
+
+## Validation
+
+`validate` scores the primary table (from `extraction.model`) against
+contender models and human reference sheets. `run` adds it when a
+`validation:` block exists.
+
+| Key | Meaning |
+|-----|---------|
+| `models` | Contender `models:` aliases, extracted and compiled into `validated/<alias>/`; must differ from `extraction.model` and each other. |
+| `references` | 0..N human CSV sheets (config-relative) whose headers are compiled titles; labelled by file stem. |
+| `judge` | `models:` alias that rules on disputed cells only; omit to skip judging. |
+| `fields` | Scored subset (default: every scorable field). |
+| `min_accuracy` | Gate in (0, 1]: exit 1 when the primary falls below it against any reference. Needs `references`. |
+| `key_fields`, `quote_field` | Rows mode (no roster) only: row identity (required there) and each row's verbatim quote. |
+
+At least one of `models` or `references` is required. Cells where every
+contender agrees are not judged; the judge sees only disagreements, checking
+each candidate against its quote. Misses are labelled `no_docs` (no curated
+document) or `extraction`. Accuracy carries a 95% Wilson interval.
+`validate --sample N [--seed S]` writes a blank, seeded labelling sheet with no
+LLM calls. Outputs in `outputs/<domain>/validated/`: `cells.csv`,
+`summary.csv`, `summary.json`.
+
+## Document types and limits
+
+Supported inputs (discovery downloads exactly these; extraction reads them):
+
+| Kind | Extensions | Read as |
+|------|-----------|---------|
+| Documents | `.pdf` `.doc` `.docx` `.txt` | Text, with OCR for scanned PDFs |
+| Web pages | `.html` `.htm` | Main text |
+| Data | `.csv` `.xlsx` `.json` | One `Header: value \| …` line per record (CSV, each sheet, JSON record arrays such as Socrata/ArcGIS/GeoJSON/CKAN); other JSON as indented text |
+| Audio | `.mp3` `.m4a` `.wav` `.ogg` `.flac` | Transcript ([Audio](#audio)) |
+
+**URL eligibility** (`selection.require_supported_document`): a URL with a
+supported extension, no extension, or a suffix unknown to Python's MIME table
+(`.php`, `.aspx`, `.cfm`, …) is eligible — the response MIME type decides what
+it is. A suffix of a known unsupported type or encoding (`.jpg`, `.zip`, `.gz`)
+is rejected before download.
+
+**Byte limits.** Files streamed to disk stop at 1 GiB decoded
+(`PSWEEP_MAX_RESPONSE_BYTES` overrides it) and abort after
+`runtime.timeout_seconds` without data. Pages, search and API responses read
+into memory stop at 50 MiB and must finish within the timeout. An oversized
+response is a failed download (`partial_failure`), never retried; raise the
+limit and rediscover with `--fresh`.
+
+## Runs, reuse and exit codes
+
+| Status | Exit | Meaning |
+|--------|------|---------|
+| `success`, `reused`, `dry_run` | `0` | Done, verified reuse, or a valid plan. |
+| `failed` | `1` | The stage failed. |
+| `empty` | `2` | Nothing usable and no failure. |
+| `partial_failure` | `3` | Usable output plus recorded errors. |
+
+`run` stops at 1 or 2, continues past 3, and exits 3 at the end when any stage
+was partial. Exit codes do not depend on `-q`/`-v`.
+
+**Discovery resume.** The checkpoint (`discovered/checkpoint.json`) records
+each target and shared source separately, keyed by the effective config
+fingerprint and SHA-256 evidence of its files. Adding a target fetches only
+that target; changing a target's `urls` or rendered queries re-runs it.
+
+- A **complete** item makes no requests on the next run.
+- An item left **incomplete** — transient failure, unfinished crawl or
+  search, `max_pages` or `max_files` reached — publishes what it has
+  additively, and the next run re-fetches the listing, reuses every earlier
+  download whose SHA-256 still matches (no request, no `max_files` slot),
+  skips terminal outcomes (e.g. 404) and fetches only the rest. A capped
+  listing converges batch by batch.
+- **Transient** failures (timeouts, connection errors, truncated streams, HTTP
+  408/429/5xx) are retried in the run and leave the item incomplete. **Bot
+  challenges** (429/5xx with `cf-mitigated`, `x-vercel-mitigated` or
+  `x-amzn-waf-action`) are retried in the run but are final across runs. TLS
+  errors and other 4xx responses are terminal.
+- `discover --fresh` ignores the checkpoint and search cache, re-checks
+  completed listings (new children of a completed listing need it), and
+  replaces the curated partitions of the targets it processes.
+
+**Extraction reuse.** A record is reused only when source, schema, resolved
+model and settings, and record bytes still match; otherwise it is re-extracted.
+Reuse needs no credentials. `extract --fresh` resets the output after a
+successful preflight. `compile --fresh` clears stale compiled files;
+`validate --fresh` clears `validated/`. `run --fresh` passes `--fresh` to every
+stage.
+
+**Caches.** OCR text and transcripts: `.text/<filename>.txt` + `.meta.json`
+beside the document, verified by size, mtime and SHA-256 and carried to a
+re-downloaded file with the same SHA-256. Page/section targeting: `.pages/`,
+`.sections/`. Review grades: `discovered/.review_cache/`. Delete a cache
+directory to force that work again.
+
+### Outputs
+
+```text
+outputs/<domain>/
+├── discovered/
+│   ├── checkpoint.json
+│   ├── curated/                 # consolidated input to extraction
+│   └── runs/<run_id>/           # manifest.json, download_index.csv, review.csv,
+│                                # documents/, curated/ (latest -> newest run)
+├── extracted/                   # one JSON record per document + manifests
+├── compiled/                    # <domain>.csv/.xlsx, run_accounting.json
+└── validated/                   # cells.csv, summary.csv, summary.json, <alias>/
+```
+
+## Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `SERPAPI_API_KEY` | Search. |
+| `LLM_BASE_URL` + `LLM_API_KEY` | Any OpenAI-compatible endpoint (highest priority). |
+| `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` | Azure OpenAI. |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Direct providers. |
+| `LLM_MODEL` | Default model when the config names none. |
+| `LLM_TIMEOUT` | LLM request timeout (seconds). |
+| `PSWEEP_MAX_RESPONSE_BYTES` | Streamed-download byte limit. |
+| `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` | Approved CA roots. |
+
+TLS verification is always on by default; the `*_SSL_VERIFY`, protected-mode
+and browser variables are described in [Security](security.md).

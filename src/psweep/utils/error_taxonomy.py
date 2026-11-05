@@ -10,20 +10,7 @@ from psweep.exceptions import (
     SchemaMetadataError,
     SchemaValidationError,
 )
-
-
-def _is_retryable(message: str) -> bool:
-    lowered = message.lower()
-    retry_markers = (
-        "rate limit",
-        "429",
-        "timeout",
-        "temporarily unavailable",
-        "try again",
-        "connection reset",
-        "service unavailable",
-    )
-    return any(marker in lowered for marker in retry_markers)
+from psweep.utils.retry import is_transient_error
 
 
 def build_error_record(
@@ -82,7 +69,7 @@ def build_error_record(
         "category": category,
         "code": code,
         "message": message,
-        "retryable": _is_retryable(message),
+        "retryable": is_transient_error(exc),
         "source": {
             "document_path": document_path,
             "model": model,

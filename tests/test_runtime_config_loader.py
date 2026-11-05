@@ -107,6 +107,36 @@ compilation:
     assert resolved["provenance_policy"] == "fail"
 
 
+def test_runtime_catalog_is_derived_from_the_config_schemas():
+    from psweep.config import VARIABLE_CATALOG
+    from psweep.config.discovery_config import DISCOVERY_SCHEMA
+    from psweep.config.runtime_config_loader import (
+        _ALLOWED_SECTION_FIELDS,
+        _ALLOWED_TOP_LEVEL,
+    )
+
+    names = {
+        section: [entry["name"] for entry in entries]
+        for section, entries in VARIABLE_CATALOG.items()
+    }
+    assert names["discovery"] == list(DISCOVERY_SCHEMA)
+    assert {"search", "link_prioritization", "retry_policy", "partition_by"} <= set(
+        names["discovery"]
+    )
+    for section, allowed in _ALLOWED_SECTION_FIELDS.items():
+        assert set(names[section]) == set(allowed), section
+    assert set(names["global"]) == _ALLOWED_TOP_LEVEL - set(_ALLOWED_SECTION_FIELDS) - {
+        "discovery"
+    }
+    assert all(len(set(entries)) == len(entries) for entries in names.values())
+
+
+@pytest.mark.parametrize("command", ["discovery", "extraction", "compilation", "validation"])
+def test_commands_resolve_by_command_name_only(command: str):
+    with pytest.raises(RuntimeConfigError, match="Unsupported command"):
+        catalog_for_command(command)
+
+
 def test_catalog_for_command_contains_required_and_advanced_fields():
     entries = catalog_for_command("extract")
     names = {entry["name"] for entry in entries}
@@ -443,15 +473,9 @@ discovery:
         require_any:
             - ordinance
             - municipal code
-        relevance_require_legal_marker_terms:
-            - title
-            - chapter
         exclude:
             - state brief
             - specific plan
-        relevance_allowed_domain_patterns:
-            - county.gov
-            - ecode360.com
         require_supported_document: true
 """,
                 encoding="utf-8",
@@ -465,9 +489,7 @@ discovery:
         )
 
         assert resolved["selection_relevance_require_any_terms"] == ["ordinance", "municipal code"]
-        assert resolved["selection_relevance_require_legal_marker_terms"] == ["title", "chapter"]
         assert resolved["selection_relevance_exclude_any_terms"] == ["state brief", "specific plan"]
-        assert resolved["selection_relevance_allowed_domain_patterns"] == ["county.gov", "ecode360.com"]
         assert resolved["selection_require_supported_document"] is True
 
 
@@ -513,12 +535,12 @@ discovery:
         draft_patterns:
             - draft
             - proposed
-        target_identity_require_any_templates:
+        target_require_any:
             - "{jurisdiction}"
             - "{manufacturer}"
-        target_identity_require_all_templates:
+        target_require_all:
             - "{state}"
-        target_identity_exclude_any_templates:
+        target_exclude:
             - "sample"
 """,
                 encoding="utf-8",
@@ -534,9 +556,9 @@ discovery:
         assert resolved["selection_primary_per_target"] == 3
         assert resolved["selection_exclude_draft"] is False
         assert resolved["selection_draft_patterns"] == ["draft", "proposed"]
-        assert resolved["selection_target_identity_require_any_templates"] == ["{jurisdiction}", "{manufacturer}"]
-        assert resolved["selection_target_identity_require_all_templates"] == ["{state}"]
-        assert resolved["selection_target_identity_exclude_any_templates"] == ["sample"]
+        assert resolved["selection_target_require_any"] == ["{jurisdiction}", "{manufacturer}"]
+        assert resolved["selection_target_require_all"] == ["{state}"]
+        assert resolved["selection_target_exclude"] == ["sample"]
 
 
 def test_discovery_selection_max_per_target_must_cover_review_keep_top(
@@ -764,7 +786,7 @@ def test_pages_block_variants(
     if expected_csv is None:
         assert "pages_csv" not in ext
     else:
-        assert ext["pages_csv"] == expected_csv
+        assert ext["pages_csv"] == (tmp_path / expected_csv).as_posix()
 
     if expected_section_description is None:
         assert "page_targeting" not in ext
@@ -804,8 +826,53 @@ def test_pages_auto_locate_rejects_non_bool_save_discovered(tmp_path: Path):
         load_runtime_config_file(cfg)
 
 
+@pytest.mark.parametrize(
+    ("pages_block", "match"),
+    [
+        ("  pages:\n    csvv: r.csv\n", "unknown key 'extraction.pages.csvv' — did you mean 'csv'"),
+        (
+            "  pages:\n    auto_locate:\n      section_description: x\n      trigger_char: 5\n",
+            "unknown key 'extraction.pages.auto_locate.trigger_char' — did you mean 'trigger_chars'",
+        ),
+    ],
+)
+def test_pages_block_rejects_unknown_sub_keys(tmp_path: Path, pages_block: str, match: str):
+    cfg = _write(tmp_path, "schema: s.json\nextraction:\n" + pages_block)
+    with pytest.raises(RuntimeConfigError, match=match):
+        load_runtime_config_file(cfg)
+
+
+def test_pages_csv_resolves_relative_to_the_config_directory(tmp_path: Path, monkeypatch):
+    config_dir = tmp_path / "config" / "demo"
+    config_dir.mkdir(parents=True)
+    cfg = _write(config_dir, "schema: s.json\nextraction:\n  pages:\n    csv: ranges.csv\n")
+    monkeypatch.chdir(tmp_path)
+
+    loaded = load_runtime_config_file(cfg)
+    resolved = resolve_command_config(command="extract", cli_values={}, config_data=loaded)
+
+    assert loaded["extraction"]["pages_csv"] == (config_dir / "ranges.csv").as_posix()
+    assert resolved["pages_csv"] == (config_dir / "ranges.csv").as_posix()
+
+
+def test_old_flat_pages_keys_rejected_beside_the_pages_block(tmp_path: Path):
+    cfg = _write(
+        tmp_path,
+        "schema: s.json\nextraction:\n  pages:\n    csv: r.csv\n  pages_csv: old.csv\n",
+    )
+    with pytest.raises(RuntimeConfigError, match="unknown key 'extraction.pages_csv' — did you mean 'pages'"):
+        load_runtime_config_file(cfg)
+
+
+@pytest.mark.parametrize("value", ["10-35", "[1, 2]", "true"])
+def test_pages_must_be_a_mapping(tmp_path: Path, value: str):
+    cfg = _write(tmp_path, f"schema: s.json\nextraction:\n  pages: {value}\n")
+    with pytest.raises(RuntimeConfigError, match="extraction.pages must be a mapping"):
+        load_runtime_config_file(cfg)
+
+
 def test_old_flat_pages_keys_rejected(tmp_path: Path):
-    """Old pages_csv / page_targeting keys are no longer accepted."""
+    """Internal pages_csv / page_targeting keys fail like any unknown key."""
     cfg = _write(
         tmp_path,
         "schema: s.json\nextraction:\n  skip_existing: true\n"
@@ -813,7 +880,7 @@ def test_old_flat_pages_keys_rejected(tmp_path: Path):
         "  page_targeting:\n    enabled: true\n"
         "    section_description: old style\n",
     )
-    with pytest.raises(RuntimeConfigError, match="no longer supported"):
+    with pytest.raises(RuntimeConfigError, match="unknown key 'extraction.pages_csv'"):
         load_runtime_config_file(cfg)
 
 
@@ -1178,6 +1245,13 @@ def _validation_config(
     return path
 
 
+
+def _resolve_validate(path: Path) -> dict:
+    """Load a config and resolve the validate stage (schema-dependent checks)."""
+    return resolve_command_config(
+        command="validate", cli_values={}, config_data=load_runtime_config_file(path)
+    )
+
 @pytest.mark.parametrize(
     ("validation", "message"),
     [
@@ -1203,7 +1277,7 @@ def _validation_config(
 )
 def test_validation_section_rejects(tmp_path: Path, validation, message):
     with pytest.raises(RuntimeConfigError, match=message):
-        load_runtime_config_file(_validation_config(tmp_path, validation))
+        _resolve_validate(_validation_config(tmp_path, validation))
 
 
 def test_validation_models_must_differ(tmp_path: Path):
@@ -1215,8 +1289,9 @@ def test_validation_models_must_differ(tmp_path: Path):
 
 def test_validation_requires_csv_output(tmp_path: Path):
     path = _validation_config(tmp_path, {"models": ["a"]}, fmt="excel")
+    load_runtime_config_file(path)  # schema checks wait for the validate stage
     with pytest.raises(RuntimeConfigError, match="validation reads the compiled CSV"):
-        load_runtime_config_file(path)
+        _resolve_validate(path)
 
 
 @pytest.mark.parametrize(
@@ -1244,7 +1319,23 @@ def test_validation_requires_csv_output(tmp_path: Path):
 )
 def test_validation_rows_mode_rejects(tmp_path: Path, validation, message):
     with pytest.raises(RuntimeConfigError, match=message):
-        load_runtime_config_file(_validation_config(tmp_path, validation, rows=True))
+        _resolve_validate(_validation_config(tmp_path, validation, rows=True))
+
+
+@pytest.mark.parametrize("command", ["validate", "extract"])
+def test_schema_aware_validation_checks_run_for_stages_that_use_them(
+    tmp_path: Path, command: str
+):
+    """``extract`` consumes validation.quote_field, so it gets the checks too."""
+    cfg = load_runtime_config_file(
+        _validation_config(
+            tmp_path,
+            {"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "verbatm"},
+            rows=True,
+        )
+    )
+    with pytest.raises(RuntimeConfigError, match="'verbatm' is not an item field"):
+        resolve_command_config(command=command, cli_values={}, config_data=cfg)
 
 
 @pytest.mark.parametrize(
@@ -1260,7 +1351,7 @@ def test_validation_rows_mode_rejects(tmp_path: Path, validation, message):
 )
 def test_validation_labels_must_not_collide(tmp_path: Path, validation):
     with pytest.raises(RuntimeConfigError, match="collides with a cells.csv column"):
-        load_runtime_config_file(_validation_config(tmp_path, validation))
+        _resolve_validate(_validation_config(tmp_path, validation))
 
 
 def test_validation_section_resolves(tmp_path: Path):

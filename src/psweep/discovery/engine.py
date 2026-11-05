@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote, urlparse
 
+from psweep.extraction.transcription import is_audio
 from psweep.extraction.document_utils import (
     TEXT_CACHE_DIRNAME, text_cache_paths,
 )
@@ -45,7 +46,11 @@ from .constants import (
     SEEKER_ONLY_SCORE_WEIGHTS,
     USER_AGENT,
 )
-from .link_prioritizer import LinkPrioritizer
+from .link_prioritizer import (
+    LinkPrioritizer,
+    domain_score_patterns,
+    host_matches_domain_pattern,
+)
 from .models import (
     CandidateScore,
     DiscoveryCandidate,
@@ -67,6 +72,7 @@ from .publication import (
     discovery_publication,
     assign_document_names,
     effective_discovery_fingerprint,
+    inherit_text_caches,
     resolve_publication_paths,
     materialize_curated,
     owner_key,
@@ -79,10 +85,9 @@ from .publication import (
     save_checkpoint_entries,
     publish_manual_curation,
 )
-from .retry import (
+from psweep.utils.retry import (
     browser_may_recover,
     compute_backoff,
-    error_record,
     is_retryable,
     is_transient_error,
 )
@@ -133,35 +138,6 @@ JS_SHELL_RETRY_URL_SIGNAL = 0.7
 JS_SHELL_RETRY_TRUST_SIGNAL = 0.3
 
 
-class _RetryBudget:
-    """Shared cap on retry targets across the post-review retry stages.
-
-    A single budget is threaded through both retry stages (code-hosting
-    SerpApi retry + JS-shell browser-crawl retry) so the cap bounds the
-    combined per-run total, not each stage independently.
-
-    ``limit=None`` means unbounded — the historical default behavior — and
-    :meth:`allow` then returns whatever is requested without decrementing.
-    """
-
-    __slots__ = ("_remaining",)
-
-    def __init__(self, limit: int | None) -> None:
-        self._remaining = None if limit is None else max(0, int(limit))
-
-    @property
-    def unbounded(self) -> bool:
-        return self._remaining is None
-
-    def allow(self, requested: int) -> int:
-        """Grant up to ``requested`` targets, decrementing remaining budget."""
-        if self._remaining is None:
-            return requested
-        granted = min(max(0, requested), self._remaining)
-        self._remaining -= granted
-        return granted
-
-
 @dataclass(slots=True)
 class DiscoveryRequest:
     """Normalized command inputs for a discovery run."""
@@ -186,13 +162,6 @@ class DiscoveryRequest:
     retry_max_attempts: int = 3
     retry_initial_backoff_seconds: float = 1.0
     retry_max_backoff_seconds: float = 8.0
-    # Opt-in cap on the TOTAL number of targets processed by the post-review
-    # retry stages (code-hosting SerpApi retry + JS-shell browser-crawl retry)
-    # within a single run. Sourced from
-    # ``config.discovery.retry_policy.max_retry_targets`` when the loader wires
-    # it; read defensively via ``getattr`` so an unset value (None) means
-    # unbounded — i.e. identical to the historical behavior.
-    retry_max_retry_targets: int | None = None
     max_concurrent_downloads: int = DEFAULT_MAX_CONCURRENT_DOWNLOADS
     min_request_interval_ms: int = 0
     request_headers: dict[str, str] | None = None
@@ -211,16 +180,14 @@ class DiscoveryRequest:
     selection_exclude_draft: bool = True
     selection_draft_patterns: list[str] | None = None
     selection_relevance_require_any_terms: list[str] | None = None
-    selection_relevance_require_legal_marker_terms: list[str] | None = None
     selection_relevance_exclude_any_terms: list[str] | None = None
     selection_exclude_url_patterns: list[str] | None = None
     selection_exclude_text_patterns: list[str] | None = None
     selection_max_per_host_per_target: int = 0
-    selection_relevance_allowed_domain_patterns: list[str] | None = None
     selection_require_supported_document: bool = True
-    selection_target_identity_require_any_templates: list[str] | None = None
-    selection_target_identity_require_all_templates: list[str] | None = None
-    selection_target_identity_exclude_any_templates: list[str] | None = None
+    selection_target_require_any: list[str] | None = None
+    selection_target_require_all: list[str] | None = None
+    selection_target_exclude: list[str] | None = None
     # Post-download document classification (keyword) + LLM review (curation)
     document_classifier: dict[str, object] | None = None
     document_review: dict[str, object] | None = None
@@ -478,7 +445,7 @@ class DiscoveryEngine:
         errors: list[dict[str, object]] = []
         if not os.getenv("SERPAPI_API_KEY"):
             errors.append(
-                error_record(
+                build_error_record(
                     ValueError(
                         "Search queries are configured but SERPAPI_API_KEY is not set"
                     ),
@@ -518,8 +485,6 @@ class DiscoveryEngine:
             draft_patterns=request.selection_draft_patterns,
             relevance_require_any_terms=request.selection_relevance_require_any_terms
             or None,
-            relevance_require_legal_marker_terms=request.selection_relevance_require_legal_marker_terms
-            or None,
             relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms
             or None,
             exclude_url_patterns=request.selection_exclude_url_patterns or None,
@@ -530,12 +495,9 @@ class DiscoveryEngine:
             max_per_host_per_target=max(
                 0, int(request.selection_max_per_host_per_target or 0)
             ),
-            target_identity_require_any_templates=request.selection_target_identity_require_any_templates
-            or None,
-            target_identity_require_all_templates=request.selection_target_identity_require_all_templates
-            or None,
-            target_identity_exclude_any_templates=request.selection_target_identity_exclude_any_templates
-            or None,
+            target_require_any=request.selection_target_require_any or None,
+            target_require_all=request.selection_target_require_all or None,
+            target_exclude=request.selection_target_exclude or None,
         )
 
     @staticmethod
@@ -654,7 +616,7 @@ class DiscoveryEngine:
                     discovered = exc.candidates
                     incomplete_targets.add(idx - 1)
                     for message in exc.query_errors:
-                        errors.append(error_record(
+                        errors.append(build_error_record(
                             TimeoutError(f"{target_label}: {message}"),
                             stage="discovery.seeker_discover",
                             provider="serpapi",
@@ -668,7 +630,7 @@ class DiscoveryEngine:
                     # Preserve already-completed targets and keep this target retryable.
                     discovered = []
                     incomplete_targets.add(idx - 1)
-                    errors.append(error_record(
+                    errors.append(build_error_record(
                         exc, stage="discovery.seeker_discover", provider="serpapi",
                     ))
                     notes.append(f"Search failed for {target_label}; target remains retryable.")
@@ -681,7 +643,7 @@ class DiscoveryEngine:
                 )
         except Exception as exc:
             errors.append(
-                error_record(
+                build_error_record(
                     exc,
                     stage="discovery.seeker_discover",
                     provider="serpapi",
@@ -784,18 +746,11 @@ class DiscoveryEngine:
             )
             if effective_top_k and len(candidates) <= effective_top_k:
                 effective_top_k = None  # no additional cap needed
-            # allowed-domain patterns are a SOFT trust boost (ranking), never a
-            # hard filter — preferred domains rank higher without excluding others.
-            domain_scores = dict(
-                request.link_prioritization_domain_scores or {}
-            )
-            for pattern in (
-                request.selection_relevance_allowed_domain_patterns or []
-            ):
-                domain_scores.setdefault(str(pattern), 0.15)
             prioritizer = LinkPrioritizer(
                 keywords=request.link_prioritization_keywords,
-                domain_authority_overrides=domain_scores or None,
+                domain_authority_overrides=(
+                    request.link_prioritization_domain_scores or None
+                ),
                 top_k=effective_top_k,
                 shopping_path_keywords=(
                     request.link_prioritization_shopping_keywords
@@ -1397,7 +1352,7 @@ class DiscoveryEngine:
                 )
             if own_target and target_path is not None:
                 target_path.unlink(missing_ok=True)
-            error = error_record(
+            error = build_error_record(
                 exc, stage="discovery.download", document_path=url, provider="http",
             )
             return (
@@ -1589,7 +1544,7 @@ class DiscoveryEngine:
         try:
             import requests  # noqa: F401
         except ImportError as exc:
-            error = error_record(
+            error = build_error_record(
                 RuntimeError(
                     "requests dependency is required for discovery downloads"
                 ),
@@ -2143,7 +2098,7 @@ class DiscoveryEngine:
                 )
             )
         except Exception as exc:
-            error = error_record(
+            error = build_error_record(
                 exc, stage="discovery.crawl", provider=request.crawl_provider,
             )
             notes.append("Crawl failed; continuing with uncrawled candidates.")
@@ -2566,9 +2521,9 @@ class DiscoveryEngine:
             "selection": [
                 CandidateSelector._resolve_templates(templates or [], context)
                 for templates in (
-                    request.selection_target_identity_require_any_templates,
-                    request.selection_target_identity_require_all_templates,
-                    request.selection_target_identity_exclude_any_templates,
+                    request.selection_target_require_any,
+                    request.selection_target_require_all,
+                    request.selection_target_exclude,
                 )
             ],
         }
@@ -3186,20 +3141,13 @@ class DiscoveryEngine:
         review_cfg: dict[str, object],
         classifier_keywords: list[str] | None,
     ) -> tuple[list[dict[str, object]], list[str]]:
-        """Run both post-review retry stages under one shared target budget.
+        """Run the post-review retry stages.
 
-        Preserves the historical sequencing exactly: the code-hosting SerpApi
-        retry runs first (only when ``link_prioritization_domain_scores`` is
-        configured), then the JS-shell browser-crawl retry. A single
-        :class:`_RetryBudget` is shared across both so the opt-in cap
-        (``retry_max_retry_targets``) bounds the combined per-run total. When
-        the cap is unset (None) the budget is unbounded and behavior is
-        identical to before this change.
+        The code-hosting SerpApi retry runs first (only when
+        ``link_prioritization.domain_scores`` names code hosts), then the
+        JS-shell browser-crawl retry.
         """
-        max_retry_targets = getattr(request, "retry_max_retry_targets", None)
-        budget = _RetryBudget(max_retry_targets)
-
-        if request.link_prioritization_domain_scores:
+        if self._code_host_domains(request):
             download_records, notes = (
                 self._retry_failed_targets_on_code_hosting(
                     request=request,
@@ -3208,7 +3156,6 @@ class DiscoveryEngine:
                     documents_dir=documents_dir,
                     review_cfg=review_cfg,
                     classifier_keywords=classifier_keywords,
-                    budget=budget,
                 )
             )
 
@@ -3218,9 +3165,34 @@ class DiscoveryEngine:
             notes=notes,
             documents_dir=documents_dir,
             review_cfg=review_cfg,
-            budget=budget,
         )
         return download_records, notes
+
+    @staticmethod
+    def _code_host_domains(request: DiscoveryRequest) -> tuple[str, ...]:
+        """Return the code hosts that scope the post-review retries.
+
+        Only ``domain_scores`` host entries with a positive score count;
+        leading-dot suffix patterns (``.gov``) only adjust ranking.
+        """
+        return tuple(dict.fromkeys(
+            pattern
+            for pattern, score in domain_score_patterns(
+                request.link_prioritization_domain_scores
+            )
+            if score > 0 and not pattern.startswith(".")
+        ))
+
+    @staticmethod
+    def _matching_code_host(url: str, code_hosts: tuple[str, ...]) -> str | None:
+        """Return the code host serving ``url`` (exact host or subdomain)."""
+        try:
+            host = urlparse(url).hostname or ""
+        except ValueError:
+            return None
+        return next(
+            (d for d in code_hosts if host_matches_domain_pattern(host, d)), None
+        )
 
     def _retry_js_shells_with_digger(
         self,
@@ -3230,7 +3202,6 @@ class DiscoveryEngine:
         notes: list[str],
         documents_dir: Path,
         review_cfg: dict[str, object],
-        budget: "_RetryBudget | None" = None,
     ) -> tuple[list[dict[str, object]], list[str]]:
         """Browser-crawl retry for failed targets with JS-shell downloads.
 
@@ -3241,10 +3212,6 @@ class DiscoveryEngine:
 
         This is the hybrid approach: fast SerpApi for most targets, targeted
         browser crawl only for the ~15% that need it.
-
-        ``budget`` (optional) caps how many JS-shell targets this stage may
-        crawl; when ``None`` (the default) the stage is unbounded, matching
-        the historical behavior.
         """
         from pathlib import Path as _Path
 
@@ -3255,8 +3222,7 @@ class DiscoveryEngine:
         if not keywords:
             return download_records, notes
 
-        domain_scores = request.link_prioritization_domain_scores or {}
-        code_hosting_domains = set(domain_scores.keys())
+        code_hosting_domains = self._code_host_domains(request)
         if not code_hosting_domains:
             return download_records, notes
 
@@ -3274,9 +3240,7 @@ class DiscoveryEngine:
                 }:
                     # Check if this is a JS shell from a code-hosting domain
                     url = str(rec.get("url") or "")
-                    from urllib.parse import urlparse
-                    host = urlparse(url).hostname or ""
-                    if any(d in host for d in code_hosting_domains):
+                    if self._matching_code_host(url, code_hosting_domains):
                         file_path = rec.get("path")
                         if file_path and _Path(str(file_path)).suffix.lower() in {".html", ".htm"}:
                             shell_urls.append((target_key, url, rec))
@@ -3284,19 +3248,6 @@ class DiscoveryEngine:
 
         if not shell_urls:
             return download_records, notes
-
-        # Opt-in cap: bound how many JS-shell targets this stage crawls. When
-        # no budget is passed (or it is unbounded) this is a no-op.
-        if budget is not None:
-            allowed = budget.allow(len(shell_urls))
-            if allowed < len(shell_urls):
-                notes.append(
-                    f"Browser crawl retry: retry-target budget limited crawls "
-                    f"to {allowed} of {len(shell_urls)} JS-shell target(s)."
-                )
-                shell_urls = shell_urls[:allowed]
-            if not shell_urls:
-                return download_records, notes
 
         # Use the HTTP digger with browser to crawl from each shell URL. A
         # single connector instance is reused across every shell target so the
@@ -3337,7 +3288,7 @@ class DiscoveryEngine:
             except (OSError, RuntimeError, ValueError) as exc:
                 # Isolate network, browser, and crawl-input failures.
                 self._retry_errors.append(
-                    error_record(
+                    build_error_record(
                         exc, stage="discovery.retry_crawl", provider="http"
                     )
                 )
@@ -3449,7 +3400,6 @@ class DiscoveryEngine:
         documents_dir: Path,
         review_cfg: dict[str, object],
         classifier_keywords: list[str] | None = None,
-        budget: "_RetryBudget | None" = None,
     ) -> tuple[list[dict[str, object]], list[str]]:
         """Targeted retry for targets that got 0 curated docs from code-hosting sites.
 
@@ -3460,14 +3410,8 @@ class DiscoveryEngine:
         (like specific chapters) that the initial broad query missed.
 
         Only fires for failed targets — typically 1-2 extra queries per run.
-
-        ``budget`` (optional) caps how many failed targets this stage retries;
-        when ``None`` (the default) the stage is unbounded, matching the
-        historical behavior.
         """
-        # Identify code-hosting domains from link_prioritization.domain_scores
-        domain_scores = request.link_prioritization_domain_scores or {}
-        code_hosting_domains = set(domain_scores.keys())
+        code_hosting_domains = self._code_host_domains(request)
         if not code_hosting_domains:
             return download_records, notes
 
@@ -3476,8 +3420,6 @@ class DiscoveryEngine:
             return download_records, notes
 
         # Group records by target, find targets with 0 curated
-        from urllib.parse import urlparse
-
         by_target = self._group_records_by_target(download_records)
 
         failed_targets: list[tuple[str, str, dict[str, object]]] = []
@@ -3489,14 +3431,9 @@ class DiscoveryEngine:
             # Find code-hosting URLs for this target
             for rec in records:
                 url = str(rec.get("url") or "")
-                parsed = urlparse(url)
-                host = parsed.hostname or ""
-                matched_domain = None
-                for domain in code_hosting_domains:
-                    if domain in host:
-                        matched_domain = domain
-                        break
-                if matched_domain:
+                if self._matching_code_host(url, code_hosting_domains):
+                    parsed = urlparse(url)
+                    host = parsed.hostname or ""
                     # Extract domain + path prefix for site-scoped retry
                     path_parts = parsed.path.strip("/").split("/")
                     # Keep first 2-3 path segments as the jurisdiction scope
@@ -3507,19 +3444,6 @@ class DiscoveryEngine:
 
         if not failed_targets:
             return download_records, notes
-
-        # Opt-in cap: bound how many failed targets this stage retries. When
-        # no budget is passed (or it is unbounded) this is a no-op.
-        if budget is not None:
-            allowed = budget.allow(len(failed_targets))
-            if allowed < len(failed_targets):
-                notes.append(
-                    f"Code-hosting retry: retry-target budget limited retries "
-                    f"to {allowed} of {len(failed_targets)} failed target(s)."
-                )
-                failed_targets = failed_targets[:allowed]
-            if not failed_targets:
-                return download_records, notes
 
         # Fire targeted retry queries
         retry_notes: list[str] = []
@@ -3557,7 +3481,7 @@ class DiscoveryEngine:
                 )
             except Exception as exc:
                 self._retry_errors.append(
-                    error_record(
+                    build_error_record(
                         exc,
                         stage="discovery.retry_search",
                         provider="serpapi",
@@ -3687,6 +3611,9 @@ class DiscoveryEngine:
             )
         costs: dict[str, object] = {}
         if request.document_review:
+            self._seed_recording_transcripts(
+                Workspace(request.domain).discovered / "curated", records
+            )
             records, notes, costs = self._run_document_review(
                 records,
                 request.document_review,
@@ -3697,6 +3624,26 @@ class DiscoveryEngine:
                 identity_fields=request.partition_by,
             )
         return records, notes, costs
+
+    @staticmethod
+    def _seed_recording_transcripts(
+        curated_dir: Path, records: list[dict[str, object]]
+    ) -> None:
+        """Seed run copies of recordings with their curated transcript caches.
+
+        Review then grades them without transcribing again.
+        """
+        targets: dict[Path, list[Path]] = {}
+        for record in records:
+            path = Path(str(record.get("path") or ""))
+            if record.get("status") == "downloaded" and is_audio(path) and path.is_file():
+                partition = Path(str(record.get("relative_path") or path.name)).parent
+                targets.setdefault(partition, []).append(path)
+        for partition, paths in targets.items():
+            published = curated_dir / partition
+            if published.is_dir():
+                donors = [p for p in published.iterdir() if p.is_file() and is_audio(p)]
+                inherit_text_caches(paths, donors)
 
     @staticmethod
     def _run_document_review(
@@ -4453,7 +4400,6 @@ class DiscoveryEngine:
             ]
         candidates_after_crawl = len(candidates)
 
-        documents_dir.mkdir(parents=True, exist_ok=True)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
         download_records: list[dict[str, object]] = []
@@ -4524,7 +4470,6 @@ class DiscoveryEngine:
                 )
                 review_cfg = request.document_review
                 if review_cfg and download_records:
-                    # Recovery retries share the opt-in target budget.
                     classifier_cfg = (
                         getattr(request, "document_classifier", None) or {}
                     )

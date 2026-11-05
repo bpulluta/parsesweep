@@ -1,226 +1,82 @@
 # Getting Started
 
-## Install
+This tutorial builds one domain end to end: find documents, extract fields,
+compile a table and check its quality. Every key used here is described in the
+[Configuration Reference](config-reference.md).
 
-ParseSweep uses [pixi](https://pixi.sh) to manage its environment.
+## 1. Install
 
 ```bash
-# Install pixi (if you don't have it)
-curl -fsSL https://pixi.sh/install.sh | bash
-
-# Clone and install
+curl -fsSL https://pixi.sh/install.sh | bash      # pixi, if you don't have it
 git clone https://github.com/bpulluta/parsesweep.git && cd parsesweep
-pixi install
+pixi install --locked
 ```
 
-## Start with discovery only
+## 2. Credentials
 
-Discovery needs a YAML config, not an extraction schema or LLM credentials.
-Set your SerpApi credential in the environment or the project's `.env` file:
+Credentials live in `.env` in the project root (or the environment), never in
+YAML. `pixi run psweep init` writes them interactively.
 
 ```bash
-# .env — keep credentials out of YAML and version control
-SERPAPI_API_KEY=your-serpapi-key
+# .env
+SERPAPI_API_KEY=your-serpapi-key       # web search (discovery queries)
+
+# exactly one LLM provider, for extraction, review and validation:
+OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=... | GEMINI_API_KEY=... |
+# AZURE_OPENAI_API_KEY=... + AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_VERSION |
+# LLM_BASE_URL=https://proxy.example.com/v1 + LLM_API_KEY=...  (OpenAI-compatible proxy)
 ```
 
-Copy the short template, then replace its domain and query with your own:
+## 3. Discover documents
 
 ```bash
 mkdir -p config/my_domain
 cp config/TEMPLATE.yaml config/my_domain/run.yaml
 ```
 
-The active config can be as small as:
+Describe your targets in `config/my_domain/targets.csv` (one row each; the
+columns are available to query templates) and write queries for them:
 
 ```yaml
 domain: my_domain
 discovery:
+  targets: targets.csv
+  partition_by: [state, name]
   queries:
-    - "industrial pump installation manual filetype:pdf"
+    - '"{name}" {state} installation manual filetype:pdf'
 ```
 
-Search runs only when `discovery.queries` is set. If you already know the
-document URLs, replace `queries` with `sources`; they are always downloaded and
-kept, and need no search credential:
-
-```yaml
-domain: my_domain
-discovery:
-  sources:
-    - https://example.org/documents/manual.pdf
-```
-
-Validate the local input plan, then acquire documents:
+If you already know the URLs, use `sources` instead of `queries`; that needs
+no search key. Other ways to reach data (exports, listings, code hosts,
+recordings) are in [Source Patterns](sources.md).
 
 ```bash
 pixi run psweep discover --config config/my_domain/run.yaml --validate-config
-pixi run psweep discover --config config/my_domain/run.yaml
+pixi run psweep discover --config config/my_domain/run.yaml -n 3
 ```
 
-Validation makes no provider/network calls or run artifacts. Passing it does
-not confirm credentials, provider availability, or live network behavior.
-Only the explicitly selected config is loaded. Existing adjacent section
-YAML/JSON overrides beside a `run` config now fail: move their settings into
-the corresponding sections of the run file and remove the adjacent files, or
-load a section-wrapped config explicitly with `--config`.
+`--validate-config` checks the config offline (no credentials or network);
+`-n 3` runs the first three targets. Inspect the result:
 
-### Inspect what was acquired
+- `outputs/my_domain/discovered/runs/<run_id>/manifest.json` — status, errors
+  and every candidate's fate
+- `outputs/my_domain/discovered/curated/` — the documents later stages read
 
-Open the run manifest and documents under
-`outputs/my_domain/discovered/runs/<run_id>/`; that run's selected files are in
-`curated/`. The consolidated downstream folder is
-`outputs/my_domain/discovered/curated/`.
+Check that the acquired documents are the ones you need before going further;
+[Tuning](tuning.md) maps common problems to settings.
 
-Discovery exit codes are the same in quiet, default, and verbose modes:
-`success`/`dry_run`/validated `reused` = **0**; `failed` = **1** (including
-failures with zero downloads); genuinely `empty` results = **2**;
-`partial_failure` (usable results plus errors) = **3**, which `run` continues past.
-Inspect the manifest status/errors, not only the file count.
+## 4. Write the schema
 
-The small setup uses these defaults:
-
-- **10 unique candidates per query**, capped locally across live, cached, and
-  enabled news results. Provider `num` does not override that cap. There is no
-  hidden pagination or refill, and 10 candidates does not mean 10 downloads.
-- **1 acquisition per target** (`selection.max_per_target`), selected by
-  heuristics. This is not LLM relevance review or a completeness guarantee.
-- Direct acquisition with **no crawl**, concurrency **2**, retry attempts **3**,
-  and robots/ToS policy modes **warn**.
-- Search cache **off**. When explicitly enabled, cache hits make zero live
-  search calls.
-- Browser mode, browser escalation, and code-host adapters **off**. Opt into
-  recovery with `browser_escalation: {enabled: true}` and/or
-  `code_host_adapters: {enabled: true}`; threshold-only blocks do not enable them.
-- No automatic LLM calls. `document_review` is an explicit optional paid stage
-  requiring a document description, model choice, and LLM credentials.
-
-PDF candidates are preferred to web pages when present. HTML/HTM,
-extensionless and server-route (`.php`, `.aspx`, `.cfm` ...) HTTP(S) URLs
-are provisionally eligible without disabling `require_supported_document`;
-known non-document file types are excluded, and actual GET/MIME checks
-verify ambiguous URLs. Eligibility is not semantic validation: inspect
-whether the acquired document is the one you need.
-
-### Add only the choices you need
-
-To change the candidate budget or acquisition count, add `search.max_results`
-or `selection.max_per_target`. To restrict a source, combine a host allowlist
-with a URL-path regex:
-
-```yaml
-discovery:
-  queries:
-    - "site:example.org installation manual filetype:pdf"
-  crawl:
-    allowed_domains: [example.org]
-    include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
-```
-
-Scope checks apply before top-one selection and to final redirects. Search
-`site:`/`filetype:` hints alone do not guarantee source or file type. Concrete
-provider/vendor filters are domain-config choices, not settings automatically
-inferred from a document parser.
-
-For existing configs, migrate `seeker` to `search`, `max_results_per_query` to
-`max_results`, and selection `primary_per_target`/`relevance_require_any_terms`/
-`relevance_exclude_any_terms` to `max_per_target`/`require_any`/`exclude`.
-Retired aliases fail even when canonical keys coexist. There are no built-in
-legal draft, vendor authority, or shopping-path lists; configure those domain
-preferences explicitly. Supply `jurisdiction` and `state` fields or use
-`partition_by`: query text does not infer geography, and discovery has no
-built-in US alias table.
-
-HTTP robots/ToS enforcement is supported. Strict enforcement cannot certify
-browser redirects or subresources and fails before unsupported browser
-navigation. Use HTTP acquisition when enforcement is required.
-
-TLS verification is on by default. `REQUESTS_CA_BUNDLE` selects approved
-VPN/private roots when needed. Public mode supports explicit
-`PSWEEP_SSL_VERIFY=false` with an interception-risk warning; protected mode
-forbids it. Never use that compatibility option for sensitive data.
-These controls are independent of config
-validation. Use Python 3.12 (the tested runtime) and `pixi install --locked`
-for reproducible environments. Pip installations include Python dependencies;
-Poppler, Tesseract, and their native libraries still need provisioning.
-
-For CSV targets, optional keyword classification, LLM review, crawling, or
-other stage settings, use the [Configuration Reference](config-reference.md)
-and the expanded `config/ADVANCED.yaml`. Neither a seeded sample nor a capped
-search establishes recall or population coverage.
-
-### Resume and document sidecars
-
-Checkpoint v2 reuse requires matching effective config and artifact digest
-evidence, including curated files. Changed settings, missing/altered files,
-and old v1 entries cause reacquisition. Search-result caching is separate.
-Publication locks reject concurrent corpus writers; a discovery journal lets
-the next writer recover interrupted curated/provenance swaps. This is not a
-general pipeline transaction.
-
-OCR caches use `.text/<filename>.txt` and `.text/<filename>.meta.json`. Full
-filenames avoid collisions between formats with the same stem. OCR readers
-verify source size/mtime and source/text digests; partial pairs are misses and
-old stem-only caches are not reused. Metadata is replaced last. Curation carries
-these caches with selected files. LLM review grades are cached by content in
-`discovered/.review_cache/` and reused across runs.
-
-## Add extraction when you have suitable documents
-
-Extraction and compilation use two files per domain:
-
-| File | Role |
-|------|------|
-| **Schema** (JSON) | Defines *what* to extract — field names, types, descriptions |
-| **Config** (YAML) | Defines *how* to run — models, page targeting, output |
-
-The existing `init-domain-schema` command scaffolds a **schema**; it is not a
-discovery setup wizard. Discovery does not require it. Keep each domain's
-schema beside its config as `config/<domain>/schema.json`; see
-[Schema Authoring](schemas/index.md) for the contract and instructions.
-
-### Configure LLM credentials
-
-ParseSweep reads LLM credentials from a `.env` file in the project root or
-from environment variables. Configure **exactly one** provider block when
-using extraction, LLM document review, or another LLM stage.
-
-Run the interactive credential setup:
-
-```bash
-pixi run psweep init
-```
-
-...or create `.env` by hand. An OpenAI-compatible proxy (LiteLLM, OpenRouter,
-Azure AI Foundry, Together AI, vLLM, Ollama, …) can use the endpoint override:
-
-```bash
-# .env — endpoint override (highest priority)
-LLM_BASE_URL=https://your-proxy.example.com/v1
-LLM_API_KEY=sk-your-proxy-key
-LLM_MODEL=gpt-4.1-mini     # optional default; overridden by run.yaml models:
-```
-
-Or use direct provider keys — one of:
-
-```bash
-AZURE_OPENAI_API_KEY=...      # + AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GEMINI_API_KEY=...
-```
-
-### Create a minimal schema
-
-Only `$metadata.extraction.main_data_array` is a
-required metadata key. For example, `config/my_domain/schema.json`:
+`config/my_domain/schema.json` defines what to extract. The only required
+metadata is the main array:
 
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$metadata": {
-    "extraction": {
-      "main_data_array": "items"
-    }
+    "extraction": {"main_data_array": "items"},
+    "identity": {"deduplication": {"key_fields": ["state", "name"]}}
   },
   "type": "object",
   "properties": {
@@ -229,8 +85,12 @@ required metadata key. For example, `config/my_domain/schema.json`:
       "items": {
         "type": "object",
         "properties": {
-          "item_name": {"type": "string", "description": "Name of the item"},
-          "value": {"type": "number", "description": "The value to extract"}
+          "state": {"type": "string", "description": "Two-letter state code of the target"},
+          "name": {"type": "string", "description": "Target name exactly as in targets.csv"},
+          "max_flow_gpm": {
+            "type": ["number", "null"],
+            "description": "Maximum rated flow in gallons per minute; null if not stated"
+          }
         }
       }
     }
@@ -238,66 +98,33 @@ required metadata key. For example, `config/my_domain/schema.json`:
 }
 ```
 
-The field `description`s are the LLM's extraction instructions — write them
-precisely. This example illustrates the contract; it does not certify the
-semantic quality of extracted values.
+Because the deduplication `key_fields` equal `partition_by`, extraction and
+compilation are anchored to the target roster
+([roster mode](config-reference.md#roster-anchored-extraction)). Field
+descriptions are the model's instructions. `psweep init-domain-schema`
+scaffolds a schema, and `psweep check-schema` reviews one; see
+[Schema Authoring](schemas/index.md).
 
-### Add extraction to the same config
-
-The schema defaults to `config/my_domain/schema.json` (override with top-level
-`schema:`), input defaults to `outputs/my_domain/discovered/curated`, and output
-is derived as `outputs/my_domain/extracted`. Pin `model` when you want an
-explicit choice:
-
-```yaml
-extraction:
-  model: your-model-name
-```
-
-For local documents, pass the directory positionally. You can also
-test schema-only mode without a config:
+## 5. Extract and compile
 
 ```bash
-pixi run psweep extract documents/my_domain/ \
-  --schema config/my_domain/schema.json -n 2
-
-# Config-driven extraction
-pixi run psweep extract --config config/my_domain/run.yaml
-```
-
-## Inspect, then iterate
-
-Extraction writes one JSON per document to `outputs/<domain>/extracted/`. Open a couple
-and check the results, then tune **one setting at a time**:
-
-- Output looks **truncated / missing later sections** → raise `max_context` or
-  turn on page targeting.
-- Documents are **large or slow/expensive** → consider `pages.auto_locate`.
-- The compiled sheet has **duplicate rows** → set the schema's dedup key fields.
-- Discovery acquired the **wrong document** → inspect source scope, ranking,
-  and query terms before increasing result/acquisition limits or adding paid review.
-
-The [Tuning & Iteration guide](tuning.md) maps symptoms to settings, and the
-[Configuration Reference](config-reference.md) documents defaults and advanced
-options.
-
-## Compile and run the whole pipeline
-
-Compilation reads `outputs/my_domain/extracted` with the same schema and writes
-`outputs/my_domain/compiled/my_domain.csv` (and `.xlsx`), named after the domain;
-add a `compilation:` section only for settings such as output formats or
-normalization.
-
-```bash
-# Merge per-document JSON into Excel/CSV
+pixi run psweep extract --config config/my_domain/run.yaml -n 2
 pixi run psweep compile --config config/my_domain/run.yaml
-
-# With the relevant sections configured: discover → extract → compile → validate
-pixi run psweep run --config config/my_domain/run.yaml
 ```
 
-To check quality, label a few targets by hand in a CSV whose headers match the
-compiled columns. Then add a `validation:` block:
+Extraction writes one JSON per document to `outputs/my_domain/extracted/`;
+open a couple before scaling up. Compilation writes
+`outputs/my_domain/compiled/my_domain.csv` (and/or `.xlsx`). With a target
+roster it emits one row per target with `sources`, `confidence` and
+`evidence`.
+
+For local documents, skip discovery and pass the folder:
+`psweep extract documents/my_domain/ --config …`.
+
+## 6. Validate
+
+Label a few targets by hand in `config/my_domain/samples/exemplar.csv`
+(headers matching the compiled columns), then:
 
 ```yaml
 validation:
@@ -305,8 +132,22 @@ validation:
   min_accuracy: 0.9
 ```
 
-`pixi run psweep validate --config config/my_domain/run.yaml` prints a
-leaderboard and a `Next:` hint, and writes `outputs/my_domain/validated/`.
+```bash
+pixi run psweep validate --config config/my_domain/run.yaml
+```
 
-See the [Command Reference](commands/index.md) for every command, option, and
-its default.
+The console prints a leaderboard and a `Next:` line;
+`outputs/my_domain/validated/` holds the per-cell results. The three-step
+workflow (exemplar → model comparison → blind sample) is in
+[Tuning](tuning.md#validation).
+
+## 7. Run everything
+
+```bash
+pixi run psweep run --config config/my_domain/run.yaml
+```
+
+`run` executes every configured stage in order. Re-running reuses verified
+work and resumes where the last run stopped; exit code `3` means some items
+are still incomplete and a re-run will retry them. See
+[Runs, reuse and exit codes](config-reference.md#runs-reuse-and-exit-codes).

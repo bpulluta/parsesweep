@@ -68,7 +68,11 @@ def validate(
         psweep validate --config config/my_domain/run.yaml --sample 100 --seed 1
     """
     from psweep.cli.commands import begin_run
-    from psweep.config import RuntimeConfigError, load_runtime_config_file
+    from psweep.config import (
+        RuntimeConfigError,
+        load_runtime_config_file,
+        resolve_command_config,
+    )
     from psweep.exceptions import ParseSweepError
 
     if sample is not None and fresh:
@@ -76,8 +80,10 @@ def validate(
     view = begin_run("validate", quiet=quiet, verbose=verbose, debug=debug)
     try:
         if validate_config_only:
-            if not load_runtime_config_file(config_path).get("validation"):
+            config_data = load_runtime_config_file(config_path)
+            if not config_data.get("validation"):
                 raise RuntimeConfigError(f"{config_path} has no validation: section")
+            resolve_command_config(command="validate", cli_values={}, config_data=config_data)
             view.success("Runtime config validation passed for validate command")
             return
         from psweep.validation import run_validation, write_sample

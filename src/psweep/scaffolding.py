@@ -197,9 +197,6 @@ def build_schema_starter_from_reference(
         "extraction": {
             "main_data_array": reference_extraction.get("main_data_array"),
             "context_objects": reference_extraction.get("context_objects", []),
-            "display_name_template": reference_extraction.get(
-                "display_name_template"
-            ),
             "document_type": resolved_document_type,
         },
     }

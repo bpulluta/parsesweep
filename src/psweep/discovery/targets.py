@@ -16,6 +16,8 @@ from itertools import islice, product
 from pathlib import Path
 from typing import Any
 
+from psweep.workspace import config_relative_path
+
 from .urls import is_http_url
 
 TargetSpec = str | list | dict
@@ -152,8 +154,7 @@ def iter_targets(spec: TargetSpec, limit: int | None = None) -> Iterator[dict[st
 def _resolve_path(value: Any, where: str, config_dir: Path) -> str:
     if not isinstance(value, str) or Path(value).suffix.lower() not in _FILE_SUFFIXES:
         raise TargetSpecError(f"{where} must be a .csv or .json path")
-    path = Path(value)
-    return (path if path.is_absolute() else config_dir / path).as_posix()
+    return config_relative_path(value, config_dir).as_posix()
 
 
 def _check_unique_identities(spec: TargetSpec, fields: Sequence[str] | None) -> None:

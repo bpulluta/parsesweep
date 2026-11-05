@@ -33,9 +33,7 @@ For document discovery:
     >>> result = engine.run(request)
 """
 
-__version__ = "2.0.1"
-__author__ = "ParseSweep Team"
-__license__ = "MIT"
+from psweep._version import __version__
 
 from pathlib import Path
 
@@ -85,8 +83,6 @@ from psweep.exceptions import (  # noqa: E402
 __all__ = [
     # Version metadata
     "__version__",
-    "__author__",
-    "__license__",
     # Paths
     "PACKAGE_ROOT",
     "PROJECT_ROOT",

@@ -12,7 +12,7 @@ from urllib.parse import urlencode, urlsplit
 from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
 from psweep.discovery.urls import canonical_url
 from psweep.utils.file_io import atomic_json
-from ..retry import compute_backoff, is_transient_error
+from psweep.utils.retry import compute_backoff, is_transient_error
 from .base import BaseSeekerConnector, SeekerInput
 from psweep.discovery.network import send_get
 from psweep.security import resolve_tls_verification
