@@ -78,8 +78,18 @@ model alias.
 
 ### Extraction times out
 
-Raise `extraction.timeout_seconds` (default `120`). Transient provider errors
-are already retried.
+While extracting, every running document has a row under the progress bar
+with its own timer, and each prints a line with its item count and time as
+soon as it finishes. The bar reads `Preparing` while page targeting runs. A
+call must return its whole answer within the timeout. Otherwise it is resent,
+up to 4 attempts in total, and each retry logs a warning that names the
+document, such as `tariffs.pdf: gpt-4o did not finish within the 120s timeout;
+retrying in 2s (attempt 2/4)`. Every attempt resends the whole prompt and may
+be billed, and a model that needs longer than the timeout usually needs it
+again. For long documents and reasoning models, raise
+`extraction.timeout_seconds` (default `120`, or `LLM_TIMEOUT`) instead of
+relying on retries. Add `--debug` to log each request's size and response
+time.
 
 ## Cost and speed
 

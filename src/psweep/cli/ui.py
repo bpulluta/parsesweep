@@ -18,7 +18,7 @@ from pathlib import Path
 
 from rich.console import Console, RenderableType
 from rich.panel import Panel
-from rich.table import Table
+from rich.table import Column, Table
 from rich import box
 from rich.progress import (
     Progress,
@@ -433,25 +433,55 @@ def print_runtime_config_error(exc: Exception, warnings: Sequence[str] | None = 
     ui.runtime_config_error(exc, warnings)
 
 
-def create_extraction_progress() -> Progress:
-    """Create the standard progress bar for per-document extraction.
+class ExtractionProgress(Progress):
+    """Overall extraction bar with a live row per document in flight.
 
-    Tasks added to this progress bar should supply a ``phase`` field
-    (initialised to ``""``) so the inline phase column renders cleanly:
-    ``progress.add_task(..., total=n, phase="")``.
+    ``documents`` is a second, never-started Progress holding one task per
+    running document; its rows render under the bar, each with its own timer.
     """
-    return Progress(
+
+    def __init__(self, *columns, documents: Progress, **kwargs):
+        # Set first: Progress.__init__ already renders once.
+        self.documents = documents
+        super().__init__(*columns, **kwargs)
+
+    def get_renderables(self) -> Iterable[RenderableType]:
+        """Render the overall bar, then the running documents."""
+        yield from super().get_renderables()
+        yield from self.documents.get_renderables()
+
+
+def create_extraction_progress(console_instance: Console = console) -> ExtractionProgress:
+    """Create the extraction display: an overall bar plus a row per running document.
+
+    Add a row with ``progress.documents.add_task(name)`` when a document
+    starts and remove it when the document finishes; names render as markup,
+    so escape them. Long names are cut with an ellipsis, never the timers.
+    The display is transient: lines printed above it are the lasting record.
+    """
+    documents = Progress(
+        TextColumn(" "),
+        TimeElapsedColumn(),
+        TextColumn(
+            "{task.description}",
+            table_column=Column(ratio=1, no_wrap=True, overflow="ellipsis"),
+        ),
+        console=console_instance,
+        expand=True,
+    )
+    return ExtractionProgress(
         SpinnerColumn(),
         TextColumn("[bold blue]{task.description}"),
-        TextColumn("[cyan]{task.fields[phase]}[/cyan]"),
-        BarColumn(),
+        BarColumn(bar_width=20),
         TaskProgressColumn(),
         MofNCompleteColumn(),
         TextColumn(ui.theme.icon_bullet),
         TimeElapsedColumn(),
         TextColumn(ui.theme.icon_bullet),
         TimeRemainingColumn(),
-        console=console,
+        documents=documents,
+        console=console_instance,
+        transient=True,
     )
 
 

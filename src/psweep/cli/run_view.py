@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from collections.abc import Iterator, Sequence
 
 if TYPE_CHECKING:
-    from rich.progress import Progress
+    from psweep.cli.ui import ExtractionProgress
 
 from rich.console import Console
 
@@ -96,13 +96,13 @@ class RunView:
         ):
             yield
 
-    def make_progress(self) -> Progress | None:
-        """Return a configured Progress bar, or None in quiet mode."""
+    def make_progress(self) -> ExtractionProgress | None:
+        """Return the extraction display on this view's console, or None in quiet mode."""
         if self.is_quiet:
             return None
         from psweep.cli.ui import create_extraction_progress
 
-        return create_extraction_progress()
+        return create_extraction_progress(self.console)
 
     @contextmanager
     def live(self, live_display) -> Iterator[None]:

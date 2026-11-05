@@ -31,8 +31,7 @@ import io
 import shutil
 import subprocess  # noqa: S404 - runs psweep stage subprocesses, no shell
 import sys
-from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, UTC
 from uuid import uuid4
@@ -92,6 +91,7 @@ from psweep.extraction.schema_utils import (
 from psweep.extraction.text_processor import calculate_completeness
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.file_io import artifact_sha256, atomic_json, atomic_write
+from psweep.utils.log_context import document_scope
 from psweep.utils.page_range import load_pages_csv, parse_page_range
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.workspace import Workspace, infer_domain
@@ -898,7 +898,8 @@ def _target_extraction_inputs(plan: dict):
         for doc in pending:
             if doc.suffix.lower() == ".pdf" and doc not in ranges:
                 page_locator.incomplete = False
-                located = page_locator.locate(doc)
+                with document_scope(doc.name):
+                    located = page_locator.locate(doc)
                 if page_locator.incomplete:
                     plan["targeting_incomplete"].add(doc)
                 if located:
@@ -911,7 +912,8 @@ def _target_extraction_inputs(plan: dict):
                 ".txt",
             }:
                 section_locator.incomplete = False
-                text = section_locator.locate(doc)
+                with document_scope(doc.name):
+                    text = section_locator.locate(doc)
                 if section_locator.incomplete:
                     plan["targeting_incomplete"].add(doc)
                 if text is not None:
@@ -1016,7 +1018,13 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
 
 
 def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
-    """Execute the plan once and publish its measured outcome."""
+    """Execute the plan once and publish its measured outcome.
+
+    ``on_progress(doc, None)`` fires when a pending document starts and
+    ``on_progress(doc, outcome)`` as soon as it finishes, so one slow document
+    never hides the others; ``records`` keep the planned document order. Log
+    records emitted while a document is located or extracted name it.
+    """
     output, pending = plan["output"], plan["pending"]
     inputs, llm = plan["inputs"], plan["llm"]
     extractor = None
@@ -1057,37 +1065,39 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
             }
         )
     workers = inputs.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
-    queue, window = iter(pending), deque()
+    queue, running = enumerate(pending), {}
+    outcomes = [None] * len(pending)
     pool = ThreadPoolExecutor(max_workers=workers)
     try:
         while True:
-            while len(window) < workers * 2 and (doc := next(queue, None)):
+            # Submit only into free workers, so a started document is running.
+            while len(running) < workers and (item := next(queue, None)):
+                doc = item[1]
                 if on_progress:
                     on_progress(doc, None)
-                window.append(
-                    (
-                        doc,
-                        pool.submit(
-                            _extract_one_document,
-                            doc,
-                            plan,
-                            extractor=extractor,
-                            run_id=run_id,
-                            page_range=ranges.get(doc),
-                            section_text=sections.get(doc),
-                        ),
-                    )
+                future = pool.submit(
+                    document_scope(doc.name)(_extract_one_document),
+                    doc,
+                    plan,
+                    extractor=extractor,
+                    run_id=run_id,
+                    page_range=ranges.get(doc),
+                    section_text=sections.get(doc),
                 )
-            if not window:
+                running[future] = item
+            if not running:
                 break
-            doc, future = window.popleft()
-            results.append(future.result())
-            if on_progress:
-                on_progress(doc, results[-1])
+            done, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in sorted(done, key=running.get):
+                index, doc = running.pop(future)
+                outcomes[index] = future.result()
+                if on_progress:
+                    on_progress(doc, outcomes[index])
     except BaseException:
         pool.shutdown(wait=False, cancel_futures=True)
         raise
     pool.shutdown()
+    results.extend(outcomes)
     return _complete_extraction(
         plan,
         results,

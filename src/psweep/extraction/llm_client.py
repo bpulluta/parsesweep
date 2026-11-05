@@ -23,6 +23,7 @@ from typing import Any
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 
 import litellm
+import openai
 from litellm import completion, completion_cost, cost_per_token
 
 from psweep.security import (
@@ -276,17 +277,35 @@ class LLMClient:
                 return completion(**params, client=client, num_retries=0)
 
     def _complete_with_backoff(self, params: dict[str, Any]):
-        """Retry transient provider failures (``is_transient_error``) with the shared backoff."""
+        """Retry transient provider failures (``is_transient_error``) with the shared backoff.
+
+        Each retry is logged with the sanitized failure category only, so slow
+        or failing calls are visible without exposing provider text.
+        """
         for attempt in range(1, RETRY_ATTEMPTS + 1):
-            time.sleep(
-                compute_backoff(attempt, initial_backoff_seconds=2.0, max_backoff_seconds=30.0)
-            )
             try:
                 return self._complete(params)
             except Exception as exc:
                 if attempt == RETRY_ATTEMPTS or not is_transient_error(exc):
                     raise
                 self._count(calls=1, unknown_cost_calls=1)
+                wait = compute_backoff(
+                    attempt + 1, initial_backoff_seconds=2.0, max_backoff_seconds=30.0
+                )
+                reason = (
+                    f"did not finish within the {self.timeout}s timeout"
+                    if isinstance(exc, (openai.APITimeoutError, TimeoutError))
+                    else f"request failed: {provider_error_category(exc)} ({type(exc).__name__})"
+                )
+                logger.warning(
+                    "%s %s; retrying in %.0fs (attempt %d/%d)",
+                    self.raw_model,
+                    reason,
+                    wait,
+                    attempt + 1,
+                    RETRY_ATTEMPTS,
+                )
+                time.sleep(wait)
         return None
 
     def _route(self) -> dict[str, Any]:
@@ -345,6 +364,13 @@ class LLMClient:
         # Split from content parsing so the two failure modes produce distinct
         # error messages: proxy/network errors vs model returned non-JSON text.
         self._count(calls=1)
+        logger.debug(
+            "Sending %s request (%d prompt chars, %ss timeout)",
+            self.raw_model,
+            sum(len(m["content"]) for m in messages if isinstance(m.get("content"), str)),
+            self.timeout,
+        )
+        started = time.monotonic()
         try:
             response = self._complete_with_backoff(request)
         except json.JSONDecodeError:
@@ -381,6 +407,7 @@ class LLMClient:
                 )
                 raise self._provider_error(retry_error) from None
 
+        logger.debug("%s answered in %.1fs", self.raw_model, time.monotonic() - started)
         usage = getattr(response, "usage", None)
         measured = {
             "cost": self._cost(response),

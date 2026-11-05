@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import DEFAULT, Mock
 
 import pytest
 
@@ -13,6 +13,7 @@ from psweep.extraction.document_utils import write_text_cache
 from psweep.extraction.page_locator import PageLocator
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 from psweep.utils.config import Config
+from psweep.utils.log_context import current_document
 
 
 @pytest.fixture
@@ -100,6 +101,26 @@ def test_proxy_with_explicit_azure_needs_no_direct_azure_endpoint(
     outcome = _execute_extraction(_prepare_extraction(inputs))
     assert outcome.exit_code == 0
     provider.assert_called_once()
+
+
+def test_document_work_logs_name_the_document(reviewed_inputs, monkeypatch):
+    """Locating (main thread) and extracting (worker) both log under the document."""
+    inputs, provider = reviewed_inputs
+    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+    seen = []
+    monkeypatch.setattr(
+        "psweep.extraction.section_locator.SectionLocator.locate",
+        lambda _self, _doc: seen.append(("locate", current_document())),
+    )
+
+    def extract(*_args, **_kwargs):
+        seen.append(("extract", current_document()))
+        return DEFAULT
+
+    provider.side_effect = extract
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert seen == [("locate", "doc.txt"), ("extract", "doc.txt")]
+    assert current_document() is None
 
 
 def test_invalid_locator_keywords_preserve_fresh_output(reviewed_inputs):

@@ -281,7 +281,10 @@ document.
 
 Every transient provider failure — HTTP 408, 429 and 5xx, timeouts and dropped
 connections — is retried up to 4 attempts in total with exponential backoff
-(2 s, capped at 30 s). TLS failures and other 4xx errors are terminal.
+(2 s, capped at 30 s). TLS failures and other 4xx errors are terminal. Each
+retry logs a warning with the model, the failure category and the attempt,
+prefixed with the document being processed; provider error text is never
+logged.
 
 ### Roster-anchored extraction
 
