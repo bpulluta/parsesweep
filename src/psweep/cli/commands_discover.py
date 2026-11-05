@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -83,19 +82,17 @@ from psweep.discovery.request_inputs import discovery_request_fields
 )
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output")
-@click.option(
-    "--debug", is_flag=True, help="Debug output with diagnostic context"
-)
+@click.option("--debug", is_flag=True, help="Debug output with diagnostic context")
 def discover(
-    config_path: Optional[str],
+    config_path: str | None,
     show_effective_config: bool,
     validate_config_only: bool,
-    domain: Optional[str],
-    sources: tuple[str, ...],
-    queries: tuple[str, ...],
-    target_limit: Optional[int],
-    dry_run: bool,
-    fresh: bool,
+    domain: str | None,  # noqa: ARG001 - read via _explicit_cli_overrides
+    sources: tuple[str, ...],  # noqa: ARG001 - read via _explicit_cli_overrides
+    queries: tuple[str, ...],  # noqa: ARG001 - read via _explicit_cli_overrides
+    target_limit: int | None,  # noqa: ARG001 - read via _explicit_cli_overrides
+    dry_run: bool,  # noqa: ARG001 - read via _explicit_cli_overrides
+    fresh: bool,  # noqa: ARG001 - read via _explicit_cli_overrides
     quiet: bool,
     verbose: bool,
     debug: bool,
@@ -162,14 +159,12 @@ def discover(
                 )
             )
         else:
-            print_success(
-                "Runtime config validation passed for discover command"
-            )
+            print_success("Runtime config validation passed for discover command")
         return
 
     request = DiscoveryRequest(**request_fields)
     targets = request.targets or []
-    search_enabled = DiscoveryEngine._search_enabled(request)
+    search_enabled = DiscoveryEngine._search_enabled(request)  # noqa: SLF001 - package-internal helper
 
     if not view.is_quiet:
         config_info = {
@@ -199,9 +194,7 @@ def discover(
             if view.verbosity.shows_detail:
                 preview_limit = 8
                 for idx, target in enumerate(targets[:preview_limit], start=1):
-                    label = DiscoveryEngine._target_label(
-                        target, idx, request.partition_by
-                    )
+                    label = DiscoveryEngine._target_label(target, idx, request.partition_by)  # noqa: SLF001 - package-internal helper
                     detail = target.get("query") or (
                         "query templates" if request.queries else "configured urls"
                     )
@@ -244,7 +237,7 @@ def discover(
     try:
         with view.live(discover_live):
             result = DiscoveryEngine().run(request)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: report any failure, then exit non-zero
         view.error("Discovery failed", str(exc))
         if view.verbosity is Verbosity.DEBUG:
             import traceback
@@ -253,9 +246,7 @@ def discover(
         sys.exit(1)
 
     try:
-        manifest_data = json.loads(
-            result.manifest_path.read_text(encoding="utf-8")
-        )
+        manifest_data = json.loads(result.manifest_path.read_text(encoding="utf-8"))
         exit_code = discovery_exit_code(manifest_data)
     except (OSError, ValueError, TypeError) as exc:
         view.error("Cannot validate discovery manifest", str(exc))
@@ -279,9 +270,7 @@ def discover(
         view.warning("No usable documents acquired", str(result.manifest_path))
     else:
         view.success(f"Discovery complete (run_id={result.run_id})")
-    download_summary = (
-        (manifest_data.get("stage_summaries") or {}).get("downloads") or {}
-    )
+    download_summary = (manifest_data.get("stage_summaries") or {}).get("downloads") or {}
     downloaded_count = int(download_summary.get("downloaded") or 0)
     total_count = int(download_summary.get("total") or 0)
     reused_count = int(download_summary.get("reused") or 0)
@@ -310,18 +299,14 @@ def discover(
             message = error.get("message") or error.get("error") or "unknown error"
             error_lines.append(f"{stage}: {message}")
         if len(errors) > 5:
-            error_lines.append(
-                f"... and {len(errors) - 5} more (see manifest for full details)"
-            )
+            error_lines.append(f"... and {len(errors) - 5} more (see manifest for full details)")
         view.warnings(error_lines)
 
     outputs = {"Run folder": str(result.manifest_path.parent)}
     if result.documents_dir.is_dir():
         outputs["Downloads"] = str(result.documents_dir)
     if result.curated_dir is not None:
-        outputs["Curated"] = (
-            f"{result.curated_count} document(s) → {result.curated_dir}"
-        )
+        outputs["Curated"] = f"{result.curated_count} document(s) → {result.curated_dir}"
     elif result.review_index_path is not None:
         outputs["Curated"] = "0 documents passed review"
     view.outputs(outputs)
@@ -329,15 +314,15 @@ def discover(
     next_steps = []
     if result.curated_count == 0 and result.review_index_path is not None:
         # Zero curated — guide the user toward fixing the problem.
-        next_steps.append(
-            "No documents matched the review criteria. Options:"
-        )
-        next_steps.append(
-            "  • Adjust discovery queries or selection filters in your config"
-        )
-        next_steps.append(
-            f"  • Override LLM picks: edit {result.review_index_path} "
-            "(set human_decision=keep), then run: pixi run psweep curate"
+        next_steps.extend(
+            (
+                "No documents matched the review criteria. Options:",
+                "  • Adjust discovery queries or selection filters in your config",
+                (
+                    f"  • Override LLM picks: edit {result.review_index_path} "
+                    "(set human_decision=keep), then run: pixi run psweep curate"
+                ),
+            )
         )
     elif result.review_index_path is not None:
         next_steps.append(
@@ -351,9 +336,7 @@ def discover(
             else "pixi run psweep extract "
             f"{result.curated_dir or result.documents_dir} --schema <schema>"
         )
-        next_steps.append(
-            f"Extract the documents: {extract_cmd}"
-        )
+        next_steps.append(f"Extract the documents: {extract_cmd}")
     view.next_steps(next_steps)
     if exit_code:
         sys.exit(exit_code)

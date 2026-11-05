@@ -104,9 +104,7 @@ def staged_file(
             if isinstance(content, (str, bytes)):
                 content = (content,)
             for chunk in content:
-                handle.write(
-                    chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                )
+                handle.write(chunk.encode("utf-8") if isinstance(chunk, str) else chunk)
             handle.flush()
             os.fsync(handle.fileno())
         yield temporary
@@ -126,9 +124,7 @@ def atomic_write(
         temporary.replace(path)
 
 
-def atomic_json(
-    path: Path, payload: object, *, prefix: str | None = None
-) -> None:
+def atomic_json(path: Path, payload: object, *, prefix: str | None = None) -> None:
     """Serialize finite JSON completely, then atomically replace."""
     atomic_write(
         path,

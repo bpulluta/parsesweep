@@ -6,7 +6,6 @@ Covers:
 - the ``preview`` command pricing bugfix (configured model, not DEFAULT_MODEL)
 """
 
-
 import click.testing
 import pytest
 
@@ -58,23 +57,22 @@ def test_estimate_extraction_cost_floors_tokens_from_float_chars():
 
 def test_preview_uses_configured_model_price(tmp_path, monkeypatch):
     """The ``preview`` command must price with the configured model, not the
-    hardcoded DEFAULT_MODEL (gpt-4o-mini)."""
+    hardcoded DEFAULT_MODEL (gpt-4o-mini).
+    """
     from psweep.cli import utils_commands as uc
 
     doc = tmp_path / "sample.txt"
     doc.write_text("hello world")
 
     # 4,000,000 chars -> 1,000,000 tokens: gpt-4o ($2.50 in + $1.00 out) = $3.50.
-    monkeypatch.setattr(
-        uc, "extract_text_from_document", lambda *a, **k: "x" * 4_000_000
-    )
+    monkeypatch.setattr(uc, "extract_text_from_document", lambda *a, **k: "x" * 4_000_000)
 
     class _FakeConfig:
         llm_config = {"model": "gpt-4o"}
         config_dir = tmp_path / "no_config"  # empty -> no schema detection
         project_root = tmp_path
 
-    monkeypatch.setattr(uc, "get_config", lambda: _FakeConfig())
+    monkeypatch.setattr(uc, "get_config", _FakeConfig)
 
     result = click.testing.CliRunner().invoke(uc.preview, [str(doc)])
     assert result.exit_code == 0, result.output

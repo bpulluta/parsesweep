@@ -68,12 +68,11 @@ def compile_roster(
 ) -> tuple[pd.DataFrame, dict[str, int]]:
     """Return the roster-shaped frame (field-name columns) and accounting stats."""
     main = metadata.get_main_data_array()
-    item_fields = list(
-        metadata.schema["properties"][main]["items"].get("properties", {})
-    )
+    item_fields = list(metadata.schema["properties"][main]["items"].get("properties", {}))
     attributes = [field for field in item_fields if field not in roster.fields]
     evidence = {
-        path[2] for path in evidence_paths(metadata.schema)
+        path[2]
+        for path in evidence_paths(metadata.schema)
         if len(path) == 3 and path[:2] == (main, "*")
     }
     by_key = {roster.key(identity): target_id for target_id, identity in roster.targets.items()}
@@ -93,7 +92,8 @@ def compile_roster(
                 raw = item.get(field)
                 value, quote = (
                     (raw.get("value"), raw.get("quote"))
-                    if field in evidence and isinstance(raw, dict) else (raw, None)
+                    if field in evidence and isinstance(raw, dict)
+                    else (raw, None)
                 )
                 if not _missing(value):
                     cells.setdefault((target_id, field), []).append(
@@ -138,13 +138,15 @@ def compile_roster(
             sources.extend(urls)
             confidence = min(confidence, level, key=_CONFIDENCE_RANK.__getitem__)
         with_evidence += bool(cell_evidence)
-        rows.append({
-            **row,
-            **extra,
-            "sources": "; ".join(dict.fromkeys(url for url in sources if url)) or NA,
-            "confidence": confidence if cell_evidence else "none",
-            "evidence": json.dumps(cell_evidence, ensure_ascii=False, separators=(",", ":")),
-        })
+        rows.append(
+            {
+                **row,
+                **extra,
+                "sources": "; ".join(dict.fromkeys(url for url in sources if url)) or NA,
+                "confidence": confidence if cell_evidence else "none",
+                "evidence": json.dumps(cell_evidence, ensure_ascii=False, separators=(",", ":")),
+            }
+        )
 
     columns = [*roster.fields, *attributes, *passthrough, *METADATA_COLUMNS]
     frame = pd.DataFrame(rows, columns=columns).fillna(NA)

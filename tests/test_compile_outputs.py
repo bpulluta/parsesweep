@@ -13,11 +13,19 @@ from psweep.workspace import Workspace
 
 SCHEMA = {
     "type": "object",
-    "properties": {"rows": {"type": "array", "items": {"type": "object", "properties": {
-        "state": {"type": "string"},
-        "ahj": {"type": "string"},
-        "online": {"type": ["string", "null"], "title": "Online Permitting"},
-    }}}},
+    "properties": {
+        "rows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "state": {"type": "string"},
+                    "ahj": {"type": "string"},
+                    "online": {"type": ["string", "null"], "title": "Online Permitting"},
+                },
+            },
+        }
+    },
     "$metadata": {
         "extraction": {"main_data_array": "rows"},
         "identity": {"deduplication": {"key_fields": ["state", "ahj"]}},
@@ -32,14 +40,23 @@ def _workspace(tmp_path: Path, *, roster: bool = True) -> tuple[Path, Path]:
     )
     records = tmp_path / "extracted"
     records.mkdir()
-    (records / "a.json").write_text(json.dumps({
-        "document": {"source_url": "https://p.gov", "source_scope": "target"},
-        "payload": {"rows": [
-            {"state": "AZ", "ahj": "Pima County", "online": "Yes"},
-            {"state": "TX", "ahj": "Travis County", "online": "Yes"},
-        ]},
-    }), encoding="utf-8")
-    discovery = "discovery:\n  targets: targets.csv\n  partition_by: [state, ahj]\n" if roster else ""
+    (records / "a.json").write_text(
+        json.dumps(
+            {
+                "document": {"source_url": "https://p.gov", "source_scope": "target"},
+                "payload": {
+                    "rows": [
+                        {"state": "AZ", "ahj": "Pima County", "online": "Yes"},
+                        {"state": "TX", "ahj": "Travis County", "online": "Yes"},
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    discovery = (
+        "discovery:\n  targets: targets.csv\n  partition_by: [state, ahj]\n" if roster else ""
+    )
     config = tmp_path / "run.yaml"
     config.write_text(
         f"domain: demo_domain\nschema: {tmp_path / 'schema.json'}\n{discovery}"
@@ -63,7 +80,8 @@ def test_compiled_files_are_named_after_the_domain(tmp_path):
     assert result.exit_code == 0, result.output
     assert Workspace("demo_domain").compiled_name == "demo_domain"
     assert sorted(p.name for p in output.iterdir() if p.suffix in {".csv", ".xlsx"}) == [
-        "demo_domain.csv", "demo_domain.xlsx",
+        "demo_domain.csv",
+        "demo_domain.xlsx",
     ]
 
 
@@ -82,8 +100,11 @@ def test_fresh_removes_stale_outputs_with_old_names(tmp_path):
 def test_library_compile_uses_the_same_name(tmp_path):
     config, records = _workspace(tmp_path, roster=False)
     result = compile_extractions(
-        records, tmp_path / "schema.json", config_path=config,
-        output_dir=tmp_path / "out", report_format="csv",
+        records,
+        tmp_path / "schema.json",
+        config_path=config,
+        output_dir=tmp_path / "out",
+        report_format="csv",
     )
     assert [path.name for path in result.output_files] == ["demo_domain.csv"]
 
@@ -112,7 +133,9 @@ def test_roster_dry_run_json_report(tmp_path):
 
 def test_rows_dry_run_json_report_names_its_mode(tmp_path):
     config, records = _workspace(tmp_path, roster=False)
-    result = _compile(config, records, tmp_path / "compiled", "--dry-run", "--report-format", "json")
+    result = _compile(
+        config, records, tmp_path / "compiled", "--dry-run", "--report-format", "json"
+    )
     assert result.exit_code == 0, result.output
     report = json.loads(result.output)
     assert report["mode"] == "rows"

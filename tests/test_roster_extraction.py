@@ -63,7 +63,12 @@ class FakeLLM:
                 _item("AZ", "Pima County", "residential permits are submitted online"),
                 _item("AZ", "Nowhere County", "residential permits are submitted online"),
             ]
-        return {"data": {"jurisdictions": items}, "cost": 0.01, "input_tokens": 5, "output_tokens": 2}
+        return {
+            "data": {"jurisdictions": items},
+            "cost": 0.01,
+            "input_tokens": 5,
+            "output_tokens": 2,
+        }
 
 
 @pytest.fixture
@@ -78,7 +83,14 @@ def workspace(tmp_path, monkeypatch):
     with (discovered / "download_index.csv").open("w", newline="") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=["path", "relative_path", "source_scope", "target_id", "target_metadata", "url"],
+            fieldnames=[
+                "path",
+                "relative_path",
+                "source_scope",
+                "target_id",
+                "target_metadata",
+                "url",
+            ],
         )
         writer.writeheader()
         writer.writerow(
@@ -131,9 +143,7 @@ def workspace(tmp_path, monkeypatch):
         )
     )
     cfg = {"provider": "openai", "model": "gpt-fixture", "api_key": "fixture"}
-    monkeypatch.setattr(
-        "psweep.utils.config.get_config", lambda: SimpleNamespace(llm_config=cfg)
-    )
+    monkeypatch.setattr("psweep.utils.config.get_config", lambda: SimpleNamespace(llm_config=cfg))
     llm = FakeLLM()
     monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", llm)
     inputs = {
@@ -145,8 +155,13 @@ def workspace(tmp_path, monkeypatch):
         "partition_by": FIELDS,
     }
     return SimpleNamespace(
-        inputs=inputs, llm=llm, shared=shared_doc, targets=targets,
-        records=tmp_path / "records", curated=curated, index=discovered / "download_index.csv",
+        inputs=inputs,
+        llm=llm,
+        shared=shared_doc,
+        targets=targets,
+        records=tmp_path / "records",
+        curated=curated,
+        index=discovered / "download_index.csv",
     )
 
 
@@ -194,14 +209,22 @@ def test_target_doc_keeps_only_its_own_target(workspace):
     assert item["online"] == {"value": None, "quote": None}
     assert record["quality"]["off_candidate_items"] == 1
     assert record["quality"]["unverified_quotes"] == 1
-    assert 'unverified quote at jurisdictions[0].online: "fabricated quote"' in record["quality"]["warnings"]
+    assert (
+        'unverified quote at jurisdictions[0].online: "fabricated quote"'
+        in record["quality"]["warnings"]
+    )
     assert record["document"]["target_id"] == identify_target(TARGETS[0], FIELDS)
 
 
 def test_target_items_match_roster_after_value_normalization(workspace, monkeypatch):
     def answer(_client, text, schema, **_kwargs):
         items = [_item("az", "PIMA  COUNTY,", "Pima fee schedule")]
-        return {"data": {"jurisdictions": items}, "cost": 0.0, "input_tokens": 1, "output_tokens": 1}
+        return {
+            "data": {"jurisdictions": items},
+            "cost": 0.0,
+            "input_tokens": 1,
+            "output_tokens": 1,
+        }
 
     monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", answer)
     _run(workspace.inputs)
@@ -268,7 +291,7 @@ def test_interrupt_cancels_queued_documents(workspace, monkeypatch):
     inputs = {
         key: value
         for key, value in workspace.inputs.items()
-        if key not in ("targets", "partition_by")
+        if key not in {"targets", "partition_by"}
     }
     with pytest.raises(KeyboardInterrupt):
         _execute_extraction(_prepare_extraction({**inputs, "max_concurrent": 1}))
@@ -325,18 +348,16 @@ def test_concurrency_is_deterministic(workspace, tmp_path):
 @pytest.mark.parametrize("value", [0, -1, "two"])
 def test_max_concurrent_must_be_positive_int(tmp_path, value):
     config = tmp_path / "run.yaml"
-    config.write_text(
-        f"domain: demo\nextraction:\n  schema: s.json\n  max_concurrent: {value}\n"
-    )
+    config.write_text(f"domain: demo\nextraction:\n  schema: s.json\n  max_concurrent: {value}\n")
     with pytest.raises(RuntimeConfigError, match="max_concurrent"):
         load_runtime_config_file(config)
 
 
 def test_partial_key_overlap_fails_before_calls(workspace):
     schema = Path(workspace.inputs["schema"])
-    data = json.loads(schema.read_text())
+    data = json.loads(schema.read_text(encoding="utf-8"))
     data["$metadata"]["identity"]["deduplication"]["key_fields"] = ["state", "online"]
-    schema.write_text(json.dumps(data))
+    schema.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(RuntimeConfigError, match="partially overlaps"):
         _prepare_extraction(workspace.inputs)
     assert workspace.llm.texts == []

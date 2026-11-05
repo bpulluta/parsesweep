@@ -19,14 +19,14 @@ class TestNormalizeState:
     @pytest.mark.parametrize(
         "value,expected",
         [
-            ("TX", "TX"),            # uppercase abbreviation
-            ("tx", "TX"),            # lowercase abbreviation
-            ("texas", "TX"),         # lowercase full name
-            ("Texas", "TX"),         # title-case full name
+            ("TX", "TX"),  # uppercase abbreviation
+            ("tx", "TX"),  # lowercase abbreviation
+            ("texas", "TX"),  # lowercase full name
+            ("Texas", "TX"),  # title-case full name
             ("California", "CA"),
             ("california", "CA"),
             ("New York", "NY"),
-            ("  ut  ", "UT"),        # whitespace stripped
+            ("  ut  ", "UT"),  # whitespace stripped
             ("UT", "UT"),
             ("washington, d.c.", "DC"),
         ],
@@ -93,9 +93,7 @@ class TestCountyFips:
         assert county_to_fips("NV", "") is None
 
     def test_add_column_derives_and_is_noop_without_source(self):
-        df = pd.DataFrame(
-            {"state": ["NV", "CA"], "county": ["Churchill", "Imperial County"]}
-        )
+        df = pd.DataFrame({"state": ["NV", "CA"], "county": ["Churchill", "Imperial County"]})
         add_county_fips_column(df, "state", "county", "county_fips")
         assert df["county_fips"].tolist() == ["32001", "06025"]
 
@@ -105,9 +103,11 @@ class TestCountyFips:
         assert "county_fips" not in df2.columns
 
     def test_nullable_geography_retains_missing_fips(self):
-        df = pd.DataFrame({
-            "state": ["California", "California", pd.NA, float("nan")],
-            "county": ["Shasta County", pd.NA, "Shasta County", None],
-        })
+        df = pd.DataFrame(
+            {
+                "state": ["California", "California", pd.NA, float("nan")],
+                "county": ["Shasta County", pd.NA, "Shasta County", None],
+            }
+        )
         add_county_fips_column(df, "state", "county")
         assert df["county_fips"].tolist() == ["06089", None, None, None]

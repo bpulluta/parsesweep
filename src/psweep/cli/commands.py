@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import click
 from click.core import ParameterSource
@@ -25,29 +25,25 @@ from psweep.config import (
 )
 
 
-def _explicit_cli_overrides(param_names: List[str]) -> Dict[str, Any]:
+def _explicit_cli_overrides(param_names: list[str]) -> dict[str, Any]:
     """Return only values that were explicitly provided on the command line."""
     ctx = click.get_current_context(silent=True)
     if ctx is None:
         return {}
 
-    overrides: Dict[str, Any] = {}
+    overrides: dict[str, Any] = {}
     for name in param_names:
         if ctx.get_parameter_source(name) == ParameterSource.COMMANDLINE:
             overrides[name] = ctx.params.get(name)
     return overrides
 
 
-def _print_effective_config(
-    command_name: str, resolved_values: Dict[str, Any]
-) -> None:
+def _print_effective_config(command_name: str, resolved_values: dict[str, Any]) -> None:
     """Print resolved values under their config key paths with source layer."""
     sources = resolved_values.get("_config_sources", {})
     paths = config_key_paths(command_name)
     display = {
-        paths.get(key, key): (
-            f"{value} [dim]({sources.get(key, 'default').split('.')[0]})[/dim]"
-        )
+        paths.get(key, key): (f"{value} [dim]({sources.get(key, 'default').split('.')[0]})[/dim]")
         for key, value in resolved_values.items()
         if not key.startswith("_")
     }
@@ -58,9 +54,9 @@ def _print_effective_config(
 def _resolve_runtime_command_inputs(
     *,
     command_name: str,
-    config_path: Optional[str],
-    cli_values: Dict[str, Any],
-) -> Dict[str, Any]:
+    config_path: str | None,
+    cli_values: dict[str, Any],
+) -> dict[str, Any]:
     """Load and resolve command inputs from config files and CLI overrides."""
     config_data = None
 

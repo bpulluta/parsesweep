@@ -50,9 +50,7 @@ def test_request_headers_reach_discovery_engine(tmp_path):
         documents_dir=tmp_path / "documents",
         dry_run=True,
     )
-    with patch(
-        "psweep.discovery.engine.DiscoveryEngine.run", return_value=result
-    ) as run:
+    with patch("psweep.discovery.engine.DiscoveryEngine.run", return_value=result) as run:
         invocation = CliRunner().invoke(
             cli, ["discover", "--config", str(config), "--dry-run", "-q"]
         )
@@ -106,9 +104,7 @@ def test_nested_typos_are_rejected(tmp_path, discovery):
 )
 def test_unused_blocks_are_rejected(tmp_path, block):
     """Retired no-op blocks must never look like supported behavior."""
-    config = _write_config(
-        tmp_path, {block: [] if block == "pipeline" else {}}
-    )
+    config = _write_config(tmp_path, {block: [] if block == "pipeline" else {}})
     with pytest.raises(RuntimeConfigError, match=block):
         load_runtime_config_file(config)
 
@@ -202,9 +198,7 @@ def test_run_preflight_rejects_empty_discovery(tmp_path, monkeypatch, schema_pat
 
 def test_run_helpers_do_not_bypass_invalid_config(tmp_path):
     """Strict loader failures cannot fall back to unvalidated raw YAML."""
-    config = _write_config(
-        tmp_path, {"runtime": {"max_concurrent_downloads": 0}}
-    )
+    config = _write_config(tmp_path, {"runtime": {"max_concurrent_downloads": 0}})
     with pytest.raises(RuntimeConfigError):
         resolve_run_discovery_enabled(config)
 
@@ -283,7 +277,7 @@ def test_zero_retry_backoffs_are_preserved(tmp_path):
             "retry_policy": {
                 "initial_backoff_seconds": 0,
                 "max_backoff_seconds": 0,
-            }
+            },
         },
     )
     resolved = resolve_command_config(
@@ -296,9 +290,7 @@ def test_zero_retry_backoffs_are_preserved(tmp_path):
     assert fields["retry_max_backoff_seconds"] == 0
 
 
-def test_python_run_rejects_empty_discovery_before_subprocess(
-    tmp_path, schema_path
-):
+def test_python_run_rejects_empty_discovery_before_subprocess(tmp_path, schema_path):
     """Python orchestration checks discovery before starting any stage."""
     config = _write_config(
         tmp_path,

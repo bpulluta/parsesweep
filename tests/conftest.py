@@ -16,6 +16,7 @@ def schema_path(tmp_path):
     write_json(path, synthetic_evidence_schema())
     return path
 
+
 # Force color OFF before psweep imports build any Rich console. CLI tests assert
 # on plain-text error substrings (e.g. "Missing option '--config'"); when Rich
 # emits ANSI codes those substrings get split and the assertions fail. Some
@@ -28,10 +29,19 @@ os.environ.pop("FORCE_COLOR", None)
 os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 for _key in (
-    "LLM_API_KEY", "LLM_BASE_URL", "OPENAI_API_KEY", "OPENAI_BASE_URL",
-    "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_API_KEY",
-    "AZURE_API_BASE", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
-    "SERPAPI_API_KEY", "OPENROUTER_API_KEY",
+    "LLM_API_KEY",
+    "LLM_BASE_URL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "AZURE_OPENAI_API_KEY",
+    "AZURE_OPENAI_ENDPOINT",
+    "AZURE_API_KEY",
+    "AZURE_API_BASE",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "SERPAPI_API_KEY",
+    "OPENROUTER_API_KEY",
 ):
     os.environ.pop(_key, None)
 

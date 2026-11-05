@@ -229,12 +229,19 @@ def test_rows_dropped_at_extraction_count_as_unverified(tmp_path):
     metadata = _metadata(tmp_path, ROWS_SCHEMA)
     native = tmp_path / "native.txt"
     native.write_text("Permits expire after 180 days unless renewed.", encoding="utf-8")
-    rule = {"feature": "expiry", "value": "180", "units": None,
-            "source_verbatim": "expire after 180 days"}
+    rule = {
+        "feature": "expiry",
+        "value": "180",
+        "units": None,
+        "source_verbatim": "expire after 180 days",
+    }
     extracted = tmp_path / "extracted"
     _record(
-        extracted, "native", {"rules": [rule]},
-        quality={"unverified_quotes": 2}, source_path=native,
+        extracted,
+        "native",
+        {"rules": [rule]},
+        quality={"unverified_quotes": 2},
+        source_path=native,
     )
     quality = model_quality(
         {"m": extracted}, metadata, quote_field="source_verbatim", focus=["value"]
@@ -303,6 +310,6 @@ def test_unreadable_manifest_is_an_error(tmp_path):
     extracted = tmp_path / "extracted"
     (extracted / "run_manifests").mkdir(parents=True)
     (extracted / "run_manifests" / "bad.manifest.json").write_text("{", encoding="utf-8")
-    with pytest.raises(ValueError, match="bad.manifest.json: unreadable run manifest"):
+    with pytest.raises(ValueError, match=r"bad.manifest.json: unreadable run manifest"):
         failed_documents(extracted)
     assert failed_documents(tmp_path / "missing") == set()

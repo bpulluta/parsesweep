@@ -26,9 +26,7 @@ from typing import Any
 
 from psweep.exceptions import ExtractionError
 
-AUDIO_EXTENSIONS: frozenset[str] = frozenset(
-    {".mp3", ".m4a", ".wav", ".ogg", ".flac"}
-)
+AUDIO_EXTENSIONS: frozenset[str] = frozenset({".mp3", ".m4a", ".wav", ".ogg", ".flac"})
 CONFIG_KEY = "extraction.transcription_model"
 METHOD_PREFIX = "transcript"
 # Bump when the prompt, chunking or encoding changes: cached transcripts
@@ -61,10 +59,7 @@ def _ffmpeg(args: list[str]) -> str:
     """Run ffmpeg and return its log (stderr)."""
     binary = shutil.which("ffmpeg")
     if binary is None:
-        message = (
-            "ffmpeg not found on PATH; run ParseSweep through pixi, "
-            "which provides it"
-        )
+        message = "ffmpeg not found on PATH; run ParseSweep through pixi, which provides it"
         raise TranscriptionError(message)
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell
         [binary, "-nostdin", "-hide_banner", "-nostats", *args],
@@ -90,9 +85,7 @@ def _envelope(source: Path) -> list[float]:
         "astats=metadata=1:reset=1,"
         "ametadata=mode=print:key=lavfi.astats.Overall.RMS_level"
     )
-    log = _ffmpeg(
-        ["-i", str(source), "-map", "0:a:0", "-af", filters, "-f", "null", "-"]
-    )
+    log = _ffmpeg(["-i", str(source), "-map", "0:a:0", "-af", filters, "-f", "null", "-"])
     return [float(level) for level in _RMS_LEVEL.findall(log)]
 
 
@@ -119,11 +112,7 @@ def chunk_starts(levels: list[float]) -> list[float]:
 def _split(source: Path, starts: list[float], workdir: Path) -> list[Path]:
     """Transcode once into one low-bitrate MP3 per chunk."""
     times = ",".join(f"{start:.3f}" for start in starts[1:])
-    segment = (
-        ["-f", "segment", "-segment_times", times, "-reset_timestamps", "1"]
-        if times
-        else []
-    )
+    segment = ["-f", "segment", "-segment_times", times, "-reset_timestamps", "1"] if times else []
     target = workdir / ("chunk%04d.mp3" if times else "chunk0000.mp3")
     _ffmpeg(
         [
@@ -140,9 +129,7 @@ def _split(source: Path, starts: list[float], workdir: Path) -> list[Path]:
     )
     chunks = sorted(workdir.glob("chunk*.mp3"))
     if len(chunks) != len(starts):
-        message = (
-            f"ffmpeg produced {len(chunks)} chunks for {len(starts)} cuts"
-        )
+        message = f"ffmpeg produced {len(chunks)} chunks for {len(starts)} cuts"
         raise TranscriptionError(message)
     return chunks
 
@@ -185,7 +172,7 @@ class Transcriber:
     def _llm_client(self):
         with self._client_lock:
             if self._client is None:
-                from .llm_client import LLMClient  # noqa: PLC0415
+                from .llm_client import LLMClient
 
                 self._client = LLMClient(**self._llm, timeout=self._timeout)
         return self._client
@@ -203,23 +190,16 @@ class Transcriber:
         with scratch as tmp:
             chunks = _split(source, starts, Path(tmp))
             with ThreadPoolExecutor(max_workers=self._workers) as pool:
-                futures = [
-                    pool.submit(self._transcribe_chunk, client, chunk)
-                    for chunk in chunks
-                ]
+                futures = [pool.submit(self._transcribe_chunk, client, chunk) for chunk in chunks]
                 done, _ = wait(futures, return_when=FIRST_EXCEPTION)
-                failure = next(
-                    (f.exception() for f in done if f.exception()), None
-                )
+                failure = next((f.exception() for f in done if f.exception()), None)
                 if failure is not None:
                     for future in futures:
                         future.cancel()
                     raise failure
         texts = [future.result() for future in futures]
         return "\n\n".join(
-            f"{timestamp(start)} {text}"
-            for start, text in zip(starts, texts, strict=True)
-            if text
+            f"{timestamp(start)} {text}" for start, text in zip(starts, texts, strict=True) if text
         )
 
     def _transcribe_chunk(self, client, chunk: Path) -> str:
@@ -253,14 +233,12 @@ def build_transcriber(inputs: dict[str, Any]) -> Transcriber | None:
     tier = inputs.get("transcription_model")
     if not tier:
         return None
-    from .llm_factory import (  # noqa: PLC0415
+    from .llm_factory import (
         DEFAULT_MAX_CONCURRENT,
         resolve_llm_kwargs,
     )
 
-    llm = resolve_llm_kwargs(
-        tier, models=inputs.get("models"), llm_config=inputs.get("llm_config")
-    )
+    llm = resolve_llm_kwargs(tier, models=inputs.get("models"), llm_config=inputs.get("llm_config"))
     return Transcriber(
         llm,
         max_concurrent=inputs.get("max_concurrent") or DEFAULT_MAX_CONCURRENT,
@@ -274,7 +252,7 @@ def transcript(source: Path, transcriber: Transcriber | None) -> str:
     Without a transcriber (review, validation, CLI utilities) any cached
     transcript is used; with one, only a transcript of its identity is.
     """
-    from .document_utils import (  # noqa: PLC0415 - imports this module
+    from .document_utils import (
         TEXT_CACHE_DIRNAME,
         read_text_cache,
         write_text_cache,

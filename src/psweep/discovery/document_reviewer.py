@@ -30,6 +30,7 @@ from psweep.utils.file_io import atomic_json
 from .targets import target_identity
 from .urls import redact_url, redact_urls_in_text
 from .validators import ContentSampler
+import contextlib
 
 _REVIEW_WORKERS = 4
 _GRADE_ATTEMPTS = 2
@@ -145,12 +146,16 @@ _DEDUP_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "keep_index": {
                         "type": "integer",
-                        "description": "0-based index of the document to KEEP (most current/authoritative).",
+                        "description": (
+                            "0-based index of the document to KEEP (most current/authoritative)."
+                        ),
                     },
                     "redundant_indices": {
                         "type": "array",
                         "items": {"type": "integer"},
-                        "description": "0-based indices of documents to EXCLUDE (superseded/redundant).",
+                        "description": (
+                            "0-based indices of documents to EXCLUDE (superseded/redundant)."
+                        ),
                     },
                     "reason": {"type": "string"},
                 },
@@ -191,14 +196,10 @@ class DocumentReviewer:
             message = "max_chars must be a positive integer"
             raise ValueError(message)
         self._max_chars = max_chars
-        self._review_keywords = [
-            k.lower() for k in (review_keywords or []) if k and k.strip()
-        ]
+        self._review_keywords = [k.lower() for k in (review_keywords or []) if k and k.strip()]
         self._deduplicate_redundant = bool(deduplicate_redundant)
         self._dedup_key_fields = [
-            field
-            for field in (dedup_key_fields or [])
-            if field and field.strip()
+            field for field in (dedup_key_fields or []) if field and field.strip()
         ]
         self._client: Any = None
         # Cost accounting
@@ -214,7 +215,7 @@ class DocumentReviewer:
             # Route through the shared model-tiering resolver: honors the
             # ``models:`` block + the stage ``model`` (tier or literal), and
             # works for any provider (Azure/OpenAI/Anthropic/Gemini).
-            from ..extraction.llm_factory import build_llm_client
+            from psweep.extraction.llm_factory import build_llm_client
 
             self._client = build_llm_client(
                 self._model,
@@ -268,27 +269,20 @@ class DocumentReviewer:
                 pos = text_lower.find(keyword, head_budget)
                 while pos != -1 and pos < len(text) - tail_budget:
                     # Skip if too close to a window we already captured
-                    if not any(
-                        abs(pos - s) < window_size for s in seen_positions
-                    ):
+                    if not any(abs(pos - s) < window_size for s in seen_positions):
                         start = max(head_budget, pos - window_size // 4)
                         excerpt = text[start : start + window_size]
                         if excerpt.strip():
                             keyword_windows.append(excerpt)
                             seen_positions.add(pos)
-                        if (
-                            len(keyword_windows) * window_size
-                            >= keyword_budget
-                        ):
+                        if len(keyword_windows) * window_size >= keyword_budget:
                             break
                     pos = text_lower.find(keyword, pos + window_size)
                 if len(keyword_windows) * window_size >= keyword_budget:
                     break
 
             if keyword_windows:
-                keyword_section = separator.join(keyword_windows)[
-                    :keyword_budget
-                ]
+                keyword_section = separator.join(keyword_windows)[:keyword_budget]
             else:
                 # No keywords found — give budget back to body
                 body_budget += keyword_budget
@@ -314,8 +308,7 @@ class DocumentReviewer:
         parts = [head]
         if keyword_section:
             parts.append(keyword_section)
-        parts.append(body_section)
-        parts.append(tail)
+        parts.extend((body_section, tail))
         combined = separator.join(parts)
         return combined[: self._max_chars]
 
@@ -350,7 +343,7 @@ class DocumentReviewer:
         """Return SHA-256 hex digest for a file, or None if unreadable."""
         try:
             h = hashlib.sha256()
-            with open(path, "rb") as fh:
+            with Path(path).open("rb") as fh:
                 for chunk in iter(lambda: fh.read(65536), b""):
                     h.update(chunk)
             return h.hexdigest()
@@ -409,9 +402,7 @@ class DocumentReviewer:
             redundant.update(i for i in indices if i != keep)
         return redundant
 
-    def _find_structural_duplicates(
-        self, primaries: list[dict[str, Any]]
-    ) -> set[int]:
+    def _find_structural_duplicates(self, primaries: list[dict[str, Any]]) -> set[int]:
         """Identify obvious duplicates from a configurable structural key."""
         groups: dict[str, list[int]] = {}
         for idx, record in enumerate(primaries):
@@ -488,16 +479,12 @@ class DocumentReviewer:
         cost = usage.get("cost")
         input_tokens = usage.get("input_tokens")
         output_tokens = usage.get("output_tokens")
-        cost_known = (
-            type(cost) in {int, float} and math.isfinite(cost) and cost >= 0
-        )
+        cost_known = type(cost) in {int, float} and math.isfinite(cost) and cost >= 0
         input_known = type(input_tokens) is int and input_tokens >= 0
         output_known = type(output_tokens) is int and output_tokens >= 0
         with self._usage_lock:
             self._llm_calls += 1
-            self._usage_unknown_calls += not (
-                cost_known and input_known and output_known
-            )
+            self._usage_unknown_calls += not (cost_known and input_known and output_known)
             if cost_known:
                 self._total_cost += cost
             if input_known:
@@ -524,7 +511,7 @@ class DocumentReviewer:
         """Return a raw grade or raise a sanitized review failure."""
         try:
             # Full extraction reaches keyword matches beyond five pages.
-            from psweep.extraction.document_utils import (  # noqa: PLC0415
+            from psweep.extraction.document_utils import (
                 extract_text_from_document,
             )
 
@@ -538,10 +525,7 @@ class DocumentReviewer:
             except Exception as exc:
                 message = "document text extraction failed"
                 raise UnreadableDocumentError(message) from exc
-        if (
-            not text
-            or len(text.strip()) < ContentSampler.MIN_EXTRACTION_LENGTH
-        ):
+        if not text or len(text.strip()) < ContentSampler.MIN_EXTRACTION_LENGTH:
             message = "insufficient extracted text for document review"
             raise UnreadableDocumentError(message)
 
@@ -555,12 +539,9 @@ class DocumentReviewer:
         source_url = redact_url(source_url) if source_url else ""
         user_prompt = _REVIEW_PROMPT.format(
             description=self._description,
-            target_line=(
-                f"SEARCH TARGET: {target_context}\n" if target_context else ""
-            ),
+            target_line=(f"SEARCH TARGET: {target_context}\n" if target_context else ""),
             source_line=(
-                f"SOURCE_URL: {source_url} "
-                "(actual download location of this file)\n"
+                f"SOURCE_URL: {source_url} (actual download location of this file)\n"
                 if source_url
                 else ""
             ),
@@ -577,32 +558,24 @@ class DocumentReviewer:
             except Exception as exc:
                 self._track_usage()
                 message = (
-                    f"LLM grade call failed: {provider_error_category(exc)} "
-                    f"({type(exc).__name__})"
+                    f"LLM grade call failed: {provider_error_category(exc)} ({type(exc).__name__})"
                 )
                 raise ReviewError(message, usage_unknown=True) from exc
             # Retain returned usage even when the grade data is invalid.
             self._track_usage(result)
-            grade = self._grade_from_reply(
-                result.get("data") if isinstance(result, dict) else None
-            )
+            grade = self._grade_from_reply(result.get("data") if isinstance(result, dict) else None)
             if grade is not None:
                 return {**grade, "coverage": coverage}
-        message = (
-            f"invalid LLM grade: expected integer level 0-{_TOP_GRADE} "
-            "and strings"
-        )
+        message = f"invalid LLM grade: expected integer level 0-{_TOP_GRADE} and strings"
         raise ReviewError(message)
 
     # Raw grade cache (selection is always recomputed).
 
-    def _cache_key(
-        self, file_path: str, source_url: str = "", target_context: str = ""
-    ) -> str:
+    def _cache_key(self, file_path: str, source_url: str = "", target_context: str = "") -> str:
         """Identify raw grading inputs by content, excluding file location
         and selection controls.
         """
-        from psweep.extraction.llm_factory import (  # noqa: PLC0415
+        from psweep.extraction.llm_factory import (
             resolve_llm_kwargs,
         )
 
@@ -646,9 +619,7 @@ class DocumentReviewer:
             )
         except (OSError, ValueError):
             return None
-        if not isinstance(payload, dict) or not self._valid_grade(
-            payload.get("llm")
-        ):
+        if not isinstance(payload, dict) or not self._valid_grade(payload.get("llm")):
             return None
         return {**payload["llm"], "coverage": payload.get("coverage", {})}
 
@@ -660,10 +631,8 @@ class DocumentReviewer:
             "llm": {field: grade[field] for field in _GRADE_FIELDS},
             "coverage": grade.get("coverage", {}),
         }
-        try:
+        with contextlib.suppress(OSError, TypeError, ValueError):
             atomic_json(self._cache_dir / f"{cache_key}.json", payload)
-        except (OSError, TypeError, ValueError):
-            pass
 
     def _find_redundant_docs(
         self, primaries: list[dict[str, Any]], target_context: str
@@ -680,9 +649,7 @@ class DocumentReviewer:
         # Build a numbered list of doc metadata for the LLM.
         lines: list[str] = [
             f"TARGET DOCUMENT: {self._description}\n",
-            f"Target context: {redact_urls_in_text(target_context)}\n"
-            if target_context
-            else "",
+            f"Target context: {redact_urls_in_text(target_context)}\n" if target_context else "",
             "Documents to compare (0-based index):\n",
         ]
         for i, rec in enumerate(primaries):
@@ -699,8 +666,7 @@ class DocumentReviewer:
             )
 
         user_prompt = (
-            "".join(lines)
-            + "\nFor each group of documents that cover the same content "
+            "".join(lines) + "\nFor each group of documents that cover the same content "
             "where one supersedes another (older version, less authoritative "
             "source, or duplicate encoding of the same material), return a "
             "redundancy_groups entry specifying the keep_index (most "
@@ -720,11 +686,10 @@ class DocumentReviewer:
                 system_prompt=_DEDUP_SYSTEM,
                 user_prompt=user_prompt,
             )
-        except Exception as exc:  # noqa: BLE001 - isolate dedup failures
+        except Exception as exc:  # noqa: BLE001 - no LLM configured
             self._track_usage()
             message = (
-                f"LLM dedup call failed: {provider_error_category(exc)} "
-                f"({type(exc).__name__})"
+                f"LLM dedup call failed: {provider_error_category(exc)} ({type(exc).__name__})"
             )
             error = ReviewError(message, usage_unknown=True)
             for record in primaries:
@@ -744,9 +709,7 @@ class DocumentReviewer:
     def _redundant_indices(result: object, count: int) -> set[int]:
         """Validate a comparative response before using any indices."""
         data = result.get("data") if isinstance(result, dict) else None
-        groups = (
-            data.get("redundancy_groups") if isinstance(data, dict) else None
-        )
+        groups = data.get("redundancy_groups") if isinstance(data, dict) else None
         message = "invalid LLM dedup assessment"
         if not isinstance(groups, list):
             raise ReviewError(message)
@@ -762,8 +725,7 @@ class DocumentReviewer:
                 or not isinstance(to_drop, list)
                 or not isinstance(group.get("reason"), str)
                 or any(
-                    type(idx) is not int or not 0 <= idx < count or idx == keep
-                    for idx in to_drop
+                    type(idx) is not int or not 0 <= idx < count or idx == keep for idx in to_drop
                 )
             ):
                 raise ReviewError(message)
@@ -846,11 +808,7 @@ class DocumentReviewer:
         Annotates each record with ``review_*`` fields.
         Files stay in place; the engine materializes selected files separately.
         """
-        gradable = [
-            r
-            for r in downloads
-            if r.get("status") == "downloaded" and r.get("path")
-        ]
+        gradable = [r for r in downloads if r.get("status") == "downloaded" and r.get("path")]
         if not gradable:
             return downloads, notes
         for record in gradable:
@@ -886,19 +844,16 @@ class DocumentReviewer:
             identity = target_identity(
                 records[0].get("target_metadata") or {}, self._identity_fields
             )
-            target_context = ", ".join(
-                f"{key}={value}" for key, value in sorted(identity.items()) if value
-            ) or target_key
+            target_context = (
+                ", ".join(f"{key}={value}" for key, value in sorted(identity.items()) if value)
+                or target_key
+            )
 
-            for record, grade, was_cached in self._iter_grades(
-                records, target_context
-            ):
+            for record, grade, was_cached in self._iter_grades(records, target_context):
                 if grade is None:
                     continue
                 record[FIELD_REVIEW_CACHED] = was_cached
-                record["review_grade"] = {
-                    field: grade[field] for field in _GRADE_FIELDS
-                }
+                record["review_grade"] = {field: grade[field] for field in _GRADE_FIELDS}
                 record["review_coverage"] = grade.get("coverage", {})
                 if was_cached:
                     cached += 1
@@ -927,9 +882,7 @@ class DocumentReviewer:
             # Each pass rebuilds `survivors` from the latest redundancy state so
             # disjoint keep decisions across passes cannot zero-out the set.
             if self._deduplicate_redundant:
-                primaries = [
-                    r for r in ranked if bool(r.get(FIELD_REVIEW_IS_PRIMARY))
-                ]
+                primaries = [r for r in ranked if bool(r.get(FIELD_REVIEW_IS_PRIMARY))]
                 if len(primaries) >= 2:
                     # Pass 1: byte-identical files (mirrors, http/https variants).
                     byte_redundant = self._find_byte_identical_duplicates(primaries)
@@ -944,7 +897,8 @@ class DocumentReviewer:
                     # Rebuild survivors after pass 1 so pass 2 only sees
                     # non-redundant primaries (fixes: disjoint keep decisions).
                     survivors = [
-                        r for r in ranked
+                        r
+                        for r in ranked
                         if bool(r.get(FIELD_REVIEW_IS_PRIMARY))
                         and not bool(r.get(FIELD_REVIEW_REDUNDANT))
                     ]
@@ -954,8 +908,7 @@ class DocumentReviewer:
                         structural_redundant = self._find_structural_duplicates(survivors)
                         if structural_redundant:
                             redundant_path_set = {
-                                str(survivors[i].get("path"))
-                                for i in structural_redundant
+                                str(survivors[i].get("path")) for i in structural_redundant
                             }
                             notes.append(
                                 f"Dedup ({target_key}): excluded "
@@ -967,7 +920,8 @@ class DocumentReviewer:
 
                     # Rebuild survivors after pass 2 for the LLM pass.
                     survivors = [
-                        r for r in ranked
+                        r
+                        for r in ranked
                         if bool(r.get(FIELD_REVIEW_IS_PRIMARY))
                         and not bool(r.get(FIELD_REVIEW_REDUNDANT))
                     ]
@@ -988,12 +942,9 @@ class DocumentReviewer:
                 # Safety net: if every primary was marked redundant (disjoint
                 # keep decisions across passes), un-mark the highest-ranked one
                 # so keep_top always selects at least 1 primary per target.
-                final_primaries = [
-                    r for r in ranked if bool(r.get(FIELD_REVIEW_IS_PRIMARY))
-                ]
+                final_primaries = [r for r in ranked if bool(r.get(FIELD_REVIEW_IS_PRIMARY))]
                 live_primaries = [
-                    r for r in final_primaries
-                    if not bool(r.get(FIELD_REVIEW_REDUNDANT))
+                    r for r in final_primaries if not bool(r.get(FIELD_REVIEW_REDUNDANT))
                 ]
                 if final_primaries and not live_primaries:
                     best = final_primaries[0]  # ranked is already sorted by relevance
@@ -1023,17 +974,11 @@ class DocumentReviewer:
             f"selected {selected} primary document(s) "
             f"(keep_top={self._keep_top})."
         )
-        kept = sum(
-            r.get(FIELD_REVIEW_REASON) == RECORDING_KEPT for r in gradable
-        )
+        kept = sum(r.get(FIELD_REVIEW_REASON) == RECORDING_KEPT for r in gradable)
         if kept:
-            notes.append(
-                f"{kept} recording(s) kept without review "
-                "(transcribed at extraction)."
-            )
+            notes.append(f"{kept} recording(s) kept without review (transcribed at extraction).")
         unreadable = sum(
-            r.get("status") == "skipped_unreadable"
-            and not is_audio(Path(r["path"]))
+            r.get("status") == "skipped_unreadable" and not is_audio(Path(r["path"]))
             for r in gradable
         )
         if unreadable:

@@ -104,9 +104,7 @@ def test_sampled_bot_challenge_is_retried(monkeypatch):
     assert challenged.closed
 
 
-@pytest.mark.parametrize(
-    "location", ["/private", "https://outside.org/private"]
-)
+@pytest.mark.parametrize("location", ["/private", "https://outside.org/private"])
 def test_redirect_target_is_checked_before_fetch(monkeypatch, location):
     """Disallowed redirect paths and hosts are not contacted."""
     initial = Response("https://county.gov/hub", status=302, location=location)
@@ -202,9 +200,7 @@ def test_unexpected_response_url_is_request_gated(monkeypatch):
     response = Response("https://outside.org/doc")
     monkeypatch.setattr(network, "request_get", lambda *_args, **_kwargs: response)
     with pytest.raises(NetworkPolicyError):
-        send_get(
-            "https://county.gov/hub", gate=lambda url: "county.gov" in url
-        )
+        send_get("https://county.gov/hub", gate=lambda url: "county.gov" in url)
     assert response.closed
 
 
@@ -231,9 +227,7 @@ def test_cross_origin_redirect_does_not_forward_credentials(monkeypatch):
     def get(url, **kwargs):
         calls.append(kwargs["headers"])
         if len(calls) == 1:
-            return Response(
-                url, status=302, location="https://outside.org/doc"
-            )
+            return Response(url, status=302, location="https://outside.org/doc")
         return Response(url)
 
     monkeypatch.setattr(network, "request_get", get)
@@ -286,7 +280,7 @@ def test_user_agent_is_honest_and_browser_compatible():
     from psweep import __version__
     from psweep.discovery.constants import ROBOTS_AGENT, USER_AGENT
 
-    assert USER_AGENT == f"Mozilla/5.0 (compatible; {ROBOTS_AGENT}/{__version__})"
+    assert f"Mozilla/5.0 (compatible; {ROBOTS_AGENT}/{__version__})" == USER_AGENT
     for blocked in ("http", "www.", "@", "discovery", "Chrome", "Safari"):
         assert blocked not in USER_AGENT
 
@@ -298,9 +292,7 @@ def test_user_agent_is_honest_and_browser_compatible():
         ("User-agent: Mozilla\nDisallow: /\n", True),
     ],
 )
-def test_robots_groups_match_the_product_token_not_the_header(
-    monkeypatch, robots, allowed
-):
+def test_robots_groups_match_the_product_token_not_the_header(monkeypatch, robots, allowed):
     """Robots rules name ParseSweep whatever User-Agent the request sends."""
     sent = []
 
@@ -321,9 +313,7 @@ def test_robots_groups_match_the_product_token_not_the_header(
 
 
 @pytest.mark.parametrize("mode, allowed", [("warn", True), ("enforce", False)])
-def test_policy_modes_do_not_change_the_gate_contract(
-    monkeypatch, mode, allowed
-):
+def test_policy_modes_do_not_change_the_gate_contract(monkeypatch, mode, allowed):
     """Warn records disallows while enforce blocks before page acquisition."""
     calls = []
 
@@ -365,7 +355,8 @@ def test_robots_missing_rules_and_fetch_failures_keep_semantics(
     monkeypatch, status, allowed, retryable
 ):
     """Missing rules allow access; unavailable rules fail under enforce, and
-    only a transient robots failure is retryable."""
+    only a transient robots failure is retryable.
+    """
     response = Response("https://county.gov/robots.txt", status=status)
     monkeypatch.setattr(network, "request_get", lambda *_args, **_kwargs: response)
     result = DiscoveryPolicyEvaluator().evaluate(
@@ -392,8 +383,10 @@ def test_robots_timeout_is_retryable_and_cached_per_host(monkeypatch):
     evaluator = DiscoveryPolicyEvaluator()
     results = [
         evaluator.evaluate(
-            url=f"https://county.gov/{name}.pdf", ssl_verify=True,
-            robots_policy_mode="enforce", tos_policy_mode="ignore",
+            url=f"https://county.gov/{name}.pdf",
+            ssl_verify=True,
+            robots_policy_mode="enforce",
+            tos_policy_mode="ignore",
         )
         for name in ("a", "b")
     ]

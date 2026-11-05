@@ -76,7 +76,7 @@ def setup(tmp_path):
 
 
 def test_fingerprint_is_stable_across_runs_and_file_order(setup, tmp_path_factory):
-    tmp_path, records, fingerprint = setup
+    tmp_path, _records, fingerprint = setup
     first = fingerprint()
     assert fingerprint() == first and len(first) == 64
     reordered = tmp_path_factory.mktemp("reordered")

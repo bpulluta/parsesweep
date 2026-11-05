@@ -50,15 +50,21 @@ def test_invalid_csv_url_names_file_and_line(tmp_path: Path):
 
 def test_csv_row_with_extra_cells_names_file_and_line(tmp_path: Path):
     (tmp_path / "t.csv").write_text("name,query\nA,a\nB,b,extra\n", encoding="utf-8")
-    with pytest.raises(TargetSpecError, match=r"t\.csv:3: row has more cells than the 2-column header"):
+    with pytest.raises(
+        TargetSpecError, match=r"t\.csv:3: row has more cells than the 2-column header"
+    ):
         resolve_targets_spec("t.csv", tmp_path)
 
 
 def test_cross_product_unknown_dataset_column_suggests_match(tmp_path: Path):
     (tmp_path / "counties.csv").write_text("county,state\nA,CO\n", encoding="utf-8")
-    spec = {"cross_product": {"dimensions": [
-        {"name": "county", "dataset": "counties.csv", "column": "countyy"},
-    ]}}
+    spec = {
+        "cross_product": {
+            "dimensions": [
+                {"name": "county", "dataset": "counties.csv", "column": "countyy"},
+            ]
+        }
+    }
     with pytest.raises(
         TargetSpecError,
         match=r"dimensions\[0\]\.column: unknown column 'countyy' .* did you mean 'county'\?",
@@ -79,15 +85,32 @@ def test_duplicate_partition_identity_names_both_csv_lines(tmp_path: Path):
     resolve_targets_spec("t.csv", tmp_path)
 
 
-@pytest.mark.parametrize("spec,match", [
-    ([{"name": "a", "query": "x"}, {"name": "a", "query": "y"}],
-     r"targets\[1\]: duplicate target identity \(name=a\) already used by targets\[0\]; "
-     r"the non-input target fields"),
-    ({"cross_product": {"dimensions": [
-        {"name": "state", "values": ["AZ", "CO"]}, {"name": "kind", "values": ["a", "b"]},
-    ]}}, r"cross_product row 2: duplicate target identity \(state=AZ\) already used by "
-         r"targets\.cross_product row 1"),
-])
+@pytest.mark.parametrize(
+    "spec,match",
+    [
+        (
+            [{"name": "a", "query": "x"}, {"name": "a", "query": "y"}],
+            (
+                r"targets\[1\]: duplicate target identity \(name=a\) already used by targets\[0\]; "
+                r"the non-input target fields"
+            ),
+        ),
+        (
+            {
+                "cross_product": {
+                    "dimensions": [
+                        {"name": "state", "values": ["AZ", "CO"]},
+                        {"name": "kind", "values": ["a", "b"]},
+                    ]
+                }
+            },
+            (
+                r"cross_product row 2: duplicate target identity \(state=AZ\) already used by "
+                r"targets\.cross_product row 1"
+            ),
+        ),
+    ],
+)
 def test_duplicate_identity_rows_fail(tmp_path: Path, spec, match):
     fields = ["state"] if isinstance(spec, dict) else None
     with pytest.raises(TargetSpecError, match=match):

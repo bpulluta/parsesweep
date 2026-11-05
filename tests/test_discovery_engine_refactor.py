@@ -25,29 +25,29 @@ class _FakeConnector:
         self._artifacts = artifacts
         self.calls: list[object] = []
 
-    def discover(self, digger_input):  # noqa: ANN001 - test stub
+    def discover(self, digger_input):
         self.calls.append(digger_input)
         return CrawlResult(self._artifacts)
 
 
 def _base_request(**overrides) -> DiscoveryRequest:
-    params = dict(
-        domain="d",
-        queries=["q"],
-        dry_run=False,
-        robots_policy_mode="ignore",
-        tos_policy_mode="ignore",
-    )
+    params = {
+        "domain": "d",
+        "queries": ["q"],
+        "dry_run": False,
+        "robots_policy_mode": "ignore",
+        "tos_policy_mode": "ignore",
+    }
     params.update(overrides)
     return DiscoveryRequest(**params)
 
 
 def _candidate(url: str, **overrides) -> DiscoveryCandidate:
-    params = dict(
-        url=url,
-        source="configured",
-        score=CandidateScore(url_signal=0.9, trust_signal=0.9),
-    )
+    params = {
+        "url": url,
+        "source": "configured",
+        "score": CandidateScore(url_signal=0.9, trust_signal=0.9),
+    }
     params.update(overrides)
     return DiscoveryCandidate(**params)
 
@@ -77,10 +77,20 @@ def test_crawl_children_inherit_origin_attribution(monkeypatch):
     )
     monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: fake)
     candidates = [
-        _candidate(hub, target_metadata={"label": "cty"}, target_id="t1",
-                   source_scope="target", source_url=hub),
-        _candidate(pdf, target_metadata={"label": "cty"}, target_id="t1",
-                   source_scope="target", source_url=pdf),
+        _candidate(
+            hub,
+            target_metadata={"label": "cty"},
+            target_id="t1",
+            source_scope="target",
+            source_url=hub,
+        ),
+        _candidate(
+            pdf,
+            target_metadata={"label": "cty"},
+            target_id="t1",
+            source_scope="target",
+            source_url=pdf,
+        ),
     ]
     routed, errors, _, state, _ = DiscoveryEngine()._crawl_candidates(
         request=_base_request(max_depth=1), candidates=candidates
@@ -100,10 +110,12 @@ def test_configured_page_query_variants_stay_configured(monkeypatch):
     page = f"{hub}?page=2#top"
     other = "https://county.gov/list/detail?page=2"
     found = "https://search.example/list"
-    fake = _FakeConnector([
-        DiggerArtifact(url=url, source="http_digger", metadata={"source_url": src})
-        for url, src in ((page, hub), (other, hub), (f"{found}?page=2", found))
-    ])
+    fake = _FakeConnector(
+        [
+            DiggerArtifact(url=url, source="http_digger", metadata={"source_url": src})
+            for url, src in ((page, hub), (other, hub), (f"{found}?page=2", found))
+        ]
+    )
     monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: fake)
     candidates = [
         _candidate(hub, source_scope="shared", source_url=hub),
@@ -113,9 +125,7 @@ def test_configured_page_query_variants_stay_configured(monkeypatch):
         request=_base_request(max_depth=2), candidates=candidates
     )
     sources = {c.url: c.source for c in routed[2:]}
-    assert sources == {
-        page: "configured", other: "http_digger", f"{found}?page=2": "http_digger"
-    }
+    assert sources == {page: "configured", other: "http_digger", f"{found}?page=2": "http_digger"}
     assert {c.source_url for c in routed[2:4]} == {hub}
 
 
@@ -128,11 +138,12 @@ def test_configured_page_query_variants_stay_configured(monkeypatch):
 )
 def test_crawl_names_the_budget_that_cut_it_off(monkeypatch, fetched, cause):
     hub = "https://county.gov/list"
-    artifact = DiggerArtifact(url=f"{hub}/a.pdf", source="http_digger",
-                              metadata={"source_url": hub})
+    artifact = DiggerArtifact(
+        url=f"{hub}/a.pdf", source="http_digger", metadata={"source_url": hub}
+    )
 
     class _Cut:
-        def discover(self, _di):  # noqa: ANN001
+        def discover(self, _di):
             return CrawlResult([artifact], {hub}, pages_fetched=fetched)
 
     monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: _Cut())
@@ -149,7 +160,7 @@ def test_crawl_without_exhausted_budget_reports_a_retryable_failure(monkeypatch)
     hub = "https://county.gov/list"
 
     class _Failed:
-        def discover(self, _di):  # noqa: ANN001
+        def discover(self, _di):
             return CrawlResult([], {hub}, pages_fetched=0)
 
     monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: _Failed())
@@ -161,7 +172,7 @@ def test_crawl_without_exhausted_budget_reports_a_retryable_failure(monkeypatch)
 
 def test_crawl_connector_failure_keeps_candidates(monkeypatch):
     class _Boom:
-        def discover(self, _di):  # noqa: ANN001
+        def discover(self, _di):
             raise RuntimeError("crawl exploded")
 
     monkeypatch.setattr(engine_mod, "resolve_digger_connector", lambda _p: _Boom())
@@ -195,14 +206,14 @@ def _run_code_hosting_retry():
     engine = DiscoveryEngine()
 
     class _FakeSeeker:
-        instances: list["_FakeSeeker"] = []
+        instances: list[_FakeSeeker] = []
 
         def __init__(self, **_kwargs):
             self.queries: list[str] = []
             self.queries_run = 0
             _FakeSeeker.instances.append(self)
 
-        def discover(self, seeker_input):  # noqa: ANN001
+        def discover(self, seeker_input):
             self.queries_run += 1
             self.queries.extend(seeker_input.queries)
             return []  # no results -> no downloads, isolates the target count
@@ -226,7 +237,6 @@ def _run_code_hosting_retry():
             download_records=records,
             notes=[],
             documents_dir=Path("/tmp"),
-            review_cfg={},
             classifier_keywords=["oil"],
         )
     finally:
@@ -264,9 +274,12 @@ def _shell_record(label: str, url: str, tmp_path: Path) -> dict[str, object]:
 
 
 def test_code_host_domains_are_positive_host_entries_only():
-    request = _base_request(link_prioritization_domain_scores={
-        **_CODE_HOST_SCORES, " MuniCode.com. ": 0.1,
-    })
+    request = _base_request(
+        link_prioritization_domain_scores={
+            **_CODE_HOST_SCORES,
+            " MuniCode.com. ": 0.1,
+        }
+    )
     assert DiscoveryEngine._code_host_domains(request) == ("municode.com",)
     assert DiscoveryEngine._code_host_domains(_base_request()) == ()
 
@@ -282,19 +295,16 @@ def test_code_hosting_retry_targets_only_code_host_entries(monkeypatch, tmp_path
         def __init__(self, **_kwargs):
             pass
 
-        def discover(self, seeker_input):  # noqa: ANN001
+        def discover(self, seeker_input):
             queries.extend(seeker_input.queries)
             return []
 
     monkeypatch.setattr(ss_mod, "SerpApiSeeker", _Seeker)
     DiscoveryEngine()._retry_failed_targets_on_code_hosting(
         request=_base_request(link_prioritization_domain_scores=_CODE_HOST_SCORES),
-        download_records=[
-            _uncurated_record(label, url) for label, url in _CODE_HOST_URLS.items()
-        ],
+        download_records=[_uncurated_record(label, url) for label, url in _CODE_HOST_URLS.items()],
         notes=[],
         documents_dir=tmp_path,
-        review_cfg={},
         classifier_keywords=["zoning"],
     )
     scoped = sorted(q.split()[0] for q in queries)
@@ -310,7 +320,7 @@ def test_js_shell_retry_targets_only_code_host_entries(monkeypatch, tmp_path):
     crawled: list[str] = []
 
     class _Digger:
-        def discover(self, digger_input):  # noqa: ANN001
+        def discover(self, digger_input):
             crawled.extend(digger_input.sources)
             return CrawlResult(artifacts=[])
 
@@ -322,35 +332,34 @@ def test_js_shell_retry_targets_only_code_host_entries(monkeypatch, tmp_path):
             document_classifier={"nice_to_have_keywords": ["zoning"]},
         ),
         download_records=[
-            _shell_record(label, url, tmp_path)
-            for label, url in _CODE_HOST_URLS.items()
+            _shell_record(label, url, tmp_path) for label, url in _CODE_HOST_URLS.items()
         ],
         notes=[],
         documents_dir=tmp_path,
-        review_cfg={},
     )
-    assert sorted(crawled) == sorted(
-        [_CODE_HOST_URLS["subdomain"], _CODE_HOST_URLS["exact"]]
-    )
+    assert sorted(crawled) == sorted([_CODE_HOST_URLS["subdomain"], _CODE_HOST_URLS["exact"]])
 
 
 def test_suffix_only_domain_scores_skip_paid_retries(monkeypatch, tmp_path):
     engine = DiscoveryEngine()
     calls: list[str] = []
     monkeypatch.setattr(
-        engine, "_retry_failed_targets_on_code_hosting",
+        engine,
+        "_retry_failed_targets_on_code_hosting",
         lambda **kw: calls.append("serpapi") or (kw["download_records"], kw["notes"]),
     )
     monkeypatch.setattr(
-        engine, "_retry_js_shells_with_digger",
+        engine,
+        "_retry_js_shells_with_digger",
         lambda **kw: (kw["download_records"], kw["notes"]),
     )
-    request = _base_request(
-        link_prioritization_domain_scores={".gov": 0.15, "bad.com": -0.2}
-    )
+    request = _base_request(link_prioritization_domain_scores={".gov": 0.15, "bad.com": -0.2})
     engine._run_post_review_retries(
-        request=request, download_records=[], notes=[], documents_dir=tmp_path,
-        review_cfg={}, classifier_keywords=["zoning"],
+        request=request,
+        download_records=[],
+        notes=[],
+        documents_dir=tmp_path,
+        classifier_keywords=["zoning"],
     )
     assert calls == []
 
@@ -381,14 +390,16 @@ def test_checkpoint_persisted_once_after_curation(tmp_path, monkeypatch):
             path = documents_dir / f"{label}.pdf"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"synthetic document")
-            records.append({
-                "url": f"https://x/{label}.pdf",
-                "status": "downloaded",
-                "target_id": label,
-                "target_metadata": {"label": label},
-                "path": str(path),
-                "relative_path": path.name,
-            })
+            records.append(
+                {
+                    "url": f"https://x/{label}.pdf",
+                    "status": "downloaded",
+                    "target_id": label,
+                    "target_metadata": {"label": label},
+                    "path": str(path),
+                    "relative_path": path.name,
+                }
+            )
         return records, [], []
 
     monkeypatch.setattr(

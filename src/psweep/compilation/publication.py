@@ -13,9 +13,7 @@ def journal_path(output: Path) -> Path:
     return output.parent / f".{output.name}-publication.json"
 
 
-def prepare_export(
-    output: Path, stage: Path, names: list[str], fresh: bool
-) -> None:
+def prepare_export(output: Path, stage: Path, names: list[str], fresh: bool) -> None:
     """Persist the rollback plan before touching output."""
     entries = (
         [{"name": name, "had_old": (output / name).exists()} for name in names]
@@ -57,10 +55,7 @@ def recover_export(output: Path) -> None:
             except (OSError, ValueError) as exc:
                 failures.append(f"{entry['name']}: {type(exc).__name__}")
         if failures:
-            msg = (
-                f"Export rollback incomplete. Recovery details: {stage}; "
-                + "; ".join(failures)
-            )
+            msg = f"Export rollback incomplete. Recovery details: {stage}; " + "; ".join(failures)
             raise ValueError(msg)
     # Persist completion before cleanup can be interrupted.
     if data["state"] != "committed":
@@ -137,9 +132,7 @@ def _validate_entry(entry: object, *, fresh: bool, count: int) -> None:
         raise ValueError(msg)
 
 
-def _restore_entry(
-    output: Path, stage: Path, index: int, entry: dict, fresh: bool
-) -> None:
+def _restore_entry(output: Path, stage: Path, index: int, entry: dict, fresh: bool) -> None:
     name = entry["name"]
     destination = output if fresh else output / name
     staged = stage / "files" if fresh else stage / "files" / name

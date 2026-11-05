@@ -54,16 +54,14 @@ Never use real credentials or sensitive documents in tests.
 Lint and format with ruff (docstrings are enforced NumPy-style):
 
 ```bash
-pixi run -e dev ruff check src/
-pixi run -e dev ruff format --check src/
+pixi run lint
 ```
 
-Tests must pass and source docstrings must have zero pydocstyle (`D`)
-violations, matching the CI gate. The repository has existing non-docstring
-lint and formatting debt: inspect the commands above, avoid adding findings
-in changed code, and do not reformat unrelated files just to make a check
-pass. A complete Ruff run is not currently a clean baseline. Report existing
-failures, skipped tests, or blocked checks explicitly in the PR.
+`pixi run lint` runs `ruff check` and `ruff format --check` on `src/` and
+`tests/` under the config in `pyproject.toml`; it must pass, and CI runs the
+same task. Apply formatting with `pixi run -e dev ruff format src tests`. When a
+rule is a false positive, prefer a line-level `# noqa: CODE - reason` over a
+new ignore. Report skipped tests or blocked checks explicitly in the PR.
 
 ## Building the docs
 

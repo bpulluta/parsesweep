@@ -4,7 +4,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 from dataclasses import dataclass, field
 
 
@@ -53,9 +52,7 @@ class ExtractionMetrics:
             "failed": self.failed,
             "skipped": self.skipped,
             "total_cost_usd": round(self.total_cost, 4),
-            "avg_cost_per_file": round(
-                self.total_cost / max(self.successful, 1), 4
-            ),
+            "avg_cost_per_file": round(self.total_cost / max(self.successful, 1), 4),
             "total_time_sec": round(elapsed, 2),
             "avg_time_per_file_sec": round(self.get_avg_time_per_file(), 2),
         }
@@ -86,9 +83,7 @@ class ProductionLogger:
         "CYAN": "\033[96m",
     }
 
-    def __init__(
-        self, name: str, log_file: Optional[Path] = None, verbose: bool = False
-    ):
+    def __init__(self, name: str, log_file: Path | None = None, verbose: bool = False):
         """
         Initialize production logger.
 
@@ -133,13 +128,13 @@ class ProductionLogger:
 
     def header(self, text: str):
         """Print a bold header."""
-        self.logger.info(f"\n{self._colorize('=' * 80, 'BOLD')}")
+        self.logger.info("\n%s", self._colorize("=" * 80, "BOLD"))
         self.logger.info(self._colorize(text.upper(), "BOLD"))
         self.logger.info(self._colorize("=" * 80, "BOLD"))
 
     def section(self, text: str):
         """Print a section header."""
-        self.logger.info(f"\n{self._colorize(text, 'CYAN')}")
+        self.logger.info("\n%s", self._colorize(text, "CYAN"))
         self.logger.info(self._colorize("-" * len(text), "CYAN"))
 
     def success(self, text: str):
@@ -182,17 +177,11 @@ class ProductionLogger:
         summary = metrics.get_summary()
 
         self.info(f"Total Files:     {summary['total_files']}")
-        self.info(
-            f"Successful:      {self._colorize(str(summary['successful']), 'GREEN')}"
-        )
+        self.info(f"Successful:      {self._colorize(str(summary['successful']), 'GREEN')}")
         if summary["failed"] > 0:
-            self.info(
-                f"Failed:          {self._colorize(str(summary['failed']), 'RED')}"
-            )
+            self.info(f"Failed:          {self._colorize(str(summary['failed']), 'RED')}")
         if summary["skipped"] > 0:
-            self.info(
-                f"Skipped:         {self._colorize(str(summary['skipped']), 'YELLOW')}"
-            )
+            self.info(f"Skipped:         {self._colorize(str(summary['skipped']), 'YELLOW')}")
 
         self.info("")
         self.info(f"Total Cost:      ${summary['total_cost_usd']:.4f}")
@@ -234,7 +223,7 @@ class ProductionLogger:
 
 def get_logger(
     name: str = "psweep",
-    log_file: Optional[Path] = None,
+    log_file: Path | None = None,
     verbose: bool = False,
 ) -> ProductionLogger:
     """

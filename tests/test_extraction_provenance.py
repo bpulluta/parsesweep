@@ -43,7 +43,8 @@ def test_build_source_context_map_parses_target_metadata(tmp_path):
     index_path = tmp_path / "download_index.csv"
     index_path.write_text(
         "path,url,target_metadata,status\n"
-        'a.pdf,https://x/a.pdf,"{""company_name"": ""Acme"", ""city"": ""Reno"", ""state"": ""NV""}",downloaded\n',
+        'a.pdf,https://x/a.pdf,"{""company_name"": ""Acme"", ""city"": ""Reno"", '
+        '""state"": ""NV""}",downloaded\n',
         encoding="utf-8",
     )
     context_map = build_source_context_map(index_path.parent)
@@ -121,15 +122,9 @@ def test_generic_target_metadata_is_preserved_without_search_inputs(tmp_path):
     with index.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["path", "target_metadata"])
         writer.writeheader()
-        writer.writerow(
-            {"path": "sample.txt", "target_metadata": json.dumps(metadata)}
-        )
+        writer.writerow({"path": "sample.txt", "target_metadata": json.dumps(metadata)})
     context = build_source_context_map(index.parent)
-    expected = {
-        key: value
-        for key, value in metadata.items()
-        if key not in {"query", "urls"}
-    }
+    expected = {key: value for key, value in metadata.items() if key not in {"query", "urls"}}
     assert context["sample.txt"].target_metadata == expected
     text = _prepend("BODY", Path("sample.txt"), context)
     assert "DISCOVERY_TARGET_METADATA:" in text
@@ -142,9 +137,7 @@ def test_non_object_target_metadata_does_not_break_context(tmp_path, metadata):
     """Malformed discovery metadata does not become extraction instructions."""
     index = tmp_path / "download_index.csv"
     with index.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(
-            handle, fieldnames=["path", "target_metadata", "url"]
-        )
+        writer = csv.DictWriter(handle, fieldnames=["path", "target_metadata", "url"])
         writer.writeheader()
         writer.writerow(
             {
@@ -183,10 +176,7 @@ def test_conflicting_path_metadata_fails_and_ambiguous_basename_never_matches(
     )
     context = build_source_context_map(index.parent)
     assert "doc.txt" not in context
-    assert (
-        _prepend("BODY", tmp_path / "elsewhere/doc.txt", context)
-        == "BODY"
-    )
+    assert _prepend("BODY", tmp_path / "elsewhere/doc.txt", context) == "BODY"
     index.write_text(
         "path,url\na/doc.txt,https://a.example/doc\na/doc.txt,https://b.example/doc\n",
         encoding="utf-8",

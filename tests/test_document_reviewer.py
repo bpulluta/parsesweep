@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-import psweep.extraction.document_utils as document_utils
+from psweep.extraction import document_utils
 from psweep.discovery import document_reviewer
 from psweep.discovery.document_reviewer import DocumentReviewer
 from psweep.discovery.publication import record_is_curated
@@ -42,7 +42,7 @@ def _record(tmp_path: Path, name: str, label: str) -> dict:
 
 def _stub_grades(reviewer: DocumentReviewer, grades: dict[str, dict]) -> None:
     """Replace the LLM grade call with canned results keyed by filename."""
-    reviewer._ensure_client = lambda: object()  # type: ignore[method-assign]
+    reviewer._ensure_client = object  # type: ignore[method-assign]
     reviewer._grade = lambda p, **kw: grades.get(Path(p).name)  # type: ignore[method-assign]
 
 
@@ -52,8 +52,16 @@ def test_seed_only_review_preserves_shared_cap(tmp_path):
     for record in records:
         record.pop("target_metadata")
         record.pop("target_label")
-    reviewer = DocumentReviewer(document_description="records", keep_top=1, deduplicate_redundant=False)
-    _stub_grades(reviewer, {name: {"is_primary": True, "relevance": 0.9, "doc_kind": "record", "reason": "fixture"} for name in ("one.pdf", "two.pdf")})
+    reviewer = DocumentReviewer(
+        document_description="records", keep_top=1, deduplicate_redundant=False
+    )
+    _stub_grades(
+        reviewer,
+        {
+            name: {"is_primary": True, "relevance": 0.9, "doc_kind": "record", "reason": "fixture"}
+            for name in ("one.pdf", "two.pdf")
+        },
+    )
     reviewer.review(records, [])
     assert sum(record["review_selected"] for record in records) == 1
 
@@ -67,7 +75,17 @@ def test_malformed_cache_shape_is_a_miss(tmp_path):
     cache = tmp_path / ".review_cache" / f"{reviewer._cache_key(record['path'])}.json"
     cache.parent.mkdir()
     cache.write_text("[]")
-    _stub_grades(reviewer, {"one.pdf": {"is_primary": True, "relevance": 0.9, "doc_kind": "record", "reason": "fixture"}})
+    _stub_grades(
+        reviewer,
+        {
+            "one.pdf": {
+                "is_primary": True,
+                "relevance": 0.9,
+                "doc_kind": "record",
+                "reason": "fixture",
+            }
+        },
+    )
     reviewer.review([record], [])
     assert record["review_selected"] and not record["review_cached"]
 
@@ -76,9 +94,7 @@ class TestReviewSelection:
     def test_primary_selected_in_place(self, tmp_path: Path):
         ordinance = _record(tmp_path, "ordinance.pdf", "County A")
         deck = _record(tmp_path, "slides.pdf", "County A")
-        reviewer = DocumentReviewer(
-            document_description="the enacted ordinance", keep_top=1
-        )
+        reviewer = DocumentReviewer(document_description="the enacted ordinance", keep_top=1)
         _stub_grades(
             reviewer,
             {
@@ -96,7 +112,7 @@ class TestReviewSelection:
                 },
             },
         )
-        downloads, notes = reviewer.review([ordinance, deck], [])
+        _downloads, notes = reviewer.review([ordinance, deck], [])
 
         assert ordinance["review_selected"] is True
         # Files are NOT moved — they stay in place; curated/ is built by engine.
@@ -111,14 +127,22 @@ class TestReviewSelection:
     def test_per_target_promotion_is_independent(self, tmp_path: Path):
         a = _record(tmp_path, "a_ord.pdf", "County A")
         b = _record(tmp_path, "b_ord.pdf", "County B")
-        reviewer = DocumentReviewer(
-            document_description="the ordinance", keep_top=1
-        )
+        reviewer = DocumentReviewer(document_description="the ordinance", keep_top=1)
         _stub_grades(
             reviewer,
             {
-                "a_ord.pdf": {"is_primary": True, "relevance": 0.9, "doc_kind": "ordinance", "reason": "x"},
-                "b_ord.pdf": {"is_primary": True, "relevance": 0.8, "doc_kind": "ordinance", "reason": "y"},
+                "a_ord.pdf": {
+                    "is_primary": True,
+                    "relevance": 0.9,
+                    "doc_kind": "ordinance",
+                    "reason": "x",
+                },
+                "b_ord.pdf": {
+                    "is_primary": True,
+                    "relevance": 0.8,
+                    "doc_kind": "ordinance",
+                    "reason": "y",
+                },
             },
         )
         reviewer.review([a, b], [])
@@ -168,12 +192,17 @@ class TestReviewSelection:
 class TestReviewFlagMode:
     def test_review_never_moves_original_documents(self, tmp_path: Path):
         rec = _record(tmp_path, "ord.pdf", "County A")
-        reviewer = DocumentReviewer(
-            document_description="the ordinance", keep_top=1
-        )
+        reviewer = DocumentReviewer(document_description="the ordinance", keep_top=1)
         _stub_grades(
             reviewer,
-            {"ord.pdf": {"is_primary": True, "relevance": 0.9, "doc_kind": "ordinance", "reason": "x"}},
+            {
+                "ord.pdf": {
+                    "is_primary": True,
+                    "relevance": 0.9,
+                    "doc_kind": "ordinance",
+                    "reason": "x",
+                }
+            },
         )
         reviewer.review([rec], [])
         assert rec["review_selected"] is True
@@ -185,7 +214,7 @@ class TestReviewSkips:
     def test_no_downloaded_files_is_noop(self):
         reviewer = DocumentReviewer(document_description="x")
         downloads = [{"status": "failed", "path": None}]
-        out, notes = reviewer.review(downloads, [])
+        out, _notes = reviewer.review(downloads, [])
         assert out == downloads
 
 
@@ -202,23 +231,19 @@ class TestReviewGradeCache:
         }
 
         cache = tmp_path / ".review_cache"
-        r1 = DocumentReviewer(
-            document_description="the enacted ordinance", cache_dir=cache
-        )
+        r1 = DocumentReviewer(document_description="the enacted ordinance", cache_dir=cache)
         _stub_grades(r1, grades)
         _, notes1 = r1.review([dict(rec)], [])
         assert any("0 reused from cache" in n for n in notes1)
         assert len(list(cache.glob("*.json"))) == 1
 
         # Second run: file unchanged → grade reused, LLM must NOT be called.
-        r2 = DocumentReviewer(
-            document_description="the enacted ordinance", cache_dir=cache
-        )
+        r2 = DocumentReviewer(document_description="the enacted ordinance", cache_dir=cache)
 
         def _boom(_p):  # pragma: no cover - asserts no LLM call on cache hit
             raise AssertionError("LLM grade should not be called on cache hit")
 
-        r2._ensure_client = lambda: object()  # type: ignore[method-assign]
+        r2._ensure_client = object  # type: ignore[method-assign]
         r2._grade = _boom  # type: ignore[method-assign]
         rec2 = dict(rec)
         _, notes2 = r2.review([rec2], [])
@@ -230,8 +255,10 @@ class TestReviewGradeCache:
         rec = _record(tmp_path, "ordinance.pdf", "County A")
         grades = {
             "ordinance.pdf": {
-                "is_primary": True, "relevance": 0.9,
-                "doc_kind": "ordinance", "reason": "x",
+                "is_primary": True,
+                "relevance": 0.9,
+                "doc_kind": "ordinance",
+                "reason": "x",
             }
         }
         cache = tmp_path / ".review_cache"
@@ -240,9 +267,7 @@ class TestReviewGradeCache:
         r1.review([dict(rec)], [])
 
         # Different description → different cache key → must re-grade.
-        r2 = DocumentReviewer(
-            document_description="a different description", cache_dir=cache
-        )
+        r2 = DocumentReviewer(document_description="a different description", cache_dir=cache)
         _stub_grades(r2, grades)
         rec2 = dict(rec)
         _, notes2 = r2.review([rec2], [])
@@ -254,8 +279,10 @@ class TestReviewGradeCache:
         rec["url"] = "https://mirror.example.org/comment.pdf"
         grades = {
             "comment.pdf": {
-                "is_primary": True, "relevance": 0.9,
-                "doc_kind": "comment", "reason": "x",
+                "is_primary": True,
+                "relevance": 0.9,
+                "doc_kind": "comment",
+                "reason": "x",
             }
         }
         cache = tmp_path / ".review_cache"
@@ -271,7 +298,7 @@ class TestReviewGradeCache:
             seen.append(kw.get("source_url", ""))
             return grades[Path(p).name]
 
-        r2._ensure_client = lambda: object()  # type: ignore[method-assign]
+        r2._ensure_client = object  # type: ignore[method-assign]
         r2._grade = _grade  # type: ignore[method-assign]
         rec2 = dict(rec)
         rec2["final_url"] = "https://puc.sd.gov/comments/comment.pdf"
@@ -290,9 +317,7 @@ class TestReviewGradeCache:
     def test_url_less_record_cache_key_unchanged(self, tmp_path: Path):
         rec = _record(tmp_path, "ordinance.pdf", "County A")
         reviewer = DocumentReviewer(document_description="desc")
-        assert reviewer._cache_key(rec["path"]) == reviewer._cache_key(
-            rec["path"], source_url=""
-        )
+        assert reviewer._cache_key(rec["path"]) == reviewer._cache_key(rec["path"], source_url="")
         assert reviewer._cache_key(rec["path"]) != reviewer._cache_key(
             rec["path"], source_url="https://dps.ny.gov/a.pdf"
         )
@@ -325,9 +350,7 @@ class TestReviewSourceUrlContext:
         assert len(client.prompts) == 1
         return client.prompts[0]
 
-    def test_final_url_preferred_over_original(
-        self, tmp_path: Path, monkeypatch
-    ):
+    def test_final_url_preferred_over_original(self, tmp_path: Path, monkeypatch):
         prompt = self._review_one(
             tmp_path,
             monkeypatch,
@@ -338,12 +361,8 @@ class TestReviewSourceUrlContext:
         assert f"SOURCE_URL: {final}" in prompt
         assert "short.example.com" not in prompt
 
-    def test_original_url_used_when_final_missing(
-        self, tmp_path: Path, monkeypatch
-    ):
-        prompt = self._review_one(
-            tmp_path, monkeypatch, url="https://dps.ny.gov/ViewDoc-4.pdf"
-        )
+    def test_original_url_used_when_final_missing(self, tmp_path: Path, monkeypatch):
+        prompt = self._review_one(tmp_path, monkeypatch, url="https://dps.ny.gov/ViewDoc-4.pdf")
         assert "SOURCE_URL: https://dps.ny.gov/ViewDoc-4.pdf" in prompt
 
     def test_missing_url_is_not_fabricated(self, tmp_path: Path, monkeypatch):
@@ -424,9 +443,7 @@ class TestReviewSampleWindowing:
 class TestByteIdenticalDedup:
     """The byte-identical dedup reuses the download-time content_hash."""
 
-    def test_reuses_stored_content_hash_without_reading_files(
-        self, tmp_path: Path
-    ):
+    def test_reuses_stored_content_hash_without_reading_files(self, tmp_path: Path):
         # Two files with DIFFERENT bytes but the SAME stored content_hash are
         # treated as byte-identical, which is only possible if the stored hash
         # is reused instead of the files being re-hashed from disk.
@@ -507,9 +524,7 @@ class TestAnchoredGrades:
         ("level", "primary", "relevance"),
         [(0, False, 0.0), (2, False, 0.5), (3, True, 0.75), (4, True, 1.0)],
     )
-    def test_level_maps_to_primary_and_relevance(
-        self, tmp_path: Path, level, primary, relevance
-    ):
+    def test_level_maps_to_primary_and_relevance(self, tmp_path: Path, level, primary, relevance):
         rec = _record(tmp_path, "doc.pdf", "County A")
         reviewer = DocumentReviewer(document_description="records")
         reviewer._client = _LevelClient(level)
@@ -518,9 +533,7 @@ class TestAnchoredGrades:
         assert rec["review_relevance"] == relevance
         assert rec["review_selected"] is primary
 
-    def test_prompt_carries_description_target_and_rubric(
-        self, tmp_path: Path
-    ):
+    def test_prompt_carries_description_target_and_rubric(self, tmp_path: Path):
         rec = _record(tmp_path, "doc.pdf", "County A")
         rec["url"] = "https://example.gov/doc.pdf"
         client = _LevelClient(4)
@@ -536,22 +549,16 @@ class TestAnchoredGrades:
         assert prompt.endswith("EXCERPT:\n" + "record text " * 20)
 
     def test_rubric_is_domain_agnostic(self):
-        rubric = (
-            document_reviewer._REVIEW_SYSTEM + document_reviewer._REVIEW_PROMPT
-        ).lower()
+        rubric = (document_reviewer._REVIEW_SYSTEM + document_reviewer._REVIEW_PROMPT).lower()
         for term in ("solar", "permit", "ordinance", "county", "tariff"):
             assert term not in rubric
 
-    def test_rubric_change_invalidates_cache_and_rerun_is_free(
-        self, tmp_path: Path, monkeypatch
-    ):
+    def test_rubric_change_invalidates_cache_and_rerun_is_free(self, tmp_path: Path, monkeypatch):
         cache = tmp_path / ".review_cache"
         rec = _record(tmp_path, "doc.pdf", "County A")
 
         def run() -> tuple[dict, _LevelClient]:
-            reviewer = DocumentReviewer(
-                document_description="records", cache_dir=cache
-            )
+            reviewer = DocumentReviewer(document_description="records", cache_dir=cache)
             reviewer._client = _LevelClient(4)
             copy = dict(rec)
             reviewer.review([copy], [])
@@ -572,9 +579,7 @@ class TestAnchoredGrades:
         assert not changed["review_cached"] and len(client.prompts) == 1
 
     @pytest.mark.parametrize("reverse", [False, True])
-    def test_equal_grades_rank_by_provenance_not_input_order(
-        self, tmp_path: Path, reverse
-    ):
+    def test_equal_grades_rank_by_provenance_not_input_order(self, tmp_path: Path, reverse):
         names = ("a", "b", "c")
         records = [_record(tmp_path, f"{n}.pdf", "County A") for n in names]
         for rec, host in zip(records, ("c", "a", "b"), strict=True):
@@ -589,9 +594,7 @@ class TestAnchoredGrades:
         assert [r["review_selected"] for r in records] == [False, True, False]
 
     @pytest.mark.parametrize("reverse", [False, True])
-    def test_equal_grade_mirror_keeps_the_same_copy(
-        self, tmp_path: Path, reverse
-    ):
+    def test_equal_grade_mirror_keeps_the_same_copy(self, tmp_path: Path, reverse):
         records = [_record(tmp_path, f"{n}.pdf", "County A") for n in "ab"]
         for rec, query in zip(records, ("", "?cache=1800"), strict=True):
             rec["url"] = f"https://example.gov/doc.pdf{query}"
@@ -631,18 +634,12 @@ class TestRecordings:
         assert recording["review_selected"] is True
         assert not any("recording(s) kept" in note for note in notes)
 
-    def test_untranscribed_recordings_stay_selected_outside_keep_top(
-        self, tmp_path: Path
-    ):
-        recordings = [
-            self._recording(tmp_path, f"meeting-{n}.mp3", None) for n in (1, 2)
-        ]
+    def test_untranscribed_recordings_stay_selected_outside_keep_top(self, tmp_path: Path):
+        recordings = [self._recording(tmp_path, f"meeting-{n}.mp3", None) for n in (1, 2)]
         minutes = _record(tmp_path, "minutes.txt", "County A")
-        Path(minutes["path"]).write_text("minutes of the hearing " * 5)
+        Path(minutes["path"]).write_text("minutes of the hearing " * 5, encoding="utf-8")
         client = _LevelClient(4)
-        reviewer = DocumentReviewer(
-            document_description="public comments", keep_top=1
-        )
+        reviewer = DocumentReviewer(document_description="public comments", keep_top=1)
         reviewer._client = client
         _, notes = reviewer.review([*recordings, minutes], [])
         assert len(client.prompts) == 1
@@ -653,15 +650,10 @@ class TestRecordings:
             assert not recording.get("review_failed")
             assert recording["review_reason"] == document_reviewer.RECORDING_KEPT
             assert record_is_curated(recording, review_ran=True)
-        assert (
-            "2 recording(s) kept without review (transcribed at extraction)."
-            in notes
-        )
+        assert "2 recording(s) kept without review (transcribed at extraction)." in notes
         assert not any("browser_escalation" in note for note in notes)
 
-    def test_browser_escalation_note_counts_only_non_audio_unreadables(
-        self, tmp_path: Path
-    ):
+    def test_browser_escalation_note_counts_only_non_audio_unreadables(self, tmp_path: Path):
         silent = self._recording(tmp_path, "silent.mp3", "[inaudible]")
         shell = _record(tmp_path, "shell.html", "County A")
         reviewer = DocumentReviewer(document_description="public comments")
@@ -674,9 +666,7 @@ class TestRecordings:
             "need discovery.crawl.browser_escalation." in notes
         )
 
-    def test_rediscovered_recording_is_graded_on_the_extraction_transcript(
-        self, tmp_path: Path
-    ):
+    def test_rediscovered_recording_is_graded_on_the_extraction_transcript(self, tmp_path: Path):
         """A transcript cached on the curated copy grades the run's same bytes."""
         from psweep.discovery.engine import DiscoveryEngine
 
@@ -684,17 +674,18 @@ class TestRecordings:
         published = curated / "county-a" / "meeting.mp3"
         published.parent.mkdir(parents=True)
         published.write_bytes(b"ID3 recording bytes")
-        document_utils.write_text_cache(
-            published, self.TRANSCRIPT, method="transcript:fixture:v1"
-        )
+        document_utils.write_text_cache(published, self.TRANSCRIPT, method="transcript:fixture:v1")
         run_copy = tmp_path / "run" / "county-a" / "meeting.mp3"
         run_copy.parent.mkdir(parents=True)
         run_copy.write_bytes(b"ID3 recording bytes")
         changed = tmp_path / "run" / "county-a" / "other.mp3"
         changed.write_bytes(b"ID3 different bytes")
         records = [
-            {**_record(tmp_path, "unused.txt", "County A"),
-             "path": path.as_posix(), "relative_path": f"county-a/{path.name}"}
+            {
+                **_record(tmp_path, "unused.txt", "County A"),
+                "path": path.as_posix(),
+                "relative_path": f"county-a/{path.name}",
+            }
             for path in (run_copy, changed)
         ]
 

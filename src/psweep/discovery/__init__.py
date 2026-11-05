@@ -18,10 +18,10 @@ from .policies import (
 __all__ = [
     "DEFAULT_ROBOTS_POLICY_MODE",
     "DEFAULT_TOS_POLICY_MODE",
+    "CandidateScore",
+    "DiscoveryCandidate",
     "DiscoveryEngine",
+    "DiscoveryManifest",
     "DiscoveryRequest",
     "DiscoveryResult",
-    "DiscoveryCandidate",
-    "DiscoveryManifest",
-    "CandidateScore",
 ]

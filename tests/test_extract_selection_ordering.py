@@ -24,9 +24,7 @@ def controlled_extraction(monkeypatch):
         }
     )
     monkeypatch.setattr("psweep.utils.config._global_config", config)
-    monkeypatch.setattr(
-        "psweep.cli.commands_extract.load_dotenv", lambda: None
-    )
+    monkeypatch.setattr("psweep.cli.commands_extract.load_dotenv", lambda: None)
 
     def extract(self, text, schema, **kwargs):
         # Source context may precede the body for indexed documents.
@@ -39,9 +37,7 @@ def controlled_extraction(monkeypatch):
             "cost": 0.0,
         }
 
-    monkeypatch.setattr(
-        "psweep.extraction.llm_client.LLMClient.extract", extract
-    )
+    monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", extract)
     return seen
 
 
@@ -159,8 +155,5 @@ def test_invalid_existing_json_is_pending_before_limit(
     result = _invoke(schema_path, output, str(docs), "--limit", "1")
     assert result.exit_code == 0, result.output
     assert sorted(controlled_extraction) == ["doc1.txt"]
-    assert (
-        json.loads((output / "doc1.json").read_text())["contract_version"]
-        == "1.1.0"
-    )
+    assert json.loads((output / "doc1.json").read_text())["contract_version"] == "1.1.0"
     assert not (output / "doc2.json").exists()

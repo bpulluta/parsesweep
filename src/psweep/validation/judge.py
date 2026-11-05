@@ -64,6 +64,8 @@ _SCHEMA = {
 
 @dataclass(frozen=True)
 class Candidate:
+    """One candidate value with its evidence."""
+
     value: str
     quote: str | None
     url: str | None
@@ -71,6 +73,8 @@ class Candidate:
 
 @dataclass(frozen=True)
 class Item:
+    """One contested cell and its candidate values."""
+
     key: str
     field: str
     description: str
@@ -79,6 +83,8 @@ class Item:
 
 @dataclass(frozen=True)
 class Verdict:
+    """Judge verdict for one item, with its cost and token usage."""
+
     support: tuple[str, ...]
     groups: tuple[int, ...]
     reason: str
@@ -128,7 +134,7 @@ def cell_item(
         "model": model,
         "field": field,
         "description": description,
-        "candidates": [[c, x.quote, x.url] for c, x in zip(ordered, candidates)],
+        "candidates": [[c, x.quote, x.url] for c, x in zip(ordered, candidates, strict=True)],
     }
     key = hashlib.sha256(json.dumps(identity, sort_keys=True, default=str).encode()).hexdigest()
     return Item(key, field, description, candidates)
@@ -185,8 +191,10 @@ def _parse(item: Item, row: dict) -> tuple[tuple, tuple, str] | None:
         return None
     if not any(c.quote for c in item.candidates):
         support = ["unclear"] * len(support)
-    mixed = {g for g in groups if len({s for s, h in zip(support, groups) if h == g}) > 1}
-    support = ["unclear" if g in mixed else s for s, g in zip(support, groups)]
+    mixed = {
+        g for g in groups if len({s for s, h in zip(support, groups, strict=True) if h == g}) > 1
+    }
+    support = ["unclear" if g in mixed else s for s, g in zip(support, groups, strict=True)]
     renumber = {g: n for n, g in enumerate(dict.fromkeys(groups))}
     reason = " ".join(str(row.get("reason") or "").split()[:REASON_WORDS])
     return tuple(support), tuple(renumber[g] for g in groups), reason
@@ -232,8 +240,10 @@ def _judge_batch(
         error = failure or error
         calls += 1
         for item in pending:
-            shares[item.key] = [s + u / len(pending) for s, u in zip(shares[item.key], usage)]
-        spent = [s + u for s, u in zip(spent, usage)]
+            shares[item.key] = [
+                s + u / len(pending) for s, u in zip(shares[item.key], usage, strict=True)
+            ]
+        spent = [s + u for s, u in zip(spent, usage, strict=True)]
         accepted.update(got)
         pending = [item for item in pending if item.key not in accepted]
     verdicts = {
@@ -301,7 +311,7 @@ def judge(
         run["error"] = error or run["error"]
         run["calls"] += calls
         run["failed"] += size - len(got)
-        for name, amount in zip(("cost_usd", "input_tokens", "output_tokens"), spent):
+        for name, amount in zip(("cost_usd", "input_tokens", "output_tokens"), spent, strict=True):
             run[name] += amount
         if got:
             cache_path.parent.mkdir(parents=True, exist_ok=True)

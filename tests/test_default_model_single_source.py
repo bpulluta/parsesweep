@@ -38,9 +38,7 @@ def test_config_default_model_is_factory_default_model(monkeypatch, tmp_path):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
 
-    cfg = Config(
-        project_root=tmp_path
-    )  # tmp_path has no .env -> pure env read
+    cfg = Config(project_root=tmp_path)  # tmp_path has no .env -> pure env read
 
     assert cfg.llm_config["provider"] == "openai"
     assert cfg.llm_config["model"] == llm_factory.DEFAULT_MODEL

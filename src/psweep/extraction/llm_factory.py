@@ -55,7 +55,7 @@ def _get_llm_config(llm_config: dict[str, Any] | None) -> dict[str, Any]:
     if llm_config is not None:
         return llm_config
     # Config imports this factory when selecting its OpenAI default.
-    from psweep.utils.config import get_config  # noqa: PLC0415
+    from psweep.utils.config import get_config
 
     return get_config().llm_config or {}
 
@@ -120,12 +120,8 @@ def resolve_llm_kwargs(
     only to direct Azure routing.
     """
     if provider is not None:
-        if not isinstance(provider, str) or provider.lower() not in (
-            KNOWN_PROVIDERS | {"auto"}
-        ):
-            message = "provider must be 'auto' or one of: " + ", ".join(
-                sorted(KNOWN_PROVIDERS)
-            )
+        if not isinstance(provider, str) or provider.lower() not in (KNOWN_PROVIDERS | {"auto"}):
+            message = "provider must be 'auto' or one of: " + ", ".join(sorted(KNOWN_PROVIDERS))
             raise ValueError(message)
         provider = provider.lower()
         if provider == "auto":
@@ -152,11 +148,7 @@ def resolve_llm_kwargs(
 
     # Arbitrary Azure deployment names usually look like OpenAI models.
     # Use configured Azure only without an explicit provider override.
-    if (
-        provider is None
-        and cfg_provider == "azure"
-        and target in {"openai", "azure"}
-    ):
+    if provider is None and cfg_provider == "azure" and target in {"openai", "azure"}:
         target = "azure"
 
     if cfg_provider and target == cfg_provider:
@@ -164,12 +156,8 @@ def resolve_llm_kwargs(
             "model": resolved_model,
             "api_key": cfg.get("api_key"),
             "provider": target,
-            "azure_endpoint": cfg.get("azure_endpoint")
-            if target == "azure"
-            else None,
-            "azure_api_version": cfg.get("azure_api_version")
-            if target == "azure"
-            else None,
+            "azure_endpoint": cfg.get("azure_endpoint") if target == "azure" else None,
+            "azure_api_version": cfg.get("azure_api_version") if target == "azure" else None,
         }
 
     # Cross-provider: use only the target's ambient key and settings.
@@ -181,14 +169,8 @@ def resolve_llm_kwargs(
         "model": resolved_model,
         "api_key": api_key,
         "provider": target,
-        "azure_endpoint": (
-            os.getenv("AZURE_OPENAI_ENDPOINT") if target == "azure" else None
-        ),
-        "azure_api_version": (
-            os.getenv("AZURE_OPENAI_API_VERSION")
-            if target == "azure"
-            else None
-        ),
+        "azure_endpoint": (os.getenv("AZURE_OPENAI_ENDPOINT") if target == "azure" else None),
+        "azure_api_version": (os.getenv("AZURE_OPENAI_API_VERSION") if target == "azure" else None),
     }
 
 
@@ -216,7 +198,7 @@ def build_llm_client(
 ) -> Any:
     """Build a configured LLMClient for a stage's model value."""
     # LLMClient imports model defaults and detection from this module.
-    from .llm_client import LLMClient  # noqa: PLC0415
+    from .llm_client import LLMClient
 
     kwargs = resolve_llm_kwargs(
         stage_value,
@@ -224,10 +206,7 @@ def build_llm_client(
         llm_config=llm_config,
         default_model=default_model,
     )
-    if (
-        kwargs.get("provider") == "azure"
-        and kwargs.get("model") == DEFAULT_MODEL
-    ):
+    if kwargs.get("provider") == "azure" and kwargs.get("model") == DEFAULT_MODEL:
         logger.warning(
             "Provider resolved to azure but model is still '%s'. "
             "Pin your model in run.yaml models: block or pass --model.",

@@ -30,9 +30,19 @@ def _compiler(config_path: Path) -> DataCompiler:
 def _write_config(tmp_path: Path, key_fields: list[str]) -> Path:
     schema = {
         "type": "object",
-        "properties": {"rows": {"type": "array", "items": {"type": "object", "properties": {
-            "state": {"type": "string"}, "ahj": {"type": "string"}, "permit_id": {"type": "string"},
-        }}}},
+        "properties": {
+            "rows": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "state": {"type": "string"},
+                        "ahj": {"type": "string"},
+                        "permit_id": {"type": "string"},
+                    },
+                },
+            }
+        },
         "$metadata": {
             "extraction": {"main_data_array": "rows"},
             "identity": {"deduplication": {"key_fields": key_fields}},

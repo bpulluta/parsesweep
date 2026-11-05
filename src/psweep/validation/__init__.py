@@ -10,7 +10,7 @@ import shutil
 import sqlite3
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from functools import cache, partial
 from pathlib import Path
 
@@ -178,7 +178,7 @@ def run_validation(config_path: Path, *, fresh: bool = False, notify: Notify = _
 
 
 def _run(ctx: dict, config_path: Path, *, fresh: bool, notify: Notify) -> dict:
-    started, clock = datetime.now(timezone.utc), time.monotonic()
+    started, clock = datetime.now(UTC), time.monotonic()
     settings, metadata, cols = ctx["settings"], ctx["metadata"], ctx["columns"]
     validated, models = ctx["workspace"].validated, ctx["cfg"].get("models") or {}
     if fresh:
@@ -313,7 +313,11 @@ def _sample(ctx: dict, n: int, seed: int, notify: Notify) -> list[list[str]]:
     units = list(dict.fromkeys(tuple(row[i] for i in at) for row in table))
     if n > len(units):
         notify(f"--sample {n} exceeds the {len(units)} available units; writing {len(units)}")
-    chosen = set(random.Random(seed).sample(units, min(n, len(units))))
+    chosen = set(
+        random.Random(seed).sample(  # noqa: S311 - reproducible sampling, not crypto
+            units, min(n, len(units))
+        )
+    )
     urls = _document_urls(ctx["plan"], roster) if roster else {}
     rows = [[*filled, *blank]]
     for unit in units:

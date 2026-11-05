@@ -7,6 +7,7 @@ from pathlib import Path
 
 import requests
 
+from psweep.discovery import engine as engine_module
 from psweep.discovery.engine import (
     CandidateScore,
     DiscoveryCandidate,
@@ -33,15 +34,11 @@ def test_queries_without_credentials_emit_explicit_error(tmp_path, monkeypatch):
     manifest = _read_manifest(result.manifest_path)
 
     assert manifest["status"] == "failed"
-    assert any(
-        "SERPAPI_API_KEY is not set" in error["message"]
-        for error in manifest["errors"]
-    )
+    assert any("SERPAPI_API_KEY is not set" in error["message"] for error in manifest["errors"])
 
 
 def test_forbidden_download_retries_via_browser(tmp_path, monkeypatch):
     documents_dir = tmp_path / "documents"
-    manifest_path = tmp_path / "manifest.json"
     request = DiscoveryRequest(
         domain="guardrail_test",
         sources=[],
@@ -133,9 +130,7 @@ def test_promote_curated_keeps_existing_when_run_curated_empty(tmp_path):
     prior_file = consolidated_partition / "existing.pdf"
     prior_file.write_text("existing", encoding="utf-8")
 
-    run_curated_dir = (
-        domain_dir / "runs" / "run-1" / "curated"
-    )
+    run_curated_dir = domain_dir / "runs" / "run-1" / "curated"
     run_curated_dir.mkdir(parents=True, exist_ok=True)
 
     DiscoveryEngine._promote_to_consolidated_curated(
@@ -158,9 +153,7 @@ def test_promote_curated_swaps_attempted_and_clears_stale_on_fresh(tmp_path):
     stale_partition.mkdir(parents=True, exist_ok=True)
     (stale_partition / "stale.pdf").write_text("stale", encoding="utf-8")
 
-    run_curated_dir = (
-        domain_dir / "runs" / "run-2" / "curated"
-    )
+    run_curated_dir = domain_dir / "runs" / "run-2" / "curated"
     new_partition = run_curated_dir / "host" / "path"
     new_partition.mkdir(parents=True, exist_ok=True)
     (new_partition / "new.pdf").write_text("new", encoding="utf-8")
@@ -221,7 +214,6 @@ def test_code_hosting_retry_respects_fresh_cache_refresh(monkeypatch, tmp_path):
         download_records=download_records,
         notes=[],
         documents_dir=tmp_path / "documents",
-        review_cfg={},
         classifier_keywords=["pipeline"],
     )
 
@@ -253,11 +245,8 @@ def test_promote_curated_clears_attempted_partition_when_run_curated_empty(tmp_p
     assert not stale_file.exists()
 
 
-def test_download_single_candidate_decodes_escaped_url_before_fetch(
-    tmp_path, monkeypatch
-):
+def test_download_single_candidate_decodes_escaped_url_before_fetch(tmp_path, monkeypatch):
     documents_dir = tmp_path / "documents"
-    manifest_path = tmp_path / "manifest.json"
     request = DiscoveryRequest(
         domain="guardrail_test",
         sources=[],
@@ -330,9 +319,6 @@ def test_download_single_candidate_decodes_escaped_url_before_fetch(
     assert record["url"] == "https://example.org/doc.pdf?article=1034&context=test"
 
 
-from psweep.discovery import engine as engine_module
-
-
 def test_browser_escalation_defaults_calibrated_for_spa_shells():
     """The unset-config fallbacks match real SPA shell sizes, not the old no-op."""
     assert engine_module.DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS == 8000
@@ -349,9 +335,7 @@ def test_browser_escalation_uses_recalibrated_shell_default(tmp_path, monkeypatc
     """
     shell = tmp_path / "shell.html"
     body = "x" * 3000
-    shell.write_text(
-        f"<html><body><p>{body}</p></body></html>", encoding="utf-8"
-    )
+    shell.write_text(f"<html><body><p>{body}</p></body></html>", encoding="utf-8")
 
     monkeypatch.setattr(
         DiscoveryEngine,
@@ -373,26 +357,21 @@ def test_browser_escalation_uses_recalibrated_shell_default(tmp_path, monkeypatc
         }
     ]
 
-    _, notes = DiscoveryEngine()._escalate_js_shells_to_browser(
-        downloads, [], request
-    )
+    _, notes = DiscoveryEngine()._escalate_js_shells_to_browser(downloads, [], request)
 
-    assert any(
-        "JS-rendered HTML file(s) detected but browser unavailable" in n
-        for n in notes
-    )
+    assert any("JS-rendered HTML file(s) detected but browser unavailable" in n for n in notes)
 
 
 # ── Code-host content adapters (Phase 3D) ────────────────────────────────────
 
 
 def _shell_request(**overrides):
-    base = dict(
-        domain="d",
-        sources=[],
-        dry_run=False,
-        code_host_adapters={"enabled": True},
-    )
+    base = {
+        "domain": "d",
+        "sources": [],
+        "dry_run": False,
+        "code_host_adapters": {"enabled": True},
+    }
     base.update(overrides)
     return DiscoveryRequest(**base)
 
@@ -404,9 +383,7 @@ def _allow_all_policy(monkeypatch):
     monkeypatch.setattr(
         DiscoveryEngine,
         "_evaluate_request_policy",
-        lambda self, *, url, request, ssl_verify: types.SimpleNamespace(
-            allowed=True
-        ),
+        lambda self, *, url, request, ssl_verify: types.SimpleNamespace(allowed=True),
     )
 
 
@@ -418,7 +395,8 @@ def test_code_host_headers_are_opt_in_host_scoped_and_operator_overridable():
     assert "X-CSRF" not in resolve(request, "https://example.com/code")
     assert "X-CSRF" not in resolve(_shell_request(code_host_adapters=False), url)
     overridden = resolve(
-        _shell_request(request_headers={"user-agent": "Operator/1"}), url,
+        _shell_request(request_headers={"user-agent": "Operator/1"}),
+        url,
         {"User-Agent": "Adapter/1"},
     )
     assert overridden["user-agent"] == "Operator/1"
@@ -457,9 +435,7 @@ def test_code_host_adapter_recovers_shell(tmp_path, monkeypatch):
             "content_hash": "stale",
         }
     ]
-    out, notes = DiscoveryEngine()._resolve_code_host_shells(
-        downloads, [], request
-    )
+    out, notes = DiscoveryEngine()._resolve_code_host_shells(downloads, [], request)
 
     assert "RECOVERED ORDINANCE" in shell.read_text(encoding="utf-8")
     assert out[0]["code_host_adapter"] == "fake"
@@ -483,9 +459,7 @@ def test_code_host_adapter_disabled_is_noop(tmp_path, monkeypatch):
             "url": "https://library.municode.com/x?nodeId=N",
         }
     ]
-    out, notes = DiscoveryEngine()._resolve_code_host_shells(
-        downloads, [], request
-    )
+    out, notes = DiscoveryEngine()._resolve_code_host_shells(downloads, [], request)
 
     assert shell.read_text(encoding="utf-8") == "<html>x</html>"
     assert "code_host_adapter" not in out[0]
@@ -497,9 +471,7 @@ def test_code_host_adapter_skips_non_shell(tmp_path, monkeypatch):
     from psweep.discovery import code_host_adapters as cha
 
     doc = tmp_path / "full.html"
-    doc.write_text(
-        "<html><body>" + ("word " * 3000) + "</body></html>", encoding="utf-8"
-    )
+    doc.write_text("<html><body>" + ("word " * 3000) + "</body></html>", encoding="utf-8")
     original = doc.read_text(encoding="utf-8")
     monkeypatch.setattr(cha, "resolve_adapter", lambda url: _FakeAdapter())
     _allow_all_policy(monkeypatch)
@@ -544,9 +516,7 @@ def test_code_host_adapter_rejects_short_content(tmp_path, monkeypatch):
             "url": "https://library.municode.com/x?nodeId=N",
         }
     ]
-    out, notes = DiscoveryEngine()._resolve_code_host_shells(
-        downloads, [], request
-    )
+    out, _notes = DiscoveryEngine()._resolve_code_host_shells(downloads, [], request)
 
     assert shell.read_text(encoding="utf-8") == "<html>x</html>"
     assert "code_host_adapter" not in out[0]
@@ -566,9 +536,7 @@ def test_final_url_guard_does_not_recompile_exclusion_patterns(monkeypatch):
 
     monkeypatch.setattr(urls_mod.re, "compile", _counting_compile)
 
-    request = _shell_request(
-        selection_exclude_url_patterns=[r"/draft/", r"\.tmp$"]
-    )
+    request = _shell_request(selection_exclude_url_patterns=[r"/draft/", r"\.tmp$"])
     engine = DiscoveryEngine()
     for idx in range(50):
         engine._passes_final_url_selection_guard(

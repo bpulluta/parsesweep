@@ -61,7 +61,7 @@ compilation:
     )
     config_data = load_runtime_config_file(config_path)
 
-    with pytest.raises(RuntimeConfigError, match="unknown key 'compilation.random_flag'"):
+    with pytest.raises(RuntimeConfigError, match=r"unknown key 'compilation.random_flag'"):
         resolve_command_config(
             command="compile",
             cli_values={},
@@ -82,7 +82,7 @@ compilation:
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeConfigError, match="compilation.provenance_policy"):
+    with pytest.raises(RuntimeConfigError, match=r"compilation.provenance_policy"):
         load_runtime_config_file(config_path)
 
 
@@ -125,9 +125,7 @@ def test_runtime_catalog_is_derived_from_the_config_schemas():
     )
     for section, allowed in _ALLOWED_SECTION_FIELDS.items():
         assert set(names[section]) == set(allowed), section
-    assert set(names["global"]) == _ALLOWED_TOP_LEVEL - set(_ALLOWED_SECTION_FIELDS) - {
-        "discovery"
-    }
+    assert set(names["global"]) == _ALLOWED_TOP_LEVEL - set(_ALLOWED_SECTION_FIELDS) - {"discovery"}
     assert all(len(set(entries)) == len(entries) for entries in names.values())
 
 
@@ -151,9 +149,7 @@ def test_catalog_for_command_contains_required_and_advanced_fields():
 
 
 @pytest.mark.parametrize("timeout_value", [0, -1, True, "600"])
-def test_load_runtime_config_file_rejects_invalid_extraction_timeout(
-    tmp_path: Path, timeout_value
-):
+def test_load_runtime_config_file_rejects_invalid_extraction_timeout(tmp_path: Path, timeout_value):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
@@ -165,7 +161,7 @@ extraction:
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeConfigError, match="extraction.timeout_seconds"):
+    with pytest.raises(RuntimeConfigError, match=r"extraction.timeout_seconds"):
         load_runtime_config_file(config_path)
 
 
@@ -243,7 +239,6 @@ discovery:
     assert loaded["discovery"]["policy"]["robots_mode"] == "warn"
 
 
-
 @pytest.mark.parametrize(
     ("discovery_block", "match"),
     [
@@ -267,9 +262,7 @@ def test_load_runtime_config_file_rejects_invalid_discovery_config(
 
 
 @pytest.mark.parametrize("flag", [True, False])
-def test_load_runtime_config_file_accepts_browser_escalation_bool(
-    tmp_path: Path, flag: bool
-):
+def test_load_runtime_config_file_accepts_browser_escalation_bool(tmp_path: Path, flag: bool):
     """The documented bool shorthand for browser_escalation loads (regression)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
@@ -333,20 +326,20 @@ def test_load_runtime_config_file_rejects_invalid_browser_escalation(
     ],
 )
 def test_load_runtime_config_file_rejects_split_processing_override(
-    tmp_path: Path, override_body: str,
+    tmp_path: Path,
+    override_body: str,
 ):
     """Flat and wrapped overrides must be migrated into the run config."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "schema: config/geothermal_ordinances/schema.json\n"
-        "extraction:\n"
-        "  skip_existing: true\n",
+        "schema: config/geothermal_ordinances/schema.json\nextraction:\n  skip_existing: true\n",
         encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(override_body, encoding="utf-8")
 
     with pytest.raises(
-        RuntimeConfigError, match="Implicit section override files",
+        RuntimeConfigError,
+        match="Implicit section override files",
     ) as exc:
         load_runtime_config_file(run_path)
     assert "extraction.yaml" in str(exc.value)
@@ -359,17 +352,21 @@ def test_load_runtime_config_file_rejects_all_split_files_for_same_section(
     """Every conflicting override is listed in the migration error."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "schema: s.json\nextraction:\n  skip_existing: true\n", encoding="utf-8",
+        "schema: s.json\nextraction:\n  skip_existing: true\n",
+        encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(
-        "output_dir: one\n", encoding="utf-8",
+        "output_dir: one\n",
+        encoding="utf-8",
     )
     (tmp_path / "extraction.json").write_text(
-        '{"output_dir": "two"}', encoding="utf-8",
+        '{"output_dir": "two"}',
+        encoding="utf-8",
     )
 
     with pytest.raises(
-        RuntimeConfigError, match="Implicit section override files",
+        RuntimeConfigError,
+        match="Implicit section override files",
     ) as exc:
         load_runtime_config_file(run_path)
     assert "extraction.yaml" in str(exc.value)
@@ -409,7 +406,9 @@ discovery:
     )
 
     resolved = resolve_command_config(
-        command="discover", cli_values={}, config_data=load_runtime_config_file(run_path),
+        command="discover",
+        cli_values={},
+        config_data=load_runtime_config_file(run_path),
     )
 
     assert resolved["sources"] == ["https://county.gov/hub"]
@@ -429,11 +428,10 @@ discovery:
     assert resolved["retry_initial_backoff_seconds"] == 2
 
 
-
 def test_resolve_command_config_maps_link_prioritization_block(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
     sources:
         - https://example.org/hub
@@ -446,26 +444,26 @@ discovery:
         domain_scores:
             utility.com: 0.95
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["link_prioritization_mode"] == "heuristic"
-        assert resolved["link_top_k"] == 12
-        assert resolved["link_prioritization_keywords"] == ["tariff", "rate schedule"]
-        assert resolved["link_prioritization_domain_scores"] == {"utility.com": 0.95}
+    assert resolved["link_prioritization_mode"] == "heuristic"
+    assert resolved["link_top_k"] == 12
+    assert resolved["link_prioritization_keywords"] == ["tariff", "rate schedule"]
+    assert resolved["link_prioritization_domain_scores"] == {"utility.com": 0.95}
 
 
 def test_resolve_command_config_maps_selection_relevance_terms(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
     sources:
         - https://example.org/hub
@@ -478,25 +476,25 @@ discovery:
             - specific plan
         require_supported_document: true
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["selection_relevance_require_any_terms"] == ["ordinance", "municipal code"]
-        assert resolved["selection_relevance_exclude_any_terms"] == ["state brief", "specific plan"]
-        assert resolved["selection_require_supported_document"] is True
+    assert resolved["selection_relevance_require_any_terms"] == ["ordinance", "municipal code"]
+    assert resolved["selection_relevance_exclude_any_terms"] == ["state brief", "specific plan"]
+    assert resolved["selection_require_supported_document"] is True
 
 
 def test_resolve_command_config_maps_split_selection_exclusions(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
   sources:
         - https://example.org/a
@@ -507,25 +505,25 @@ discovery:
         exclude_text_patterns:
           - preliminary
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["selection_max_per_host_per_target"] == 2
-        assert resolved["selection_exclude_url_patterns"] == ["archive"]
-        assert resolved["selection_exclude_text_patterns"] == ["preliminary"]
+    assert resolved["selection_max_per_host_per_target"] == 2
+    assert resolved["selection_exclude_url_patterns"] == ["archive"]
+    assert resolved["selection_exclude_text_patterns"] == ["preliminary"]
 
 
 def test_resolve_command_config_maps_generic_selection_templates(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
     sources:
         - https://example.org/hub
@@ -543,22 +541,22 @@ discovery:
         target_exclude:
             - "sample"
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["selection_primary_per_target"] == 3
-        assert resolved["selection_exclude_draft"] is False
-        assert resolved["selection_draft_patterns"] == ["draft", "proposed"]
-        assert resolved["selection_target_require_any"] == ["{jurisdiction}", "{manufacturer}"]
-        assert resolved["selection_target_require_all"] == ["{state}"]
-        assert resolved["selection_target_exclude"] == ["sample"]
+    assert resolved["selection_primary_per_target"] == 3
+    assert resolved["selection_exclude_draft"] is False
+    assert resolved["selection_draft_patterns"] == ["draft", "proposed"]
+    assert resolved["selection_target_require_any"] == ["{jurisdiction}", "{manufacturer}"]
+    assert resolved["selection_target_require_all"] == ["{state}"]
+    assert resolved["selection_target_exclude"] == ["sample"]
 
 
 def test_discovery_selection_max_per_target_must_cover_review_keep_top(
@@ -587,9 +585,9 @@ discovery:
 
 
 def test_discovery_selection_and_review_accept_equal_limits(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-            """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
   sources:
         - https://example.org/hub
@@ -598,23 +596,23 @@ discovery:
   document_review:
         keep_top: 3
 """,
-            encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-            command="discover",
-            cli_values={},
-            config_data=data,
-        )
-        assert resolved["selection_primary_per_target"] == 3
-        assert resolved["document_review"]["keep_top"] == 3
+    data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=data,
+    )
+    assert resolved["selection_primary_per_target"] == 3
+    assert resolved["document_review"]["keep_top"] == 3
 
 
 def test_resolve_command_config_maps_discovery_policy_fields(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
     sources:
         - https://example.org/hub
@@ -625,19 +623,19 @@ discovery:
             - example.org
             - county.gov
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-        )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+    )
 
-        assert resolved["robots_policy_mode"] == "enforce"
-        assert resolved["tos_policy_mode"] == "warn"
-        assert resolved["acknowledged_tos_domains"] == ["example.org", "county.gov"]
+    assert resolved["robots_policy_mode"] == "enforce"
+    assert resolved["tos_policy_mode"] == "warn"
+    assert resolved["acknowledged_tos_domains"] == ["example.org", "county.gov"]
 
 
 def test_resolve_command_config_maps_targets_queries_and_search(tmp_path: Path):
@@ -661,14 +659,15 @@ discovery:
     )
 
     resolved = resolve_command_config(
-        command="discover", cli_values={}, config_data=load_runtime_config_file(run_path),
+        command="discover",
+        cli_values={},
+        config_data=load_runtime_config_file(run_path),
     )
 
     assert len(resolved["targets"]) == 2
     assert resolved["queries"][0].startswith("{manufacturer}")
     assert resolved["seeker_max_results"] == 7
     assert resolved["seeker_params"] == {"tbm": "nws"}
-
 
 
 def test_models_block_flows_to_every_command(tmp_path: Path):
@@ -692,9 +691,7 @@ compilation:
     data = load_runtime_config_file(config_path)
     assert data["models"] == {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
     for command in ("discover", "extract", "compile"):
-        merged = resolve_command_config(
-            command=command, cli_values={}, config_data=data
-        )
+        merged = resolve_command_config(command=command, cli_values={}, config_data=data)
         assert merged["models"] == {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
 
 
@@ -729,9 +726,7 @@ def _write(tmp_path: Path, body: str) -> Path:
         ("pages:\n    auto_locate:\n      trigger_chars: -5\n", "trigger_chars"),
     ],
 )
-def test_processing_validator_rejects_invalid_fields(
-    tmp_path: Path, snippet: str, match: str
-):
+def test_processing_validator_rejects_invalid_fields(tmp_path: Path, snippet: str, match: str):
     cfg = _write(
         tmp_path,
         "schema: s.json\nextraction:\n  skip_existing: true\n  " + snippet,
@@ -758,7 +753,10 @@ def test_processing_validator_accepts_valid_block(tmp_path: Path):
     ("pages_block", "expected_csv", "expected_section_description"),
     [
         (
-            "  pages:\n    csv: ranges.csv\n    auto_locate:\n      section_description: rate tables\n      trigger_chars: 200000\n",
+            (
+                "  pages:\n    csv: ranges.csv\n    auto_locate:\n"
+                "      section_description: rate tables\n      trigger_chars: 200000\n"
+            ),
             "ranges.csv",
             "rate tables",
         ),
@@ -792,10 +790,7 @@ def test_pages_block_variants(
         assert "page_targeting" not in ext
     else:
         assert ext["page_targeting"]["enabled"] is True
-        assert (
-            ext["page_targeting"]["section_description"]
-            == expected_section_description
-        )
+        assert ext["page_targeting"]["section_description"] == expected_section_description
 
 
 def test_pages_auto_locate_accepts_save_discovered(tmp_path: Path):
@@ -820,9 +815,7 @@ def test_pages_auto_locate_rejects_non_bool_save_discovered(tmp_path: Path):
         "      section_description: the rate tables\n"
         "      save_discovered: yesplease\n",
     )
-    with pytest.raises(
-        RuntimeConfigError, match="save_discovered must be a boolean"
-    ):
+    with pytest.raises(RuntimeConfigError, match="save_discovered must be a boolean"):
         load_runtime_config_file(cfg)
 
 
@@ -832,7 +825,10 @@ def test_pages_auto_locate_rejects_non_bool_save_discovered(tmp_path: Path):
         ("  pages:\n    csvv: r.csv\n", "unknown key 'extraction.pages.csvv' — did you mean 'csv'"),
         (
             "  pages:\n    auto_locate:\n      section_description: x\n      trigger_char: 5\n",
-            "unknown key 'extraction.pages.auto_locate.trigger_char' — did you mean 'trigger_chars'",
+            (
+                "unknown key 'extraction.pages.auto_locate.trigger_char' — "
+                "did you mean 'trigger_chars'"
+            ),
         ),
     ],
 )
@@ -860,14 +856,16 @@ def test_old_flat_pages_keys_rejected_beside_the_pages_block(tmp_path: Path):
         tmp_path,
         "schema: s.json\nextraction:\n  pages:\n    csv: r.csv\n  pages_csv: old.csv\n",
     )
-    with pytest.raises(RuntimeConfigError, match="unknown key 'extraction.pages_csv' — did you mean 'pages'"):
+    with pytest.raises(
+        RuntimeConfigError, match=r"unknown key 'extraction.pages_csv' — did you mean 'pages'"
+    ):
         load_runtime_config_file(cfg)
 
 
 @pytest.mark.parametrize("value", ["10-35", "[1, 2]", "true"])
 def test_pages_must_be_a_mapping(tmp_path: Path, value: str):
     cfg = _write(tmp_path, f"schema: s.json\nextraction:\n  pages: {value}\n")
-    with pytest.raises(RuntimeConfigError, match="extraction.pages must be a mapping"):
+    with pytest.raises(RuntimeConfigError, match=r"extraction.pages must be a mapping"):
         load_runtime_config_file(cfg)
 
 
@@ -880,7 +878,7 @@ def test_old_flat_pages_keys_rejected(tmp_path: Path):
         "  page_targeting:\n    enabled: true\n"
         "    section_description: old style\n",
     )
-    with pytest.raises(RuntimeConfigError, match="unknown key 'extraction.pages_csv'"):
+    with pytest.raises(RuntimeConfigError, match=r"unknown key 'extraction.pages_csv'"):
         load_runtime_config_file(cfg)
 
 
@@ -891,9 +889,7 @@ def test_model_context_windows_validates_and_passes_through(tmp_path: Path):
         "schema: s.json\nextraction:\n  skip_existing: true\n",
     )
     config_data = load_runtime_config_file(cfg)
-    resolved = resolve_command_config(
-        command="extract", cli_values={}, config_data=config_data
-    )
+    resolved = resolve_command_config(command="extract", cli_values={}, config_data=config_data)
     assert resolved["model_context_windows"] == {"my-deploy": 300000}
 
 
@@ -923,8 +919,7 @@ def test_compile_inputs_carry_discovery_roster(tmp_path: Path):
     cfg = load_runtime_config_file(
         _write(
             tmp_path,
-            "schema: s.json\ndiscovery:\n  targets: targets.csv\n"
-            "  partition_by: [state, ahj]\n",
+            "schema: s.json\ndiscovery:\n  targets: targets.csv\n  partition_by: [state, ahj]\n",
         )
     )
     resolved = resolve_command_config(command="compile", cli_values={}, config_data=cfg)
@@ -1003,15 +998,24 @@ def test_browser_escalation_resolves_to_discovery_inputs():
     ("body", "match"),
     [
         (
-            "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation:\n    min_shel_chars: 1500\n",
+            (
+                "discovery:\n  queries: [q]\n  crawl:\n"
+                "   browser_escalation:\n    min_shel_chars: 1500\n"
+            ),
             "unknown key",
         ),
         (
-            "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation:\n    min_shell_chars: abc\n",
+            (
+                "discovery:\n  queries: [q]\n  crawl:\n"
+                "   browser_escalation:\n    min_shell_chars: abc\n"
+            ),
             "must be an integer >= 0",
         ),
         (
-            "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation:\n    settle_seconds: -1\n",
+            (
+                "discovery:\n  queries: [q]\n  crawl:\n"
+                "   browser_escalation:\n    settle_seconds: -1\n"
+            ),
             "must be a finite number >= 0",
         ),
         (
@@ -1046,8 +1050,10 @@ def test_code_host_adapters_bool_shorthand_resolves():
     ("body", "match"),
     [
         (
-            "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters:\n"
-            "    enabled: true\n    bogus_key: 1\n",
+            (
+                "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters:\n"
+                "    enabled: true\n    bogus_key: 1\n"
+            ),
             "unknown key",
         ),
         (
@@ -1116,9 +1122,7 @@ discovery:
 """,
         encoding="utf-8",
     )
-    with pytest.raises(
-        RuntimeConfigError, match="shopping_path_keywords"
-    ):
+    with pytest.raises(RuntimeConfigError, match="shopping_path_keywords"):
         load_runtime_config_file(run_path)
 
 
@@ -1245,12 +1249,12 @@ def _validation_config(
     return path
 
 
-
 def _resolve_validate(path: Path) -> dict:
     """Load a config and resolve the validate stage (schema-dependent checks)."""
     return resolve_command_config(
         command="validate", cli_values={}, config_data=load_runtime_config_file(path)
     )
+
 
 @pytest.mark.parametrize(
     ("validation", "message"),
@@ -1323,9 +1327,7 @@ def test_validation_rows_mode_rejects(tmp_path: Path, validation, message):
 
 
 @pytest.mark.parametrize("command", ["validate", "extract"])
-def test_schema_aware_validation_checks_run_for_stages_that_use_them(
-    tmp_path: Path, command: str
-):
+def test_schema_aware_validation_checks_run_for_stages_that_use_them(tmp_path: Path, command: str):
     """``extract`` consumes validation.quote_field, so it gets the checks too."""
     cfg = load_runtime_config_file(
         _validation_config(
@@ -1350,7 +1352,7 @@ def test_schema_aware_validation_checks_run_for_stages_that_use_them(
     ],
 )
 def test_validation_labels_must_not_collide(tmp_path: Path, validation):
-    with pytest.raises(RuntimeConfigError, match="collides with a cells.csv column"):
+    with pytest.raises(RuntimeConfigError, match=r"collides with a cells.csv column"):
         _resolve_validate(_validation_config(tmp_path, validation))
 
 
@@ -1373,8 +1375,10 @@ def test_validation_section_resolves(tmp_path: Path):
 @pytest.mark.parametrize(
     ("validation", "expected"),
     [
-        ({"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "verbatim"},
-         "verbatim"),
+        (
+            {"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "verbatim"},
+            "verbatim",
+        ),
         ({"models": ["a"], "key_fields": ["state", "feature"]}, None),
     ],
 )

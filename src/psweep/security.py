@@ -19,9 +19,7 @@ def protected_mode() -> bool:
     return mode == "protected"
 
 
-def resolve_tls_verification(
-    setting: str, explicit: bool | None = None
-) -> bool:
+def resolve_tls_verification(setting: str, explicit: bool | None = None) -> bool:
     """Resolve verified TLS or a warned public-only explicit opt-out."""
     if explicit is not None and type(explicit) is not bool:
         msg = "TLS verification must be a boolean"
@@ -62,9 +60,7 @@ def resolve_tls_verification(
 
 def ca_bundle() -> str | bool:
     """Resolve explicitly configured CA roots."""
-    configured = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get(
-        "SSL_CERT_FILE"
-    )
+    configured = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
     if configured:
         path = Path(configured)
         if not path.is_file():
@@ -115,10 +111,7 @@ def require_model_endpoint(base_url: str | None) -> None:
             )
         )
     ):
-        msg = (
-            "Protected LLM_BASE_URL must be an HTTPS endpoint "
-            "without URL credentials"
-        )
+        msg = "Protected LLM_BASE_URL must be an HTTPS endpoint without URL credentials"
         raise ValueError(msg)
 
 
@@ -137,9 +130,8 @@ def prepare_protected_runtime() -> None:
     for ancestor in root.parents:
         ancestor_info = ancestor.stat()
         mode = ancestor_info.st_mode
-        if (
-            ancestor_info.st_uid not in {0, os.getuid()}
-            or (mode & 0o022 and not mode & stat.S_ISVTX)
+        if ancestor_info.st_uid not in {0, os.getuid()} or (
+            mode & 0o022 and not mode & stat.S_ISVTX
         ):
             msg = "Protected workspace has an untrusted or writable ancestor"
             raise ValueError(msg)
@@ -152,17 +144,12 @@ def prepare_protected_runtime() -> None:
         "XDG_CACHE_HOME",
         "TMPDIR",
     ):
-        path = Path(
-            os.environ.get(name, str(root / ".psweep-private" / name.lower()))
-        ).resolve()
+        path = Path(os.environ.get(name, str(root / ".psweep-private" / name.lower()))).resolve()
         if not path.is_relative_to(root):
             msg = f"{name} must be inside the protected workspace"
             raise ValueError(msg)
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if (
-            path.stat().st_uid != os.getuid()
-            or stat.S_IMODE(path.stat().st_mode) & 0o077
-        ):
+        if path.stat().st_uid != os.getuid() or stat.S_IMODE(path.stat().st_mode) & 0o077:
             msg = f"{name} must be an owner-only directory"
             raise ValueError(msg)
         os.environ[name] = str(path)
@@ -197,10 +184,17 @@ def validate_protected_paths(values: dict) -> None:
 
 
 _PROVIDER_ERROR_MARKERS = (
-    "context_length_exceeded", "context_window_exceeded",
-    "maximum context length", "rate limit", "429", "timeout",
-    "certificate verify failed", "connection error", "connection reset",
-    "service unavailable", "authentication",
+    "context_length_exceeded",
+    "context_window_exceeded",
+    "maximum context length",
+    "rate limit",
+    "429",
+    "timeout",
+    "certificate verify failed",
+    "connection error",
+    "connection reset",
+    "service unavailable",
+    "authentication",
 )
 
 

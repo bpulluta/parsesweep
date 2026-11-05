@@ -46,7 +46,7 @@ class TestModelPricing:
         class _Config:
             llm_config = {"model": "mystery-model"}
 
-        monkeypatch.setattr(uc, "get_config", lambda: _Config())
+        monkeypatch.setattr(uc, "get_config", _Config)
         monkeypatch.setattr(uc, "extract_text_from_document", lambda *a, **k: "x" * 4000)
         result = CliRunner().invoke(uc.estimate, [str(docs)], input="n\n")
         assert result.exit_code == 0, result.output

@@ -25,11 +25,19 @@ def _schema(output=None, titles=("Name", "Name")):
     compilation = {"output": output} if output else {}
     return {
         "type": "object",
-        "properties": {"items": {"type": "array", "items": {"type": "object", "properties": {
-            "name": {"type": "string", "title": titles[0]},
-            "alias": {"type": "string", "title": titles[1]},
-            "value": {"type": "number"},
-        }}}},
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "title": titles[0]},
+                        "alias": {"type": "string", "title": titles[1]},
+                        "value": {"type": "number"},
+                    },
+                },
+            }
+        },
         "$metadata": {"extraction": {"main_data_array": "items"}, "compilation": compilation},
     }
 
@@ -56,7 +64,7 @@ def test_title_else_field_name_verbatim(tmp_path):
 
 
 def test_duplicate_headers_are_rejected(tmp_path):
-    with pytest.raises(ValueError, match="[Dd]uplicate"):
+    with pytest.raises(ValueError, match=r"[Dd]uplicate"):
         _prepare(tmp_path, _schema())
 
 
@@ -68,7 +76,9 @@ def test_unknown_output_header_is_rejected(tmp_path, key):
 
 
 def test_column_order_and_exclude_use_headers(tmp_path):
-    schema = _schema({"column_order": ["value", "Alias"], "exclude_fields": ["Name"]}, ("Name", "Alias"))
+    schema = _schema(
+        {"column_order": ["value", "Alias"], "exclude_fields": ["Name"]}, ("Name", "Alias")
+    )
     assert _prepare(tmp_path, schema).columns.tolist() == ["value", "Alias"]
 
 
@@ -77,7 +87,9 @@ def test_column_renames_is_unknown(tmp_path):
         '{"$metadata": {"extraction": {"main_data_array": "items"}}}', encoding="utf-8"
     )
     with pytest.raises((RuntimeConfigError, SchemaMetadataError), match="column_renames"):
-        resolve_compilation_metadata({
-            "schema": str(tmp_path / "s.json"),
-            "compilation_output": {"column_renames": {"a": "b"}},
-        })
+        resolve_compilation_metadata(
+            {
+                "schema": str(tmp_path / "s.json"),
+                "compilation_output": {"column_renames": {"a": "b"}},
+            }
+        )

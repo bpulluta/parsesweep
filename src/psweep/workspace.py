@@ -34,10 +34,12 @@ class Workspace:
 
     @property
     def root(self) -> Path:
+        """Root output directory of the domain."""
         return OUTPUTS_ROOT / self.domain
 
     @property
     def discovered(self) -> Path:
+        """Discovery output directory."""
         return self.root / DISCOVERED_DIRNAME
 
     @property
@@ -62,14 +64,17 @@ class Workspace:
 
     @property
     def extracted(self) -> Path:
+        """Extraction output directory."""
         return self.root / "extracted"
 
     @property
     def validated(self) -> Path:
+        """Validation output directory."""
         return self.root / "validated"
 
     @property
     def compiled(self) -> Path:
+        """Compilation output directory."""
         return self.root / "compiled"
 
     @property

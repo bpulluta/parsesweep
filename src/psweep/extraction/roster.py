@@ -25,7 +25,7 @@ _ADDRESS_STATE = re.compile(r",\s*([A-Z]{2})\b|\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b
 # A row cell whose label names a state ("State: CA", "state_abbr: CA").
 _LABELLED_STATE = re.compile(
     r"(?:^|\|)[^|:\n]*?(?<![A-Za-z])(?i:state)(?![A-Za-z])[^|:\n]*:[ \t]*([A-Z]{2})[ \t]*(?=\||$)",
-    re.M,
+    re.MULTILINE,
 )
 _STATE_CODES = frozenset(US_STATES.values())
 _ELLIPSIS = re.compile(r"\u2026|\.{3}")
@@ -33,7 +33,8 @@ _ELLIPSIS = re.compile(r"\u2026|\.{3}")
 
 def normalize(text: Any) -> str:
     """NFKD, strip marks and soft hyphens, join line-break hyphenation,
-    casefold, punctuation to space, collapse whitespace."""
+    casefold, punctuation to space, collapse whitespace.
+    """
     text = _LINE_HYPHEN.sub(r"\1", str(text).replace("\u00ad", ""))
     text = unicodedata.normalize("NFKD", text)
     if not text.isascii():
@@ -58,9 +59,7 @@ def _lookup(tokens: Sequence[str], index: dict, longest: int, heads: set[str]):
             yield from index.get(tuple(tokens[start : start + size]), ())
 
 
-_STATE_NAMES = _ngram_index(
-    (name, code) for name, code in US_STATES.items() if len(name) > 2
-)
+_STATE_NAMES = _ngram_index((name, code) for name, code in US_STATES.items() if len(name) > 2)
 _STATE_LONGEST = max(map(len, _STATE_NAMES))
 _STATE_HEADS = {tokens[0] for tokens in _STATE_NAMES}
 
@@ -71,6 +70,8 @@ def _state_code(value: Any) -> str | None:
 
 @dataclass(frozen=True)
 class Roster:
+    """Target identities indexed by n-grams of their name field."""
+
     fields: tuple[str, ...]
     targets: dict[str, dict[str, Any]]
     index: dict[tuple[str, ...], list[str]]
@@ -80,6 +81,7 @@ class Roster:
 
     @classmethod
     def build(cls, rows: Iterable[dict[str, Any]], fields: Sequence[str]) -> Roster:
+        """Build a roster from target rows keyed by ``fields``."""
         targets = {}
         for row in rows:
             identity = target_identity(row, fields)
@@ -88,9 +90,7 @@ class Roster:
             (identity[fields[-1]], target_id) for target_id, identity in targets.items()
         )
         ambiguous = {
-            target_id: frozenset(
-                _state_code(targets[target_id][field]) for field in fields[:-1]
-            )
+            target_id: frozenset(_state_code(targets[target_id][field]) for field in fields[:-1])
             - {None}
             for target_ids in index.values()
             if len(target_ids) > 1
@@ -106,6 +106,7 @@ class Roster:
         )
 
     def key(self, item: dict[str, Any]) -> tuple:
+        """Normalized roster identity of ``item``."""
         return tuple(normalize(item.get(field) or "") for field in self.fields)
 
     def _name_at(self, tokens: Sequence[str], start: int) -> int:
@@ -119,14 +120,17 @@ class Roster:
     def states(self, text: str) -> set[str]:
         """State evidence: full names outside roster-name spans, codes in
         addresses, in state-labelled cells, or alone on the line after a line
-        that is exactly a roster name (card layouts)."""
+        that is exactly a roster name (card layouts).
+        """
         found = {
             code
             for match in _ADDRESS_STATE.finditer(text)
             if (code := match.group(1) or match.group(2)) in _STATE_CODES
         }
         found.update(
-            code for match in _LABELLED_STATE.finditer(text) if (code := match.group(1)) in _STATE_CODES
+            code
+            for match in _LABELLED_STATE.finditer(text)
+            if (code := match.group(1)) in _STATE_CODES
         )
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         found.update(
@@ -147,9 +151,7 @@ class Roster:
         return found
 
 
-def roster_fields(
-    inputs: dict[str, Any], key_fields: Sequence[str]
-) -> tuple[str, ...] | None:
+def roster_fields(inputs: dict[str, Any], key_fields: Sequence[str]) -> tuple[str, ...] | None:
     """Roster mode is on iff targets exist and key_fields equal partition_by."""
     partition_by = inputs.get("partition_by") or []
     if not inputs.get("targets") or not partition_by:
@@ -286,6 +288,7 @@ def batch(candidates: list[tuple[str, set[str]]], budget: int) -> list[tuple[str
 
 
 def candidate_hash(roster: Roster, target_ids: Iterable[str]) -> str:
+    """Stable hash of the candidate target identities."""
     identities = sorted(
         json.dumps(roster.targets[target_id], sort_keys=True, default=str)
         for target_id in set(target_ids)
@@ -294,10 +297,10 @@ def candidate_hash(roster: Roster, target_ids: Iterable[str]) -> str:
 
 
 def candidates_block(roster: Roster, target_ids: Iterable[str]) -> str:
+    """Prompt block listing the candidate target identities."""
     lines = [
         "=== ROSTER CANDIDATES (added by ParseSweep; not part of the source document) ===",
-        "Emit items only for these identities, copying "
-        f"{', '.join(roster.fields)} verbatim:",
+        f"Emit items only for these identities, copying {', '.join(roster.fields)} verbatim:",
         *(
             json.dumps(roster.targets[target_id], ensure_ascii=True, default=str)
             for target_id in target_ids
@@ -309,6 +312,7 @@ def candidates_block(roster: Roster, target_ids: Iterable[str]) -> str:
 
 
 def evidence_nodes(node: Any, path: Sequence[str], location: str = ""):
+    """Yield ``(location, node)`` for every node reached by ``path`` (``*`` = each list item)."""
     if not path:
         yield location, node
     elif path[0] == "*":
@@ -322,8 +326,7 @@ def evidence_nodes(node: Any, path: Sequence[str], location: str = ""):
 @functools.lru_cache(maxsize=8)
 def _haystacks(source_text: str) -> frozenset[str]:
     return frozenset(
-        f" {normalize(text)} "
-        for text in (source_text, _LINE_HYPHEN.sub(r"\1 ", source_text))
+        f" {normalize(text)} " for text in (source_text, _LINE_HYPHEN.sub(r"\1 ", source_text))
     )
 
 

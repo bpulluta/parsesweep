@@ -25,7 +25,8 @@ def synthetic_evidence_schema() -> dict:
         "county": dict(nullable_text),
         "locality": dict(nullable_text),
         "geographic_scope": {
-            "type": "string", "enum": ["unspecified", "state", "county", "locality"]
+            "type": "string",
+            "enum": ["unspecified", "state", "county", "locality"],
         },
         "geography_quote": dict(nullable_text),
         "project_name": dict(nullable_text),
@@ -54,10 +55,12 @@ def synthetic_evidence_schema() -> dict:
                 "context_objects": ["source"],
                 "document_type": "Evidence record",
             },
-            "identity": {"deduplication": {
-                "key_fields": [key for key in properties if key != "summary"],
-                "partition_fields": ["source.url"],
-            }},
+            "identity": {
+                "deduplication": {
+                    "key_fields": [key for key in properties if key != "summary"],
+                    "partition_fields": ["source.url"],
+                }
+            },
         },
         "type": "object",
         "required": ["source", "comments"],

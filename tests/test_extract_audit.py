@@ -93,9 +93,7 @@ def source_document(tmp_path):
     return doc
 
 
-def test_record_document_identity_is_caller_supplied(
-    record_metadata, source_document
-):
+def test_record_document_identity_is_caller_supplied(record_metadata, source_document):
     """source_document_id is the curated path; provenance is index-derived."""
     source = SourceContext(
         url="https://example.org/a.pdf",
@@ -121,9 +119,7 @@ def test_record_document_identity_is_caller_supplied(
     record_validator().validate(record)
 
 
-def test_record_without_index_row_has_null_provenance(
-    record_metadata, source_document
-):
+def test_record_without_index_row_has_null_provenance(record_metadata, source_document):
     record, _ = build_extraction_record(
         doc_path=source_document,
         source_document_id="doc.pdf",
@@ -133,8 +129,7 @@ def test_record_without_index_row_has_null_provenance(
         schema_metadata=record_metadata,
     )
     assert {
-        key: record["document"][key]
-        for key in ("source_url", "source_scope", "target_id")
+        key: record["document"][key] for key in ("source_url", "source_scope", "target_id")
     } == {"source_url": None, "source_scope": None, "target_id": None}
     assert record["quality"]["status"] == "extracted"
     assert record["quality"]["completeness"] == 0.9
@@ -243,9 +238,7 @@ def test_emitted_record_and_payload_validate_closed_contract(
         2,
         4,
     ]
-    assert any(
-        "not a full-document" in note for note in record["quality"]["warnings"]
-    )
+    assert any("not a full-document" in note for note in record["quality"]["warnings"])
     record["unexpected"] = True
     with pytest.raises(ValidationError):
         validator.validate(record)
@@ -256,9 +249,7 @@ def test_emitted_record_and_payload_validate_closed_contract(
 
 
 @pytest.mark.parametrize("items", [None, {}, "not an array"])
-def test_record_rejects_invalid_declared_array(
-    record_metadata, source_document, items
-):
+def test_record_rejects_invalid_declared_array(record_metadata, source_document, items):
     """Non-arrays cannot silently become verified zero-item records."""
     with pytest.raises(SchemaValidationError, match="main data array"):
         build_extraction_record(
@@ -333,9 +324,7 @@ def test_writer_validates_envelope_before_replacing_existing_json(
     }
 
 
-def test_writer_default_run_identity_is_unique(
-    record_metadata, source_document
-):
+def test_writer_default_run_identity_is_unique(record_metadata, source_document):
     """Direct regular writer calls also retain separate attempt identity."""
     kwargs = {
         "doc_path": source_document,
@@ -370,9 +359,7 @@ def test_writer_rejects_malformed_input_fingerprint(
         )
 
 
-def test_writer_missing_source_cannot_replace_existing_record(
-    tmp_path, record_metadata
-):
+def test_writer_missing_source_cannot_replace_existing_record(tmp_path, record_metadata):
     """Missing source bytes are not silent evidence for validated reuse."""
     output = tmp_path / "doc.json"
     output.write_text('{"previous":"complete"}', encoding="utf-8")
@@ -386,9 +373,7 @@ def test_writer_missing_source_cannot_replace_existing_record(
             provider="openai",
             schema_metadata=record_metadata,
         )
-    assert json.loads(output.read_text(encoding="utf-8")) == {
-        "previous": "complete"
-    }
+    assert json.loads(output.read_text(encoding="utf-8")) == {"previous": "complete"}
 
 
 # ── _extract_one_document (shared per-document core) ─────────────────────────
@@ -420,9 +405,7 @@ def test_extract_one_document_success_shape(tmp_path, record_metadata):
     doc.write_text("hello world", encoding="utf-8")
 
     extractor = MagicMock()
-    extractor.extract.return_value = _make_result(
-        {"items": [{"x": 1}, {"x": 2}]}
-    )
+    extractor.extract.return_value = _make_result({"items": [{"x": 1}, {"x": 2}]})
 
     res = _extract_one_document(
         doc,
@@ -467,12 +450,8 @@ def test_llm_client_returns_token_usage():
     client = LLMClient(api_key="k", model="gpt-4o-mini", provider="openai")
 
     fake_response = MagicMock()
-    fake_response.choices = [
-        MagicMock(message=MagicMock(content=json.dumps({"items": []})))
-    ]
-    fake_response.usage = SimpleNamespace(
-        prompt_tokens=123, completion_tokens=45
-    )
+    fake_response.choices = [MagicMock(message=MagicMock(content=json.dumps({"items": []})))]
+    fake_response.usage = SimpleNamespace(prompt_tokens=123, completion_tokens=45)
 
     with (
         patch(

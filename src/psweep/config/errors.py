@@ -24,10 +24,6 @@ def reject_unknown_keys(
             continue
         path = f"{location}.{key}" if location else str(key)
         close = get_close_matches(str(key), allowed, n=1)
-        hint = (
-            f" — did you mean '{close[0]}'?"
-            if close
-            else f" (allowed: {', '.join(allowed)})"
-        )
+        hint = f" — did you mean '{close[0]}'?" if close else f" (allowed: {', '.join(allowed)})"
         prefix = f"{config_path}: " if config_path else ""
         raise RuntimeConfigError(f"{prefix}unknown key '{path}'{hint}")

@@ -3,7 +3,7 @@
 import json
 import socket
 import ssl
-import subprocess
+import subprocess  # noqa: S404 - tests drive openssl and the CLI as real processes
 import threading
 import time
 import csv
@@ -27,8 +27,8 @@ PAYLOAD = {"items": [{"name": "synthetic", "value": 42}]}
 def tls_server(tmp_path):
     """Run a local HTTPS origin with an ephemeral, explicitly trusted test CA."""
     cert, key = tmp_path / "ca.pem", tmp_path / "key.pem"
-    subprocess.run(
-        [
+    subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [  # noqa: S607 - openssl is resolved from the test environment PATH
             "openssl",
             "req",
             "-x509",
@@ -127,9 +127,7 @@ def local_transport(monkeypatch, port):
     """Replace only the physical socket destination; retain real TLS and HTTP."""
     monkeypatch.setattr(
         "psweep.discovery.transport._connect_public",
-        lambda connection: socket.create_connection(
-            ("127.0.0.1", port), timeout=3
-        ),
+        lambda connection: socket.create_connection(("127.0.0.1", port), timeout=3),
     )
 
 
@@ -138,9 +136,7 @@ def test_real_tls_custom_ca_and_proxy_isolation(tls_server, monkeypatch):
     local_transport(monkeypatch, port)
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(cert))
     monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:1")
-    response, attempts = send_get(
-        f"https://fixture.example:{port}/ok", timeout=3
-    )
+    response, attempts = send_get(f"https://fixture.example:{port}/ok", timeout=3)
     try:
         assert response.json() == {"ok": True}
         assert attempts == 1
@@ -149,9 +145,7 @@ def test_real_tls_custom_ca_and_proxy_isolation(tls_server, monkeypatch):
         response.close()
 
 
-@pytest.mark.parametrize(
-    "hostname,trusted", [("fixture.example", False), ("wrong.example", True)]
-)
+@pytest.mark.parametrize("hostname,trusted", [("fixture.example", False), ("wrong.example", True)])
 def test_real_tls_rejects_unknown_roots_and_wrong_hostname(
     tls_server, monkeypatch, hostname, trusted
 ):
@@ -192,11 +186,17 @@ def test_real_model_tls_option_is_per_client(tls_server, monkeypatch):
     endpoint = f"https://localhost:{port}/v1"
     with pytest.warns(RuntimeWarning, match="verification is disabled"):
         insecure = LLMClient(
-            model="gpt-4o-mini", api_key="synthetic", base_url=endpoint, timeout=1,
+            model="gpt-4o-mini",
+            api_key="synthetic",
+            base_url=endpoint,
+            timeout=1,
         )
     monkeypatch.setenv("PSWEEP_SSL_VERIFY", "true")
     secure = LLMClient(
-        model="gpt-4o-mini", api_key="synthetic", base_url=endpoint, timeout=1,
+        model="gpt-4o-mini",
+        api_key="synthetic",
+        base_url=endpoint,
+        timeout=1,
     )
     assert insecure.extract("synthetic", {"type": "object"})["data"] == PAYLOAD
     with pytest.raises(ExtractionError):
@@ -215,7 +215,9 @@ def test_model_transport_failure_does_not_hide_retries(tls_server, monkeypatch, 
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(cert))
     monkeypatch.setattr("psweep.extraction.llm_client.compute_backoff", lambda *_, **__: 0)
     client = LLMClient(
-        model=model, api_key="synthetic", base_url=f"https://localhost:{port}/v1",
+        model=model,
+        api_key="synthetic",
+        base_url=f"https://localhost:{port}/v1",
         timeout=1,
     )
     with pytest.raises(ExtractionError):
@@ -226,9 +228,7 @@ def test_model_transport_failure_does_not_hide_retries(tls_server, monkeypatch, 
     assert client.usage["calls"] == client.usage["unknown_cost_calls"] == len(calls)
 
 
-def test_real_redirect_to_private_address_never_contacts_target(
-    tls_server, monkeypatch
-):
+def test_real_redirect_to_private_address_never_contacts_target(tls_server, monkeypatch):
     port, cert, calls = tls_server
     local_transport(monkeypatch, port)
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(cert))
@@ -237,9 +237,7 @@ def test_real_redirect_to_private_address_never_contacts_target(
     assert calls == ["/redirect"]
 
 
-def test_real_protected_model_request_uses_only_approved_tls_endpoint(
-    tls_server, monkeypatch
-):
+def test_real_protected_model_request_uses_only_approved_tls_endpoint(tls_server, monkeypatch):
     port, cert, calls = tls_server
     endpoint = f"https://fixture.example:{port}/v1"
     resolver = socket.getaddrinfo
@@ -256,9 +254,7 @@ def test_real_protected_model_request_uses_only_approved_tls_endpoint(
     monkeypatch.setenv("LLM_BASE_URL", endpoint)
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(cert))
     monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:1")
-    result = LLMClient(
-        model="synthetic-model", api_key="synthetic", base_url=endpoint
-    ).extract(
+    result = LLMClient(model="synthetic-model", api_key="synthetic", base_url=endpoint).extract(
         "synthetic document",
         {"type": "object"},
     )
@@ -322,7 +318,7 @@ def test_real_protected_cli_pipeline_reuse_and_exports(tls_server, tmp_path):
         )
     )
     env = {
-        "PATH": f"{tools}{os.pathsep}{Path(sys.executable).parent}{os.pathsep}/usr/bin{os.pathsep}/bin",
+        "PATH": os.pathsep.join((str(tools), str(Path(sys.executable).parent), "/usr/bin", "/bin")),
         "HOME": str(workspace),
         "NO_COLOR": "1",
         "TERM": "dumb",
@@ -336,13 +332,14 @@ def test_real_protected_cli_pipeline_reuse_and_exports(tls_server, tmp_path):
     }
 
     def run(*args, expected=0):
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell
             [sys.executable, "-m", "psweep.cli.main", *args],
             cwd=workspace,
             env=env,
             text=True,
             capture_output=True,
             timeout=90,
+            check=False,
         )
         assert result.returncode == expected, result.stdout + result.stderr
         return result
@@ -354,9 +351,7 @@ def test_real_protected_cli_pipeline_reuse_and_exports(tls_server, tmp_path):
     assert len(record_files) == 1
     assert json.loads(record_files[0].read_text())["payload"] == PAYLOAD
     run("run", "--config", str(config), "--skip-discover", "--yes", "--quiet")
-    assert len(calls) == 1, (
-        "Verified reuse must not send another model request"
-    )
+    assert len(calls) == 1, "Verified reuse must not send another model request"
     (csv_path,) = (workspace / stage_dirs.compiled).glob("*.csv")
     with csv_path.open(newline="") as stream:
         rows = list(csv.DictReader(stream))

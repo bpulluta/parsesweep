@@ -90,7 +90,7 @@ def pair_priority(
     corroborated: bool = False,
 ) -> int:
     """Priority of the primary's cell against one source S; ``p``/``s`` are their supports."""
-    if category in ("agree", "both_na"):
+    if category in {"agree", "both_na"}:
         state = None
     elif not judged:
         state = "corroborated" if category == "new" and corroborated else None
@@ -284,13 +284,15 @@ class _Tally:
             }
             for label in self.contenders:
                 for row in data.get(label, ()):
-                    for title, entry in zip(self.titles, row):
+                    for title, entry in zip(self.titles, row, strict=True):
                         self.model[label, title]["rows"] += 1
                         self.model[label, title]["filled"] += _class(entry[0]) is not None
             keys: list[str | None] = [None] * len(self.focus)
             if cluster.match != "ambiguous" and self.judge_model is not None:
                 for i, field in enumerate(self.focus):
-                    holders = {l: rows[0][i] for l, rows in data.items() if rows[0][i] is not None}
+                    holders = {
+                        label: rows[0][i] for label, rows in data.items() if rows[0][i] is not None
+                    }
                     item = self._item(field, holders)
                     if item:
                         keys[i] = item.key
@@ -317,7 +319,7 @@ class _Tally:
         """One item when the cell is disputed, or partial with a quoted valued holder."""
         classes = {label: _class(entry[0]) for label, entry in holders.items()}
         state = status(classes, self.contenders)
-        valued = [Candidate(e[0], e[1], e[2]) for l, e in holders.items() if classes[l]]
+        valued = [Candidate(e[0], e[1], e[2]) for label, e in holders.items() if classes[label]]
         if state == "disputed" or (state == "partial" and any(c.quote for c in valued)):
             return cell_item(
                 field, self.columns.descriptions.get(field, ""), valued, self.judge_model
@@ -383,12 +385,14 @@ class _Tally:
             if verdict:
                 v = dict(
                     zip(
-                        sorted({c for c in cls.values() if c}), zip(verdict.support, verdict.groups)
+                        sorted({c for c in cls.values() if c}),
+                        zip(verdict.support, verdict.groups, strict=True),
+                        strict=True,
                     )
                 )
             self._score_cell(title, data, held, cls, v, miss)
             self._agreement(title, held, cls, v)
-            self._diagnose(title, held, cls, v, miss)
+            self._diagnose(title, cls, v, miss)
             if p in data:
                 priority = self._priority(held, cls, v)
                 self.review[PRIORITIES[priority]] += 1
@@ -449,8 +453,8 @@ class _Tally:
                     cat = category(cls[x], cls[r])
                     same = _count(c, cat, cls[x], cls[r], v)
                     c["cells"] += 1
-                    c["correct"] += cat in ("agree", "both_na")
-                    c["correct_j"] += cat in ("agree", "both_na") or same
+                    c["correct"] += cat in {"agree", "both_na"}
+                    c["correct_j"] += cat in {"agree", "both_na"} or same
                     c[f"missed_{miss}"] += cat == "missing"
             if self.consensus:
                 others = [o for o in self.contenders if o != x]
@@ -475,7 +479,7 @@ class _Tally:
                 elif cls[a] or cls[b]:
                     c["one_sided"] += 1
 
-    def _diagnose(self, title, held, cls, v, miss) -> None:
+    def _diagnose(self, title, cls, v, miss) -> None:
         """Primary versus the first valued reference."""
         valued = [r for r in self.refs if cls.get(r)]
         if not valued:
@@ -501,7 +505,7 @@ class _Tally:
                 same=bool(v and mine and cls[s] and v[mine][1] == v[cls[s]][1]),
                 p=v[mine][0] if v and mine else None,
                 s=v[cls[s]][0] if v and cls[s] else None,
-                corroborated=any(cls[o] == mine for o in held if o not in (p, s)),
+                corroborated=any(cls[o] == mine for o in held if o not in {p, s}),
             )
             best = rank if best is None else min(best, rank)
         if best is None:
@@ -560,7 +564,7 @@ class _Tally:
                 shown = [
                     {
                         t: NA if e[0] is None else e[0]
-                        for t, e in zip(self.titles, row)
+                        for t, e in zip(self.titles, row, strict=True)
                         if e is not None
                     }
                     for row in rows
@@ -657,7 +661,7 @@ class _Tally:
                 refs[r] = {
                     "accuracy_j": c["accuracy_j"],
                     "out_of_scope": out_of_scope.get(r, 0),
-                    "passed": ok and not out_of_scope.get(r, 0),
+                    "passed": ok and not out_of_scope.get(r),
                 }
             summary["gate"] = {
                 "min_accuracy": min_accuracy,
@@ -715,7 +719,7 @@ def _row(c: Counter, x: bool, base: bool) -> None:
 def _count(c: Counter, cat: str, x: str | None, base: str | None, v: dict | None) -> bool:
     """Raw and judged P/R/F1 counters; returns whether a changed cell is judged one group."""
     c[cat] += 1
-    wrong_x, wrong_base = cat in ("changed", "new"), cat in ("changed", "missing")
+    wrong_x, wrong_base = cat in {"changed", "new"}, cat in {"changed", "missing"}
     c["tp"] += cat == "agree"
     c["fp"] += wrong_x
     c["fn"] += wrong_base
@@ -764,7 +768,7 @@ def leaderboard(summary: dict, title: str) -> list[str]:
     models = summary["models"]
     labels = list(models)
     bases = list(models[labels[0]]["overall"])
-    refs = [b for b in bases if b not in (CONSENSUS, "")]
+    refs = [b for b in bases if b not in {CONSENSUS, ""}]
     titles = [summary["columns"]["titles"][f] for f in summary["columns"]["focus"]]
     inputs = summary.get("inputs") or {}
     judged = summary.get("judge") is not None
@@ -821,7 +825,10 @@ def leaderboard(summary: dict, title: str) -> list[str]:
     widths = [max(len(row[i]) for row in table) for i in range(len(columns))]
     lines = [
         " · ".join(head),
-        *("  ".join(c.ljust(w) for c, w in zip(row, widths)).rstrip() for row in table),
+        *(
+            "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)).rstrip()
+            for row in table
+        ),
     ]
     per_field = {t: {label: score(models[label]["columns"][t]) for label in labels} for t in titles}
     if not inputs.get("fields"):
@@ -857,11 +864,15 @@ def leaderboard(summary: dict, title: str) -> list[str]:
             f"{gate['min_accuracy']} · " + " · ".join(parts)
         )
     review = summary["review"]
-    lines.append(
-        f"Review: {review['high']:,} high · {review['medium']:,} medium · "
-        f"{review['low']:,} low → validated/cells.csv"
+    lines.extend(
+        (
+            (
+                f"Review: {review['high']:,} high · {review['medium']:,} medium · "
+                f"{review['low']:,} low → validated/cells.csv"
+            ),
+            "Next: " + (" · ".join(_next_steps(summary, refs)) or "nothing flagged"),
+        )
     )
-    lines.append("Next: " + (" · ".join(_next_steps(summary, refs)) or "nothing flagged"))
     return lines
 
 

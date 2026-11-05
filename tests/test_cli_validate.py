@@ -51,7 +51,7 @@ class FakeLLM:
         return copy.deepcopy(self.payloads[(client.model, url)])
 
     def extraction_calls(self, model=None):
-        return [c for c in self.calls if c[1] != "judge" and model in (None, c[0])]
+        return [c for c in self.calls if c[1] != "judge" and model in {None, c[0]}]
 
 
 @pytest.fixture
@@ -63,7 +63,7 @@ def fake(monkeypatch, tmp_path):
     llm.config = cfg
     monkeypatch.setattr(
         "psweep.extraction.llm_client.LLMClient.extract",
-        lambda client, *args, **kwargs: llm(client, *args, **kwargs),
+        lambda client, *args, **kwargs: llm(client, *args, **kwargs),  # noqa: PLW0108 - must bind as a method
     )
     return llm
 
@@ -106,7 +106,9 @@ def read_csv(path) -> list[dict]:
 
 
 def summary(domain: str) -> dict:
-    return json.loads(Path("outputs", domain, "validated", "summary.json").read_text())
+    return json.loads(
+        Path("outputs", domain, "validated", "summary.json").read_text(encoding="utf-8")
+    )
 
 
 # ── S1: validation of the live solartrace primary against the tracked human sheet ──
@@ -250,7 +252,7 @@ class Bench:
 
     def write_schema(self, descriptions=None):
         Path("config/bench/schema.json").write_text(
-            json.dumps(bench_schema(self.fields, descriptions), indent=1)
+            json.dumps(bench_schema(self.fields, descriptions), indent=1), encoding="utf-8"
         )
 
     def write_run(self, validation: dict, **extra):
@@ -366,7 +368,7 @@ def outputs(domain: str = "bench") -> dict[str, object]:
     """Validate outputs without per-run accounting (timings, call and cache counters)."""
     root = Path("outputs", domain, "validated")
     data = {name: (root / name).read_bytes() for name in OUTPUTS[:2]}
-    data["summary.json"] = {k: v for k, v in summary(domain).items() if k not in ("run", "judge")}
+    data["summary.json"] = {k: v for k, v in summary(domain).items() if k not in {"run", "judge"}}
     for model in data["summary.json"]["models"].values():
         model["quality"].pop("seconds_per_document")
     return data
@@ -684,18 +686,23 @@ S5_PAYLOADS = {
 def rows_domain(fake):
     config = Path("config/rows/run.yaml")
     config.parent.mkdir(parents=True)
-    Path("config/rows/schema.json").write_text(json.dumps(rows_schema(), indent=1))
+    Path("config/rows/schema.json").write_text(
+        json.dumps(rows_schema(), indent=1), encoding="utf-8"
+    )
     reference = Path("config/rows/samples/H.csv")
     reference.parent.mkdir()
     reference.write_text(
         "state,county,feature,rule_kind,value,units\n"
         "CA,Lake,setback,minimum,500,ft.\n"
         "CA,Lake,lot,minimum,1500,acres\n"
-        "CA,Napa,setback,minimum,1000,feet\n"
+        "CA,Napa,setback,minimum,1000,feet\n",
+        encoding="utf-8",
     )
     curated = Path("outputs/rows/discovered/curated/lake.txt")
     curated.parent.mkdir(parents=True)
-    curated.write_text("Lake County, California geothermal ordinance\n\n" + "\n".join(Q.values()))
+    curated.write_text(
+        "Lake County, California geothermal ordinance\n\n" + "\n".join(Q.values()), encoding="utf-8"
+    )
     write_index(
         "rows",
         [
@@ -730,7 +737,7 @@ def rows_domain(fake):
                 **validation,
             },
         }
-        config.write_text(yaml.safe_dump(run, sort_keys=False))
+        config.write_text(yaml.safe_dump(run, sort_keys=False), encoding="utf-8")
 
     write(quote_field="source_verbatim")
     psweep("extract", "--config", str(config), "-q")
@@ -797,7 +804,7 @@ def test_rows_extraction_drops_unquoted_rows_and_reuses(rows_domain, fake):
     payload = fake.payloads[("m-p", ROWS_URL)]["data"]["requirements"]
     payload.append(row("fence", "required", None, None, "Fence", "r5", "The site is walled."))
     curated = Path("outputs/rows/discovered/curated/lake.txt")
-    curated.write_text(curated.read_text() + "\n")
+    curated.write_text(curated.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     fake.calls.clear()
     psweep("extract", "--config", str(rows_domain.config), "-q")
     psweep("extract", "--config", str(rows_domain.config), "-q")
@@ -805,7 +812,11 @@ def test_rows_extraction_drops_unquoted_rows_and_reuses(rows_domain, fake):
     (path,) = Path("outputs/rows/extracted").rglob("lake.json")
     record = json.loads(path.read_text())
     assert [r["feature"] for r in record["payload"]["requirements"]] == [
-        "setback", "lot", "noise", "hours", "hours"
+        "setback",
+        "lot",
+        "noise",
+        "hours",
+        "hours",
     ]
     assert record["quality"]["unverified_quotes"] == 1
     assert (
@@ -830,7 +841,7 @@ def test_covered_keys_match_the_tables_lookup():
         [{"state": "co", "site": "  Alder   PARK "}, {"state": "CO", "site": "Birch Park"}],
         ["state", "site"],
     )
-    alder, birch = roster.targets
+    alder, _birch = roster.targets
     covered = covered_keys({"anchors": {"a.txt": {alder}, "b.txt": set()}}, roster)
     assert tuple(map(normalize, ("CO", "Alder Park"))) in covered  # a Cluster.key display
     assert tuple(map(normalize, ("CO", "Birch Park"))) not in covered
@@ -852,7 +863,7 @@ def test_preflight_freshness(fake):
     assert fake.calls == [] and challenger.read_bytes() == compiled
 
     table = Path("outputs/bench/compiled/bench.csv")
-    table.write_text(table.read_text() + "\n")
+    table.write_text(table.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     output = bench.validate(code=1)
     assert "compiled table is stale or missing; run psweep compile" in output
 

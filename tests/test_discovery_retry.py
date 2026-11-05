@@ -44,10 +44,13 @@ def _http_error(status):
         (BrowserDownloadError("Browser download failed: script timeout"), True),
         (BrowserDownloadError("Browser download failed: HTTP 500", status_code=500), True),
         (BrowserDownloadError("Browser download failed: HTTP 429", status_code=429), True),
-        (BrowserDownloadError(
-            "Browser download failed for https://x.gov/ord-2504.pdf: HTTP 404",
-            status_code=404,
-        ), False),
+        (
+            BrowserDownloadError(
+                "Browser download failed for https://x.gov/ord-2504.pdf: HTTP 404",
+                status_code=404,
+            ),
+            False,
+        ),
         (RuntimeError("failed for https://x.gov/timeout-503.pdf: not a document"), False),
     ],
 )
@@ -119,7 +122,8 @@ def test_sdk_connection_errors_are_transient_unless_tls_failed(exc, expected):
 )
 def test_bot_manager_challenges_retry_in_run_but_are_final(status, header):
     """Edges sample challenges, so a repeat may pass; a URL challenged on
-    every attempt is a final outcome, not an incomplete target."""
+    every attempt is a final outcome, not an incomplete target.
+    """
     exc = _http_error(status)
     exc.response.headers[header] = "challenge"
     assert may_retry_in_run(exc) is True
@@ -177,33 +181,40 @@ def test_browser_download_raises_typed_status():
     from psweep.discovery.browser import BrowserSession
 
     session = BrowserSession.__new__(BrowserSession)
-    driver = type("Driver", (), {
-        "current_url": "https://x.gov/",
-        "set_script_timeout": lambda *_a: None,
-        "execute_async_script": lambda *_a: '{"ok": false, "status": 503}',
-    })()
+    driver = type(
+        "Driver",
+        (),
+        {
+            "current_url": "https://x.gov/",
+            "set_script_timeout": lambda *_a: None,
+            "execute_async_script": lambda *_a: '{"ok": false, "status": 503}',
+        },
+    )()
     session._driver = driver
     with pytest.raises(BrowserDownloadError) as caught:
         session.download_bytes("https://x.gov/ord-404.pdf")
     assert caught.value.status_code == 503 and is_transient_error(caught.value)
 
 
-class WebDriverException(Exception):
+class WebDriverException(Exception):  # noqa: N818 - mirrors Selenium's class name
     """Mirrors Selenium's ``str()``: ``Message: <driver error>``."""
 
     def __str__(self):
         return f"Message: {self.args[0]}"
 
 
-@pytest.mark.parametrize(("code", "expected"), [
-    ("ERR_CONNECTION_RESET", True),
-    ("ERR_CONNECTION_TIMED_OUT", True),
-    ("ERR_NAME_NOT_RESOLVED", True),
-    ("ERR_INTERNET_DISCONNECTED", True),
-    ("ERR_NETWORK_CHANGED", True),
-    ("ERR_TIMED_OUT", True),
-    ("ERR_CERT_DATE_INVALID", False),
-])
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("ERR_CONNECTION_RESET", True),
+        ("ERR_CONNECTION_TIMED_OUT", True),
+        ("ERR_NAME_NOT_RESOLVED", True),
+        ("ERR_INTERNET_DISCONNECTED", True),
+        ("ERR_NETWORK_CHANGED", True),
+        ("ERR_TIMED_OUT", True),
+        ("ERR_CERT_DATE_INVALID", False),
+    ],
+)
 def test_chrome_network_errors_are_transient(code, expected):
     exc = WebDriverException(f"unknown error: net::{code}\n  (Session info: chrome=126)")
     assert is_transient_error(exc) is expected
@@ -213,19 +224,26 @@ def _session(current_url, page_source="", get=lambda _url: None):
     from psweep.discovery.browser import BrowserSession
 
     session = BrowserSession.__new__(BrowserSession)
-    session._driver = type("Driver", (), {
-        "current_url": current_url,
-        "page_source": page_source,
-        "get": staticmethod(get),
-        "set_script_timeout": lambda *_a: None,
-    })()
+    session._driver = type(
+        "Driver",
+        (),
+        {
+            "current_url": current_url,
+            "page_source": page_source,
+            "get": staticmethod(get),
+            "set_script_timeout": lambda *_a: None,
+        },
+    )()
     return session
 
 
-@pytest.mark.parametrize("navigate", [
-    lambda s: s.fetch_html("https://x.gov/page", settle_seconds=0),
-    lambda s: s.download_bytes("https://x.gov/doc.pdf"),
-])
+@pytest.mark.parametrize(
+    "navigate",
+    [
+        lambda s: s.fetch_html("https://x.gov/page", settle_seconds=0),
+        lambda s: s.download_bytes("https://x.gov/doc.pdf"),
+    ],
+)
 def test_chrome_error_page_raises_transient_navigation_error(navigate):
     from psweep.discovery.browser import BrowserNavigationError
 
@@ -270,9 +288,7 @@ def test_retry_classifier_has_no_discovery_imports():
 
     tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
     imported = {
-        node.module or ""
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
     } | {
         alias.name
         for node in ast.walk(tree)

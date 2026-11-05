@@ -288,11 +288,7 @@ def test_parallel_grades_accumulate_all_returned_usage(tmp_path):
     assert costs["total_input_tokens"] == 55
     assert costs["total_output_tokens"] == 35
     assert sum(record.get("review_failed", False) for record in records) == 1
-    assert all(
-        not record["review_selected"]
-        for record in records
-        if record.get("review_failed")
-    )
+    assert all(not record["review_selected"] for record in records if record.get("review_failed"))
 
 
 def test_llm_exception_is_sanitized_and_usage_is_unknown(tmp_path):
@@ -301,9 +297,7 @@ def test_llm_exception_is_sanitized_and_usage_is_unknown(tmp_path):
 
     class Client:
         def extract(self, **kwargs):
-            raise RuntimeError(
-                "api_key=never-expose-this https://x/?token=secret"
-            )
+            raise RuntimeError("api_key=never-expose-this https://x/?token=secret")
 
     reviewer = DocumentReviewer(document_description="records")
     reviewer._client = Client()
@@ -324,9 +318,7 @@ def test_llm_failure_reports_sanitized_provider_category(tmp_path):
     from psweep.extraction.llm_client import LLMClient
 
     record = _record(tmp_path)
-    provider = RuntimeError(
-        "Rate limit reached for org-synthetic at https://x/?token=secret"
-    )
+    provider = RuntimeError("Rate limit reached for org-synthetic at https://x/?token=secret")
 
     class Client:
         def extract(self, **kwargs):
@@ -335,9 +327,7 @@ def test_llm_failure_reports_sanitized_provider_category(tmp_path):
     reviewer = DocumentReviewer(document_description="records")
     reviewer._client = Client()
     reviewer.review([record], [])
-    assert record["review_error"] == (
-        "LLM grade call failed: rate limit (ExtractionError)"
-    )
+    assert record["review_error"] == ("LLM grade call failed: rate limit (ExtractionError)")
     for leaked in ("org-synthetic", "token", "secret", "https://"):
         assert leaked not in record["review_error"]
 
@@ -412,9 +402,17 @@ def test_comparative_prompt_includes_the_complete_response_contract(tmp_path):
     class Client:
         def extract(self, **kwargs):
             assert json.dumps(kwargs["schema"], indent=2) in kwargs["user_prompt"]
-            return {"data": {"redundancy_groups": [{
-                "keep_index": 0, "redundant_indices": [1], "reason": "same text",
-            }]}}
+            return {
+                "data": {
+                    "redundancy_groups": [
+                        {
+                            "keep_index": 0,
+                            "redundant_indices": [1],
+                            "reason": "same text",
+                        }
+                    ]
+                }
+            }
 
     reviewer = _stub_reviewer(keep_top=2)
     reviewer._deduplicate_redundant = True
@@ -505,9 +503,7 @@ def test_normal_sampling_remains_byte_identical(keywords, expected):
         },
     ],
 )
-def test_invalid_comparative_assessment_preserves_grade_and_usage(
-    tmp_path, data
-):
+def test_invalid_comparative_assessment_preserves_grade_and_usage(tmp_path, data):
     """Invalid dedup data fails explicitly with the actual returned usage."""
     records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
 
@@ -547,8 +543,10 @@ def test_unreadable_document_is_a_terminal_skip_with_one_note(tmp_path, monkeypa
         assert record["review_selected"] is False
         assert not record.get("review_failed") and not is_retryable(record)
     assert [n for n in notes if "too little text" in n] == [
-        "2 document(s) had too little text to review; "
-        "JS-rendered pages need discovery.crawl.browser_escalation."
+        (
+            "2 document(s) had too little text to review; "
+            "JS-rendered pages need discovery.crawl.browser_escalation."
+        )
     ]
 
 

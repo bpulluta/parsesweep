@@ -11,7 +11,13 @@ from functools import lru_cache
 from html import unescape
 from pathlib import Path
 from urllib.parse import (
-    parse_qsl, unquote, urlencode, urlparse, urlsplit, urlunparse, urlunsplit,
+    parse_qsl,
+    unquote,
+    urlencode,
+    urlparse,
+    urlsplit,
+    urlunparse,
+    urlunsplit,
 )
 
 _SEPARATOR_RE = re.compile(r"[_\-/]")
@@ -67,7 +73,8 @@ def matches_allowed_domain(url: str, allowed_domains: list[str] | None) -> bool:
     host = url_host(decode_discovery_url(url))
     return any(
         host == domain.strip().lower() or host.endswith("." + domain.strip().lower())
-        for domain in allowed_domains if domain and domain.strip()
+        for domain in allowed_domains
+        if domain and domain.strip()
     )
 
 
@@ -83,10 +90,13 @@ def redact_url(url: str) -> str:
     try:
         parsed = urlparse(decode_discovery_url(url))
         host = parsed.netloc.rsplit("@", 1)[-1]
-        query = urlencode([
-            (key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-            if not _SECRET_PARAMETER_RE.search(key)
-        ])
+        query = urlencode(
+            [
+                (key, value)
+                for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if not _SECRET_PARAMETER_RE.search(key)
+            ]
+        )
         # Fragments are never sent to the server and may contain OAuth tokens.
         return urlunparse(parsed._replace(netloc=host, query=query, fragment=""))
     except ValueError:
@@ -114,7 +124,8 @@ def canonical_url(url: str) -> str:
         return url
     segments = parsed.query.split("&")
     kept = [
-        segment for segment in segments
+        segment
+        for segment in segments
         if not _TRACKING_PARAMETER_RE.match(unquote(segment.split("=", 1)[0]))
     ]
     if len(kept) == len(segments):
@@ -136,7 +147,7 @@ def url_host(url: str) -> str:
     """Return the lowercase hostname of *url*, or ``""`` if unparseable."""
     try:
         return (urlparse(url).hostname or "").lower()
-    except Exception:
+    except Exception:  # noqa: BLE001 - unparseable input means no host
         return ""
 
 
@@ -144,7 +155,7 @@ def url_extension(url: str) -> str:
     """Return the lowercase file extension of the URL path (``""`` if none)."""
     try:
         path = urlparse(url).path.lower()
-    except Exception:
+    except Exception:  # noqa: BLE001 - unparseable input falls back to the raw string
         path = (url or "").lower()
     return Path(path).suffix.lower()
 

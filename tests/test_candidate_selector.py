@@ -122,12 +122,8 @@ class TestPerTargetSelection:
 
     def test_recency_prefers_later_date(self):
         sel = CandidateSelector(exclude_draft=False)
-        april = _candidate(
-            "https://example.com/Electric_Summation_Sheet_04.01.2024_FINAL.pdf"
-        )
-        may = _candidate(
-            "https://example.com/Electric_Summation_Sheet_05.01.2024.pdf"
-        )
+        april = _candidate("https://example.com/Electric_Summation_Sheet_04.01.2024_FINAL.pdf")
+        may = _candidate("https://example.com/Electric_Summation_Sheet_05.01.2024.pdf")
         selected, notes = sel.select([[april, may]], primary_per_target=1)
         assert selected == [may]
         assert any("2024-05-01" in n for n in notes)
@@ -156,9 +152,7 @@ class TestPerTargetSelection:
             ],
         )
         draft = _candidate("https://example.com/proposed_ordinance_2025.pdf")
-        enacted = _candidate(
-            "https://example.com/geothermal_ordinance_2023.pdf"
-        )
+        enacted = _candidate("https://example.com/geothermal_ordinance_2023.pdf")
         selected, notes = sel.select([[draft, enacted]], primary_per_target=1)
         # draft excluded → enacted selected even though 2025 > 2023
         assert selected == [enacted]
@@ -202,13 +196,9 @@ class TestPerTargetSelection:
 
     def test_supported_document_preferred_over_newer_unsupported_page(self):
         sel = CandidateSelector(exclude_draft=False)
-        unsupported_newer = _candidate(
-            "https://example.com/ordinance_page_2026"
-        )
+        unsupported_newer = _candidate("https://example.com/ordinance_page_2026")
         supported_older = _candidate("https://example.com/ordinance_2024.pdf")
-        selected, _ = sel.select(
-            [[unsupported_newer, supported_older]], primary_per_target=1
-        )
+        selected, _ = sel.select([[unsupported_newer, supported_older]], primary_per_target=1)
         assert selected == [supported_older]
 
     def test_multiple_targets_independent_selection(self):
@@ -229,9 +219,7 @@ class TestPerTargetSelection:
         # Target 1: Xcel — one draft, one real
         t1 = [
             _candidate("https://xcel.com/proposed_rate_book_2025.pdf"),
-            _candidate(
-                "https://xcel.com/Electric_Summation_Sheet_05.01.2024.pdf"
-            ),
+            _candidate("https://xcel.com/Electric_Summation_Sheet_05.01.2024.pdf"),
         ]
         # Target 2: empty
         t2: list[DiscoveryCandidate] = []
@@ -261,12 +249,13 @@ class TestPerTargetSelection:
         reason_only = _candidate(
             "https://example.com/random-brand-landing",
             reasons=[
-                "SerpApi result rank 1 for query 'Keller Texas natural gas compressor station ordinance'"
+                (
+                    "SerpApi result rank 1 for query "
+                    "'Keller Texas natural gas compressor station ordinance'"
+                )
             ],
         )
-        real_match = _candidate(
-            "https://example.com/weatherford-compressor-ordinance.pdf"
-        )
+        real_match = _candidate("https://example.com/weatherford-compressor-ordinance.pdf")
         selected, notes = sel.select([[reason_only, real_match]], primary_per_target=1)
         assert selected == [real_match]
         assert any("relevance filter excluded" in n for n in notes)
@@ -356,9 +345,7 @@ class TestPerTargetSelection:
             ]
             for index, document in enumerate(documents)
         ]
-        selected, _, metrics = sel.select(
-            pools, primary_per_target=1, include_metrics=True
-        )
+        selected, _, metrics = sel.select(pools, primary_per_target=1, include_metrics=True)
         assert selected == documents
         assert len(metrics) == 1000
         assert all(metric["selected_candidates"] == 1 for metric in metrics)
@@ -378,9 +365,7 @@ class TestPerTargetSelection:
         pdf = _candidate("https://example.com/ordinance/chapter-9.pdf")
         selected, notes = sel.select([[page, pdf]], primary_per_target=1)
         assert selected == [pdf]
-        assert not any(
-            "supported-document filter excluded" in n for n in notes
-        )
+        assert not any("supported-document filter excluded" in n for n in notes)
 
     def test_require_supported_document_accepts_extensionless_web(self):
         sel = CandidateSelector(exclude_draft=False, require_supported_document=True)

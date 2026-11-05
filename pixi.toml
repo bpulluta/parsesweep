@@ -23,6 +23,10 @@ docs = { features = ["docs"], solve-group = "default" }
 [feature.dev.pypi-dependencies]
 psweep = { path = ".", editable = true, extras = ["dev"] }
 
+# Lint lives in the dev feature, so `pixi run lint` selects that env. CI runs it.
+[feature.dev.tasks]
+lint = "ruff check src tests && ruff format --check src tests"
+
 [feature.docs.pypi-dependencies]
 psweep = { path = ".", editable = true, extras = ["docs"] }
 

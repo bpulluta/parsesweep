@@ -71,8 +71,7 @@ class FakeResponse:
 
     def iter_content(self, chunk_size: int = 65536):
         del chunk_size
-        for chunk in self._chunks:
-            yield chunk
+        yield from self._chunks
 
 
 def patch_requests_get(

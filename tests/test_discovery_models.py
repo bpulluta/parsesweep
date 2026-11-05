@@ -2,7 +2,6 @@ import pytest
 from pathlib import Path
 import re
 import json
-import csv
 import sys
 from unittest.mock import Mock
 
@@ -82,9 +81,7 @@ def test_engine_run_emits_scaffold_candidates(tmp_path: Path):
     assert payload.count('"source": "configured"') == 2
 
 
-def test_engine_run_uses_deterministic_default_paths_and_lineage(
-    tmp_path: Path, monkeypatch
-):
+def test_engine_run_uses_deterministic_default_paths_and_lineage(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -104,12 +101,11 @@ def test_engine_run_uses_deterministic_default_paths_and_lineage(
     # Each run is one self-contained folder: documents/ lives under the run dir.
     assert result.documents_dir == (
         Workspace("geothermal_ordinances").discovered.resolve()
-        / "runs" / result.run_id / "documents"
+        / "runs"
+        / result.run_id
+        / "documents"
     )
-    assert (
-        result.manifest_path.parent.as_posix()
-        == result.documents_dir.parent.as_posix()
-    )
+    assert result.manifest_path.parent.as_posix() == result.documents_dir.parent.as_posix()
     assert payload["lineage"]["run_id"] == result.run_id
     assert payload["lineage"]["documents_dir"] == result.documents_dir.as_posix()
     assert payload["lineage"]["manifest_path"] == result.manifest_path.as_posix()
@@ -132,10 +128,14 @@ def test_engine_search_uses_http_without_serpapi_sdk(tmp_path: Path, monkeypatch
     monkeypatch.setitem(sys.modules, "serpapi", None)
     monkeypatch.setenv("SERPAPI_API_KEY", "synthetic-search-key")
     response = Mock(status_code=200, headers={}, url="https://serpapi.com/search.json")
-    response.json.return_value = {"organic_results": [{
-        "link": "https://example.org/ordinance.pdf",
-        "title": "Geothermal ordinance",
-    }]}
+    response.json.return_value = {
+        "organic_results": [
+            {
+                "link": "https://example.org/ordinance.pdf",
+                "title": "Geothermal ordinance",
+            }
+        ]
+    }
     request_get = Mock(return_value=response)
     monkeypatch.setattr("psweep.discovery.network.request_get", request_get)
 
@@ -219,8 +219,10 @@ def test_engine_run_downloads_supported_candidate_for_non_dry_run(tmp_path: Path
 @pytest.mark.parametrize(
     "url, content_type",
     [
-        ("https://gis.example.gov/arcgis/rest/services/P/FeatureServer/0/query?where=1%3D1&f=json",
-         "application/json; charset=utf-8"),
+        (
+            "https://gis.example.gov/arcgis/rest/services/P/FeatureServer/0/query?where=1%3D1&f=json",
+            "application/json; charset=utf-8",
+        ),
         ("https://data.example.gov/resource/abcd-1234.json", "application/json"),
         ("https://data.example.gov/api/permits?format=geojson", "application/geo+json"),
     ],
@@ -228,7 +230,10 @@ def test_engine_run_downloads_supported_candidate_for_non_dry_run(tmp_path: Path
 def test_engine_run_downloads_json_data_exports(tmp_path: Path, monkeypatch, url, content_type):
     """Public-database JSON APIs are documents, typed by Content-Type."""
     _patch_requests_get(
-        monkeypatch, url=url, content_type=content_type, chunks=[b'{"features": []}'],
+        monkeypatch,
+        url=url,
+        content_type=content_type,
+        chunks=[b'{"features": []}'],
     )
     request = DiscoveryRequest(
         domain="public_data",
@@ -236,9 +241,7 @@ def test_engine_run_downloads_json_data_exports(tmp_path: Path, monkeypatch, url
         robots_policy_mode="ignore",
         tos_policy_mode="ignore",
     )
-    payload = json.loads(
-        DiscoveryEngine().run(request).manifest_path.read_text(encoding="utf-8")
-    )
+    payload = json.loads(DiscoveryEngine().run(request).manifest_path.read_text(encoding="utf-8"))
     (download,) = payload["downloads"]
     assert download["status"] == "downloaded"
     assert Path(download["path"]).suffix == ".json"
@@ -280,7 +283,9 @@ def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Pat
     assert payload["downloads"][0]["path"].endswith(".html")
 
 
-def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path: Path, monkeypatch):
+def test_engine_run_download_stage_skips_rejected_discovered_candidates(
+    tmp_path: Path, monkeypatch
+):
     def fake_resolve_serpapi_state(_request: DiscoveryRequest):
         return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
 
@@ -290,12 +295,16 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
                 DiscoveryCandidate(
                     url="https://example.org/rejected.pdf",
                     source="serpapi_google",
-                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                    score=CandidateScore(
+                        url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1
+                    ),
                 ),
                 DiscoveryCandidate(
                     url="https://example.org/review.pdf",
                     source="serpapi_google",
-                    score=CandidateScore(url_signal=1.0, anchor_signal=1.0, content_signal=0.0, trust_signal=1.0),
+                    score=CandidateScore(
+                        url_signal=1.0, anchor_signal=1.0, content_signal=0.0, trust_signal=1.0
+                    ),
                 ),
             ],
             notes,
@@ -308,8 +317,12 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
             0,
         )
 
-    monkeypatch.setattr("psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url))
-    monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
+    monkeypatch.setattr(
+        "psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url)
+    )
+    monkeypatch.setattr(
+        DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state)
+    )
     monkeypatch.setattr(DiscoveryEngine, "_run_seeker", staticmethod(fake_run_seeker))
 
     engine = DiscoveryEngine()
@@ -326,10 +339,15 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
     assert payload["candidate_summary"]["total"] == 2
     assert len(payload["downloads"]) == 1
     assert payload["downloads"][0]["url"] == "https://example.org/review.pdf"
-    assert any("Download simplification skipped 1 rejected discovered candidate" in note for note in payload["notes"])
+    assert any(
+        "Download simplification skipped 1 rejected discovered candidate" in note
+        for note in payload["notes"]
+    )
 
 
-def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_candidates(tmp_path: Path, monkeypatch):
+def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_candidates(
+    tmp_path: Path, monkeypatch
+):
     def fake_resolve_serpapi_state(_request: DiscoveryRequest):
         return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
 
@@ -339,12 +357,16 @@ def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_
                 DiscoveryCandidate(
                     url="https://example.org/ordinance-a.pdf",
                     source="serpapi_google",
-                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                    score=CandidateScore(
+                        url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1
+                    ),
                 ),
                 DiscoveryCandidate(
                     url="https://example.org/ordinance-b.pdf",
                     source="serpapi_google",
-                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                    score=CandidateScore(
+                        url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1
+                    ),
                 ),
             ],
             notes,
@@ -357,8 +379,12 @@ def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_
             0,
         )
 
-    monkeypatch.setattr("psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url))
-    monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
+    monkeypatch.setattr(
+        "psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url)
+    )
+    monkeypatch.setattr(
+        DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state)
+    )
     monkeypatch.setattr(DiscoveryEngine, "_run_seeker", staticmethod(fake_run_seeker))
 
     engine = DiscoveryEngine()
@@ -500,8 +526,10 @@ def test_engine_run_applies_request_rate_limiter_for_downloads(tmp_path: Path, m
     sleep_calls: list[float] = []
     monotonic_values = iter([0.0, 0.0, 0.03, 0.03, 0.05, 0.05, 0.10, 0.10])
 
-    monkeypatch.setattr("psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url))
-    monkeypatch.setattr("time.sleep", lambda seconds: sleep_calls.append(seconds))
+    monkeypatch.setattr(
+        "psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url)
+    )
+    monkeypatch.setattr("time.sleep", sleep_calls.append)
     monkeypatch.setattr("time.monotonic", lambda: next(monotonic_values, 0.10))
 
     engine = DiscoveryEngine()
@@ -583,8 +611,11 @@ def test_engine_builds_seeker_inputs_from_targets():
         queries=["{manufacturer} {power_class_kw} kW generator spec pdf"],
         dry_run=True,
         targets=[
-            {"manufacturer": "Generac", "power_class_kw": "200-300",
-             "urls": ["https://generac.com/a.pdf"]},
+            {
+                "manufacturer": "Generac",
+                "power_class_kw": "200-300",
+                "urls": ["https://generac.com/a.pdf"],
+            },
             {"manufacturer": "John Deere", "query": "deere manual"},
         ],
         seeker_max_results=8,
@@ -759,9 +790,7 @@ def test_engine_run_seeker_applies_prioritization_and_emits_lineage(tmp_path: Pa
         for candidate in payload["lineage"]["link_prioritization"]["candidates"]
     ) == [0, 1, 2, 3]
     assert any(
-        "Link prioritizer (heuristic) ranked 4 candidate(s)"
-        in note
-        for note in payload["notes"]
+        "Link prioritizer (heuristic) ranked 4 candidate(s)" in note for note in payload["notes"]
     )
 
 
@@ -814,7 +843,9 @@ def test_engine_run_emits_unknown_target_acceptance_metrics(tmp_path: Path, monk
     result = engine.run(request)
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
-    unknown_target_metrics = payload["stage_summaries"]["acceptance_metrics"]["unknown_target_discovery"]
+    unknown_target_metrics = payload["stage_summaries"]["acceptance_metrics"][
+        "unknown_target_discovery"
+    ]
     assert unknown_target_metrics["applicable"] is True
     assert unknown_target_metrics["measurement_mode"] == "target_matrix"
     assert unknown_target_metrics["target_count"] == 2

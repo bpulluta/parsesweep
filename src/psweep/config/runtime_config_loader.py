@@ -32,13 +32,17 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
     "global": {
         "domain": (
             "optional",
-            "Domain key; outputs are derived under outputs/<domain>/ "
-            "(default: the config directory name).",
+            (
+                "Domain key; outputs are derived under outputs/<domain>/ "
+                "(default: the config directory name)."
+            ),
         ),
         "schema": (
             "optional",
-            "Schema path for extraction, validation, and compilation "
-            "(default: schema.json beside the config file).",
+            (
+                "Schema path for extraction, validation, and compilation "
+                "(default: schema.json beside the config file)."
+            ),
         ),
         "models": ("optional", "Model aliases (alias: model name) any stage's model: can use."),
         "model_context_windows": (
@@ -53,28 +57,36 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
     "extraction": {
         "pages": (
             "optional",
-            "Page targeting: csv (config-relative ranges), auto_locate (LLM locator), "
-            "range (single file).",
+            (
+                "Page targeting: csv (config-relative ranges), auto_locate (LLM locator), "
+                "range (single file)."
+            ),
         ),
         "ocr_corrections": (
             "advanced",
-            "Per-domain OCR text-correction rules ({pattern, replacement, ignore_case}) "
-            "applied to OCR-derived PDF text only.",
+            (
+                "Per-domain OCR text-correction rules ({pattern, replacement, ignore_case}) "
+                "applied to OCR-derived PDF text only."
+            ),
         ),
         "provider": ("optional", "LLM provider override (openai, azure, anthropic, gemini, auto)."),
         "model": ("optional", "Model override for extraction runs."),
         "transcription_model": (
             "optional",
-            "models: alias that transcribes audio documents "
-            "(.mp3 .m4a .wav .ogg .flac); required for audio.",
+            (
+                "models: alias that transcribes audio documents "
+                "(.mp3 .m4a .wav .ogg .flac); required for audio."
+            ),
         ),
         "limit": ("optional", "Process only the first N files."),
         "max_context": ("advanced", "Maximum characters to pass to extraction context."),
         "max_concurrent": ("advanced", "Documents extracted in parallel (default: 4)."),
         "timeout_seconds": (
             "advanced",
-            "Per-request LLM timeout for extraction calls (seconds). "
-            "Overrides the default 120s client timeout.",
+            (
+                "Per-request LLM timeout for extraction calls (seconds). "
+                "Overrides the default 120s client timeout."
+            ),
         ),
         "skip_existing": ("advanced", "Skip files that already have output JSON."),
     },
@@ -87,7 +99,10 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dry_run": ("optional", "Preview deduplication without writing files."),
         "report_format": ("optional", "Dry-run output format (text or json)."),
-        "fail_on_suspicious": ("advanced", "Fail threshold for suspicious dedup groups in dry-run."),
+        "fail_on_suspicious": (
+            "advanced",
+            "Fail threshold for suspicious dedup groups in dry-run.",
+        ),
         "provenance_policy": (
             "advanced",
             "How compile handles provenance warnings from extraction inputs (warn or fail).",
@@ -110,8 +125,10 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "quote_field": (
             "advanced",
-            "Rows mode: each row's verbatim quote; extraction drops rows whose "
-            "quote is not in the source, validation aligns on it.",
+            (
+                "Rows mode: each row's verbatim quote; extraction drops rows whose "
+                "quote is not in the source, validation aligns on it."
+            ),
         ),
         "min_accuracy": (
             "optional",
@@ -143,7 +160,10 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
             "advanced",
             "Candidate ranking: mode, top_k, keywords, domain_scores, shopping_path_keywords.",
         ),
-        "document_classifier": ("advanced", "Keyword checks applied to downloaded document content."),
+        "document_classifier": (
+            "advanced",
+            "Keyword checks applied to downloaded document content.",
+        ),
         "document_review": ("advanced", "LLM curation of downloaded documents."),
         "retry_policy": (
             "advanced",
@@ -160,9 +180,7 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
 
 def _catalog(section: str, keys) -> list[dict[str, str]]:
     docs = _KEY_DOCS[section]
-    return [
-        {"name": key, "level": docs[key][0], "description": docs[key][1]} for key in keys
-    ]
+    return [{"name": key, "level": docs[key][0], "description": docs[key][1]} for key in keys]
 
 
 VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
@@ -213,9 +231,7 @@ def _validate_models_block(models: Any) -> None:
     if models is None:
         return
     if not isinstance(models, dict):
-        raise RuntimeConfigError(
-            "'models' must be a mapping of alias-name -> model-name"
-        )
+        raise RuntimeConfigError("'models' must be a mapping of alias-name -> model-name")
     for key, value in models.items():
         if (
             not isinstance(key, str)
@@ -224,8 +240,7 @@ def _validate_models_block(models: Any) -> None:
             or not value.strip()
         ):
             raise RuntimeConfigError(
-                "'models' must map non-empty alias names to non-empty model "
-                "names"
+                "'models' must map non-empty alias names to non-empty model names"
             )
 
 
@@ -246,9 +261,7 @@ def _validate_model_context_windows_block(windows: Any) -> None:
         )
     for key, value in windows.items():
         if not isinstance(key, str) or not key.strip():
-            raise RuntimeConfigError(
-                "'model_context_windows' keys must be non-empty model names"
-            )
+            raise RuntimeConfigError("'model_context_windows' keys must be non-empty model names")
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise RuntimeConfigError(
                 "'model_context_windows' values must be positive integers "
@@ -266,9 +279,7 @@ def _validate_reasoning_models_block(markers: Any) -> None:
     """
     if markers is None:
         return
-    if not isinstance(markers, list) or not all(
-        isinstance(m, str) and m.strip() for m in markers
-    ):
+    if not isinstance(markers, list) or not all(isinstance(m, str) and m.strip() for m in markers):
         raise RuntimeConfigError(
             "'reasoning_models' must be a list of non-empty model-name "
             "substring markers (e.g. ['gpt-5', 'o3'])"
@@ -316,9 +327,7 @@ def _normalize_pages_block(extraction: dict[str, Any], config_path: Path) -> Non
         auto_locate = pages["auto_locate"]
         if not isinstance(auto_locate, dict):
             raise RuntimeConfigError("pages.auto_locate must be an object")
-        reject_unknown_keys(
-            auto_locate, _AUTO_LOCATE_KEYS, "extraction.pages.auto_locate", where
-        )
+        reject_unknown_keys(auto_locate, _AUTO_LOCATE_KEYS, "extraction.pages.auto_locate", where)
         extraction["page_targeting"] = {"enabled": True, **auto_locate}
     if "range" in pages:
         # Single-file range from config (usually a CLI thing).
@@ -328,8 +337,8 @@ def _normalize_pages_block(extraction: dict[str, Any], config_path: Path) -> Non
 def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
     """Deep-validate the ``extraction`` section at load time.
 
-    Config-supplied values are checked with the same rigor as CLI flags (Click type/choice guards are
-    bypassed when a value comes from YAML). Domain-neutral: only structural
+    Config-supplied values are checked with the same rigor as CLI flags (Click
+    type/choice guards are bypassed when a value comes from YAML). Domain-neutral: only structural
     types and ranges are enforced.
     """
 
@@ -353,16 +362,16 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
         allowed = {"openai", "azure", "anthropic", "gemini", "auto"}
         if not isinstance(provider, str) or provider.lower() not in allowed:
             raise RuntimeConfigError(
-                "extraction.provider must be one of: "
-                + ", ".join(sorted(allowed))
+                "extraction.provider must be one of: " + ", ".join(sorted(allowed))
             )
 
     for name in ("pages", "pages_csv", "model", "transcription_model"):
-        if name in extraction and extraction[name] is not None:
-            if not isinstance(extraction[name], str):
-                raise RuntimeConfigError(
-                    f"extraction.{name} must be a string"
-                )
+        if (
+            name in extraction
+            and extraction[name] is not None
+            and not isinstance(extraction[name], str)
+        ):
+            raise RuntimeConfigError(f"extraction.{name} must be a string")
 
     page_targeting = extraction.get("page_targeting")
     if page_targeting is not None:
@@ -399,12 +408,8 @@ def _validate_ocr_corrections_block(rules: Any) -> None:
             )
         for key in ("pattern", "replacement"):
             if not isinstance(rule.get(key), str) or not rule.get(key):
-                raise RuntimeConfigError(
-                    f"{loc}.{key} must be a non-empty string"
-                )
-        if rule.get("ignore_case") is not None and not isinstance(
-            rule["ignore_case"], bool
-        ):
+                raise RuntimeConfigError(f"{loc}.{key} must be a non-empty string")
+        if rule.get("ignore_case") is not None and not isinstance(rule["ignore_case"], bool):
             raise RuntimeConfigError(f"{loc}.ignore_case must be a boolean")
         try:
             re.compile(rule["pattern"])
@@ -417,39 +422,25 @@ def _validate_ocr_corrections_block(rules: Any) -> None:
 def _validate_page_targeting_block(pt: Any) -> None:
     """Validate the ``pages.auto_locate`` block (internal key: page_targeting)."""
     if not isinstance(pt, dict):
-        raise RuntimeConfigError(
-            "pages.auto_locate must be an object"
-        )
-    if pt.get("section_description") is not None and not isinstance(
-        pt["section_description"], str
-    ):
-        raise RuntimeConfigError(
-            "pages.auto_locate.section_description must be a string"
-        )
+        raise RuntimeConfigError("pages.auto_locate must be an object")
+    if pt.get("section_description") is not None and not isinstance(pt["section_description"], str):
+        raise RuntimeConfigError("pages.auto_locate.section_description must be a string")
     for name in ("trigger_chars", "max_selected_pages"):
         val = pt.get(name)
-        if val is not None:
-            if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
-                raise RuntimeConfigError(
-                    f"pages.auto_locate.{name} must be a positive "
-                    f"integer (got {val!r})"
-                )
+        if val is not None and (isinstance(val, bool) or not isinstance(val, int) or val <= 0):
+            raise RuntimeConfigError(
+                f"pages.auto_locate.{name} must be a positive integer (got {val!r})"
+            )
     if pt.get("model") is not None and not isinstance(pt["model"], str):
-        raise RuntimeConfigError(
-            "pages.auto_locate.model must be a string"
-        )
+        raise RuntimeConfigError("pages.auto_locate.model must be a string")
     if pt.get("keywords") is not None and (
         not isinstance(pt["keywords"], list)
         or any(not isinstance(keyword, str) for keyword in pt["keywords"])
     ):
         message = "pages.auto_locate.keywords must be a list of strings"
         raise RuntimeConfigError(message)
-    if pt.get("save_discovered") is not None and not isinstance(
-        pt["save_discovered"], bool
-    ):
-        raise RuntimeConfigError(
-            "pages.auto_locate.save_discovered must be a boolean"
-        )
+    if pt.get("save_discovered") is not None and not isinstance(pt["save_discovered"], bool):
+        raise RuntimeConfigError("pages.auto_locate.save_discovered must be a boolean")
 
 
 def _validate_compilation_section_schema(
@@ -459,9 +450,7 @@ def _validate_compilation_section_schema(
     provenance_policy = compilation.get("provenance_policy")
     if provenance_policy is not None:
         if not isinstance(provenance_policy, str):
-            raise RuntimeConfigError(
-                "compilation.provenance_policy must be a string"
-            )
+            raise RuntimeConfigError("compilation.provenance_policy must be a string")
         normalized_policy = provenance_policy.strip().lower()
         if normalized_policy not in _ALLOWED_PROVENANCE_POLICIES:
             allowed = ", ".join(sorted(_ALLOWED_PROVENANCE_POLICIES))
@@ -474,8 +463,17 @@ def _validate_compilation_section_schema(
 
 _LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _CELLS_COLUMNS = frozenset(
-    {"primary", "consensus", "match", "column", "status", "miss", "judge_groups",
-     "judge_reason", "review_priority"}
+    {
+        "primary",
+        "consensus",
+        "match",
+        "column",
+        "status",
+        "miss",
+        "judge_groups",
+        "judge_reason",
+        "review_priority",
+    }
 )
 _CELLS_SUFFIXES = ("_quote", "_url", "_support", "_conflict")
 
@@ -485,9 +483,7 @@ def _did_you_mean(value: str, choices) -> str:
     return f" — did you mean '{close[0]}'?" if close else ""
 
 
-def _check_transcription_model(
-    extraction: dict[str, Any], aliases: dict[str, Any]
-) -> None:
+def _check_transcription_model(extraction: dict[str, Any], aliases: dict[str, Any]) -> None:
     """``extraction.transcription_model`` must name a ``models:`` tier."""
     alias = extraction.get("transcription_model")
     if alias is not None and alias not in aliases:
@@ -585,10 +581,12 @@ def _validation_field_error(
         )
     if field in properties:
         return f"validation.fields: '{field}' is excluded from the compiled table"
-    if field in (*METADATA_COLUMNS, COL_RUN_ID, COL_ARTIFACT_ID):
+    if field in {*METADATA_COLUMNS, COL_RUN_ID, COL_ARTIFACT_ID}:
         return f"validation.fields: '{field}' is a metadata column, not an extracted field"
     if field in passthrough():
-        return f"validation.fields: '{field}' is a targets passthrough column, not an extracted field"
+        return (
+            f"validation.fields: '{field}' is a targets passthrough column, not an extracted field"
+        )
     return f"validation.fields: '{field}' is not a scorable field"
 
 
@@ -756,10 +754,7 @@ def _read_config_file(path: Path) -> dict[str, Any]:
     elif suffix == ".json":
         loaded = json.loads(raw_text)
     else:
-        msg = (
-            f"Unsupported config extension '{suffix}'. "
-            "Use .yaml, .yml, or .json"
-        )
+        msg = f"Unsupported config extension '{suffix}'. Use .yaml, .yml, or .json"
         raise RuntimeConfigError(msg)
 
     if loaded is None:
@@ -839,23 +834,18 @@ _DERIVED_PATH_KEYS: dict[tuple[str, str], str] = {
 }
 
 
-def _reject_derived_path_keys(
-    config_data: dict[str, Any], config_path: Path
-) -> None:
+def _reject_derived_path_keys(config_data: dict[str, Any], config_path: Path) -> None:
     found = [
         f"{section}.{key} ({remedy})"
         for (section, key), remedy in _DERIVED_PATH_KEYS.items()
-        if isinstance(config_data.get(section), dict)
-        and key in config_data[section]
+        if isinstance(config_data.get(section), dict) and key in config_data[section]
     ]
     if found:
         msg = f"Remove from {config_path.as_posix()}: " + "; ".join(found)
         raise RuntimeConfigError(msg)
 
 
-def _resolve_workspace_keys(
-    config_data: dict[str, Any], config_path: Path
-) -> None:
+def _resolve_workspace_keys(config_data: dict[str, Any], config_path: Path) -> None:
     """Default ``domain`` to the config directory name and type-check ``schema``."""
     domain = config_data.setdefault("domain", config_path.parent.name)
     try:
@@ -877,16 +867,12 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
     _reject_implicit_section_overrides(config_path)
     config_data = _read_config_file(config_path)
 
-    reject_unknown_keys(
-        config_data, _ALLOWED_TOP_LEVEL, config_path=config_path.as_posix()
-    )
+    reject_unknown_keys(config_data, _ALLOWED_TOP_LEVEL, config_path=config_path.as_posix())
     _reject_derived_path_keys(config_data, config_path)
     _resolve_workspace_keys(config_data, config_path)
 
     _validate_models_block(config_data.get("models"))
-    _validate_model_context_windows_block(
-        config_data.get("model_context_windows")
-    )
+    _validate_model_context_windows_block(config_data.get("model_context_windows"))
     _validate_reasoning_models_block(config_data.get("reasoning_models"))
 
     discovery = config_data.get("discovery")
@@ -947,9 +933,7 @@ _MISSING_FIELD_HINTS: dict[str, tuple[str, str | None, str]] = {
 }
 
 
-def _missing_fields_message(
-    section_name: str, missing: list[str], config_path: str | None
-) -> str:
+def _missing_fields_message(section_name: str, missing: list[str], config_path: str | None) -> str:
     parts = []
     for name in missing:
         need, yaml_remedy, cli_remedy = _MISSING_FIELD_HINTS[name]
@@ -996,9 +980,7 @@ def config_key_paths(command: str) -> dict[str, str]:
     section_name = _COMMAND_SECTIONS[command]
     if section_name == "discovery":
         return discovery_key_paths()
-    return {
-        field: f"{section_name}.{key}" for field, key in _FIELD_MAP.items()
-    }
+    return {field: f"{section_name}.{key}" for field, key in _FIELD_MAP.items()}
 
 
 def _merge_config_fields(
@@ -1012,9 +994,7 @@ def _merge_config_fields(
     sources: dict[str, str] = {}
 
     if section_name == "discovery":
-        for field, (value, source) in resolve_discovery_section(
-            section, config_path
-        ).items():
+        for field, (value, source) in resolve_discovery_section(section, config_path).items():
             merged[field], sources[field] = value, source
     else:
         for cli_key, section_key in _FIELD_MAP.items():
@@ -1120,7 +1100,7 @@ def resolve_command_config(
         _apply_workspace_defaults(section_name, merged, sources, cfg)
     if section_name == "validation":
         merged["validation"], sources["validation"] = dict(section), "config.validation"
-    if section_name in ("extraction", "compilation", "validation") and isinstance(
+    if section_name in {"extraction", "compilation", "validation"} and isinstance(
         cfg.get("discovery"), dict
     ):
         discovery = resolve_discovery_section(cfg["discovery"], config_path)
@@ -1131,15 +1111,13 @@ def resolve_command_config(
         merged["quote_field"] = cfg["validation"]["quote_field"]
         sources["quote_field"] = "config.validation.quote_field"
 
-    missing = [
-        name for name in _REQUIRED_FIELDS.get(section_name, ()) if not merged.get(name)
-    ]
+    missing = [name for name in _REQUIRED_FIELDS.get(section_name, ()) if not merged.get(name)]
     if missing:
         raise RuntimeConfigError(
             _missing_fields_message(section_name, missing, cfg.get("_config_path"))
         )
     validation = cfg.get("validation")
-    if validation and section_name in ("extraction", "validation"):
+    if validation and section_name in {"extraction", "validation"}:
         _check_validation_against_schema(cfg, validation)
 
     # Top-level model alias map is available to every command (process,

@@ -50,12 +50,10 @@ class BaseSeekerConnector(ABC):
         ValueError
             If the query is invalid.
         """
-        pass
 
     @abstractmethod
     def supports_provider(self, provider: str) -> bool:
         """Check if this connector supports the given provider name."""
-        pass
 
 
 @dataclass(slots=True)
@@ -126,9 +124,7 @@ class BaseDiggerConnector(ABC):
         -------
             Normalized digger artifacts and the sources left incomplete.
         """
-        pass
 
     @abstractmethod
     def supports_provider(self, provider: str) -> bool:
         """Check if this connector supports the given provider name."""
-        pass

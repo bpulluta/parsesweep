@@ -130,10 +130,7 @@ class _BaseLocator:
             message = "Locator keywords must be a list of strings"
             raise ValueError(message)
         self._keywords = [
-            k.lower()
-            for k in (
-                self._derive_keywords() if keywords is None else keywords
-            )
+            k.lower() for k in (self._derive_keywords() if keywords is None else keywords)
         ]
         self._client: Any = None
         self.incomplete = False
@@ -183,9 +180,7 @@ class _BaseLocator:
 
     def _dense_indices(self, texts) -> list[int]:
         lowered = (text.lower() for text in texts)
-        scores = [
-            sum(text.count(kw) for kw in self._keywords) for text in lowered
-        ]
+        scores = [sum(text.count(kw) for kw in self._keywords) for text in lowered]
         threshold = max(1, int(0.4 * max(scores, default=0)))
         return [i for i, score in enumerate(scores) if score >= threshold]
 
@@ -214,12 +209,8 @@ class _BaseLocator:
             },
         }
         if isinstance(self, PageLocator):
-            settings.update(
-                max_pages=self._max_pages, context_pages=self._context
-            )
-        return hashlib.sha256(
-            json.dumps(settings, sort_keys=True).encode()
-        ).hexdigest()
+            settings.update(max_pages=self._max_pages, context_pages=self._context)
+        return hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()
 
     def _cache_metadata(self, file_path: Path) -> dict:
         stat = file_path.stat()
@@ -242,7 +233,7 @@ class _BaseLocator:
                 stack.enter_context(staged_file(destination, content))
                 for destination, content in entries
             ]
-            for temporary, (destination, _) in zip(staged, entries):
+            for temporary, (destination, _) in zip(staged, entries, strict=True):
                 temporary.replace(destination)
 
 
@@ -293,9 +284,7 @@ class PageLocator(_BaseLocator):
 
     # -- LLM confirmation --------------------------------------------------
 
-    def _confirm_with_llm(
-        self, pages: list[str], candidates: list[int]
-    ) -> tuple[int, int] | None:
+    def _confirm_with_llm(self, pages: list[str], candidates: list[int]) -> tuple[int, int] | None:
         """Ask the LLM for the contiguous 1-indexed range over candidate pages."""
         index_lines = []
         for idx in candidates:
@@ -322,7 +311,7 @@ class PageLocator(_BaseLocator):
         except APIKeyError:
             raise
         except Exception as exc:  # noqa: BLE001 - fall back to no targeting
-            logger.debug(f"Page locator LLM call failed: {exc}")
+            logger.debug("Page locator LLM call failed: %s", exc)
             return None
 
         data = result.get("data") if isinstance(result, dict) else None
@@ -395,18 +384,12 @@ class PageLocator(_BaseLocator):
                 ]
             )
         except (OSError, TypeError, ValueError):
-            logger.debug(
-                "Page cache write failed for %s", pdf_path, exc_info=True
-            )
+            logger.debug("Page cache write failed for %s", pdf_path, exc_info=True)
 
     def locate_cached(self, pdf_path: str | Path) -> tuple[int, int] | None:
         """Return a verified range without parsing or client setup."""
         pdf_path = Path(pdf_path)
-        return (
-            self._read_cache(pdf_path)
-            if pdf_path.suffix.lower() == ".pdf"
-            else None
-        )
+        return self._read_cache(pdf_path) if pdf_path.suffix.lower() == ".pdf" else None
 
     # -- entry point -------------------------------------------------------
 
@@ -420,7 +403,7 @@ class PageLocator(_BaseLocator):
             return None
         cached = self.locate_cached(pdf_path)
         if cached is not None:
-            logger.debug(f"Page targeting cache hit for {pdf_path.name}")
+            logger.debug("Page targeting cache hit for %s", pdf_path.name)
             return cached
 
         if pages is None:
@@ -434,9 +417,7 @@ class PageLocator(_BaseLocator):
 
         candidates = self._candidate_pages(pages)
         if not candidates:
-            logger.debug(
-                f"Page targeting: no candidate pages for {pdf_path.name}"
-            )
+            logger.debug("Page targeting: no candidate pages for %s", pdf_path.name)
             return None
 
         rng = self._confirm_with_llm(pages, candidates)

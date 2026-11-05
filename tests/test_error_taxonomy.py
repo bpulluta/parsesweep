@@ -31,7 +31,10 @@ def test_build_error_record_marks_retryable_timeout() -> None:
 
 def test_build_error_record_classifies_context_window_exceeded() -> None:
     error = build_error_record(
-        RuntimeError("context_window_exceeded: estimated request size 353161 prompt chars exceeds model budget"),
+        RuntimeError(
+            "context_window_exceeded: estimated request size 353161 prompt chars "
+            "exceeds model budget"
+        ),
         stage="extract",
         document_path="documents/tariffs/PSCo_Electric_Entire_Tariff.pdf",
         model="gpt-4.1-mini",
@@ -71,9 +74,10 @@ def test_summarize_error_records_aggregates_by_category_and_code() -> None:
         "unexpected_processing_error": 1,
     }
 
+
 def test_error_taxonomy_has_one_retry_classifier() -> None:
     import psweep.utils.error_taxonomy as taxonomy
-    import psweep.utils.retry as retry
+    from psweep.utils import retry
 
     assert not hasattr(taxonomy, "_is_retryable")
     assert not hasattr(retry, "error_record")

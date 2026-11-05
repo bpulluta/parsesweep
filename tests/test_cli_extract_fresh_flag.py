@@ -24,9 +24,7 @@ def controlled_provider(monkeypatch):
         }
     )
     monkeypatch.setattr("psweep.utils.config._global_config", config)
-    monkeypatch.setattr(
-        "psweep.cli.commands_extract.load_dotenv", lambda: None
-    )
+    monkeypatch.setattr("psweep.cli.commands_extract.load_dotenv", lambda: None)
     provider = Mock(
         return_value={
             "data": {
@@ -36,9 +34,7 @@ def controlled_provider(monkeypatch):
             "cost": 0.0,
         }
     )
-    monkeypatch.setattr(
-        "psweep.extraction.llm_client.LLMClient.extract", provider
-    )
+    monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", provider)
     return provider
 
 
@@ -63,10 +59,7 @@ def test_extract_help_exposes_fresh_flag() -> None:
     assert result.exit_code == 0
     flat = " ".join(result.output.split())
     assert "--fresh" in flat
-    fresh_contract = (
-        "Reset the entire resolved extraction output "
-        "after successful preflight"
-    )
+    fresh_contract = "Reset the entire resolved extraction output after successful preflight"
     assert fresh_contract in flat
     assert "re-extract the selected documents" in flat
     assert ".text" in flat
@@ -95,15 +88,11 @@ def test_extract_default_reuses_verified_output(
     assert second.exit_code == 0, second.output
     controlled_provider.assert_not_called()
     assert (output / "doc1.json").read_bytes() == original
-    manifest = json.loads(
-        Path(second.output.strip()).read_text(encoding="utf-8")
-    )
+    manifest = json.loads(Path(second.output.strip()).read_text(encoding="utf-8"))
     assert manifest["status"]["result"] == "reused"
 
 
-@pytest.mark.parametrize(
-    "invalid_evidence", ["empty_record", "missing_manifest", "wrong_digest"]
-)
+@pytest.mark.parametrize("invalid_evidence", ["empty_record", "missing_manifest", "wrong_digest"])
 def test_extract_does_not_reuse_unverified_output(
     tmp_path: Path,
     schema_path: Path,
@@ -124,9 +113,7 @@ def test_extract_does_not_reuse_unverified_output(
         manifest_path.unlink()
     else:
         manifest = json.loads(manifest_path.read_text())
-        manifest["reuse"][str(output / "doc1.json")]["record_sha256"] = (
-            "0" * 64
-        )
+        manifest["reuse"][str(output / "doc1.json")]["record_sha256"] = "0" * 64
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     controlled_provider.reset_mock()
@@ -205,9 +192,7 @@ def test_extract_invalid_fresh_preserves_prior_output(
     first = _extract(docs, schema_path, output)
     assert first.exit_code == 0, first.output
     prior = {
-        path.relative_to(output): path.read_bytes()
-        for path in output.rglob("*")
-        if path.is_file()
+        path.relative_to(output): path.read_bytes() for path in output.rglob("*") if path.is_file()
     }
     flags = ["--fresh"]
     if invalid == "missing_input":
@@ -220,7 +205,5 @@ def test_extract_invalid_fresh_preserves_prior_output(
     assert result.exit_code != 0, result.output
     controlled_provider.assert_not_called()
     assert {
-        path.relative_to(output): path.read_bytes()
-        for path in output.rglob("*")
-        if path.is_file()
+        path.relative_to(output): path.read_bytes() for path in output.rglob("*") if path.is_file()
     } == prior

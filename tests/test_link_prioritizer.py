@@ -18,9 +18,8 @@ from discovery_helpers import make_candidate
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _candidate(
-    url: str, reasons: list[str] | None = None, **extra: object
-) -> DiscoveryCandidate:
+
+def _candidate(url: str, reasons: list[str] | None = None, **extra: object) -> DiscoveryCandidate:
     # Prioritizer tests assume a non-default baseline score.
     return make_candidate(
         url,
@@ -61,9 +60,7 @@ class TestFileTypeScoring:
             domain_authority_overrides={".gov": 0.15},
             top_k=None,
         )
-        _, lineage = p.prioritize([
-            _candidate("https://example.gov/a.pdf", title="Sensor")
-        ])
+        _, lineage = p.prioritize([_candidate("https://example.gov/a.pdf", title="Sensor")])
         score = lineage[0]["priority_score"]
         assert score["file_type_score"] == 0.40
         assert score["domain_authority_score"] == 0.15
@@ -108,9 +105,7 @@ class TestDomainAuthorityScoring:
         assert lineage[1]["priority_score"]["domain_authority_score"] == -0.15
 
     def test_configured_gov_domain_scores_positive(self):
-        p = _prioritizer(
-            domain_authority_overrides={".gov": 0.15}, top_k=None
-        )
+        p = _prioritizer(domain_authority_overrides={".gov": 0.15}, top_k=None)
         gov = _candidate("https://chaffeecounty.gov/ordinances/53007.pdf")
         ranked, lineage = p.prioritize([gov])
         assert ranked[0].score.trust_signal == pytest.approx(0.475)
@@ -141,9 +136,18 @@ class TestDomainAuthorityScoring:
     @pytest.mark.parametrize(
         "host",
         [
-            "county.gov", "college.edu", "ebay.com", "amazon.com",
-            "etsy.com", "aliexpress.com", "reddit.com", "quora.com",
-            "answers.com", "pinterest.com", "slideshare.net", "generac.com",
+            "county.gov",
+            "college.edu",
+            "ebay.com",
+            "amazon.com",
+            "etsy.com",
+            "aliexpress.com",
+            "reddit.com",
+            "quora.com",
+            "answers.com",
+            "pinterest.com",
+            "slideshare.net",
+            "generac.com",
         ],
     )
     def test_unconfigured_hosts_have_no_authority_adjustment(self, host):
@@ -165,12 +169,8 @@ class TestDomainAuthorityScoring:
             ("https://evil.test/example.com/spec.pdf", 0.0),
         ],
     )
-    def test_host_patterns_match_only_exact_host_or_subdomain(
-        self, url, expected
-    ):
-        p = _prioritizer(
-            domain_authority_overrides={"example.com": 0.2}, top_k=None
-        )
+    def test_host_patterns_match_only_exact_host_or_subdomain(self, url, expected):
+        p = _prioritizer(domain_authority_overrides={"example.com": 0.2}, top_k=None)
         _, lineage = p.prioritize([_candidate(url)])
         authority = lineage[0]["priority_score"]["domain_authority_score"]
         assert authority == expected
@@ -188,20 +188,14 @@ class TestDomainAuthorityScoring:
             ("https://evil.test/spec.pdf?host=county.gov", 0.0),
         ],
     )
-    def test_leading_dot_patterns_match_safe_hostname_suffixes(
-        self, url, expected
-    ):
-        p = _prioritizer(
-            domain_authority_overrides={".gov": 0.15, ".edu": 0.1}, top_k=None
-        )
+    def test_leading_dot_patterns_match_safe_hostname_suffixes(self, url, expected):
+        p = _prioritizer(domain_authority_overrides={".gov": 0.15, ".edu": 0.1}, top_k=None)
         _, lineage = p.prioritize([_candidate(url)])
         authority = lineage[0]["priority_score"]["domain_authority_score"]
         assert authority == expected
 
     def test_unrelated_host_has_no_configured_authority_boost(self):
-        p = _prioritizer(
-            domain_authority_overrides={"example.com": 0.2}, top_k=None
-        )
+        p = _prioritizer(domain_authority_overrides={"example.com": 0.2}, top_k=None)
         _, lineage = p.prioritize([_candidate("https://elsewhere.gov/spec.pdf")])
         assert lineage[0]["priority_score"]["domain_authority_score"] == 0.0
 
@@ -267,9 +261,7 @@ class TestKeywordScoring:
         )
         ranked, lineage = p.prioritize([plain, query_reason])
         assert [c.url for c in ranked] == [plain.url, query_reason.url]
-        assert all(
-            e["priority_score"]["keyword_score"] == 0.0 for e in lineage
-        )
+        assert all(e["priority_score"]["keyword_score"] == 0.0 for e in lineage)
         assert query_reason.reasons[0] in ranked[1].reasons
 
     def test_configured_keywords_do_not_merge_generic_fallback(self):
@@ -282,17 +274,15 @@ class TestKeywordScoring:
 
     def test_reason_only_file_type_hint_does_not_boost_candidate(self):
         p = _prioritizer(top_k=None)
-        _, lineage = p.prioritize([
-            _candidate("https://example.com/a", reasons=["query: pdf manual"])
-        ])
+        _, lineage = p.prioritize(
+            [_candidate("https://example.com/a", reasons=["query: pdf manual"])]
+        )
         assert lineage[0]["priority_score"]["file_type_score"] == 0.0
 
     @pytest.mark.parametrize("field", ["title", "snippet"])
     def test_source_file_type_hint_boosts_candidate(self, field):
         p = _prioritizer(top_k=None)
-        _, lineage = p.prioritize([
-            _candidate("https://example.com/a", **{field: "PDF copy"})
-        ])
+        _, lineage = p.prioritize([_candidate("https://example.com/a", **{field: "PDF copy"})])
         assert lineage[0]["priority_score"]["file_type_score"] == 0.40
 
 
@@ -307,13 +297,13 @@ class TestTopKAndLineage:
     def test_top_k_returns_only_k_candidates(self):
         p = _prioritizer(top_k=3)
         candidates = [_candidate(f"https://example.com/doc{i}.pdf") for i in range(10)]
-        ranked, lineage = p.prioritize(candidates)
+        ranked, _lineage = p.prioritize(candidates)
         assert len(ranked) == 3
 
     def test_lineage_contains_all_original_candidates(self):
         p = _prioritizer(top_k=2)
         candidates = [_candidate(f"https://example.com/doc{i}.pdf") for i in range(5)]
-        ranked, lineage = p.prioritize(candidates)
+        _ranked, lineage = p.prioritize(candidates)
         assert len(lineage) == 5
 
     def test_lineage_preserves_original_rank(self):
@@ -325,7 +315,7 @@ class TestTopKAndLineage:
 
     def test_lineage_contains_priority_score_dict(self):
         p = _prioritizer(top_k=None)
-        ranked, lineage = p.prioritize([_candidate("https://example.com/spec.pdf")])
+        _ranked, lineage = p.prioritize([_candidate("https://example.com/spec.pdf")])
         assert "priority_score" in lineage[0]
         assert "confidence" in lineage[0]["priority_score"]
 
@@ -349,9 +339,7 @@ class TestTopKAndLineage:
         docx = _candidate("https://example.com/report.docx")
         pdf = _candidate("https://example.com/manual.pdf")
         ranked, lineage = p.prioritize([html, pdf, docx])
-        confidences = [
-            entry["priority_score"]["confidence"] for entry in lineage
-        ]
+        confidences = [entry["priority_score"]["confidence"] for entry in lineage]
         assert confidences == sorted(confidences, reverse=True)
         urls = [c.url for c in ranked]
         assert urls.index(pdf.url) < urls.index(html.url)
@@ -440,6 +428,7 @@ class TestGeneratorDomainScenario:
         top5_urls = [c.url for c in ranked]
         for url in top5_urls:
             from urllib.parse import urlparse
+
             netloc = urlparse(url).netloc.lower()
             assert not any(s in netloc for s in shopping_or_forums), (
                 f"Shopping/forum URL {url} appeared in top-5"
@@ -448,8 +437,9 @@ class TestGeneratorDomainScenario:
     def test_runtime_under_1_second(self):
         """Prioritisation of 30 candidates should complete in under 1 second."""
         import time
+
         p = _prioritizer(top_k=5)
-        candidates = [_candidate(url) for url in (self._CANDIDATES * 3)[: 30]]
+        candidates = [_candidate(url) for url in (self._CANDIDATES * 3)[:30]]
         start = time.monotonic()
         p.prioritize(candidates)
         elapsed = time.monotonic() - start
@@ -464,9 +454,7 @@ class TestGeneratorDomainScenario:
 class TestShoppingPathKeywords:
     """Only configured, boundary-matched shopping path terms penalise URLs."""
 
-    @pytest.mark.parametrize(
-        "path", ["checkout/item", "shop/item", "wishlist/item"]
-    )
+    @pytest.mark.parametrize("path", ["checkout/item", "shop/item", "wishlist/item"])
     def test_shopping_paths_not_penalised_by_default(self, path):
         p = _prioritizer(top_k=None)
         ranked, lineage = p.prioritize([_candidate(f"https://example.com/{path}")])
@@ -475,19 +463,13 @@ class TestShoppingPathKeywords:
 
     def test_configured_keyword_penalised(self):
         p = _prioritizer(top_k=None, shopping_path_keywords=["wishlist"])
-        ranked, lineage = p.prioritize(
-            [_candidate("https://example.com/wishlist/item")]
-        )
-        assert any(
-            "shopping_path_keyword=wishlist" in r for r in ranked[0].reasons
-        )
+        ranked, lineage = p.prioritize([_candidate("https://example.com/wishlist/item")])
+        assert any("shopping_path_keyword=wishlist" in r for r in ranked[0].reasons)
         assert lineage[0]["priority_score"]["file_type_score"] == -0.10
 
     def test_custom_list_does_not_add_implicit_keywords(self):
         p = _prioritizer(top_k=None, shopping_path_keywords=["wishlist"])
-        ranked, lineage = p.prioritize(
-            [_candidate("https://example.com/checkout/item")]
-        )
+        ranked, lineage = p.prioritize([_candidate("https://example.com/checkout/item")])
         assert not any("shopping_path_keyword" in r for r in ranked[0].reasons)
         assert lineage[0]["priority_score"]["file_type_score"] == 0.0
 
@@ -506,22 +488,20 @@ class TestShoppingPathKeywords:
             ("https://example.com/item#shop", 0.0),
         ],
     )
-    def test_path_token_boundaries_prevent_shopping_false_positives(
-        self, url, expected
-    ):
+    def test_path_token_boundaries_prevent_shopping_false_positives(self, url, expected):
         p = _prioritizer(top_k=None, shopping_path_keywords=["shop"])
         _, lineage = p.prioritize([_candidate(url)])
         assert lineage[0]["priority_score"]["file_type_score"] == expected
 
     def test_multi_token_path_keyword_is_matched_literally(self):
         p = _prioritizer(top_k=None, shopping_path_keywords=["add-to-cart"])
-        _, lineage = p.prioritize([
-            _candidate("https://example.com/add-to-cart/item"),
-            _candidate("https://example.com/notadd-to-cartoon/item"),
-        ])
-        scores = {
-            e["url"]: e["priority_score"]["file_type_score"] for e in lineage
-        }
+        _, lineage = p.prioritize(
+            [
+                _candidate("https://example.com/add-to-cart/item"),
+                _candidate("https://example.com/notadd-to-cartoon/item"),
+            ]
+        )
+        scores = {e["url"]: e["priority_score"]["file_type_score"] for e in lineage}
         assert scores["https://example.com/add-to-cart/item"] == -0.10
         assert scores["https://example.com/notadd-to-cartoon/item"] == 0.0
 

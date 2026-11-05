@@ -56,9 +56,7 @@ def reviewed_inputs(tmp_path, monkeypatch):
             "output_tokens": 4,
         }
     )
-    monkeypatch.setattr(
-        "psweep.extraction.llm_client.LLMClient.extract", provider
-    )
+    monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", provider)
     inputs = {
         "path": str(source),
         "schema": str(schema),
@@ -68,9 +66,7 @@ def reviewed_inputs(tmp_path, monkeypatch):
     return inputs, provider
 
 
-def test_record_contract_does_not_depend_on_repository_path(
-    monkeypatch, tmp_path
-):
+def test_record_contract_does_not_depend_on_repository_path(monkeypatch, tmp_path):
     """Validate installed records away from a source checkout."""
     schema_utils.record_validator.cache_clear()
     monkeypatch.setattr(
@@ -80,10 +76,7 @@ def test_record_contract_does_not_depend_on_repository_path(
     )
     try:
         validator = schema_utils.record_validator()
-        assert (
-            validator.schema["properties"]["contract_version"]["const"]
-            == "1.1.0"
-        )
+        assert validator.schema["properties"]["contract_version"]["const"] == "1.1.0"
     finally:
         schema_utils.record_validator.cache_clear()
 
@@ -128,9 +121,7 @@ def test_invalid_locator_keywords_preserve_fresh_output(reviewed_inputs):
     provider.assert_not_called()
 
 
-def test_project_relative_page_mapping_is_preserved(
-    reviewed_inputs, monkeypatch
-):
+def test_project_relative_page_mapping_is_preserved(reviewed_inputs, monkeypatch):
     """Preserve CSV paths relative to the current directory."""
     inputs, _provider = reviewed_inputs
     root = Path(inputs["path"]).parent
@@ -149,9 +140,7 @@ def test_project_relative_page_mapping_is_preserved(
 
 
 @pytest.mark.parametrize("kind", ["manual", "unsupported", "cached", "small"])
-def test_locator_credentials_required_only_for_actual_calls(
-    reviewed_inputs, monkeypatch, kind
-):
+def test_locator_credentials_required_only_for_actual_calls(reviewed_inputs, monkeypatch, kind):
     """Skip locator credentials when no provider call is needed."""
 
     inputs, provider = reviewed_inputs
@@ -198,9 +187,7 @@ def test_locator_credentials_required_only_for_actual_calls(
     provider.assert_called_once()
 
 
-def test_locator_routing_change_invalidates_record_reuse(
-    reviewed_inputs, monkeypatch
-):
+def test_locator_routing_change_invalidates_record_reuse(reviewed_inputs, monkeypatch):
     """Bind targeted reuse to effective locator routing."""
 
     inputs, provider = reviewed_inputs
@@ -211,25 +198,19 @@ def test_locator_routing_change_invalidates_record_reuse(
         "trigger_chars": 1000,
     }
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "fixture")
-    monkeypatch.setenv(
-        "AZURE_OPENAI_ENDPOINT", "https://first.openai.azure.com"
-    )
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://first.openai.azure.com")
     monkeypatch.setattr(
         pipeline,
         "_target_extraction_inputs",
         lambda plan: (plan["ranges"], {}, []),
     )
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-    monkeypatch.setenv(
-        "AZURE_OPENAI_ENDPOINT", "https://second.openai.azure.com"
-    )
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://second.openai.azure.com")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 2
 
 
-def test_skipped_ocr_pages_survive_record_and_do_not_reuse(
-    reviewed_inputs, monkeypatch
-):
+def test_skipped_ocr_pages_survive_record_and_do_not_reuse(reviewed_inputs, monkeypatch):
     """Keep missing OCR pages visible and ineligible for reuse."""
     inputs, provider = reviewed_inputs
     root = Path(inputs["path"])
@@ -247,9 +228,7 @@ def test_skipped_ocr_pages_survive_record_and_do_not_reuse(
         ),
     )
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-    record = json.loads(
-        (Path(inputs["output"]) / "doc.json").read_text(encoding="utf-8")
-    )
+    record = json.loads((Path(inputs["output"]) / "doc.json").read_text(encoding="utf-8"))
     coverage = record["processing_metrics"]["coverage"]
     assert coverage["page_count"] == 3
     assert coverage["extracted_pages"] == [1, 3]
@@ -262,9 +241,7 @@ def test_skipped_ocr_pages_survive_record_and_do_not_reuse(
     assert provider.call_count == 2
 
 
-def test_needed_locator_key_fails_before_fresh_reset(
-    reviewed_inputs, monkeypatch
-):
+def test_needed_locator_key_fails_before_fresh_reset(reviewed_inputs, monkeypatch):
     """Preserve output when a required locator has no credentials."""
     inputs, provider = reviewed_inputs
     source = Path(inputs["path"]) / "doc.txt"
@@ -311,13 +288,9 @@ def test_replaced_authoritative_text_invalidates_reuse(reviewed_inputs):
 
     inputs, provider = reviewed_inputs
     document = Path(inputs["path"]) / "doc.txt"
-    write_text_cache(
-        document, "Original rendered source", method="browser_render"
-    )
+    write_text_cache(document, "Original rendered source", method="browser_render")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-    write_text_cache(
-        document, "Changed rendered source", method="browser_render"
-    )
+    write_text_cache(document, "Changed rendered source", method="browser_render")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 2
 
@@ -376,9 +349,7 @@ def test_reserved_record_partitions_fail_preflight(reviewed_inputs, reserved):
     provider.assert_not_called()
 
 
-def test_derived_raw_ocr_cache_does_not_invalidate_reuse(
-    reviewed_inputs, monkeypatch
-):
+def test_derived_raw_ocr_cache_does_not_invalidate_reuse(reviewed_inputs, monkeypatch):
     """Reuse unchanged inputs after parsing populates derived OCR."""
 
     inputs, provider = reviewed_inputs
@@ -388,9 +359,7 @@ def test_derived_raw_ocr_cache_does_not_invalidate_reuse(
         write_text_cache(document, "raw OCR evidence", method="ocr")
         return "raw OCR evidence"
 
-    monkeypatch.setattr(
-        "psweep.extraction.document_utils.extract_text_from_document", parse
-    )
+    monkeypatch.setattr("psweep.extraction.document_utils.extract_text_from_document", parse)
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 1
@@ -450,8 +419,6 @@ def test_composed_main_array_schema_is_supported(reviewed_inputs, composition):
     inputs, _provider = reviewed_inputs
     path = Path(inputs["schema"])
     schema = json.loads(path.read_text(encoding="utf-8"))
-    schema["properties"]["items"] = {
-        composition: [{"type": "array", "items": {"type": "object"}}]
-    }
+    schema["properties"]["items"] = {composition: [{"type": "array", "items": {"type": "object"}}]}
     path.write_text(json.dumps(schema), encoding="utf-8")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0

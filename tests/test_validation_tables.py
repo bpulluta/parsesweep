@@ -237,7 +237,7 @@ def s2_setup(labels=S2_LABELS, order=None):
     sources = [source("primary", "primary"), *(source(label) for label in labels[1:])]
     clusters = []
     for target in order or S2:
-        values = dict(zip(S2_LABELS, S2[target]))
+        values = dict(zip(S2_LABELS, S2[target], strict=True))
         rows = {
             label: {
                 "x": (str(values[label]), f"quote says {values[label]}")
@@ -297,7 +297,7 @@ def test_s2_consensus_judge_support_agreement_and_priority(tmp_path):
     assert len(agreement) == 10
     priorities = {row["ID"]: row["review_priority"] for row in cells}
     assert priorities == {"t1": "low", "t2": "low", "t3": "high", "t4": "low"}
-    assert [row["ID"] for row in cells][0] == "t3"
+    assert next(row["ID"] for row in cells) == "t3"
     t2 = next(row for row in cells if row["ID"] == "t2")
     assert t2["judge_groups"] == "primary,a,b,d | c"
     assert (t2["primary_support"], t2["c_support"]) == ("supported", "unsupported")
@@ -353,8 +353,10 @@ def s1_setup():
         cluster(
             (t,),
             {
-                "primary": {f: (p, "quote") if p else None for f, (p, _) in zip(fields, pairs)},
-                "ahj": {f: r for f, (_, r) in zip(fields, pairs)},
+                "primary": {
+                    f: (p, "quote") if p else None for f, (p, _) in zip(fields, pairs, strict=True)
+                },
+                "ahj": {f: r for f, (_, r) in zip(fields, pairs, strict=True)},
             },
             in_scope=("ahj",),
         )
@@ -746,7 +748,7 @@ def gate_setup(primary_values, ref_values):
             {"primary": {"x": (p, f"q{p}") if p else None}, "ex": {"x": r}},
             in_scope=("ex",),
         )
-        for i, (p, r) in enumerate(zip(primary_values, ref_values))
+        for i, (p, r) in enumerate(zip(primary_values, ref_values, strict=True))
     ]
     return sources, clusters
 
@@ -805,7 +807,7 @@ def test_accuracy_sample_interval(tmp_path):
     clusters = [
         cluster(
             (f"t{i}",),
-            {"primary": {f: v[0] for f in "xyz"}, "blind_3": {f: v[1] for f in "xyz"}},
+            {"primary": dict.fromkeys("xyz", v[0]), "blind_3": dict.fromkeys("xyz", v[1])},
             in_scope=("blind_3",),
         )
         for i, v in enumerate(values)
@@ -823,7 +825,7 @@ def test_outputs_deterministic_under_random_cluster_order(tmp_path):
     outputs = []
     for n in range(3):
         shuffled = clusters[:]
-        random.Random(n).shuffle(shuffled)
+        random.Random(n).shuffle(shuffled)  # noqa: S311 - deterministic test ordering
         run(
             tmp_path,
             shuffled,

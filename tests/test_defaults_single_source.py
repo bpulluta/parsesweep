@@ -41,9 +41,7 @@ def test_policy_constant_values():
 
 def test_discovery_request_defaults_match_constants():
     """DiscoveryRequest field defaults come from the shared constants."""
-    field_defaults = {
-        f.name: f.default for f in dataclasses.fields(DiscoveryRequest)
-    }
+    field_defaults = {f.name: f.default for f in dataclasses.fields(DiscoveryRequest)}
     assert field_defaults["robots_policy_mode"] == DEFAULT_ROBOTS_POLICY_MODE
     assert field_defaults["tos_policy_mode"] == DEFAULT_TOS_POLICY_MODE
 

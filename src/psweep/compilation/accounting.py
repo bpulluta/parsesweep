@@ -15,14 +15,14 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from psweep.workspace import Workspace
 
 
-def _omit_none(d: Dict[str, Any]) -> Dict[str, Any]:
+def _omit_none(d: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of *d* with all keys whose value is None removed (one level)."""
     return {k: v for k, v in d.items() if v is not None}
 
@@ -46,7 +46,7 @@ def _has_any_files(path: Path) -> bool:
     return any(p.is_file() for p in path.rglob("*"))
 
 
-def collect_discovery_manifests(domain: str) -> List[Path]:
+def collect_discovery_manifests(domain: str) -> list[Path]:
     """Discovery run manifests for *domain* plus the ``latest`` pointer, sorted by path."""
     workspace = Workspace(domain)
     manifests = list((workspace.discovered / "runs").glob("*/manifest.json"))
@@ -67,8 +67,8 @@ def build_pipeline_accounting(
     domain: str,
     extraction_dir: Path,
     output_dir: Path,
-    compilation_stats: Dict[str, Any],
-) -> Dict[str, Any]:
+    compilation_stats: dict[str, Any],
+) -> dict[str, Any]:
     """Build run_accounting.json: a factual, cumulative log of discover, extract and compile.
 
     Histories accumulate across immutable run manifests (discovery runs, plus
@@ -76,27 +76,27 @@ def build_pipeline_accounting(
     extraction LLM costs sum into ``summary.total_cost_usd``; compilation makes no
     LLM calls and records output stats only; flat-rate search APIs count queries only.
     """
-    warnings: List[str] = []
+    warnings: list[str] = []
 
     # Accumulators — built up as stages are processed, then frozen into summary.
     total_llm_cost: float = 0.0
     total_llm_calls: int = 0
     total_tokens: int = 0
     total_search_queries: int = 0
-    search_api_provider: Optional[str] = None
+    search_api_provider: str | None = None
     total_docs_extracted: int = 0
     total_extraction_runs: int = 0
     extraction_cost_total: float = 0.0
-    discovery_completed_at: Optional[str] = None
-    earliest_extraction_completed_at: Optional[str] = None
+    discovery_completed_at: str | None = None
+    earliest_extraction_completed_at: str | None = None
 
-    stages: Dict[str, Any] = {}
+    stages: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # Discovery stage (cumulative across all discovery run manifests)
     # ------------------------------------------------------------------
-    discovery_runs: List[Dict[str, Any]] = []
-    discovery_cost_acc: List[float] = []
+    discovery_runs: list[dict[str, Any]] = []
+    discovery_cost_acc: list[float] = []
     discovery_input_tokens = 0
     discovery_output_tokens = 0
     discovery_llm_calls = 0
@@ -114,7 +114,9 @@ def build_pipeline_accounting(
         try:
             disc = json.loads(manifest_candidate.read_text(encoding="utf-8"))
             if not isinstance(disc, dict):
-                raise ValueError("Discovery manifest is not a JSON object")
+                raise ValueError(  # noqa: TRY004 - callers handle ValueError
+                    "Discovery manifest is not a JSON object"
+                )
 
             run_id = str(disc.get("run_id") or manifest_candidate.parent.name)
             if run_id in discovered_run_ids_seen:
@@ -139,11 +141,7 @@ def build_pipeline_accounting(
             rev_cost = _round_cost(float(review_costs.get("total_cost_usd") or 0.0))
             rev_input_tokens = int(review_costs.get("total_input_tokens") or 0)
             rev_output_tokens = int(review_costs.get("total_output_tokens") or 0)
-            rev_calls = int(
-                review_costs.get("model_calls")
-                or review_costs.get("llm_calls")
-                or 0
-            )
+            rev_calls = int(review_costs.get("model_calls") or review_costs.get("llm_calls") or 0)
             rev_total_tokens = rev_input_tokens + rev_output_tokens
             rev_reviewed = int(review_costs.get("documents_reviewed") or rev_calls or 0)
 
@@ -158,9 +156,7 @@ def build_pipeline_accounting(
                     targets_total = len(inp_targets)
 
             dl_downloaded_raw = downloads_raw.get("downloaded")
-            dl_downloaded = (
-                int(dl_downloaded_raw) if dl_downloaded_raw is not None else 0
-            )
+            dl_downloaded = int(dl_downloaded_raw) if dl_downloaded_raw is not None else 0
             dl_failed_raw = downloads_raw.get("failed")
             dl_failed = int(dl_failed_raw) if dl_failed_raw is not None else 0
             dl_total_raw = downloads_raw.get("total")
@@ -186,9 +182,7 @@ def build_pipeline_accounting(
             is_reused = (not has_activity) and has_reuse_evidence and not source_is_dry_run
 
             if source_is_dry_run:
-                user_status = (
-                    "dry_run_with_errors" if disc_error_total else "dry_run"
-                )
+                user_status = "dry_run_with_errors" if disc_error_total else "dry_run"
             elif source_status == "empty":
                 user_status = "empty"
             elif source_status == "reused" or is_reused:
@@ -200,11 +194,11 @@ def build_pipeline_accounting(
             else:
                 user_status = "completed"
 
-            run_payload: Dict[str, Any] = {
+            run_payload: dict[str, Any] = {
                 "run_id": run_id,
                 "status": user_status,
                 "completed_at": run_completed_at,
-                "elapsed_seconds": run_elapsed if run_elapsed else None,
+                "elapsed_seconds": run_elapsed or None,
                 "manifest_path": canonical_discovery_manifest_path(
                     domain, manifest_candidate, run_id
                 ),
@@ -216,29 +210,29 @@ def build_pipeline_accounting(
                 run_payload["search_api"] = _omit_none(
                     {
                         "provider": seeker_provider,
-                        "queries_used": seeker_queries if seeker_queries else None,
-                        "candidates_discovered": seeker_candidates if seeker_candidates else None,
+                        "queries_used": seeker_queries or None,
+                        "candidates_discovered": seeker_candidates or None,
                     }
                 )
 
             if rev_calls > 0 or rev_total_tokens > 0 or rev_reviewed > 0 or rev_cost > 0:
                 run_payload["document_review"] = _omit_none(
                     {
-                        "documents_reviewed": rev_reviewed if rev_reviewed else None,
-                        "llm_calls": rev_calls if rev_calls else None,
-                        "input_tokens": rev_input_tokens if rev_input_tokens else None,
-                        "output_tokens": rev_output_tokens if rev_output_tokens else None,
-                        "tokens": rev_total_tokens if rev_total_tokens else None,
-                        "cost_usd": rev_cost if rev_cost else None,
+                        "documents_reviewed": rev_reviewed or None,
+                        "llm_calls": rev_calls or None,
+                        "input_tokens": rev_input_tokens or None,
+                        "output_tokens": rev_output_tokens or None,
+                        "tokens": rev_total_tokens or None,
+                        "cost_usd": rev_cost or None,
                     }
                 )
 
             if dl_downloaded > 0 or dl_failed > 0 or dl_total > 0:
                 run_payload["downloads"] = _omit_none(
                     {
-                        "downloaded": dl_downloaded if dl_downloaded else None,
-                        "failed": dl_failed if dl_failed else None,
-                        "total": dl_total if dl_total else None,
+                        "downloaded": dl_downloaded or None,
+                        "failed": dl_failed or None,
+                        "total": dl_total or None,
                         "total_mb": dl_mb,
                     }
                 )
@@ -252,7 +246,8 @@ def build_pipeline_accounting(
                             e.get("message")
                             for e in disc_errors_list[:3]
                             if isinstance(e, dict) and e.get("message")
-                        ] or None,
+                        ]
+                        or None,
                     }
                 )
 
@@ -271,9 +266,7 @@ def build_pipeline_accounting(
                 discovery_providers.add(str(seeker_provider))
 
         except (json.JSONDecodeError, ValueError, OSError, KeyError) as exc:
-            warnings.append(
-                f"discovery_manifest_parse_error: {manifest_candidate} — {exc}"
-            )
+            warnings.append(f"discovery_manifest_parse_error: {manifest_candidate} — {exc}")
 
     if discovery_runs:
         discovery_runs.sort(key=lambda run: run.get("completed_at") or "")
@@ -286,12 +279,8 @@ def build_pipeline_accounting(
                 {
                     "metered_llm_cost_usd": _round_cost(math.fsum(discovery_cost_acc)),
                     "document_review_llm_calls": discovery_llm_calls or None,
-                    "document_review_input_tokens": (
-                        discovery_input_tokens if discovery_input_tokens else None
-                    ),
-                    "document_review_output_tokens": (
-                        discovery_output_tokens if discovery_output_tokens else None
-                    ),
+                    "document_review_input_tokens": (discovery_input_tokens or None),
+                    "document_review_output_tokens": (discovery_output_tokens or None),
                     "document_review_tokens": (
                         discovery_input_tokens + discovery_output_tokens
                         if (discovery_input_tokens + discovery_output_tokens) > 0
@@ -309,9 +298,7 @@ def build_pipeline_accounting(
             ),
             "runs": discovery_runs,
         }
-        total_llm_cost = _round_cost(
-            math.fsum([total_llm_cost, math.fsum(discovery_cost_acc)])
-        )
+        total_llm_cost = _round_cost(math.fsum([total_llm_cost, math.fsum(discovery_cost_acc)]))
         total_llm_calls += discovery_llm_calls
         total_tokens += discovery_input_tokens + discovery_output_tokens
         total_search_queries += discovery_queries
@@ -330,17 +317,15 @@ def build_pipeline_accounting(
     # Fallback: individual extraction record *.json files (legacy / no-config runs).
     run_manifest_dir = extraction_dir / "run_manifests"
     run_manifest_files = (
-        sorted(run_manifest_dir.glob("*.manifest.json"))
-        if run_manifest_dir.is_dir()
-        else []
+        sorted(run_manifest_dir.glob("*.manifest.json")) if run_manifest_dir.is_dir() else []
     )
 
     # Deduplicate manifests by run_id to prevent double-counting reruns.
     seen_run_ids: set[str] = set()
 
     if run_manifest_files:
-        runs_data: List[Dict[str, Any]] = []
-        ext_cost_acc: List[float] = []
+        runs_data: list[dict[str, Any]] = []
+        ext_cost_acc: list[float] = []
         ext_input_tokens = 0
         ext_output_tokens = 0
         ext_docs_billed = 0
@@ -349,7 +334,7 @@ def build_pipeline_accounting(
         providers: set[str] = set()
         models: set[str] = set()
         schema_ids: set[str] = set()
-        run_completed_ats: List[str] = []
+        run_completed_ats: list[str] = []
 
         for mf_path in run_manifest_files:
             try:
@@ -362,7 +347,9 @@ def build_pipeline_accounting(
 
             # Clean run_id: strip ".manifest" suffix left by mf_path.stem
             raw_stem = mf_path.stem  # e.g. "run_abc123.manifest"
-            clean_stem = raw_stem.removesuffix(".manifest") if raw_stem.endswith(".manifest") else raw_stem
+            clean_stem = (
+                raw_stem.removesuffix(".manifest") if raw_stem.endswith(".manifest") else raw_stem
+            )
             run_id = mf.get("run_id") or clean_stem
 
             if run_id in seen_run_ids:
@@ -384,15 +371,16 @@ def build_pipeline_accounting(
             # locators); a run that spent nothing names its extraction
             # model.
             run_models = sorted(
-                costs.get("models")
-                or ([lineage["model"]] if lineage.get("model") else [])
+                costs.get("models") or ([lineage["model"]] if lineage.get("model") else [])
             )
             run_provider = lineage.get("provider")
             run_schema = lineage.get("schema_id")
             run_completed = run_timing.get("finished_at") or run_timing.get("completed_at")
             run_started = run_timing.get("started_at")
             run_elapsed_raw = run_timing.get("elapsed_seconds")
-            run_elapsed = _round_secs(float(run_elapsed_raw)) if run_elapsed_raw is not None else None
+            run_elapsed = (
+                _round_secs(float(run_elapsed_raw)) if run_elapsed_raw is not None else None
+            )
 
             ext_cost_acc.append(run_cost)
             ext_input_tokens += run_input
@@ -408,19 +396,20 @@ def build_pipeline_accounting(
             if run_completed:
                 run_completed_ats.append(run_completed)
 
-            run_record: Dict[str, Any] = {
+            run_record: dict[str, Any] = {
                 "run_id": run_id,
                 "documents_billed": run_docs,
                 "llm_calls": run_calls,
                 "unknown_cost_calls": run_unknown,
                 "cost_usd": run_cost,
                 "zero_cost_reason": (
-                    "provider cost unknown for some calls" if run_unknown else
-                    None if run_cost > 0 else "provider reported zero billable cost"
+                    "provider cost unknown for some calls"
+                    if run_unknown
+                    else None
+                    if run_cost > 0
+                    else "provider reported zero billable cost"
                 ),
-                "cost_per_document_usd": (
-                    _round_cost(run_cost / run_docs) if run_docs else 0.0
-                ),
+                "cost_per_document_usd": (_round_cost(run_cost / run_docs) if run_docs else 0.0),
                 "input_tokens": run_input,
                 "output_tokens": run_output,
                 "tokens": run_input + run_output,
@@ -428,9 +417,7 @@ def build_pipeline_accounting(
             }
             # Add optional fields
             if run_models:
-                run_record["model"] = (
-                    run_models if len(run_models) > 1 else run_models[0]
-                )
+                run_record["model"] = run_models if len(run_models) > 1 else run_models[0]
             if run_provider:
                 run_record["provider"] = run_provider
             if run_schema:
@@ -453,7 +440,7 @@ def build_pipeline_accounting(
         if run_completed_ats:
             earliest_extraction_completed_at = min(run_completed_ats)
 
-        stage_payload: Dict[str, Any] = {
+        stage_payload: dict[str, Any] = {
             "status": "completed",
             "cost_model": "per_document_llm_extraction",
             "documents_billed": ext_docs_billed,
@@ -461,7 +448,9 @@ def build_pipeline_accounting(
             "zero_cost_reason": (
                 "provider cost unknown for some calls"
                 if ext_unknown_cost_calls
-                else None if ext_cost > 0 else "no documents billed"
+                else None
+                if ext_cost > 0
+                else "no documents billed"
             ),
             "cost_per_document_usd": (
                 _round_cost(ext_cost / ext_docs_billed) if ext_docs_billed else 0.0
@@ -476,11 +465,15 @@ def build_pipeline_accounting(
         }
         # Add optional fields
         if providers:
-            stage_payload["provider"] = list(sorted(providers)) if len(providers) > 1 else next(iter(providers), None)
+            stage_payload["provider"] = (
+                sorted(providers) if len(providers) > 1 else next(iter(providers), None)
+            )
         if models:
-            stage_payload["model"] = list(sorted(models)) if len(models) > 1 else next(iter(models), None)
+            stage_payload["model"] = sorted(models) if len(models) > 1 else next(iter(models), None)
         if schema_ids:
-            stage_payload["schema_id"] = list(sorted(schema_ids)) if len(schema_ids) > 1 else next(iter(schema_ids), None)
+            stage_payload["schema_id"] = (
+                sorted(schema_ids) if len(schema_ids) > 1 else next(iter(schema_ids), None)
+            )
         stage_payload["records_dir"] = str(extraction_dir)
         if len(runs_data) > 1:
             stage_payload["note"] = (
@@ -499,13 +492,12 @@ def build_pipeline_accounting(
     else:
         # Fallback: scan individual extraction JSON files.
         extraction_records = [
-            p for p in extraction_dir.rglob("*.json")
-            if "run_manifests" not in p.parts
+            p for p in extraction_dir.rglob("*.json") if "run_manifests" not in p.parts
         ]
         if extraction_records:
             doc_total = 0
             doc_success = 0
-            ext_cost_acc2: List[float] = []
+            ext_cost_acc2: list[float] = []
             ext_elapsed = 0.0
             ext_tokens = 0
             ext_calls = 0
@@ -513,8 +505,8 @@ def build_pipeline_accounting(
             ext_output_tokens = 0
             provider = model = None
             run_id = schema_id = artifact_id = None
-            failed_examples: List[Dict[str, Any]] = []
-            error_totals: Dict[str, int] = {}
+            failed_examples: list[dict[str, Any]] = []
+            error_totals: dict[str, int] = {}
             merged_fields_union: set[str] = set()
             input_chars_total = 0
             files_with_input_chars = 0
@@ -591,38 +583,39 @@ def build_pipeline_accounting(
                     marker = "Merged duplicate from source row(s) with differing values in: "
                     if marker in notes:
                         merged_part = notes.split(marker, 1)[1].split(";", 1)[0]
-                        for field_name in [
-                            f.strip() for f in merged_part.split(",") if f.strip()
-                        ]:
-                            merged_fields_union.add(field_name)
+                        merged_fields_union.update(
+                            [f.strip() for f in merged_part.split(",") if f.strip()]
+                        )
 
             ext_cost_fallback = _round_cost(math.fsum(ext_cost_acc2))
-            stage_payload_fb: Dict[str, Any] = _omit_none({
-                "status": "completed",
-                "records_dir": str(extraction_dir),
-                "documents_total": doc_total,
-                "documents_successful": doc_success,
-                "documents_failed": max(doc_total - doc_success, 0) or None,
-                "provider": provider,
-                "model": model,
-                "run_id": run_id,
-                "schema_id": schema_id,
-                "artifact_id": artifact_id,
-                "cost_usd": ext_cost_fallback,
-                "cost_per_document_usd": (
-                    _round_cost(ext_cost_fallback / doc_total) if doc_total else None
-                ),
-                "input_tokens": ext_input_tokens,
-                "output_tokens": ext_output_tokens,
-                "elapsed_seconds": _round_secs(ext_elapsed),
-                "llm_calls": ext_calls,
-                "tokens": ext_tokens,
-                "avg_input_chars": (
-                    round(input_chars_total / files_with_input_chars)
-                    if files_with_input_chars
-                    else None
-                ),
-            })
+            stage_payload_fb: dict[str, Any] = _omit_none(
+                {
+                    "status": "completed",
+                    "records_dir": str(extraction_dir),
+                    "documents_total": doc_total,
+                    "documents_successful": doc_success,
+                    "documents_failed": max(doc_total - doc_success, 0) or None,
+                    "provider": provider,
+                    "model": model,
+                    "run_id": run_id,
+                    "schema_id": schema_id,
+                    "artifact_id": artifact_id,
+                    "cost_usd": ext_cost_fallback,
+                    "cost_per_document_usd": (
+                        _round_cost(ext_cost_fallback / doc_total) if doc_total else None
+                    ),
+                    "input_tokens": ext_input_tokens,
+                    "output_tokens": ext_output_tokens,
+                    "elapsed_seconds": _round_secs(ext_elapsed),
+                    "llm_calls": ext_calls,
+                    "tokens": ext_tokens,
+                    "avg_input_chars": (
+                        round(input_chars_total / files_with_input_chars)
+                        if files_with_input_chars
+                        else None
+                    ),
+                }
+            )
             if error_totals:
                 stage_payload_fb["error_summary"] = error_totals
             if failed_examples:
@@ -640,18 +633,10 @@ def build_pipeline_accounting(
     # ------------------------------------------------------------------
     # Stale discovery warning
     # ------------------------------------------------------------------
-    if (
-        discovery_completed_at
-        and earliest_extraction_completed_at
-        and stages.get("discovery")
-    ):
+    if discovery_completed_at and earliest_extraction_completed_at and stages.get("discovery"):
         try:
-            disc_dt = datetime.fromisoformat(
-                discovery_completed_at.replace("Z", "+00:00")
-            )
-            ext_dt = datetime.fromisoformat(
-                earliest_extraction_completed_at.replace("Z", "+00:00")
-            )
+            disc_dt = datetime.fromisoformat(discovery_completed_at)
+            ext_dt = datetime.fromisoformat(earliest_extraction_completed_at)
             age_hours = (ext_dt - disc_dt).total_seconds() / 3600
             if age_hours > 24:
                 warnings.append(
@@ -664,7 +649,7 @@ def build_pipeline_accounting(
     # ------------------------------------------------------------------
     # Compilation stage (cumulative across compilation run manifests)
     # ------------------------------------------------------------------
-    compilation_runs: List[Dict[str, Any]] = []
+    compilation_runs: list[dict[str, Any]] = []
     compile_manifest_dir = output_dir / "run_manifests"
     compile_manifest_files = (
         sorted(compile_manifest_dir.glob("*.manifest.json"))
@@ -686,17 +671,24 @@ def build_pipeline_accounting(
         seen_compile_run_ids.add(run_id)
         run_timing = mf.get("timing") or {}
         status_block = mf.get("status") or {}
-        compilation_runs.append(_omit_none({
-            "run_id": run_id,
-            "status": (
-                status_block.get("result") if isinstance(status_block, dict) else status_block
-            ) or "completed",
-            "mode": mf.get("mode"),
-            "schema_id": (mf.get("lineage") or {}).get("schema_id"),
-            "started_at": run_timing.get("started_at"),
-            "completed_at": run_timing.get("finished_at"),
-            **(mf.get("outputs") or {}),
-        }))
+        compilation_runs.append(
+            _omit_none(
+                {
+                    "run_id": run_id,
+                    "status": (
+                        status_block.get("result")
+                        if isinstance(status_block, dict)
+                        else status_block
+                    )
+                    or "completed",
+                    "mode": mf.get("mode"),
+                    "schema_id": (mf.get("lineage") or {}).get("schema_id"),
+                    "started_at": run_timing.get("started_at"),
+                    "completed_at": run_timing.get("finished_at"),
+                    **(mf.get("outputs") or {}),
+                }
+            )
+        )
 
     stages["compilation"] = {
         "status": "completed",
@@ -711,7 +703,7 @@ def build_pipeline_accounting(
     # ------------------------------------------------------------------
     # Summary block — designed for quick first-read at any scale
     # ------------------------------------------------------------------
-    summary: Dict[str, Any] = {
+    summary: dict[str, Any] = {
         "total_cost_usd": total_llm_cost,
         "cost_scope": "metered_llm_only",
         "documents_extracted": total_docs_extracted,
@@ -731,7 +723,8 @@ def build_pipeline_accounting(
         summary["cost_scope"] = "known_metered_llm_only"
     if total_llm_cost == 0:
         summary["zero_cost_reason"] = (
-            "provider pricing unavailable for some calls" if unknown_calls
+            "provider pricing unavailable for some calls"
+            if unknown_calls
             else "no LLM-billable operations in this run"
         )
     if total_search_queries > 0:
@@ -740,27 +733,27 @@ def build_pipeline_accounting(
         summary["search_api_provider"] = search_api_provider
 
     # Extract domain schema version from the schema file
-    domain_schema_version: Optional[str] = None
-    _schema_id = stages.get("extraction", {}).get("schema_id")
-    if _schema_id and isinstance(_schema_id, str):
+    domain_schema_version: str | None = None
+    schema_ref = stages.get("extraction", {}).get("schema_id")
+    if schema_ref and isinstance(schema_ref, str):
         try:
-            _schema_path = Path(_schema_id)
-            if not _schema_path.is_absolute():
-                _schema_path = Path.cwd() / _schema_id
-            if _schema_path.exists():
-                _schema_data = json.loads(_schema_path.read_text(encoding="utf-8"))
-                domain_schema_version = (_schema_data.get("$metadata") or {}).get("version")
+            schema_path = Path(schema_ref)
+            if not schema_path.is_absolute():
+                schema_path = Path.cwd() / schema_ref
+            if schema_path.exists():
+                schema_data = json.loads(schema_path.read_text(encoding="utf-8"))
+                domain_schema_version = (schema_data.get("$metadata") or {}).get("version")
         except (OSError, json.JSONDecodeError, ValueError):
             pass
 
     # ------------------------------------------------------------------
     # Final structure
     # ------------------------------------------------------------------
-    output: Dict[str, Any] = {
+    output: dict[str, Any] = {
         "accounting_version": "2.0.0",
         "domain_schema_version": domain_schema_version,
         "domain": domain,
-        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "summary": summary,
         "stages": stages,
     }
@@ -776,16 +769,16 @@ def write_compilation_run_manifest(
     output_dir: Path,
     schema_id: str,
     mode: str,
-    stats: Dict[str, Any],
+    stats: dict[str, Any],
     started_at: datetime,
     build_fingerprint: str,
-    table_sha256: Optional[str],
-) -> Optional[Path]:
+    table_sha256: str | None,
+) -> Path | None:
     """Persist one immutable compilation run manifest (compile makes no LLM calls)."""
     run_manifest_dir = output_dir / "run_manifests"
     run_manifest_dir.mkdir(parents=True, exist_ok=True)
 
-    completed_at = datetime.now(timezone.utc)
+    completed_at = datetime.now(UTC)
     stamp = completed_at.strftime("%Y%m%dT%H%M%S%fZ")
     manifest = {
         "manifest_version": "2.0.0",
@@ -807,12 +800,12 @@ def write_compilation_run_manifest(
     manifest_path = run_manifest_dir / f"{stamp}.manifest.json"
     try:
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-        return manifest_path
     except OSError:
         return None
+    return manifest_path
 
 
-def latest_compilation_manifest(output_dir: Path) -> Optional[Dict[str, Any]]:
+def latest_compilation_manifest(output_dir: Path) -> dict[str, Any] | None:
     """The newest compilation run manifest (stamped file names sort chronologically)."""
     paths = sorted((Path(output_dir) / "run_manifests").glob("*.manifest.json"))
     if not paths:

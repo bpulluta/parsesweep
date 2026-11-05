@@ -37,6 +37,8 @@ _CHUNK = 20_000
 
 @dataclass(frozen=True)
 class Cell:
+    """One table cell: value, evidence quote and URL, and a conflict flag."""
+
     value: str | None
     quote: str | None
     url: str | None
@@ -45,6 +47,8 @@ class Cell:
 
 @dataclass(frozen=True)
 class Source:
+    """One input table and its role in the comparison."""
+
     label: str
     role: str
     path: Path
@@ -53,6 +57,8 @@ class Source:
 
 @dataclass(frozen=True)
 class Columns:
+    """Scored, focus and unscored columns with their titles and descriptions."""
+
     scored: tuple[str, ...]
     focus: tuple[str, ...]
     titles: dict[str, str]
@@ -62,6 +68,8 @@ class Columns:
 
 @dataclass(frozen=True)
 class Cluster:
+    """Rows from every source that align to one key within a scope."""
+
     key: tuple
     scope: tuple
     match: str
@@ -115,7 +123,7 @@ def _header(source: Source) -> set[str]:
 def _clean(raw: str) -> str:
     """Undo compile's formula escaping (``csv_literal``); NA becomes ''."""
     text = raw[1:] if raw[:1] == "'" and csv_literal(raw[1:]) == raw else raw
-    return "" if text.strip() in ("", NA) else text
+    return "" if text.strip() in {"", NA} else text
 
 
 def _frames(
@@ -134,8 +142,8 @@ def _frames(
         usecols=list(names),
         chunksize=_CHUNK,
     ) as reader:
-        for chunk in reader:
-            chunk = chunk.rename(columns=names).map(_clean)
+        for raw_chunk in reader:
+            chunk = raw_chunk.rename(columns=names).map(_clean)
             yield apply_value_normalizations(chunk, metadata) if metadata else chunk
 
 
@@ -394,7 +402,7 @@ def _check_scopes(
     """The anchor is O(L²) per scope: refuse a contender scope above MAX_SCOPE_ROWS."""
     contenders = ",".join(str(r) for r, s in enumerate(sources) if s.role in CONTENDERS)
     found = staging.execute(
-        "SELECT scope, COUNT(*) FROM rows GROUP BY scope "
+        "SELECT scope, COUNT(*) FROM rows GROUP BY scope "  # noqa: S608 - contenders are ints
         f"HAVING COUNT(*) > ? AND SUM(source IN ({contenders})) > 0 ORDER BY scope LIMIT 1",
         (MAX_SCOPE_ROWS,),
     ).fetchone()
@@ -423,7 +431,8 @@ def _rows_clusters(
         "SELECT scope, GROUP_CONCAT(DISTINCT source) FROM rows GROUP BY scope ORDER BY scope"
     )
     cursor = staging.execute(
-        "SELECT scope, key, source, ordinal, cells_json FROM rows ORDER BY scope, key, source, ordinal"
+        "SELECT scope, key, source, ordinal, cells_json "
+        "FROM rows ORDER BY scope, key, source, ordinal"
     )
     for (_, members), (_, group) in zip(scopes, groupby(cursor, key=itemgetter(0)), strict=True):
         ranks = {int(r) for r in members.split(",")}

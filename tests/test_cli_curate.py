@@ -100,9 +100,7 @@ def _curation_fixture(tmp_path, *, reviewed=True, flat=False):
     }
     if reviewed:
         record["review_selected"] = True
-    _manifest, index, review = _write_manifest_and_index(
-        run, [record], flat=flat
-    )
+    _manifest, index, review = _write_manifest_and_index(run, [record], flat=flat)
     review.write_text(
         csv_content(
             [
@@ -180,10 +178,7 @@ def test_curate_human_keep_overrides_underlying_rejection(tmp_path):
     assert (run / "curated/report.pdf").read_bytes() == document.read_bytes()
     assert (tmp_path / "domain/curated/report.pdf").exists()
     assert (
-        json.loads((run / "manifest.json").read_text())["downloads"][0][
-            "review_selected"
-        ]
-        is False
+        json.loads((run / "manifest.json").read_text())["downloads"][0]["review_selected"] is False
     )
 
 
@@ -215,9 +210,7 @@ def test_curate_human_override_publishes_manifest_and_index(tmp_path):
     assert manifest["downloads"][0]["human_decision"] == "reject"
     with index.open() as handle:
         row = next(csv.DictReader(handle))
-    assert (
-        row["review_selected"] == "True" and row["human_decision"] == "reject"
-    )
+    assert row["review_selected"] == "True" and row["human_decision"] == "reject"
     assert row["curated_selected"] == "False"
     with (tmp_path / "domain/download_index.csv").open() as handle:
         assert list(csv.DictReader(handle)) == []
@@ -225,7 +218,7 @@ def test_curate_human_override_publishes_manifest_and_index(tmp_path):
 
 def test_curate_reject_removes_only_the_runs_document(tmp_path):
     """Other runs' documents in the same partition survive a rejection."""
-    run, document, _, review = _curation_fixture(tmp_path)
+    run, _document, _, review = _curation_fixture(tmp_path)
     consolidated = tmp_path / "domain/curated"
     consolidated.mkdir(parents=True)
     (consolidated / "other.pdf").write_bytes(b"other target")
@@ -295,9 +288,7 @@ def test_curate_flat_paths_stay_inside_custom_run(tmp_path):
 
 
 @pytest.mark.parametrize("failure", ["missing", "link", "manifest"])
-def test_curate_failure_exit_one_preserves_all_prior_publications(
-    tmp_path, monkeypatch, failure
-):
+def test_curate_failure_exit_one_preserves_all_prior_publications(tmp_path, monkeypatch, failure):
     """Curate failure exit one preserves all prior publications."""
     run, document, index, _ = _curation_fixture(tmp_path)
     result = CliRunner().invoke(cli, ["curate", "--run", str(run), "--quiet"])
@@ -337,9 +328,7 @@ def test_curate_missing_manifest_is_not_legacy_ledger_fallback(tmp_path):
     """Curate missing manifest is not legacy ledger fallback."""
     run = tmp_path / "run"
     run.mkdir()
-    (run / "review.csv").write_text(
-        "relative_path,human_decision\\nreport.pdf,keep\\n"
-    )
+    (run / "review.csv").write_text("relative_path,human_decision\\nreport.pdf,keep\\n")
     result = CliRunner().invoke(cli, ["curate", "--run", str(run), "--quiet"])
     assert result.exit_code == 1
     assert not (run / "curated").exists()
@@ -349,7 +338,8 @@ def test_curate_missing_manifest_is_not_legacy_ledger_fallback(tmp_path):
 def test_human_keep_releases_only_review_failure_blocks(tmp_path, review_only):
     """Human review cannot release search/download incompleteness: a kept
     document is published either way, but only a released partition
-    withdraws its owner's stale path."""
+    withdraws its owner's stale path.
+    """
     run, _, _, review = _curation_fixture(tmp_path)
     stale = tmp_path / "domain/curated/old-report.pdf"
     stale.parent.mkdir(parents=True)
@@ -357,11 +347,13 @@ def test_human_keep_releases_only_review_failure_blocks(tmp_path, review_only):
     (tmp_path / "domain/download_index.csv").write_text(
         csv_content(
             ["relative_path", "url", "path"],
-            [{
-                "relative_path": "old-report.pdf",
-                "url": "https://agency.gov/report.pdf",
-                "path": str(stale),
-            }],
+            [
+                {
+                    "relative_path": "old-report.pdf",
+                    "url": "https://agency.gov/report.pdf",
+                    "path": str(stale),
+                }
+            ],
         )
     )
     manifest_path = run / "manifest.json"
@@ -370,9 +362,7 @@ def test_human_keep_releases_only_review_failure_blocks(tmp_path, review_only):
         review_failed=True, review_retryable=True, review_selected=False
     )
     manifest["lineage"]["blocked_partitions"] = ["."]
-    manifest["lineage"]["review_only_blocked_partitions"] = (
-        ["."] if review_only else []
-    )
+    manifest["lineage"]["review_only_blocked_partitions"] = ["."] if review_only else []
     manifest_path.write_text(json.dumps(manifest))
     review.write_text(
         csv_content(

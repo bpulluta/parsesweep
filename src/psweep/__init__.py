@@ -41,7 +41,7 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 
-# Core extraction API  # noqa: E402
+# Core extraction API
 from psweep.extraction import (  # noqa: E402
     DocumentExtractor,
     ExtractionResult,
@@ -81,36 +81,36 @@ from psweep.exceptions import (  # noqa: E402
 )
 
 __all__ = [
-    # Version metadata
-    "__version__",
     # Paths
     "PACKAGE_ROOT",
     "PROJECT_ROOT",
-    # Extraction engine
-    "DocumentExtractor",
-    "ExtractionResult",
-    "load_schema",
-    "extract_text_from_document",
+    "APIKeyError",
+    "CompilationError",
+    "CompilationResult",
+    "ConfigurationError",
     # Discovery engine
     "DiscoveryEngine",
+    "DiscoveryError",
     "DiscoveryRequest",
     "DiscoveryResult",
-    # Pipeline API
-    "extract_documents",
-    "compile_extractions",
-    "run_pipeline",
+    # Extraction engine
+    "DocumentExtractor",
+    "ExtractionError",
+    "ExtractionResult",
     "ExtractionRunResult",
-    "CompilationResult",
-    "PipelineResult",
     # Exceptions
     "ParseSweepError",
-    "ConfigurationError",
+    "PipelineError",
+    "PipelineResult",
     "SchemaError",
     "SchemaMetadataError",
     "SchemaValidationError",
-    "ExtractionError",
-    "CompilationError",
-    "DiscoveryError",
-    "PipelineError",
-    "APIKeyError",
+    # Version metadata
+    "__version__",
+    "compile_extractions",
+    # Pipeline API
+    "extract_documents",
+    "extract_text_from_document",
+    "load_schema",
+    "run_pipeline",
 ]

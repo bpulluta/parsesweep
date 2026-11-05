@@ -54,7 +54,7 @@ class ContentSampler:
         try:
             from pathlib import Path
 
-            from ..extraction.document_utils import extract_text_from_document
+            from psweep.extraction.document_utils import extract_text_from_document
 
             return extract_text_from_document(Path(file_path)) or ""
         except Exception:  # noqa: BLE001 - OCR unavailable, caller handles empty
@@ -71,8 +71,8 @@ class ContentSampler:
         """
         from pathlib import Path
 
-        from ..extraction.document_utils import read_text_cache
-        from ..extraction.pdf_utils import extract_pages_text
+        from psweep.extraction.document_utils import read_text_cache
+        from psweep.extraction.pdf_utils import extract_pages_text
 
         path = Path(file_path)
 
@@ -82,7 +82,7 @@ class ContentSampler:
             cached = read_text_cache(path)
             if cached is not None:
                 return cached
-        except Exception:  # noqa: BLE001 - cache is optional
+        except Exception:  # noqa: BLE001, S110 - cache is optional
             pass
 
         pages = extract_pages_text(path)
@@ -102,10 +102,9 @@ class ContentSampler:
             from docx import Document
 
             doc = Document(file_path)
-            text = "\n".join(paragraph.text for paragraph in doc.paragraphs)
-            return text
+            return "\n".join(paragraph.text for paragraph in doc.paragraphs)
         except Exception as e:
-            raise ValueError(f"Failed to extract DOCX text: {e}")
+            raise ValueError(f"Failed to extract DOCX text: {e}") from e
 
     @staticmethod
     def _extract_text_from_doc(file_path: str) -> str:
@@ -118,10 +117,10 @@ class ContentSampler:
         """
         try:
             # Try using LibreOffice converter or fallback message
-            import subprocess
+            import subprocess  # noqa: S404 - fixed LibreOffice argv, no shell
 
-            result = subprocess.run(
-                [
+            result = subprocess.run(  # noqa: S603 - argv list, no shell
+                [  # noqa: S607 - libreoffice is resolved from PATH by design
                     "libreoffice",
                     "--headless",
                     "--convert-to",
@@ -130,6 +129,7 @@ class ContentSampler:
                 ],
                 capture_output=True,
                 timeout=10,
+                check=False,
             )
             if result.returncode == 0:
                 # Converted to DOCX, extract from that
@@ -139,7 +139,7 @@ class ContentSampler:
 
             raise ValueError("Could not convert DOC to DOCX")
         except Exception as e:
-            raise ValueError(f"Failed to extract DOC text: {e}")
+            raise ValueError(f"Failed to extract DOC text: {e}") from e
 
     @staticmethod
     def _extract_text_from_xlsx(file_path: str) -> str:
@@ -155,14 +155,12 @@ class ContentSampler:
                 text_parts.append(f"Sheet: {sheet_name}")
                 for row in ws.iter_rows(values_only=True):
                     # Convert row values to strings, skipping None
-                    cells = [
-                        str(cell) if cell is not None else "" for cell in row
-                    ]
+                    cells = [str(cell) if cell is not None else "" for cell in row]
                     text_parts.append(" ".join(cells))
 
             return "\n".join(text_parts)
         except Exception as e:
-            raise ValueError(f"Failed to extract XLSX text: {e}")
+            raise ValueError(f"Failed to extract XLSX text: {e}") from e
 
     @staticmethod
     def _extract_text_from_csv(file_path: str) -> str:
@@ -171,13 +169,12 @@ class ContentSampler:
             import csv
 
             text_parts = []
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with Path(file_path).open("r", encoding="utf-8", errors="ignore") as f:
                 reader = csv.reader(f)
-                for row in reader:
-                    text_parts.append(" ".join(row))
+                text_parts.extend(" ".join(row) for row in reader)
             return "\n".join(text_parts)
         except Exception as e:
-            raise ValueError(f"Failed to extract CSV text: {e}")
+            raise ValueError(f"Failed to extract CSV text: {e}") from e
 
     @staticmethod
     def _extract_text_from_html_or_txt(file_path: str) -> str:
@@ -190,21 +187,18 @@ class ContentSampler:
         from pathlib import Path
 
         path = Path(file_path)
-        if path.suffix.lower() in (".html", ".htm", ".json"):
+        if path.suffix.lower() in {".html", ".htm", ".json"}:
             try:
-                from ..extraction.document_utils import (
-                    extract_text_from_document,
-                )
+                from psweep.extraction.document_utils import extract_text_from_document
 
                 return extract_text_from_document(path) or ""
             except Exception as e:
-                raise ValueError(f"Failed to extract {path.suffix} text: {e}")
+                raise ValueError(f"Failed to extract {path.suffix} text: {e}") from e
         else:
             try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    return f.read()
+                return Path(file_path).read_text(encoding="utf-8", errors="ignore")
             except Exception as e:
-                raise ValueError(f"Failed to extract text: {e}")
+                raise ValueError(f"Failed to extract text: {e}") from e
 
     @classmethod
     def extract_text(cls, file_path: str) -> str:
@@ -213,25 +207,23 @@ class ContentSampler:
 
         if file_path_lower.endswith(".pdf"):
             return cls._extract_text_from_pdf(file_path)
-        elif file_path_lower.endswith(".docx"):
+        if file_path_lower.endswith(".docx"):
             return cls._extract_text_from_docx(file_path)
-        elif file_path_lower.endswith(".doc"):
+        if file_path_lower.endswith(".doc"):
             return cls._extract_text_from_doc(file_path)
-        elif file_path_lower.endswith(".xlsx"):
+        if file_path_lower.endswith(".xlsx"):
             return cls._extract_text_from_xlsx(file_path)
-        elif file_path_lower.endswith(".csv"):
+        if file_path_lower.endswith(".csv"):
             return cls._extract_text_from_csv(file_path)
-        elif file_path_lower.endswith((".txt", ".html", ".htm", ".json")):
+        if file_path_lower.endswith((".txt", ".html", ".htm", ".json")):
             return cls._extract_text_from_html_or_txt(file_path)
-        else:
-            raise ValueError(
-                f"Unsupported file type for content sampling: {file_path}"
-            )
+        raise ValueError(f"Unsupported file type for content sampling: {file_path}")
 
     @classmethod
     def extract_text_from_string(cls, html_content: str) -> str:
         """Extract text from an HTML string (no file needed)."""
-        from ..extraction.document_utils import _HTMLTextExtractor
+        from psweep.extraction.document_utils import _HTMLTextExtractor
+
         parser = _HTMLTextExtractor()
         parser.feed(html_content)
         return parser.get_text()
@@ -272,9 +264,7 @@ class ContentSampler:
 
         # Default to lower-case keywords
         required_keywords = [kw.lower() for kw in (required_keywords or [])]
-        nice_to_have_keywords = [
-            kw.lower() for kw in (nice_to_have_keywords or [])
-        ]
+        nice_to_have_keywords = [kw.lower() for kw in (nice_to_have_keywords or [])]
 
         try:
             # Extract text
@@ -282,9 +272,7 @@ class ContentSampler:
             text_lower = text_extracted.lower()
             sample_length = len(text_extracted)
 
-            reasons.append(
-                f"Extracted {sample_length} characters from {Path(file_path).name}"
-            )
+            reasons.append(f"Extracted {sample_length} characters from {Path(file_path).name}")
 
             # Check if extraction yielded meaningful content
             if sample_length < cls.MIN_EXTRACTION_LENGTH:
@@ -313,24 +301,16 @@ class ContentSampler:
                     keywords_missing.append(kw)
 
             # Check nice-to-have keywords
-            nice_keywords_found = []
-            for kw in nice_to_have_keywords:
-                if kw in text_sample:
-                    nice_keywords_found.append(kw)
+            nice_keywords_found = [kw for kw in nice_to_have_keywords if kw in text_sample]
 
             # Compute confidence score
             required_matches = len(keywords_found)
             nice_matches = len(nice_keywords_found)
 
-            if required_keywords:
-                required_ratio = required_matches / len(required_keywords)
-            else:
-                required_ratio = 1.0  # Pass if no required keywords specified
+            # Pass if no required keywords specified
+            required_ratio = required_matches / len(required_keywords) if required_keywords else 1.0
 
-            if nice_to_have_keywords:
-                nice_ratio = nice_matches / len(nice_to_have_keywords)
-            else:
-                nice_ratio = 1.0
+            nice_ratio = nice_matches / len(nice_to_have_keywords) if nice_to_have_keywords else 1.0
 
             # Compute overall score: 70% required, 30% nice-to-have
             confidence_score = (required_ratio * 0.7) + (nice_ratio * 0.3)
@@ -338,10 +318,7 @@ class ContentSampler:
             # Determine pass/fail
             # If no required keywords, automatically pass (success=True)
             # Otherwise, success requires achieving min_required_matches
-            if not required_keywords:
-                success = True
-            else:
-                success = required_matches >= min_required_matches
+            success = True if not required_keywords else required_matches >= min_required_matches
 
             if success:
                 if required_keywords:
@@ -349,9 +326,7 @@ class ContentSampler:
                         f"Found {required_matches}/{len(required_keywords)} required keywords"
                     )
                 else:
-                    reasons.append(
-                        "No required keywords specified (validation passed)"
-                    )
+                    reasons.append("No required keywords specified (validation passed)")
                 if nice_to_have_keywords:
                     reasons.append(
                         f"Found {nice_matches}/{len(nice_to_have_keywords)} nice-to-have keywords"
@@ -361,9 +336,7 @@ class ContentSampler:
                     f"Only found {required_matches}/{len(required_keywords)} required keywords"
                 )
                 if keywords_missing:
-                    reasons.append(
-                        f"Missing keywords: {', '.join(keywords_missing)}"
-                    )
+                    reasons.append(f"Missing keywords: {', '.join(keywords_missing)}")
 
             return ContentSamplingResult(
                 success=success,
@@ -376,7 +349,7 @@ class ContentSampler:
                 error=None,
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - IO/parser isolation: error kept on the result
             error = str(e)
             reasons.append(f"Error during content sampling: {error}")
             return ContentSamplingResult(

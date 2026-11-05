@@ -15,7 +15,7 @@ from psweep.compilation.accounting import (
     write_compilation_run_manifest,
 )
 from psweep.workspace import Workspace
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -47,9 +47,7 @@ def test_canonical_discovery_manifest_path_prefers_runs_over_latest(monkeypatch,
     assert canonical_discovery_manifest_path("widgets", latest, "missing") == str(latest)
 
 
-def test_build_pipeline_accounting_from_extraction_run_manifest(
-    monkeypatch, tmp_path
-):
+def test_build_pipeline_accounting_from_extraction_run_manifest(monkeypatch, tmp_path):
     """Stage metadata and measured usage survive pipeline accounting."""
     monkeypatch.chdir(tmp_path)
     domain = "widgets"
@@ -137,7 +135,7 @@ def test_accounting_uses_discovery_contract_dry_run_flag(
 
 
 def test_write_compilation_run_manifest_roundtrip(tmp_path):
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     stats = {"records": 3, "columns": 6, "roster_targets": 3, "conflicts": 1}
     manifest_path = write_compilation_run_manifest(
         output_dir=tmp_path,
