@@ -10,7 +10,9 @@ other locked platforms require execution on their target systems.
 The Python audit is clean. `filelock` is overridden to `>=4.2.1,<5` in
 `pixi.toml` (`[pypi-options]`) to fix CVE-2026-112909 and CVE-2026-112910:
 LiteLLM still declares `filelock<4`, but uses it only in its proxy CLI, which
-psweep never calls. Remove the override once LiteLLM allows 4.x.
+psweep never calls. The override applies to pixi environments only; a plain
+`pip install` still resolves LiteLLM's `filelock<4`. Remove the override once
+LiteLLM allows 4.x.
 Native libraries were refreshed, not comprehensively vulnerability-scanned.
 
 ### Trust model
