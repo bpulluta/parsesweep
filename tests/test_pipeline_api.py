@@ -115,7 +115,7 @@ def test_extract_documents_uses_max_context_chars(
     monkeypatch.setattr("psweep.extraction.DocumentExtractor", DummyExtractor)
     monkeypatch.setattr(
         "psweep.extraction.document_utils.extract_text_from_document",
-        lambda doc, page_range=None, **_: "extracted text",
+        lambda doc, page_ranges=None, **_: "extracted text",
     )
 
     result = extract_documents(
@@ -471,7 +471,7 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr("psweep.extraction.DocumentExtractor", DummyExtractor)
     monkeypatch.setattr(
         "psweep.extraction.document_utils.extract_text_from_document",
-        lambda doc, page_range=None, **_: seen_page_ranges.append((doc.name, page_range))
+        lambda doc, page_ranges=None, **_: seen_page_ranges.append((doc.name, page_ranges))
         or "extracted text",
     )
 
@@ -486,10 +486,10 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
     )
 
     assert result.successful == 1 and result.failed == 0
-    assert seen_page_ranges == [("sample.txt", (5, 9))]
+    assert seen_page_ranges == [("sample.txt", ((5, 9),))]
     record = json.loads((tmp_path / "out/sample.json").read_text())
     coverage = record["processing_metrics"]["coverage"]
-    assert coverage["selected_page_range"] == [5, 9]
+    assert coverage["selected_page_ranges"] == [[5, 9]]
 
 
 # Run orchestrators delegate artifact reuse and cleanup to their stage owners.

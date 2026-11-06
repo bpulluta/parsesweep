@@ -155,5 +155,5 @@ def test_invalid_existing_json_is_pending_before_limit(
     result = _invoke(schema_path, output, str(docs), "--limit", "1")
     assert result.exit_code == 0, result.output
     assert sorted(controlled_extraction) == ["doc1.txt"]
-    assert json.loads((output / "doc1.json").read_text())["contract_version"] == "1.1.0"
+    assert json.loads((output / "doc1.json").read_text())["contract_version"] == "2.0.0"
     assert not (output / "doc2.json").exists()
