@@ -146,7 +146,7 @@ def test_extract_does_not_reuse_unverified_output(
     assert second.exit_code == 0, second.output
     assert controlled_provider.call_count == 1
     record = json.loads((output / "doc1.json").read_text())
-    assert record["contract_version"] == "1.1.0"
+    assert record["contract_version"] == "2.0.0"
     assert record["payload"]["comments"] == []
 
 

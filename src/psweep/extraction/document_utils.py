@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from psweep.utils.file_io import artifact_sha256, staged_file
+from psweep.utils.page_range import PageRanges
 from .pdf_utils import _cleanup_ocr_errors
 from .transcription import AUDIO_EXTENSIONS, transcript
 
@@ -286,7 +287,7 @@ def is_supported_document(file_path: Path) -> bool:
 
 def extract_text_from_document(
     file_path: Path,
-    page_range: tuple | None = None,
+    page_ranges: PageRanges | None = None,
     ocr_corrections: list | None = None,
     *,
     return_meta: bool = False,
@@ -301,8 +302,8 @@ def extract_text_from_document(
     ----------
     file_path : Path
         Path to the document
-    page_range : Optional[tuple]
-        Optional tuple (start_page, end_page) for PDF files only (1-indexed)
+    page_ranges : Optional[PageRanges]
+        Inclusive 1-indexed ``(start, end)`` page ranges, for PDF files only
     ocr_corrections : Optional[list]
         Optional OCR text-correction rules (from ``extraction.ocr_corrections``)
         applied to OCR-derived PDF text only.
@@ -329,13 +330,13 @@ def extract_text_from_document(
     ext = file_path.suffix.lower()
     if ext in AUDIO_EXTENSIONS:
         text = transcript(file_path, transcriber)
-        meta = {"used_ocr": False, "page_range": None, "page_count": None}
+        meta = {"used_ocr": False, "page_ranges": None, "page_count": None}
         return (text, meta) if return_meta else text
 
     # Reuse cached full-document text (OCR is expensive; do it once). Only the
-    # whole-document extraction is cached — page-range requests bypass it so a
+    # whole-document extraction is cached — page selections bypass it so a
     # partial slice never poisons the full-text cache other stages depend on.
-    if page_range is None:
+    if page_ranges is None:
         cached = read_text_cache(file_path, return_meta=True)
         if cached is not None:
             text, cache_meta = cached
@@ -343,11 +344,13 @@ def extract_text_from_document(
             if used_ocr:
                 text = _cleanup_ocr_errors(text, ocr_corrections)
             page_count = cache_meta.get("page_count")
+            pages = list(range(1, page_count + 1)) if page_count else []
             meta = {
                 "used_ocr": used_ocr,
                 "page_count": page_count,
-                "page_range": (1, page_count) if page_count else None,
-                "extracted_pages": (list(range(1, page_count + 1)) if page_count else []),
+                "page_ranges": ((1, page_count),) if page_count else None,
+                "selected_pages": pages,
+                "extracted_pages": pages,
             }
             logger.debug("Text cache hit for %s", file_path.name)
             return (text, meta) if return_meta else text
@@ -356,10 +359,10 @@ def extract_text_from_document(
     # formats (DOCX/XLSX/CSV/HTML) are cheap to re-extract, and caching a
     # flattened copy would defeat any richer/table-aware extraction a later
     # stage might want — so they always extract fresh from the source.
-    meta = {"used_ocr": False, "page_range": None, "page_count": None}
+    meta = {"used_ocr": False, "page_ranges": None, "page_count": None}
     if ext == ".pdf":
         # Parse/cache raw OCR before applying current corrections.
-        text, meta = _extract_from_pdf(file_path, page_range)
+        text, meta = _extract_from_pdf(file_path, page_ranges)
     elif ext in _TEXT_READERS:
         text = _TEXT_READERS[ext](file_path)
     else:
@@ -374,7 +377,7 @@ def extract_text_from_document(
         pages = meta.get("extracted_pages")
         # Skipped OCR pages must not produce a whole-document cache.
         complete = pages is None or (page_count is not None and len(pages) == page_count)
-        if page_range is None and raw_text and complete:
+        if page_ranges is None and raw_text and complete:
             write_text_cache(file_path, raw_text, page_count=page_count)
         text = _cleanup_ocr_errors(raw_text, ocr_corrections)
     return (text, meta) if return_meta else text
@@ -382,15 +385,15 @@ def extract_text_from_document(
 
 def _extract_from_pdf(
     pdf_path: Path,
-    page_range: tuple | None = None,
+    page_ranges: PageRanges | None = None,
     ocr_corrections: list | None = None,
 ) -> tuple[str, dict]:
-    """Extract PDF text; return ``(text, {"used_ocr": bool})``."""
+    """Extract PDF text; return ``(text, scope metadata)``."""
     from .pdf_utils import extract_text_from_pdf
 
     return extract_text_from_pdf(
         pdf_path,
-        page_range=page_range,
+        page_ranges=page_ranges,
         return_meta=True,
         ocr_corrections=ocr_corrections,
     )

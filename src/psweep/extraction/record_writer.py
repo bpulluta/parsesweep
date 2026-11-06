@@ -13,6 +13,7 @@ from psweep.exceptions import SchemaValidationError
 from psweep.utils.error_taxonomy import normalize_error_records
 from psweep.utils.file_io import artifact_sha256, atomic_json
 from psweep.utils.item_matcher import get_nested_value
+from psweep.utils.page_range import PageRanges, format_page_ranges
 from psweep.extraction.schema_utils import (
     record_validator as load_record_validator,
 )
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from psweep.extraction.provenance import SourceContext
     from psweep.utils.schema_metadata import SchemaMetadata
 
-CONTRACT_VERSION = "1.1.0"
+CONTRACT_VERSION = "2.0.0"
 
 
 def _resolve_lineage_artifact_id(
@@ -68,19 +69,25 @@ def build_lineage(
 def record_extraction_scope(
     result: Any,
     *,
-    page_range: tuple[int, int] | None = None,
+    page_ranges: PageRanges | None = None,
+    omitted_page_ranges: PageRanges | None = None,
     section_filtered: bool = False,
     parser_scope: dict | None = None,
 ) -> None:
     """Retain selected-input limitations in the canonical result."""
     coverage = dict(getattr(result, "coverage", None) or {})
     warnings = list(getattr(result, "validation_notes", None) or [])
-    if page_range is not None:
-        coverage["selected_page_range"] = list(page_range)
+    if page_ranges is not None:
+        coverage["selected_page_ranges"] = [list(rng) for rng in page_ranges]
         warnings.append(
-            "Extraction limited to selected pages "
-            f"{page_range[0]}-{page_range[1]}; "
+            f"Extraction limited to selected pages {format_page_ranges(page_ranges)}; "
             "not a full-document coverage guarantee."
+        )
+    if omitted_page_ranges:
+        coverage["omitted_page_ranges"] = [list(rng) for rng in omitted_page_ranges]
+        warnings.append(
+            "Page targeting left out relevant pages "
+            f"{format_page_ranges(omitted_page_ranges)} to stay within max_selected_pages."
         )
     if section_filtered:
         coverage["section_filtered"] = True
@@ -92,14 +99,7 @@ def record_extraction_scope(
         coverage["page_count"] = scope["page_count"]
         extracted = scope.get("extracted_pages", [])
         coverage["extracted_pages"] = extracted
-        selected = scope.get("selected_pages")
-        if selected is None:
-            selected = (
-                list(range(page_range[0], page_range[1] + 1))
-                if page_range
-                else list(range(1, scope["page_count"] + 1))
-            )
-        coverage["parser_partial"] = set(selected) != set(extracted)
+        coverage["parser_partial"] = set(scope["selected_pages"]) != set(extracted)
         if coverage["parser_partial"]:
             warnings.append(
                 "PDF parser coverage is partial: missing selected pages; "

@@ -77,17 +77,19 @@ class _Doc(UserList):
         return False
 
 
-def test_native_pdf_selected_pages_and_clamped_metadata(tmp_path, monkeypatch):
-    """Native text and reported scope honor the identical bounded selection."""
+def test_native_pdf_disjoint_selection_marks_omitted_pages(tmp_path, monkeypatch):
+    """Disjoint ranges extract only selected pages and mark the gap between them."""
     pdf = tmp_path / "native.pdf"
     pdf.write_bytes(b"fake")
-    doc = _Doc([_Page(native=f"PAGE{i} " * 150) for i in range(1, 4)])
+    doc = _Doc([_Page(native=f"PAGE{i} " * 150) for i in range(1, 6)])
     monkeypatch.setattr(pdf_utils, "PYMUPDF_AVAILABLE", True)
     monkeypatch.setattr(pdf_utils.pymupdf, "open", lambda _p: doc)
-    text, meta = pdf_utils.extract_text_from_pdf(pdf, (-2, 2), return_meta=True)
-    assert "PAGE1" in text and "PAGE2" in text and "PAGE3" not in text
-    assert meta["page_range"] == (1, 2)
-    assert meta["extracted_pages"] == [1, 2]
+    text, meta = pdf_utils.extract_text_from_pdf(pdf, ((1, 1), (4, 9)), return_meta=True)
+    assert "PAGE1" in text and "PAGE4" in text and "PAGE5" in text
+    assert "PAGE2" not in text and "PAGE3" not in text
+    assert text.index("PAGE1") < text.index("[Omitted pages: 2-3]") < text.index("PAGE4")
+    assert meta["page_ranges"] == ((1, 1), (4, 5))
+    assert meta["selected_pages"] == meta["extracted_pages"] == [1, 4, 5]
 
 
 def test_ocr_skipped_pages_are_actual_not_requested_coverage(tmp_path, monkeypatch):
@@ -103,8 +105,10 @@ def test_ocr_skipped_pages_are_actual_not_requested_coverage(tmp_path, monkeypat
     monkeypatch.setattr(pdf_utils, "PYMUPDF_AVAILABLE", True)
     monkeypatch.setattr(pdf_utils.pymupdf, "open", lambda _p: doc)
     monkeypatch.setattr(pdf_utils, "PYPDF_AVAILABLE", False)
-    _, meta = pdf_utils.extract_text_from_pdf(pdf, return_meta=True)
+    text, meta = pdf_utils.extract_text_from_pdf(pdf, return_meta=True)
+    assert text.index("first") < text.index("[Omitted pages: 2]") < text.index("last")
     assert meta["extracted_pages"] == [1, 3]
+    assert meta["selected_pages"] == [1, 2, 3]
     assert meta["page_count"] == 3
 
 
@@ -116,9 +120,9 @@ def test_pypdf_fallback_honors_range_and_reports_clamped_scope(tmp_path, monkeyp
     monkeypatch.setattr(pdf_utils, "PYMUPDF_AVAILABLE", False)
     monkeypatch.setattr(pdf_utils, "PYPDF_AVAILABLE", True)
     monkeypatch.setattr(pdf_utils, "PdfReader", lambda _f: SimpleNamespace(pages=pages))
-    text, meta = pdf_utils.extract_text_from_pdf(pdf, (2, 9), return_meta=True)
+    text, meta = pdf_utils.extract_text_from_pdf(pdf, ((2, 9),), return_meta=True)
     assert "PAGE1" not in text and "PAGE2" in text and "PAGE3" in text
-    assert meta["page_range"] == (2, 3)
+    assert meta["page_ranges"] == ((2, 3),)
     assert meta["page_count"] == 3
     assert meta["used_ocr"] is False
 
@@ -133,26 +137,39 @@ def test_ocr_honors_range_and_returns_raw_text_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr(pdf_utils, "PYPDF_AVAILABLE", False)
     text, meta = pdf_utils.extract_text_from_pdf(
         pdf,
-        (2, 2),
+        ((2, 2),),
         return_meta=True,
         ocr_corrections=[{"pattern": "RAW", "replacement": "fixed"}],
     )
     assert "PAGE1" not in text and "PAGE3" not in text
     assert "PAGE2 fixed" in text
-    assert meta["page_range"] == (2, 2)
+    assert meta["page_ranges"] == ((2, 2),)
     assert meta["used_ocr"] is True
     assert "PAGE2 RAW" in meta["raw_ocr_text"]
 
 
-@pytest.mark.parametrize("page_range", [(8, 9), (3, 2), (0, 0), (-2, -1), (1.5, 2), (True, 2)])
-def test_invalid_pdf_scope_rejected(tmp_path, monkeypatch, page_range):
+@pytest.mark.parametrize(
+    "page_ranges",
+    [
+        ((8, 9),),
+        ((3, 2),),
+        ((0, 0),),
+        ((-2, -1),),
+        ((1.5, 2),),
+        ((True, 2),),
+        ((1, 1), (8, 9)),
+        (),
+        (2, 3),
+    ],
+)
+def test_invalid_pdf_scope_rejected(tmp_path, monkeypatch, page_ranges):
     """Invalid requests cannot silently fall back to a different PDF scope."""
     pdf = tmp_path / "source.pdf"
     pdf.write_bytes(b"fake")
     monkeypatch.setattr(pdf_utils.pymupdf, "open", lambda _p: _Doc([_Page("native")] * 3))
     monkeypatch.setattr(pdf_utils, "PYMUPDF_AVAILABLE", True)
     with pytest.raises(ValueError, match="page"):
-        pdf_utils.extract_text_from_pdf(pdf, page_range, return_meta=True)
+        pdf_utils.extract_text_from_pdf(pdf, page_ranges, return_meta=True)
 
 
 def test_parser_failure_preserves_metadata_return_shape(tmp_path, monkeypatch):
@@ -170,7 +187,7 @@ def test_parser_failure_preserves_metadata_return_shape(tmp_path, monkeypatch):
     assert isinstance(result, tuple)
     text, meta = result
     assert not text and meta["used_ocr"] is False
-    assert meta["page_range"] is None
+    assert meta["page_ranges"] is None
 
 
 def test_pypdf_failure_still_attempts_scoped_ocr(tmp_path, monkeypatch):
@@ -186,6 +203,6 @@ def test_pypdf_failure_still_attempts_scoped_ocr(tmp_path, monkeypatch):
         raise OSError("pypdf failed")
 
     monkeypatch.setattr(pdf_utils, "PdfReader", fail)
-    text, meta = pdf_utils.extract_text_from_pdf(pdf, (2, 2), return_meta=True)
+    text, meta = pdf_utils.extract_text_from_pdf(pdf, ((2, 2),), return_meta=True)
     assert "PAGE2" in text and "PAGE1" not in text and "PAGE3" not in text
     assert meta["used_ocr"] is True

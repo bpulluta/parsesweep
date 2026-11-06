@@ -11,10 +11,11 @@ import pytest
 from psweep import pipeline
 from psweep.extraction import schema_utils
 from psweep.extraction.document_utils import write_text_cache
-from psweep.extraction.page_locator import PageLocator
+from psweep.extraction.page_locator import PageLocator, PageSelection
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 from psweep.utils.config import Config
 from psweep.utils.log_context import current_document
+from psweep.utils.page_range import load_pages_csv, page_numbers
 
 
 @pytest.fixture
@@ -78,7 +79,7 @@ def test_record_contract_does_not_depend_on_repository_path(monkeypatch, tmp_pat
     )
     try:
         validator = schema_utils.record_validator()
-        assert validator.schema["properties"]["contract_version"]["const"] == "1.1.0"
+        assert validator.schema["properties"]["contract_version"]["const"] == "2.0.0"
     finally:
         schema_utils.record_validator.cache_clear()
 
@@ -158,7 +159,7 @@ def test_project_relative_page_mapping_is_preserved(reviewed_inputs, monkeypatch
     )
     inputs["pages_csv"] = str(pages)
     plan = _prepare_extraction(inputs)
-    assert plan["ranges"][source] == (5, 9)
+    assert plan["ranges"][source] == ((5, 9),)
 
 
 @pytest.mark.parametrize("kind", ["manual", "unsupported", "cached", "small"])
@@ -184,8 +185,9 @@ def test_locator_credentials_required_only_for_actual_calls(reviewed_inputs, mon
             lambda *_args, **kw: (
                 "Source evidence",
                 {
-                    "page_range": (1, 1),
+                    "page_ranges": ((1, 1),),
                     "page_count": 1,
+                    "selected_pages": [1],
                     "extracted_pages": [1],
                 },
             )
@@ -201,7 +203,7 @@ def test_locator_credentials_required_only_for_actual_calls(reviewed_inputs, mon
                 keywords=["evidence"],
                 trigger_chars=1000,
             )
-            locator._write_cache(source, (1, 1), "fixture", 1)
+            locator._write_cache(source, PageSelection(((1, 1),)), 1)
     elif kind == "unsupported":
         (root / "doc.txt").rename(root / "doc.csv")
     outcome = _execute_extraction(_prepare_extraction(inputs))
@@ -233,7 +235,7 @@ def test_locator_routing_change_invalidates_record_reuse(reviewed_inputs, monkey
 
 
 def test_saved_page_ranges_cover_reused_records(reviewed_inputs, monkeypatch):
-    """The review file lists the range behind every current record, reused or new."""
+    """The review file lists the ranges behind every current record, reused or new."""
     inputs, provider = reviewed_inputs
     root = Path(inputs["path"])
     (root / "doc.txt").unlink()
@@ -242,19 +244,20 @@ def test_saved_page_ranges_cover_reused_records(reviewed_inputs, monkeypatch):
         "section_description": "evidence",
         "save_discovered": True,
     }
-    found = {"a.pdf": (3, 4), "b.pdf": (7, 9), "c.pdf": None}
+    found = {"a.pdf": ((3, 4),), "b.pdf": ((2, 2), (7, 9)), "c.pdf": None}
     located = []
 
     def locate(_self, doc):
         located.append(doc.name)
-        return found[doc.name]
+        return PageSelection(found[doc.name]) if found[doc.name] else None
 
-    def parse(_doc, page_range=None, **_kwargs):
-        first, last = page_range or (1, 9)
+    def parse(_doc, page_ranges=None, **_kwargs):
+        selected = page_numbers(page_ranges or ((1, 9),))
         return "Source evidence", {
             "page_count": 9,
-            "page_range": (first, last),
-            "extracted_pages": list(range(first, last + 1)),
+            "page_ranges": page_ranges or ((1, 9),),
+            "selected_pages": selected,
+            "extracted_pages": selected,
         }
 
     monkeypatch.setattr("psweep.extraction.page_locator.PageLocator.locate", locate)
@@ -264,22 +267,57 @@ def test_saved_page_ranges_cover_reused_records(reviewed_inputs, monkeypatch):
     def run():
         assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
         with saved.open(encoding="utf-8", newline="") as handle:
-            return {
-                Path(row["file_path"]).name: (int(row["start_page"]), int(row["end_page"]))
+            return [
+                (Path(row["file_path"]).name, int(row["start_page"]), int(row["end_page"]))
                 for row in csv.DictReader(handle)
-            }
+            ]
 
     (root / "a.pdf").write_bytes(b"first")
-    assert run() == {"a.pdf": (3, 4)}
+    assert run() == [("a.pdf", 3, 4)]
     (root / "b.pdf").write_bytes(b"second")
-    assert run() == {"a.pdf": (3, 4), "b.pdf": (7, 9)}
+    assert run() == [("a.pdf", 3, 4), ("b.pdf", 2, 2), ("b.pdf", 7, 9)]
+    assert list(load_pages_csv(saved).values()) == [((3, 4),), ((2, 2), (7, 9))]
     (root / "b.pdf").unlink()
-    assert run() == {"a.pdf": (3, 4)}
+    assert run() == [("a.pdf", 3, 4)]
     (root / "a.pdf").unlink()
     (root / "c.pdf").write_bytes(b"third")
-    assert run() == {}
+    assert run() == []
     assert located == ["a.pdf", "b.pdf", "c.pdf"]
     assert provider.call_count == 3
+
+
+def test_pages_left_out_by_the_budget_are_recorded(reviewed_inputs, monkeypatch):
+    """Relevant pages the budget dropped stay visible in the record."""
+    inputs, provider = reviewed_inputs
+    root = Path(inputs["path"])
+    (root / "doc.txt").unlink()
+    (root / "doc.pdf").write_bytes(b"fixture")
+    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+    monkeypatch.setattr(
+        "psweep.extraction.page_locator.PageLocator.locate",
+        lambda _self, _doc: PageSelection(((2, 2), (5, 6)), omitted=((8, 9),)),
+    )
+    seen = []
+
+    def parse(_doc, page_ranges=None, **_kwargs):
+        seen.append(page_ranges)
+        return "Source evidence", {
+            "page_count": 9,
+            "page_ranges": page_ranges,
+            "selected_pages": page_numbers(page_ranges),
+            "extracted_pages": page_numbers(page_ranges),
+        }
+
+    monkeypatch.setattr("psweep.extraction.document_utils.extract_text_from_document", parse)
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert seen == [((2, 2), (5, 6))]
+    record = json.loads((Path(inputs["output"]) / "doc.json").read_text(encoding="utf-8"))
+    coverage = record["processing_metrics"]["coverage"]
+    assert coverage["selected_page_ranges"] == [[2, 2], [5, 6]]
+    assert coverage["omitted_page_ranges"] == [[8, 9]]
+    assert coverage["parser_partial"] is False
+    assert any("left out relevant pages 8-9" in note for note in record["quality"]["warnings"])
+    provider.assert_called_once()
 
 
 def test_records_of_removed_documents_are_withdrawn(reviewed_inputs, tmp_path):
@@ -317,7 +355,8 @@ def test_skipped_ocr_pages_survive_record_and_do_not_reuse(reviewed_inputs, monk
             "Pages one and three evidence",
             {
                 "page_count": 3,
-                "page_range": (1, 3),
+                "page_ranges": ((1, 3),),
+                "selected_pages": [1, 2, 3],
                 "extracted_pages": [1, 3],
             },
         ),

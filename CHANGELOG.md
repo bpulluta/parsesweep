@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   working directory.
 - `extraction.pages` accepts only `csv`, `auto_locate` and `range`, and
   `auto_locate` only its documented keys; unknown keys fail.
+- `--pages` and `extraction.pages.range` take comma-separated pages and
+  inclusive ranges (`27,68-73`); the `100:200` and `100,200` range forms are
+  removed.
+- `pages.auto_locate.max_selected_pages` caps the total selection, referenced
+  pages included.
+- Extraction record contract 2.0.0: `coverage.selected_page_range` becomes
+  `coverage.selected_page_ranges`, a list of `[start, end]` pairs, and
+  `coverage.omitted_page_ranges` is added. Existing records are re-extracted on
+  the next run.
 - Schema `identity.deduplication.strategy` and `comparison_mode` (never used)
   are removed and rejected as unknown keys.
 - `config/ADVANCED.yaml` is removed; `config/TEMPLATE.yaml` is a short, valid
@@ -82,6 +91,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reprs. In roster mode an empty list or object is `NA`, like a null.
 
 ### Added
+- Page targeting follows references. After locating the section, the locator
+  reads the selected pages and adds the parts they refer to elsewhere in the
+  document (e.g. "charges specified in Tariff Sheet 75"), then the parts those
+  pages refer to, within `max_selected_pages`. A selection can be several page
+  ranges; skipped stretches are marked `[Omitted pages: 28-67]` in the
+  extracted text. Relevant pages left out by the budget are logged and recorded
+  in `coverage.omitted_page_ranges`.
+- `pages.csv` accepts several rows per file, one per range;
+  `discovered_page_ranges.csv` writes one row per range.
 - `psweep run --debug` forwards `--debug` to every stage. LLM calls log
   their prompt size, timeout, response time and token counts at debug level.
 - Public-only DNS-pinned acquisition, decoded response limits, verified local
