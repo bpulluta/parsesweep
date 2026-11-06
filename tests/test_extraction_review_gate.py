@@ -282,6 +282,29 @@ def test_saved_page_ranges_cover_reused_records(reviewed_inputs, monkeypatch):
     assert provider.call_count == 3
 
 
+def test_records_of_removed_documents_are_withdrawn(reviewed_inputs, tmp_path):
+    """A record whose document left the input folder is withdrawn; others survive."""
+    inputs, _provider = reviewed_inputs
+    root = Path(inputs["path"])
+    output = Path(inputs["output"]).resolve()
+    (root / "gone.txt").write_text("Gone evidence", encoding="utf-8")
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    single = {**inputs, "path": str(root / "doc.txt")}
+    assert _execute_extraction(_prepare_extraction(single)).withdrawn == []
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "other.txt").write_text("Other evidence", encoding="utf-8")
+    assert _execute_extraction(_prepare_extraction({**inputs, "path": str(foreign)})).exit_code == 0
+    (root / "gone.txt").unlink()
+    (foreign / "other.txt").unlink()
+    outcome = _execute_extraction(_prepare_extraction(inputs))
+    assert outcome.exit_code == 0
+    assert outcome.withdrawn == [output / "gone.json"]
+    assert sorted(path.name for path in output.glob("*.json")) == ["doc.json", "other.json"]
+    manifest = json.loads(outcome.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["withdrawn"] == [str(output / "gone.json")]
+
+
 def test_skipped_ocr_pages_survive_record_and_do_not_reuse(reviewed_inputs, monkeypatch):
     """Keep missing OCR pages visible and ineligible for reuse."""
     inputs, provider = reviewed_inputs

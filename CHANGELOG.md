@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page range behind every current record. It was rewritten with only the
   documents located in the latest run, so reused records lost their ranges,
   and a run that located nothing left removed documents listed.
+- Extract withdraws records whose source document no longer exists under the
+  input folder, e.g. a document rejected in `review.csv` and dropped by
+  `psweep curate`. Their rows used to stay in the compiled table. Withdrawn
+  records are named in the extraction summary and listed under `withdrawn` in
+  the run manifest; `validate` reports a primary with records to withdraw as
+  stale, and challengers withdraw theirs.
 - Reasoning models (`gpt-5*`, o-series, `reasoning_models`) get JSON mode like
   every other model; only `temperature` is withheld. Without it, review,
   extraction and judge replies intermittently came back as malformed JSON.
