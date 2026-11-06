@@ -1,135 +1,129 @@
-"""Utilities for handling page range specifications."""
+"""Page selections: sorted, disjoint, inclusive 1-indexed page ranges.
+
+One grammar is shared by ``--pages``, ``extraction.pages.range`` and messages:
+comma-separated pages or ``start-end`` ranges, e.g. ``"27,68-73"``. A pages CSV
+lists one ``start_page``/``end_page`` row per range, so a file may have several.
+"""
+
+from __future__ import annotations
 
 import csv
+from collections.abc import Iterable
 from pathlib import Path
 
+PageRanges = tuple[tuple[int, int], ...]
 
-def parse_page_range(page_spec: str) -> tuple[int, int]:
-    """
-    Parse a page range specification string.
-
-    Supports formats:
-
-    - "100-200" (dash separator)
-    - "100:200" (colon separator)
-    - "100,200" (comma separator)
-
-    Parameters
-    ----------
-    page_spec : str
-        Page range string (e.g., "615-759")
-
-    Returns
-    -------
-    Tuple[int, int]
-        Tuple of (start_page, end_page) as 1-indexed integers
-
-    Raises
-    ------
-    ValueError
-        If format is invalid
-    """
-    # Try different separators
-    for sep in ["-", ":", ","]:
-        if sep in page_spec:
-            parts = page_spec.split(sep)
-            if len(parts) == 2:
-                try:
-                    start = int(parts[0].strip())
-                    end = int(parts[1].strip())
-
-                    if start < 1 or end < 1:
-                        raise ValueError("Page numbers must be >= 1")
-                    if start > end:
-                        raise ValueError(f"Start page ({start}) must be <= end page ({end})")
-                except ValueError as e:
-                    if "invalid literal" in str(e):
-                        raise ValueError(f"Invalid page numbers in '{page_spec}'") from e
-                    raise
-                return (start, end)
-
-    raise ValueError(
-        f"Invalid page range format: '{page_spec}'. Use format like '615-759' or '100:200'"
-    )
+_CSV_COLUMNS = ("file_path", "start_page", "end_page")
 
 
-def load_pages_csv(csv_path: Path) -> dict[str, tuple[int, int] | None]:
-    """
-    Load page range mappings from CSV file.
+def normalize_page_ranges(ranges: Iterable) -> PageRanges:
+    """Validate ``(start, end)`` pairs, then sort and merge touching ranges."""
+    pairs = []
+    for rng in ranges:
+        if not isinstance(rng, (tuple, list)) or len(rng) != 2:
+            message = f"Invalid page range {rng!r}: expected a (start, end) pair"
+            raise ValueError(message)
+        start, end = rng
+        if type(start) is not int or type(end) is not int or not 1 <= start <= end:
+            message = f"Invalid page range {rng!r}: pages are integers >= 1 and start <= end"
+            raise ValueError(message)
+        pairs.append((start, end))
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(pairs):
+        if merged and start <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return tuple(merged)
 
-    CSV format:
+
+def ranges_from_pages(pages: Iterable[int]) -> PageRanges:
+    """Compress page numbers into ranges."""
+    return normalize_page_ranges((page, page) for page in pages)
+
+
+def page_numbers(ranges: PageRanges) -> list[int]:
+    """Expand ranges into sorted page numbers."""
+    return [page for start, end in ranges for page in range(start, end + 1)]
+
+
+def count_pages(ranges: PageRanges) -> int:
+    """Total pages in a selection."""
+    return sum(end - start + 1 for start, end in ranges)
+
+
+def format_page_ranges(ranges: PageRanges) -> str:
+    """Render ranges in the shared grammar, e.g. ``27,68-73``."""
+    return ",".join(str(start) if start == end else f"{start}-{end}" for start, end in ranges)
+
+
+def _page_number(text: str, context: str) -> int:
+    value = text.strip()
+    if not value.isdigit():
+        message = f"Invalid page number {text!r} in {context}"
+        raise ValueError(message)
+    return int(value)
+
+
+def parse_page_ranges(spec: str) -> PageRanges:
+    """Parse ``"27,68-73"`` into normalized ranges; reject anything else."""
+    context = f"page selection {spec!r} (use pages or ranges like '27,68-73')"
+    pairs = []
+    for item in spec.split(","):
+        bounds = item.split("-")
+        if len(bounds) > 2:
+            message = f"Invalid page range {item!r} in {context}"
+            raise ValueError(message)
+        numbers = [_page_number(bound, context) for bound in bounds]
+        pairs.append((numbers[0], numbers[-1]))
+    return normalize_page_ranges(pairs)
+
+
+def load_pages_csv(csv_path: Path) -> dict[str, PageRanges | None]:
+    """Map each file to its page ranges, or ``None`` for the full document.
 
     .. code-block:: text
 
         file_path,start_page,end_page
-        tariff1.pdf,615,759
-        tariff2.pdf,400,550
+        tariff.pdf,27,27
+        tariff.pdf,68,73
         small_doc.pdf,,
 
-    Empty start/end pages mean process full document.
-
-    Parameters
-    ----------
-    csv_path : Path
-        Path to CSV file
-
-    Returns
-    -------
-    Dict[str, Optional[Tuple[int, int]]]
-        Dictionary mapping file paths to page ranges (or None for full document)
-
-    Raises
-    ------
-    ValueError
-        If CSV format is invalid
+    Rows for the same file combine. Blank bounds select the full document and
+    cannot be combined with ranges for that file.
     """
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
-
-    page_mappings = {}
-
-    with Path(csv_path).open("r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-
-        # Validate headers
-        if not all(h in reader.fieldnames for h in ["file_path", "start_page", "end_page"]):
-            raise ValueError("CSV must have columns: file_path, start_page, end_page")
-
-        for row_num, row in enumerate(reader, start=2):  # Start at 2 (header is 1)
+    rows: dict[str, list[tuple[int, int]] | None] = {}
+    with Path(csv_path).open("r", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if not all(column in (reader.fieldnames or []) for column in _CSV_COLUMNS):
+            message = f"CSV must have columns: {', '.join(_CSV_COLUMNS)}"
+            raise ValueError(message)
+        for row_num, row in enumerate(reader, start=2):
             file_path = row["file_path"].strip()
-            start_str = row["start_page"].strip()
-            end_str = row["end_page"].strip()
-
             if not file_path:
-                continue  # Skip empty rows
-
-            # If both start and end are empty, use full document
-            if not start_str and not end_str:
-                page_mappings[file_path] = None
-            elif start_str and end_str:
-                try:
-                    start = int(start_str)
-                    end = int(end_str)
-
-                    if start < 1 or end < 1:
-                        raise ValueError(f"Page numbers must be >= 1 (row {row_num})")
-                    if start > end:
-                        raise ValueError(
-                            f"Start page ({start}) must be <= end page "
-                            f"({end}) for {file_path} (row {row_num})"
-                        )
-
-                    page_mappings[file_path] = (start, end)
-                except ValueError as e:
-                    if "invalid literal" in str(e):
-                        raise ValueError(
-                            f"Invalid page numbers in row {row_num}: {file_path}"
-                        ) from e
-                    raise
-            else:
-                raise ValueError(
-                    f"Row {row_num}: Both start_page and end_page "
-                    f"must be specified or both empty for {file_path}"
-                )
-
-    return page_mappings
+                continue
+            start, end = row["start_page"].strip(), row["end_page"].strip()
+            context = f"row {row_num} ({file_path})"
+            if bool(start) != bool(end):
+                message = f"Set both start_page and end_page, or neither, in {context}"
+                raise ValueError(message)
+            full_document = not start
+            if file_path in rows and (rows[file_path] is None) != full_document:
+                message = f"Blank bounds cannot be combined with page ranges in {context}"
+                raise ValueError(message)
+            if full_document:
+                rows[file_path] = None
+                continue
+            pair = (_page_number(start, context), _page_number(end, context))
+            try:
+                normalize_page_ranges([pair])
+            except ValueError as exc:
+                message = f"{exc} in {context}"
+                raise ValueError(message) from exc
+            rows.setdefault(file_path, []).append(pair)
+    return {
+        file_path: None if pairs is None else normalize_page_ranges(pairs)
+        for file_path, pairs in rows.items()
+    }

@@ -128,12 +128,12 @@ def test_document_pdf_return_meta_passes_actual_scope(tmp_path, monkeypatch):
         "psweep.extraction.pdf_utils.extract_text_from_pdf",
         lambda *_a, **_k: (
             "selected",
-            {"used_ocr": False, "page_range": (2, 3), "page_count": 3},
+            {"used_ocr": False, "page_ranges": ((2, 3),), "page_count": 3},
         ),
     )
-    assert extract_text_from_document(path, (2, 9), return_meta=True) == (
+    assert extract_text_from_document(path, ((2, 9),), return_meta=True) == (
         "selected",
-        {"used_ocr": False, "page_range": (2, 3), "page_count": 3},
+        {"used_ocr": False, "page_ranges": ((2, 3),), "page_count": 3},
     )
 
 

@@ -556,8 +556,8 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
 
     for doc in doc_files[:sample_size]:
         try:
-            page_range = page_range_map.get(doc) if pages_csv else None
-            text = extract_text_from_document(doc, page_range=page_range)
+            page_ranges = page_range_map.get(doc) if pages_csv else None
+            text = extract_text_from_document(doc, page_ranges=page_ranges)
             total_chars += len(text)
         except Exception:  # noqa: BLE001, S110 - unreadable sample documents are skipped
             pass

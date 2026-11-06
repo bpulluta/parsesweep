@@ -824,7 +824,7 @@ def test_write_extraction_record_includes_lineage_fields(
 
     output_path = tmp_path / "example.json"
     saved = json.loads(output_path.read_text(encoding="utf-8"))
-    assert saved["contract_version"] == "1.1.0"
+    assert saved["contract_version"] == "2.0.0"
     assert saved["record_id"].startswith("record://deterministic1234/")
     assert len(saved["record_id"].rsplit("/", 1)[1]) == 64
     assert saved["document"]["source_filename"] == "example.pdf"

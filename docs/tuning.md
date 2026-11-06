@@ -68,7 +68,11 @@ completed work is reused and only the rest is fetched. The run notes and
    would otherwise be truncated.
 2. **Raise `max_context`** (default `600000` characters) — more expensive.
 
-For one known file, `extract --pages 615-759` or a `pages.csv` row.
+Page targeting also adds the parts the section refers to, such as riders or
+charge sheets on other pages. If a run warns that it left out relevant pages,
+raise `max_selected_pages`.
+
+For one known file, `extract --pages 27,68-73` or `pages.csv` rows.
 
 ### Fields come back empty or wrong
 

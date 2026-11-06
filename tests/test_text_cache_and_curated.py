@@ -39,7 +39,7 @@ class TestTextCache:
         pdf.write_bytes(b"%PDF-1.4 fake")
         calls = {"n": 0}
 
-        def _fake(pdf_path, page_range=None, return_meta=False, ocr_corrections=None):
+        def _fake(pdf_path, page_ranges=None, return_meta=False, ocr_corrections=None):
             calls["n"] += 1
             text = "OCR EXTRACTED TEXT"
             return (text, {"used_ocr": True}) if return_meta else text
@@ -59,7 +59,7 @@ class TestTextCache:
         pdf = tmp_path / "native.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
 
-        def _fake(pdf_path, page_range=None, return_meta=False, ocr_corrections=None):
+        def _fake(pdf_path, page_ranges=None, return_meta=False, ocr_corrections=None):
             text = "NATIVE TEXT WITH TABLES"
             return (text, {"used_ocr": False}) if return_meta else text
 
@@ -191,13 +191,13 @@ class TestTextCache:
         write_text_cache(source, "recovered")
         assert read_text_cache(source) == "recovered"
 
-    def test_page_range_bypasses_cache(self, tmp_path: Path, monkeypatch):
+    def test_page_ranges_bypass_cache(self, tmp_path: Path, monkeypatch):
         doc = tmp_path / "doc.pdf"
         doc.write_bytes(b"%PDF-1.4 fake")
         write_text_cache(doc, "FULL-CACHED")
 
-        def _fake(pdf_path, page_range=None, return_meta=False, ocr_corrections=None):
-            text = f"PAGE-RANGE {page_range}"
+        def _fake(pdf_path, page_ranges=None, return_meta=False, ocr_corrections=None):
+            text = f"PAGE-RANGE {page_ranges}"
             return (text, {"used_ocr": False}) if return_meta else text
 
         monkeypatch.setattr(
@@ -205,7 +205,7 @@ class TestTextCache:
             _fake,
         )
         # A page-range request must re-extract, not return the full cache.
-        result = extract_text_from_document(doc, page_range=(1, 2))
+        result = extract_text_from_document(doc, page_ranges=((1, 2),))
         assert result != "FULL-CACHED"
         assert "PAGE-RANGE" in result
 
@@ -257,7 +257,7 @@ class TestRawOcrCache:
                 {"used_ocr": True, "raw_ocr_text": "partial"},
             ),
         )
-        assert extract_text_from_document(pdf, (2, 2)) == "partial"
+        assert extract_text_from_document(pdf, ((2, 2),)) == "partial"
         assert not (tmp_path / ".text").exists()
 
 

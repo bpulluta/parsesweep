@@ -220,7 +220,12 @@ def test_emitted_record_and_payload_validate_closed_contract(
         "extracted_characters": 5,
         "context_truncated": True,
     }
-    record_extraction_scope(result, page_range=(2, 4), section_filtered=True)
+    record_extraction_scope(
+        result,
+        page_ranges=((2, 4), (8, 8)),
+        omitted_page_ranges=((5, 6),),
+        section_filtered=True,
+    )
     record, _ = build_extraction_record(
         doc_path=source_document,
         source_document_id="doc.txt",
@@ -233,12 +238,17 @@ def test_emitted_record_and_payload_validate_closed_contract(
     validator = record_validator()
     validator.validate(record)
     build_schema_validator(record_metadata.schema).validate(record["payload"])
-    assert record["contract_version"] == "1.1.0"
-    assert record["processing_metrics"]["coverage"]["selected_page_range"] == [
-        2,
-        4,
-    ]
-    assert any("not a full-document" in note for note in record["quality"]["warnings"])
+    assert record["contract_version"] == "2.0.0"
+    coverage = record["processing_metrics"]["coverage"]
+    assert coverage["selected_page_ranges"] == [[2, 4], [8, 8]]
+    assert coverage["omitted_page_ranges"] == [[5, 6]]
+    warnings = record["quality"]["warnings"]
+    assert any("selected pages 2-4,8;" in note for note in warnings)
+    assert any("left out relevant pages 5-6" in note for note in warnings)
+    coverage["selected_page_ranges"] = [[0, 1]]
+    with pytest.raises(ValidationError):
+        validator.validate(record)
+    coverage["selected_page_ranges"] = [[2, 4], [8, 8]]
     record["unexpected"] = True
     with pytest.raises(ValidationError):
         validator.validate(record)

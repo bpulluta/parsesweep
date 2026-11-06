@@ -262,7 +262,7 @@ extraction:
     auto_locate:                  # LLM fallback for documents the CSV does not cover
       section_description: "the residential rate schedules"
       trigger_chars: 200000       # default; only larger documents are targeted
-      max_selected_pages: 30      # default
+      max_selected_pages: 30      # default; total, referenced pages included
       keywords: [rate schedule]   # optional cheap pre-filter
       model: secondary            # optional locator model
       save_discovered: true       # write found ranges for review
@@ -272,12 +272,25 @@ extraction:
 the keys shown plus `enabled`; anything else fails validation. `pages.csv`
 resolves against the config folder (the `--pages-csv` CLI flag against the
 working directory). A row's `file_path` matches a document by path, by path
-relative to the input folder, or by file name. CSV rows win; leave both pages
-empty to force the full document. `pages.range`
-(or `--pages 615-759`) selects one range for a single file. Located ranges are
-cached in `.pages/` beside the document; any failure falls back to the full
-document. With `save_discovered`, `extracted/discovered_page_ranges.csv` (the
-`pages.csv` columns) lists the range behind every current record, reused
+relative to the input folder, or by file name; give a file one row per range.
+CSV rows win; leave both pages empty to force the full document. `pages.range`
+(or `--pages 27,68-73`) selects pages for a single file: comma-separated pages
+and inclusive ranges.
+
+`auto_locate` shows the locator model the opening lines of every page and asks
+for the pages of the described section. It then reads those pages in full and
+adds the parts they refer to elsewhere in the document, such as "charges
+specified in Tariff Sheet 75" or "riders on Sheet 80", and repeats with the
+added pages until nothing new is referenced. `max_selected_pages` caps the
+total. Relevant pages it leaves out are logged as a warning and recorded in the
+record's `coverage.omitted_page_ranges`. The extracted text marks each skipped
+stretch with `[Omitted pages: 28-67]`.
+
+Selections are cached in `.pages/` beside the document. If the section cannot
+be located, the full document is extracted. If a reference pass fails, the
+pages found so far are used and the document is located again on the next run.
+With `save_discovered`, `extracted/discovered_page_ranges.csv` (the `pages.csv`
+columns, one row per range) lists the pages behind every current record, reused
 records included.
 
 ### LLM calls

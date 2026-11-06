@@ -22,61 +22,80 @@ except ImportError:
     PYPDF_AVAILABLE = False
     PdfReader = None
 
+from psweep.utils.page_range import (
+    PageRanges,
+    format_page_ranges,
+    normalize_page_ranges,
+    ranges_from_pages,
+)
+
 logger = logging.getLogger(__name__)
 _MIN_NATIVE_CHARS = 500
 
 
-def _validate_page_range(page_range: tuple) -> None:
-    """Reject malformed or reversed bounds before opening a parser."""
-    message = "page_range must contain ordered integer page bounds"
-    if not isinstance(page_range, (tuple, list)):
-        raise TypeError(message)
-    try:
-        start, end = page_range
-    except ValueError as exc:
-        raise ValueError(message) from exc
-    if type(start) is not int or type(end) is not int or start > end:
+def _checked_ranges(page_ranges) -> PageRanges:
+    """Reject malformed or empty selections before opening a parser."""
+    ranges = normalize_page_ranges(page_ranges)
+    if not ranges:
+        message = "Empty page selection"
         raise ValueError(message)
+    return ranges
 
 
-def _selected_pages(page_count: int, page_range: tuple | None) -> range:
-    """Return one bounded selection for every PDF parser."""
-    if page_range is None:
-        return range(page_count)
-    _validate_page_range(page_range)
-    start, end = max(1, page_range[0]), min(page_count, page_range[1])
-    if start > end:
-        message = f"page_range does not intersect the {page_count}-page PDF"
+def _selected_pages(page_count: int, page_ranges: PageRanges | None) -> list[int]:
+    """Return the 1-indexed pages every PDF parser reads, clamped to the PDF."""
+    if page_ranges is None:
+        return list(range(1, page_count + 1))
+    ranges = _checked_ranges(page_ranges)
+    beyond = tuple(rng for rng in ranges if rng[0] > page_count)
+    if beyond:
+        message = f"Pages {format_page_ranges(beyond)} are beyond the {page_count}-page PDF"
         raise ValueError(message)
-    return range(start - 1, end)
+    return [page for start, end in ranges for page in range(start, min(end, page_count) + 1)]
 
 
-def validate_pdf_scope(pdf_path: Path, page_range: tuple) -> tuple[int, int]:
-    """Check actual PDF bounds without parsing text or starting OCR."""
+def validate_pdf_scope(pdf_path: Path, page_ranges: PageRanges) -> PageRanges:
+    """Check selected pages against the PDF without parsing text or starting OCR."""
     if PYMUPDF_AVAILABLE:
         with pymupdf.open(str(pdf_path)) as document:
-            pages = _selected_pages(len(document), page_range)
+            pages = _selected_pages(len(document), page_ranges)
     elif PYPDF_AVAILABLE:
         with Path(pdf_path).open("rb") as handle:
-            pages = _selected_pages(len(PdfReader(handle).pages), page_range)
+            pages = _selected_pages(len(PdfReader(handle).pages), page_ranges)
     else:
         message = "No PDF parser is available to validate selected pages"
         raise RuntimeError(message)
-    return pages.start + 1, pages.stop
+    return ranges_from_pages(pages)
 
 
 def _scope_meta(
     page_count: int | None,
-    pages: list[int],
+    selected: list[int],
+    extracted: list[int],
     used_ocr: bool = False,
 ) -> dict:
-    """Describe actual parser coverage, including skipped OCR pages."""
+    """Describe the selected pages and those a parser actually read."""
     return {
         "used_ocr": used_ocr,
         "page_count": page_count,
-        "page_range": (pages[0], pages[-1]) if pages else None,
-        "extracted_pages": pages,
+        "page_ranges": ranges_from_pages(selected) or None,
+        "selected_pages": selected,
+        "extracted_pages": extracted,
     }
+
+
+def _join_pages(parts: list[tuple[int, str]]) -> str:
+    """Join page texts, marking pages left out between them."""
+    if not any(text.strip() for _, text in parts):
+        return ""
+    chunks, previous = [], None
+    for page, text in parts:
+        if previous is not None and page > previous + 1:
+            gap = format_page_ranges(((previous + 1, page - 1),))
+            chunks.append(f"[Omitted pages: {gap}]\n")
+        chunks.append(text + "\n")
+        previous = page
+    return "".join(chunks)
 
 
 @contextlib.contextmanager
@@ -96,11 +115,11 @@ def _quiet_tesseract():
 
 def _extract_with_ocr(
     pdf_path: Path,
-    page_range: tuple | None = None,
+    page_ranges: PageRanges | None = None,
     return_meta: bool = False,
 ):
     """Extract raw OCR text from the selected pages, best-effort."""
-    text, meta = "", _scope_meta(None, [])
+    text, meta = "", _scope_meta(None, [], [])
     if not PYMUPDF_AVAILABLE:
         logger.warning("PyMuPDF not available for OCR extraction")
         return (text, meta) if return_meta else text
@@ -111,36 +130,31 @@ def _extract_with_ocr(
         return (text, meta) if return_meta else text
 
     with doc:
-        pages = _selected_pages(len(doc), page_range)
-        extracted, parts = [], []
-        logger.info("Performing OCR on %s selected pages", len(pages))
+        selected = _selected_pages(len(doc), page_ranges)
+        parts = []
+        logger.info("Performing OCR on %s selected pages", len(selected))
         with _quiet_tesseract():
-            for page_num in pages:
+            for page_num in selected:
                 try:
-                    page = doc[page_num]
+                    page = doc[page_num - 1]
                     textpage = page.get_textpage_ocr()
                     if textpage:
-                        parts.append(
-                            (page.get_text(textpage=textpage) or "") + "\n",
-                        )
-                        extracted.append(page_num + 1)
+                        parts.append((page_num, page.get_text(textpage=textpage) or ""))
                 except AttributeError:
                     logger.warning("PyMuPDF OCR requires Tesseract")
                     break
                 except (OSError, RuntimeError, ValueError) as exc:
                     # Keep healthy pages when one scan fails OCR.
-                    logger.debug("OCR skipped page %s: %s", page_num + 1, exc)
-        text = "".join(parts)
-        meta = {
-            **_scope_meta(len(doc), extracted, used_ocr=bool(text.strip())),
-            "selected_pages": [page + 1 for page in pages],
-        }
+                    logger.debug("OCR skipped page %s: %s", page_num, exc)
+        text = _join_pages(parts)
+        extracted = [page for page, _ in parts]
+        meta = _scope_meta(len(doc), selected, extracted, used_ocr=bool(text))
     return (text, meta) if return_meta else text
 
 
 def _extract_native(
     pdf_path: Path,
-    page_range: tuple | None,
+    page_ranges: PageRanges | None,
     *,
     use_pypdf: bool = False,
 ) -> tuple[str, dict]:
@@ -154,44 +168,44 @@ def _extract_native(
                 pages = stack.enter_context(pymupdf.open(str(pdf_path)))
         except Exception:
             logger.exception("Error opening PDF %s", pdf_path)
-            return "", _scope_meta(None, [])
-        selected = _selected_pages(len(pages), page_range)
+            return "", _scope_meta(None, [], [])
+        selected = _selected_pages(len(pages), page_ranges)
+        read = (lambda page: page.extract_text()) if use_pypdf else (lambda page: page.get_text())
         try:
-            text = "".join(
-                ((pages[n].extract_text() if use_pypdf else pages[n].get_text()) or "") + "\n"
-                for n in selected
-            )
+            text = _join_pages([(n, read(pages[n - 1]) or "") for n in selected])
         except Exception:
             logger.exception("Error extracting native PDF text from %s", pdf_path)
-            return "", _scope_meta(len(pages), [])
-        return text, _scope_meta(len(pages), [n + 1 for n in selected])
+            return "", _scope_meta(len(pages), selected, [])
+        return text, _scope_meta(len(pages), selected, selected)
 
 
 def extract_text_from_pdf(
     pdf_path: Path,
-    page_range: tuple | None = None,
+    page_ranges: PageRanges | None = None,
     return_meta: bool = False,
     ocr_corrections: list | None = None,
 ):
     """Extract selected pages with native, pypdf, then OCR fallbacks.
 
-    Bounds are 1-indexed and inclusive. Overlapping bounds are clamped;
-    invalid scopes raise ValueError. Every parser honors the scope.
-    ``return_meta`` always returns a pair, including on failure.
-    Metadata describes actual ``page_range``, total ``page_count``, and
-    ``extracted_pages`` (OCR can skip failed pages). OCR also returns
-    ``raw_ocr_text`` for caching before applying current corrections.
+    ``page_ranges`` holds 1-indexed inclusive ``(start, end)`` pairs; ``None``
+    reads the whole PDF. Ranges running past the last page are clamped; invalid
+    selections raise ValueError. Every parser honors the selection and marks
+    pages left out between selected ones. ``return_meta`` always returns a pair,
+    including on failure. Metadata describes the clamped ``page_ranges`` and
+    ``selected_pages``, total ``page_count``, and ``extracted_pages`` (OCR can
+    skip failed pages). OCR also returns ``raw_ocr_text`` for caching before
+    applying current corrections.
     """
     pdf_path = Path(pdf_path)
-    if page_range is not None:
-        _validate_page_range(page_range)
-    text, meta = "", _scope_meta(None, [])
+    if page_ranges is not None:
+        page_ranges = _checked_ranges(page_ranges)
+    text, meta = "", _scope_meta(None, [], [])
     if PYMUPDF_AVAILABLE:
-        text, meta = _extract_native(pdf_path, page_range)
+        text, meta = _extract_native(pdf_path, page_ranges)
     if not text.strip() and PYPDF_AVAILABLE and PdfReader is not None:
         fallback_text, fallback_meta = _extract_native(
             pdf_path,
-            page_range,
+            page_ranges,
             use_pypdf=True,
         )
         if fallback_meta["page_count"] is not None:
@@ -203,7 +217,7 @@ def extract_text_from_pdf(
         )
         ocr_text, ocr_meta = _extract_with_ocr(
             pdf_path,
-            page_range,
+            page_ranges,
             return_meta=True,
         )
         if ocr_text.strip() and len(ocr_text) > len(text):
