@@ -262,6 +262,7 @@ def extract(
     else:
         if outcome.status == "reused":
             view.success(f"All {outcome.successful} file(s) already processed (verified reuse)")
+        withdrawn = [str(path.relative_to(outcome.output_dir)) for path in outcome.withdrawn]
         view.summary(
             {
                 "Status": outcome.status,
@@ -270,9 +271,11 @@ def extract(
                 "Items": str(outcome.total_items),
                 "Known Cost": f"${outcome.total_cost:.4f}",
                 "Unknown Cost Calls": str(outcome.unknown_cost_calls),
+                **({"Withdrawn": str(len(withdrawn))} if withdrawn else {}),
             },
             title="Extraction Summary",
         )
+        view.notes(withdrawn, title="Withdrawn (source document no longer in input)")
         view.outputs(
             {
                 "Extracted data": str(outcome.output_dir),

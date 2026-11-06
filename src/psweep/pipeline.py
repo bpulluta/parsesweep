@@ -43,6 +43,7 @@ from psweep.config.runtime_config_loader import resolve_compilation_metadata
 from psweep.compilation.input_provenance import (
     analyze_compile_input_provenance,
     INTERNAL_RECORD_DIRS,
+    list_compile_record_files,
 )
 from psweep.discovery.request_inputs import discovery_request_fields
 from jsonschema import ValidationError
@@ -120,6 +121,7 @@ class ExtractionRunResult:
     status: str = "success"
     manifest_path: Path | None = None
     records: list[dict] = field(default_factory=list)
+    withdrawn: list[Path] = field(default_factory=list)
 
     @property
     def exit_code(self) -> int:
@@ -333,6 +335,24 @@ def _reuse_evidence(output: Path) -> dict:
         except (OSError, ValueError, TypeError, AttributeError):
             continue
     return evidence
+
+
+def _withdrawn_records(plan: dict) -> list[Path]:
+    """Records whose source document no longer exists under the input root."""
+    output, root = plan["output"], plan["root"]
+    claimed = set(plan["outputs"].values())
+    withdrawn = []
+    for path in list_compile_record_files(output) if output.is_dir() else []:
+        if path in claimed:
+            continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            source = Path(record["document"]["source_path"])
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
+        if source.is_relative_to(root) and not source.exists():
+            withdrawn.append(path)
+    return withdrawn
 
 
 def _reusable_record(path: Path, fingerprint: str, evidence: dict, validator):
@@ -642,6 +662,7 @@ def _prepare_extraction(
         "fingerprints": fingerprints,
         "inputs": inputs,
         "fresh": fresh,
+        "withdrawn": [] if fresh or validate_only else _withdrawn_records(plan),
     }
 
 
@@ -999,6 +1020,7 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
         and doc not in plan.get("targeting_incomplete", set())
         and str(plan["outputs"][doc]) in successful_paths
     }
+    manifest["withdrawn"] = [str(path) for path in plan["withdrawn"]]
     manifest_path = output / "run_manifests" / f"{run_id.removeprefix('run://')}.manifest.json"
     atomic_json(manifest_path, manifest)
     return ExtractionRunResult(
@@ -1014,6 +1036,7 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
         status=status,
         manifest_path=manifest_path,
         records=results,
+        withdrawn=plan["withdrawn"],
     )
 
 
@@ -1103,6 +1126,9 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
         raise
     pool.shutdown()
     results.extend(outcomes)
+    for record in plan["withdrawn"]:
+        record.unlink(missing_ok=True)
+        logger.info("Withdrew %s: its source document left %s", record, plan["root"])
     return _complete_extraction(
         plan,
         results,

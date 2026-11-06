@@ -214,7 +214,8 @@ relevance. Grades are cached by content and grading inputs in
 their transcript: a run's copy inherits the curated copy's transcript (matched
 by SHA-256) before review. A recording not yet transcribed (first run) is kept
 without review and transcribed at extraction. Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
-`psweep curate --config …` to republish the curated selection.
+`psweep curate --config …` to republish the curated selection; the next
+`psweep extract` withdraws the records of documents it dropped.
 
 ### `policy` and `retention`
 
@@ -434,10 +435,14 @@ that target; changing a target's `urls` or rendered queries re-runs it.
 
 **Extraction reuse.** A record is reused only when source, schema, resolved
 model and settings, and record bytes still match; otherwise it is re-extracted.
-Reuse needs no credentials. `extract --fresh` resets the output after a
-successful preflight. `compile --fresh` clears stale compiled files;
-`validate --fresh` clears `validated/`. `run --fresh` passes `--fresh` to every
-stage.
+Reuse needs no credentials. A record whose source document no longer exists
+under the input folder is withdrawn: extract deletes it, names it in the
+summary and lists it under `withdrawn` in the run manifest, so compile drops
+its rows. Records from other input folders are left alone, and `validate`
+reports a primary with records to withdraw as stale. `extract --fresh` resets
+the output after a successful preflight. `compile --fresh` clears stale
+compiled files; `validate --fresh` clears `validated/`. `run --fresh` passes
+`--fresh` to every stage.
 
 **Caches.** OCR text and transcripts: `.text/<filename>.txt` + `.meta.json`
 beside the document, verified by size, mtime and SHA-256 and carried to a
