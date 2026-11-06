@@ -293,6 +293,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/log_context/index.html">psweep.utils.log_context</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/normalizers/index.html">psweep.utils.normalizers</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/page_range/index.html">psweep.utils.page_range</a></li>
@@ -439,8 +440,20 @@ model alias.</p>
 </section>
 <section id="extraction-times-out">
 <h3>Extraction times out<a class="headerlink" href="#extraction-times-out" title="Link to this heading">¶</a></h3>
-<p>Raise <code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> (default <code class="docutils literal notranslate"><span class="pre">120</span></code>). Transient provider errors
-are already retried.</p>
+<p>While extracting, every running document has a row under the progress bar
+with its own timer, and each prints a line with its item count and time as
+soon as it finishes. The bar reads <code class="docutils literal notranslate"><span class="pre">Preparing</span></code> while page targeting runs. A
+call must return its whole answer within the timeout. Otherwise it is resent,
+up to 4 attempts in total, and each retry logs a warning that names the
+document, such as <code class="docutils literal notranslate"><span class="pre">tariffs.pdf:</span> <span class="pre">gpt-4o</span> <span class="pre">did</span> <span class="pre">not</span> <span class="pre">finish</span> <span class="pre">within</span> <span class="pre">the</span> <span class="pre">120s</span> <span class="pre">timeout;</span> <span class="pre">retrying</span> <span class="pre">in</span> <span class="pre">2s</span> <span class="pre">(attempt</span> <span class="pre">2/4)</span></code>. Every attempt resends the whole prompt and may
+be billed, and a model that needs longer than the timeout usually needs it
+again.</p>
+<p>Response time grows mostly with the answer, because every item is written out
+in full: a one-page sheet that lists many items can take minutes, and page
+targeting only trims long inputs. First narrow the schema’s scope to the
+subset you need, such as one customer class. If calls still run long, raise
+<code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> (default <code class="docutils literal notranslate"><span class="pre">120</span></code>, or <code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code>). Add <code class="docutils literal notranslate"><span class="pre">--debug</span></code>
+to log each request’s size, response time and token counts.</p>
 </section>
 </section>
 <section id="cost-and-speed">

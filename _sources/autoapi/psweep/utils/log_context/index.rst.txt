@@ -1,0 +1,41 @@
+psweep.utils.log_context
+========================
+
+.. py:module:: psweep.utils.log_context
+
+.. autoapi-nested-parse::
+
+   Name the document a log record belongs to.
+
+   Extraction runs documents on worker threads, so a line such as an LLM retry
+   warning is ambiguous unless it says which document it is about.
+   :func:`document_scope` sets that name for the current context and the CLI log
+   formatter prefixes it. Thread pools do not inherit context: submit work
+   through ``contextvars.copy_context().run`` (or wrap it in the scope).
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.log_context.current_document
+   psweep.utils.log_context.document_scope
+
+
+Module Contents
+---------------
+
+.. py:function:: current_document() -> str | None
+
+   The document whose work is running in this context, if any.
+
+
+.. py:function:: document_scope(name: str) -> collections.abc.Iterator[None]
+
+   Attribute log records emitted in this scope to document ``name``.
+
+   Also a decorator: ``pool.submit(document_scope(name)(func), ...)``.
+
+

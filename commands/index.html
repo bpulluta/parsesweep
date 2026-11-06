@@ -293,6 +293,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/log_context/index.html">psweep.utils.log_context</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/normalizers/index.html">psweep.utils.normalizers</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/page_range/index.html">psweep.utils.page_range</a></li>
@@ -372,6 +373,10 @@ validator uses.</p></li>
 only the first N pending files.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--fresh</span></code> — ignore reusable earlier work for that stage; on <code class="docutils literal notranslate"><span class="pre">run</span></code>, for every
 stage.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--quiet</span></code>, <code class="docutils literal notranslate"><span class="pre">--verbose</span></code>, <code class="docutils literal notranslate"><span class="pre">--debug</span></code> — minimal, detailed or diagnostic output;
+<code class="docutils literal notranslate"><span class="pre">run</span></code> forwards the choice to every stage. <code class="docutils literal notranslate"><span class="pre">--debug</span></code> adds ParseSweep’s own
+debug logs, such as each LLM request’s size, timeout, response time and
+token counts. Third-party libraries stay at warnings.</p></li>
 <li><p>Exit codes: <code class="docutils literal notranslate"><span class="pre">0</span></code> success, <code class="docutils literal notranslate"><span class="pre">1</span></code> failure, <code class="docutils literal notranslate"><span class="pre">2</span></code> nothing found, <code class="docutils literal notranslate"><span class="pre">3</span></code> incomplete
 (re-run to retry the rest).</p></li>
 </ul>
@@ -1089,6 +1094,12 @@ psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes
 <dt class="sig sig-object std" id="cmdoption-psweep-run-v">
 <span id="cmdoption-psweep-run-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-v" title="Link to this definition">¶</a></dt>
 <dd><p>Detailed output.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-debug">
+<span class="sig-name descname"><span class="pre">--debug</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-debug" title="Link to this definition">¶</a></dt>
+<dd><p>Debug logs from every stage (LLM requests, retries).</p>
 </dd></dl>
 
 </section>

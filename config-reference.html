@@ -293,6 +293,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/log_context/index.html">psweep.utils.log_context</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/normalizers/index.html">psweep.utils.normalizers</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/page_range/index.html">psweep.utils.page_range</a></li>
@@ -844,7 +845,8 @@ relevance. Grades are cached by content and grading inputs in
 their transcript: a run’s copy inherits the curated copy’s transcript (matched
 by SHA-256) before review. A recording not yet transcribed (first run) is kept
 without review and transcribed at extraction. Edit <code class="docutils literal notranslate"><span class="pre">human_decision</span></code> (<code class="docutils literal notranslate"><span class="pre">keep</span></code>/<code class="docutils literal notranslate"><span class="pre">reject</span></code>) in <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> and run
-<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span> <span class="pre">--config</span> <span class="pre">…</span></code> to republish the curated selection.</p>
+<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span> <span class="pre">--config</span> <span class="pre">…</span></code> to republish the curated selection; the next
+<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span></code> withdraws the records of documents it dropped.</p>
 </section>
 <section id="policy-and-retention">
 <h3><code class="docutils literal notranslate"><span class="pre">policy</span></code> and <code class="docutils literal notranslate"><span class="pre">retention</span></code><a class="headerlink" href="#policy-and-retention" title="Link to this heading">¶</a></h3>
@@ -963,13 +965,18 @@ relative to the input folder, or by file name. CSV rows win; leave both pages
 empty to force the full document. <code class="docutils literal notranslate"><span class="pre">pages.range</span></code>
 (or <code class="docutils literal notranslate"><span class="pre">--pages</span> <span class="pre">615-759</span></code>) selects one range for a single file. Located ranges are
 cached in <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> beside the document; any failure falls back to the full
-document.</p>
+document. With <code class="docutils literal notranslate"><span class="pre">save_discovered</span></code>, <code class="docutils literal notranslate"><span class="pre">extracted/discovered_page_ranges.csv</span></code> (the
+<code class="docutils literal notranslate"><span class="pre">pages.csv</span></code> columns) lists the range behind every current record, reused
+records included.</p>
 </section>
 <section id="llm-calls">
 <h3>LLM calls<a class="headerlink" href="#llm-calls" title="Link to this heading">¶</a></h3>
 <p>Every transient provider failure — HTTP 408, 429 and 5xx, timeouts and dropped
 connections — is retried up to 4 attempts in total with exponential backoff
-(2 s, capped at 30 s). TLS failures and other 4xx errors are terminal.</p>
+(2 s, capped at 30 s). TLS failures and other 4xx errors are terminal. Each
+retry logs a warning with the model, the failure category and the attempt,
+prefixed with the document being processed; provider error text is never
+logged.</p>
 </section>
 <section id="roster-anchored-extraction">
 <h3>Roster-anchored extraction<a class="headerlink" href="#roster-anchored-extraction" title="Link to this heading">¶</a></h3>
@@ -1224,10 +1231,14 @@ replaces the curated partitions of the targets it processes.</p></li>
 </ul>
 <p><strong>Extraction reuse.</strong> A record is reused only when source, schema, resolved
 model and settings, and record bytes still match; otherwise it is re-extracted.
-Reuse needs no credentials. <code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--fresh</span></code> resets the output after a
-successful preflight. <code class="docutils literal notranslate"><span class="pre">compile</span> <span class="pre">--fresh</span></code> clears stale compiled files;
-<code class="docutils literal notranslate"><span class="pre">validate</span> <span class="pre">--fresh</span></code> clears <code class="docutils literal notranslate"><span class="pre">validated/</span></code>. <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--fresh</span></code> passes <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to every
-stage.</p>
+Reuse needs no credentials. A record whose source document no longer exists
+under the input folder is withdrawn: extract deletes it, names it in the
+summary and lists it under <code class="docutils literal notranslate"><span class="pre">withdrawn</span></code> in the run manifest, so compile drops
+its rows. Records from other input folders are left alone, and <code class="docutils literal notranslate"><span class="pre">validate</span></code>
+reports a primary with records to withdraw as stale. <code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--fresh</span></code> resets
+the output after a successful preflight. <code class="docutils literal notranslate"><span class="pre">compile</span> <span class="pre">--fresh</span></code> clears stale
+compiled files; <code class="docutils literal notranslate"><span class="pre">validate</span> <span class="pre">--fresh</span></code> clears <code class="docutils literal notranslate"><span class="pre">validated/</span></code>. <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--fresh</span></code> passes
+<code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to every stage.</p>
 <p><strong>Caches.</strong> OCR text and transcripts: <code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.txt</span></code> + <code class="docutils literal notranslate"><span class="pre">.meta.json</span></code>
 beside the document, verified by size, mtime and SHA-256 and carried to a
 re-downloaded file with the same SHA-256. Page/section targeting: <code class="docutils literal notranslate"><span class="pre">.pages/</span></code>,

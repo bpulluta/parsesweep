@@ -293,6 +293,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/log_context/index.html">psweep.utils.log_context</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/normalizers/index.html">psweep.utils.normalizers</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/page_range/index.html">psweep.utils.page_range</a></li>
@@ -406,6 +407,26 @@ are server routes decided by the response MIME; only known non-document
 types or encodings (<code class="docutils literal notranslate"><span class="pre">.jpg</span></code>, <code class="docutils literal notranslate"><span class="pre">.zip</span></code>, <code class="docutils literal notranslate"><span class="pre">.gz</span></code>) are rejected.</p></li>
 <li><p>LLM calls retry every transient provider failure (408/429/5xx, connection
 errors) through the shared retry helper; TLS failures stay terminal.</p></li>
+<li><p>LLM retries are no longer silent: each one logs a warning with the model,
+the sanitized failure category and the attempt, e.g. <code class="docutils literal notranslate"><span class="pre">tariffs.pdf:</span> <span class="pre">gpt-4o</span> <span class="pre">did</span> <span class="pre">not</span> <span class="pre">finish</span> <span class="pre">within</span> <span class="pre">the</span> <span class="pre">120s</span> <span class="pre">timeout;</span> <span class="pre">retrying</span> <span class="pre">in</span> <span class="pre">2s</span> <span class="pre">(attempt</span> <span class="pre">2/4)</span></code>. Log
+lines emitted while a document is located, extracted or transcribed start
+with its name. Exhausted timeouts report <code class="docutils literal notranslate"><span class="pre">timed</span> <span class="pre">out</span></code> instead of
+<code class="docutils literal notranslate"><span class="pre">provider</span> <span class="pre">failure</span></code>.</p></li>
+<li><p>Extraction reports each document as soon as it finishes, so one slow
+document no longer hides the others. Every running document has a live row
+with its own timer, and each finished document’s line shows its time.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--debug</span></code> raises only ParseSweep’s own loggers to DEBUG; third-party
+libraries stay at warnings.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">discovered_page_ranges.csv</span></code> (<code class="docutils literal notranslate"><span class="pre">pages.auto_locate.save_discovered</span></code>) lists the
+page range behind every current record. It was rewritten with only the
+documents located in the latest run, so reused records lost their ranges,
+and a run that located nothing left removed documents listed.</p></li>
+<li><p>Extract withdraws records whose source document no longer exists under the
+input folder, e.g. a document rejected in <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> and dropped by
+<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span></code>. Their rows used to stay in the compiled table. Withdrawn
+records are named in the extraction summary and listed under <code class="docutils literal notranslate"><span class="pre">withdrawn</span></code> in
+the run manifest; <code class="docutils literal notranslate"><span class="pre">validate</span></code> reports a primary with records to withdraw as
+stale, and challengers withdraw theirs.</p></li>
 <li><p>Reasoning models (<code class="docutils literal notranslate"><span class="pre">gpt-5*</span></code>, o-series, <code class="docutils literal notranslate"><span class="pre">reasoning_models</span></code>) get JSON mode like
 every other model; only <code class="docutils literal notranslate"><span class="pre">temperature</span></code> is withheld. Without it, review,
 extraction and judge replies intermittently came back as malformed JSON.</p></li>
@@ -424,6 +445,8 @@ reprs. In roster mode an empty list or object is <code class="docutils literal n
 <section id="added">
 <h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">run</span> <span class="pre">--debug</span></code> forwards <code class="docutils literal notranslate"><span class="pre">--debug</span></code> to every stage. LLM calls log
+their prompt size, timeout, response time and token counts at debug level.</p></li>
 <li><p>Public-only DNS-pinned acquisition, decoded response limits, verified local
 TLS integration tests, and an opt-in external smoke-test layer.</p></li>
 <li><p>Protected operating mode with an approved HTTPS model endpoint, private

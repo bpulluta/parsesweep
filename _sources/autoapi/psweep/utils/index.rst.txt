@@ -19,6 +19,7 @@ Submodules
    /autoapi/psweep/utils/error_taxonomy/index
    /autoapi/psweep/utils/file_io/index
    /autoapi/psweep/utils/item_matcher/index
+   /autoapi/psweep/utils/log_context/index
    /autoapi/psweep/utils/model_pricing/index
    /autoapi/psweep/utils/normalizers/index
    /autoapi/psweep/utils/page_range/index
