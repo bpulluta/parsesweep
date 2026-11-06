@@ -412,10 +412,10 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
     extracted = tmp_path / "extracted"
     seen = []
 
-    def parse_document(_doc, *, page_range=None, return_meta=False, **_kwargs):
-        seen.append(page_range)
+    def parse_document(_doc, *, page_ranges=None, return_meta=False, **_kwargs):
+        seen.append(page_ranges)
         text = "Source body"
-        return (text, {"page_range": page_range}) if return_meta else text
+        return (text, {"page_ranges": page_ranges}) if return_meta else text
 
     monkeypatch.setattr(
         "psweep.extraction.document_utils.extract_text_from_document",
@@ -429,9 +429,9 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
         documents, schema_path, output_dir=extracted, provider="openai", pages_csv=pages_csv
     )
     assert run.successful == 1 and run.failed == 0
-    assert seen == [(5, 9)]
+    assert seen == [((5, 9),)]
     record = json.loads((extracted / "document.json").read_text())
-    assert record["processing_metrics"]["coverage"]["selected_page_range"] == [5, 9]
+    assert record["processing_metrics"]["coverage"]["selected_page_ranges"] == [[5, 9]]
     compiled = compile_extractions(
         extracted, schema_path, output_dir=tmp_path / "compiled", report_format="both"
     )
@@ -479,7 +479,7 @@ def test_workflow_selected_input_scope_survives_record(
             _plan(tmp_path, document, schema, schema_path, metadata),
             extractor=extractor,
             run_id="run://contract",
-            page_range=(5, 9) if scope == "pages" else None,
+            page_ranges=((5, 9),) if scope == "pages" else None,
             section_text="Selected section" if scope == "sections" else None,
         )
     expected_text = "Selected section" if scope == "sections" else "Complete source document"
@@ -489,7 +489,7 @@ def test_workflow_selected_input_scope_survives_record(
     coverage = record["processing_metrics"]["coverage"]
     assert coverage == result["coverage"]
     if scope == "pages":
-        assert coverage["selected_page_range"] == [5, 9]
+        assert coverage["selected_page_ranges"] == [[5, 9]]
     else:
         assert coverage["section_filtered"] is True
     assert any("not a full-document" in warning for warning in record["quality"]["warnings"])

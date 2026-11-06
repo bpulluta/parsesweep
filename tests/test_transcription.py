@@ -495,7 +495,7 @@ def test_document_dispatch_returns_transcript_and_scope(recording):
         recording, return_meta=True, transcriber=FakeTranscriber()
     )
     assert text == "spoken words"
-    assert meta == {"used_ocr": False, "page_range": None, "page_count": None}
+    assert meta == {"used_ocr": False, "page_ranges": None, "page_count": None}
 
 
 def test_audio_is_a_supported_and_downloadable_document(tmp_path):

@@ -425,9 +425,9 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
 
     monkeypatch.setattr(extractor.client, "extract", extract)
 
-    def parse_document(_doc, *, page_range=None, return_meta=False, **_kwargs):
+    def parse_document(_doc, *, page_ranges=None, return_meta=False, **_kwargs):
         text = "Exact fixture statement"
-        return (text, {"page_range": page_range}) if return_meta else text
+        return (text, {"page_ranges": page_ranges}) if return_meta else text
 
     monkeypatch.setattr(
         "psweep.extraction.document_utils.extract_text_from_document",
@@ -461,7 +461,7 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
             plan,
             extractor=extractor,
             run_id="run://integration",
-            page_range=(1, 1),
+            page_ranges=((1, 1),),
         )
         assert result["success"], result
     assert set(seen_origins) == {
@@ -481,8 +481,8 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     for path in output.rglob("report.json"):
         audit = json.loads(path.read_text())
         assert audit["lineage"]["run_id"] == "run://integration"
-        assert any("selected pages 1-1" in warning for warning in audit["quality"]["warnings"])
-        assert audit["processing_metrics"]["coverage"]["selected_page_range"] == [1, 1]
+        assert any("selected pages 1;" in warning for warning in audit["quality"]["warnings"])
+        assert audit["processing_metrics"]["coverage"]["selected_page_ranges"] == [[1, 1]]
 
 
 def test_browser_render_redirect_cannot_bypass_source_policy(monkeypatch, tmp_path):

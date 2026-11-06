@@ -2,20 +2,26 @@
 
 Large source documents (e.g. a 600+ page tariff book) overflow the extraction
 context and get truncated before the section you actually want. This module
-finds the page range that holds a described section so extraction can target
-only those pages.
+finds the pages that hold a described section, plus the parts of the document
+that section refers to, so extraction can target only those pages.
 
 Strategy (cheap first, LLM second):
 
 1. Heuristic pre-filter — score each page by keyword hits and keep the dense
    pages plus a little context around them.
 2. LLM confirm — send a compact index (page number + snippet) of just the
-   candidate pages and ask which contiguous range contains the section.
+   candidate pages and ask which page ranges contain the section.
+3. Reference following — send the newly selected pages in full plus a
+   one-line outline of every page, and ask which other parts they refer to
+   hold information the section needs (e.g. "charges are specified in
+   Sheet 75"). Repeat for the pages that adds until nothing new is referenced
+   or ``max_selected_pages`` is spent; relevant parts that do not fit are
+   reported as omitted.
 
 Results are cached in a ``.pages/<stem>.json`` sidecar, verified against
-source SHA-256 and resolved model/effective settings. Cached bounds and
-caps are checked without parsing. ``locate`` returns ``None`` on failure
-so the caller can fall back to full-document extraction.
+source SHA-256 and resolved model/effective settings. Cached selections are
+checked against the page count and budget without parsing. ``locate`` returns
+``None`` on failure so the caller can fall back to full-document extraction.
 """
 
 from __future__ import annotations
@@ -25,10 +31,20 @@ import hashlib
 import json
 import logging
 import re
+from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from psweep.utils.file_io import artifact_sha256, staged_file
+from psweep.utils.page_range import (
+    PageRanges,
+    count_pages,
+    format_page_ranges,
+    normalize_page_ranges,
+    page_numbers,
+    ranges_from_pages,
+)
 from psweep.exceptions import APIKeyError
 from .llm_factory import resolve_llm_kwargs
 
@@ -40,6 +56,11 @@ PAGE_CACHE_DIRNAME = ".pages"
 # CLI resolver and PageLocator so ``--help``/docs and runtime never drift.
 DEFAULT_PAGE_TRIGGER_CHARS = 200_000
 DEFAULT_MAX_SELECTED_PAGES = 30
+
+# Reference following shows the model one outline line per page; entries shrink
+# below the per-page width on very long documents to bound the prompt size.
+_OUTLINE_PAGE_CHARS = 160
+_OUTLINE_TOTAL_CHARS = 120_000
 
 # Generic English words to ignore when deriving keywords from a description.
 _STOPWORDS = {
@@ -76,9 +97,21 @@ _STOPWORDS = {
 
 _LOCATE_SYSTEM = (
     "You locate where a described section lives inside a long document. You are "
-    "given numbered page excerpts. Return the smallest contiguous page range "
-    "that fully contains the described section. If it is not present, return an "
+    "given numbered page excerpts. Return the smallest page ranges that fully "
+    "contain the described section; use several ranges only when it is split "
+    "across separate parts of the document. If it is not present, return an "
     "empty ranges list."
+)
+
+_REFERENCE_SYSTEM = (
+    "You follow cross-references inside a long document. You are given the full "
+    "text of pages selected for a described section and a one-line outline of "
+    "every page. Find the other parts of the document the selected text refers "
+    "to, such as a schedule, rule, table, appendix or section it says applies, "
+    "and use the outline to locate them. Return the page ranges of the referenced "
+    "parts that hold information needed for the described section, most "
+    "essential first, excluding pages already selected. If none are needed, "
+    "return an empty ranges list."
 )
 
 _LOCATE_SCHEMA: dict[str, Any] = {
@@ -237,8 +270,16 @@ class _BaseLocator:
                 temporary.replace(destination)
 
 
+@dataclass(frozen=True)
+class PageSelection:
+    """Pages to extract, and relevant pages left out to stay within the budget."""
+
+    ranges: PageRanges
+    omitted: PageRanges = ()
+
+
 class PageLocator(_BaseLocator):
-    """Find the page range holding a described section in a large PDF."""
+    """Find the pages holding a described section, and those it refers to, in a large PDF."""
 
     def __init__(
         self,
@@ -282,29 +323,20 @@ class PageLocator(_BaseLocator):
             }
         )
 
-    # -- LLM confirmation --------------------------------------------------
+    # -- LLM calls ---------------------------------------------------------
 
-    def _confirm_with_llm(self, pages: list[str], candidates: list[int]) -> tuple[int, int] | None:
-        """Ask the LLM for the contiguous 1-indexed range over candidate pages."""
-        index_lines = []
-        for idx in candidates:
-            snippet = " ".join(pages[idx].split())[: self._snippet_chars]
-            index_lines.append(f"[page {idx + 1}] {snippet}")
-        index_text = "\n\n".join(index_lines)
+    def _ask_ranges(
+        self, page_total: int, *, system: str, user_prompt: str
+    ) -> list[tuple[int, int]] | None:
+        """Return the valid ranges an answer names, clamped to the document.
 
-        user_prompt = (
-            f"TARGET SECTION: {self._description}\n\n"
-            "Below are excerpts from candidate pages of a long document (page "
-            "numbers are 1-indexed and correspond to the real document). Return "
-            "the smallest contiguous page range that fully contains the target "
-            'section, as JSON {"ranges": [{"start": N, "end": M}]}.\n\n'
-            f"CANDIDATE PAGES:\n{index_text}"
-        )
+        ``None`` means the call failed or the answer had no ranges list.
+        """
         try:
             result = self._ensure_client().extract(
-                text=index_text,
+                text=user_prompt,
                 schema=_LOCATE_SCHEMA,
-                system_prompt=_LOCATE_SYSTEM,
+                system_prompt=system,
                 user_prompt=user_prompt,
                 suppress_errors=True,
             )
@@ -316,23 +348,94 @@ class PageLocator(_BaseLocator):
 
         data = result.get("data") if isinstance(result, dict) else None
         ranges = data.get("ranges") if isinstance(data, dict) else None
+        if not isinstance(ranges, list):
+            return None
         valid = []
-        for rng in ranges if isinstance(ranges, list) else []:
+        for rng in ranges:
             if not isinstance(rng, dict):
                 continue
             start, end = rng.get("start"), rng.get("end")
             if type(start) is int and type(end) is int and start <= end:
-                valid.append((start, end))
-        if not valid:
-            return None
-        start = max(1, min(rng[0] for rng in valid))
-        end = min(len(pages), max(rng[1] for rng in valid))
-        if end < start:
-            return None
-        # Cap the span so a bad answer can't select the whole book.
-        if end - start + 1 > self._max_pages:
-            end = start + self._max_pages - 1
-        return (start, end)
+                start, end = max(1, start), min(page_total, end)
+                if start <= end:
+                    valid.append((start, end))
+        return valid
+
+    def _confirm_with_llm(self, pages: list[str], candidates: list[int]) -> list[int] | None:
+        """Ask which candidate pages hold the section; return them in page order."""
+        index_lines = []
+        for idx in candidates:
+            snippet = " ".join(pages[idx].split())[: self._snippet_chars]
+            index_lines.append(f"[page {idx + 1}] {snippet}")
+        index_text = "\n\n".join(index_lines)
+
+        user_prompt = (
+            f"TARGET SECTION: {self._description}\n\n"
+            "Below are excerpts from candidate pages of a long document (page "
+            "numbers are 1-indexed and correspond to the real document). Return "
+            "the smallest page ranges that fully contain the target section, using "
+            "several ranges only when it is split across separate parts, as JSON "
+            '{"ranges": [{"start": N, "end": M}]}.\n\n'
+            f"CANDIDATE PAGES:\n{index_text}"
+        )
+        ranges = self._ask_ranges(len(pages), system=_LOCATE_SYSTEM, user_prompt=user_prompt)
+        return page_numbers(normalize_page_ranges(ranges)) if ranges else None
+
+    @staticmethod
+    def _outline(pages: list[str]) -> str:
+        """One line per page, without running headers and footers."""
+        lines = [
+            [" ".join(line.split()) for line in page.splitlines() if line.strip()] for page in pages
+        ]
+        counts = Counter(line for page_lines in lines for line in set(page_lines))
+        running = {line for line, count in counts.items() if count > max(1, len(pages) / 2)}
+        width = max(1, min(_OUTLINE_PAGE_CHARS, _OUTLINE_TOTAL_CHARS // max(1, len(pages))))
+        return "\n".join(
+            f"[page {number}] "
+            + " ".join(line for line in page_lines if line not in running)[:width]
+            for number, page_lines in enumerate(lines, start=1)
+        )
+
+    def _follow_references(
+        self, pages: list[str], chosen: list[int], requested: set[int]
+    ) -> tuple[list[int], list[int]]:
+        """Add the parts selected pages refer to until none are new or the budget is spent.
+
+        Each pass reads the pages the previous pass added. Referenced parts are
+        taken whole in the model's priority order; parts that do not fit the
+        budget are returned as omitted. A failed pass marks the result incomplete.
+        """
+        outline = self._outline(pages)
+        chosen_set, omitted = set(chosen), set()
+        frontier = chosen
+        while frontier and len(chosen_set) < self._max_pages:
+            frontier_text = "\n\n".join(f"[page {n}]\n{pages[n - 1]}" for n in frontier)
+            user_prompt = (
+                f"TARGET SECTION: {self._description}\n\n"
+                f"ALREADY SELECTED PAGES: {format_page_ranges(ranges_from_pages(chosen_set))}"
+                "\n\nBelow is the full text of newly selected pages, then a one-line "
+                "outline of every page (page numbers are 1-indexed and correspond to "
+                "the real document). Return the page ranges of the other parts this "
+                "text refers to that hold information needed for the target section, "
+                "most essential first, as JSON "
+                '{"ranges": [{"start": N, "end": M}]}.\n\n'
+                f"SELECTED PAGE TEXT:\n{frontier_text}\n\nDOCUMENT OUTLINE:\n{outline}"
+            )
+            ranges = self._ask_ranges(len(pages), system=_REFERENCE_SYSTEM, user_prompt=user_prompt)
+            if ranges is None:
+                self.incomplete = True
+                break
+            added = []
+            for start, end in ranges:
+                part = [n for n in range(start, end + 1) if n not in requested]
+                requested.update(part)
+                if len(chosen_set) + len(part) <= self._max_pages:
+                    chosen_set.update(part)
+                    added.extend(part)
+                else:
+                    omitted.update(part)
+            frontier = sorted(added)
+        return sorted(chosen_set), sorted(omitted)
 
     # -- cache -------------------------------------------------------------
 
@@ -340,7 +443,7 @@ class PageLocator(_BaseLocator):
     def _cache_path(pdf_path: Path) -> Path:
         return pdf_path.parent / PAGE_CACHE_DIRNAME / f"{pdf_path.stem}.json"
 
-    def _read_cache(self, pdf_path: Path) -> tuple[int, int] | None:
+    def _read_cache(self, pdf_path: Path) -> PageSelection | None:
         cache = self._cache_path(pdf_path)
         if not cache.exists():
             return None
@@ -348,32 +451,28 @@ class PageLocator(_BaseLocator):
             meta = json.loads(cache.read_text(encoding="utf-8"))
             if not self._cache_matches(pdf_path, meta):
                 return None
-            start, end = meta["range"]
-            page_count = meta.get("page_count")
-            if any(type(n) is not int for n in (start, end, page_count)):
+            ranges = normalize_page_ranges(meta["ranges"])
+            omitted = normalize_page_ranges(meta["omitted"])
+            page_count = meta["page_count"]
+            if type(page_count) is not int or not ranges:
                 return None
-            if not 1 <= start <= end <= page_count:
+            if any(end > page_count for _, end in (*ranges, *omitted)):
                 return None
-            if end - start + 1 > self._max_pages:
+            if count_pages(ranges) > self._max_pages:
                 return None
         except Exception:  # noqa: BLE001 - a bad cache must never break the run
             return None
         else:
-            return start, end
+            return PageSelection(ranges, omitted)
 
-    def _write_cache(
-        self,
-        pdf_path: Path,
-        rng: tuple[int, int],
-        method: str,
-        page_count: int,
-    ) -> None:
+    def _write_cache(self, pdf_path: Path, selection: PageSelection, page_count: int) -> None:
         try:
             meta = {
                 **self._cache_metadata(pdf_path),
-                "range": list(rng),
+                "ranges": [list(rng) for rng in selection.ranges],
+                "omitted": [list(rng) for rng in selection.omitted],
                 "page_count": page_count,
-                "method": method,
+                "method": "heuristic+llm",
             }
             self._publish_cache(
                 [
@@ -386,17 +485,15 @@ class PageLocator(_BaseLocator):
         except (OSError, TypeError, ValueError):
             logger.debug("Page cache write failed for %s", pdf_path, exc_info=True)
 
-    def locate_cached(self, pdf_path: str | Path) -> tuple[int, int] | None:
-        """Return a verified range without parsing or client setup."""
+    def locate_cached(self, pdf_path: str | Path) -> PageSelection | None:
+        """Return a verified selection without parsing or client setup."""
         pdf_path = Path(pdf_path)
         return self._read_cache(pdf_path) if pdf_path.suffix.lower() == ".pdf" else None
 
     # -- entry point -------------------------------------------------------
 
-    def locate(
-        self, pdf_path: str | Path, pages: list[str] | None = None
-    ) -> tuple[int, int] | None:
-        """Return the 1-indexed inclusive page range for the section, or None."""
+    def locate(self, pdf_path: str | Path, pages: list[str] | None = None) -> PageSelection | None:
+        """Return the pages for the section and the parts it refers to, or None."""
         pdf_path = Path(pdf_path)
 
         if pdf_path.suffix.lower() != ".pdf":
@@ -420,15 +517,20 @@ class PageLocator(_BaseLocator):
             logger.debug("Page targeting: no candidate pages for %s", pdf_path.name)
             return None
 
-        rng = self._confirm_with_llm(pages, candidates)
-        self.incomplete = rng is None
-        if rng is None:
+        primary = self._confirm_with_llm(pages, candidates)
+        self.incomplete = primary is None
+        if primary is None:
             return None
 
-        self._write_cache(
-            pdf_path,
-            rng,
-            method="heuristic+llm",
-            page_count=len(pages),
+        # Keep the first pages of an oversized section so a bad answer can't
+        # select the whole book.
+        chosen, omitted = self._follow_references(
+            pages, primary[: self._max_pages], requested=set(primary)
         )
-        return rng
+        selection = PageSelection(
+            ranges_from_pages(chosen),
+            ranges_from_pages([*primary[self._max_pages :], *omitted]),
+        )
+        if not self.incomplete:
+            self._write_cache(pdf_path, selection, page_count=len(pages))
+        return selection

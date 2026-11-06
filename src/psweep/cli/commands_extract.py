@@ -135,7 +135,7 @@ def _render_extraction(plan, view):
     "--pages",
     type=str,
     default=None,
-    help='Page range to extract (e.g., "615-759"). Only for single PDF files.',
+    help='Pages to extract (e.g., "27,68-73"). Only for single PDF files.',
 )
 @click.option(
     "--pages-csv",

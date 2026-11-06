@@ -93,7 +93,12 @@ from psweep.extraction.text_processor import calculate_completeness
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.file_io import artifact_sha256, atomic_json, atomic_write
 from psweep.utils.log_context import document_scope
-from psweep.utils.page_range import load_pages_csv, parse_page_range
+from psweep.utils.page_range import (
+    format_page_ranges,
+    load_pages_csv,
+    normalize_page_ranges,
+    parse_page_ranges,
+)
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.workspace import Workspace, infer_domain
 
@@ -418,7 +423,7 @@ def _manual_ranges(inputs: dict, documents: list[Path], root: Path) -> dict:
         if len(documents) != 1 or documents[0].suffix.lower() != ".pdf":
             message = "--pages requires exactly one selected PDF"
             raise ValueError(message)
-        ranges[documents[0]] = parse_page_range(inputs["pages"])
+        ranges[documents[0]] = parse_page_ranges(inputs["pages"])
     return ranges
 
 
@@ -666,24 +671,24 @@ def _prepare_extraction(
     }
 
 
-def _document_text(doc_path, page_range, section_text, corrections, transcriber=None):
+def _document_text(doc_path, page_ranges, section_text, corrections, transcriber=None):
     """Prepare text and effective scope for one document."""
     scope = {}
     if section_text is not None:
-        text, effective = section_text, page_range
+        text, effective = section_text, page_ranges
     elif doc_path.suffix.lower() == ".pdf":
         text, scope = document_utils.extract_text_from_document(
             doc_path,
-            page_range=page_range,
+            page_ranges=page_ranges,
             ocr_corrections=corrections,
             return_meta=True,
         )
-        effective = scope.get("page_range") if page_range is not None else None
+        effective = scope.get("page_ranges") if page_ranges is not None else None
     else:
         text = document_utils.extract_text_from_document(
-            doc_path, page_range=page_range, transcriber=transcriber
+            doc_path, page_ranges=page_ranges, transcriber=transcriber
         )
-        effective = page_range
+        effective = page_ranges
     if not text.strip():
         message = "Document parser returned no source text"
         raise ValueError(message)
@@ -774,7 +779,7 @@ def _roster_extract(extractor, schema, array, roster, candidates, budget, info):
 
 
 def _extract_one_document(
-    doc_path: Path, plan: dict, *, extractor, run_id, page_range=None, section_text=None
+    doc_path: Path, plan: dict, *, extractor, run_id, page_ranges=None, section_text=None
 ) -> dict:
     """Extract and persist one record without UI or batch decisions."""
     result = None
@@ -808,9 +813,9 @@ def _extract_one_document(
                 info,
             )
         else:
-            text, effective_range, parser_scope = _document_text(
+            text, effective_ranges, parser_scope = _document_text(
                 doc_path,
-                page_range,
+                page_ranges,
                 section_text,
                 inputs.get("ocr_corrections"),
                 plan.get("transcriber"),
@@ -821,7 +826,8 @@ def _extract_one_document(
             result = extractor.extract(prompt, plan["schema"])
             record_extraction_scope(
                 result,
-                page_range=effective_range,
+                page_ranges=effective_ranges,
+                omitted_page_ranges=plan.get("targeting_omitted", {}).get(doc_path),
                 section_filtered=section_text is not None,
                 parser_scope=parser_scope,
             )
@@ -897,6 +903,7 @@ def _target_extraction_inputs(plan: dict):
         and plan["anchors"].get(doc) != set()
     ]
     plan["targeting_incomplete"] = set()
+    plan["targeting_omitted"] = {}
     ranges = dict(plan["ranges"])
     sections = {}
     targeting = inputs.get("page_targeting") or {}
@@ -920,11 +927,23 @@ def _target_extraction_inputs(plan: dict):
             if doc.suffix.lower() == ".pdf" and doc not in ranges:
                 page_locator.incomplete = False
                 with document_scope(doc.name):
-                    located = page_locator.locate(doc)
+                    selection = page_locator.locate(doc)
+                    if selection:
+                        ranges[doc] = selection.ranges
+                        logger.info(
+                            "Page targeting selected pages %s",
+                            format_page_ranges(selection.ranges),
+                        )
+                    if selection and selection.omitted:
+                        plan["targeting_omitted"][doc] = selection.omitted
+                        logger.warning(
+                            "Page targeting left out relevant pages %s to stay within "
+                            "max_selected_pages; raise pages.auto_locate.max_selected_pages "
+                            "to include them",
+                            format_page_ranges(selection.omitted),
+                        )
                 if page_locator.incomplete:
                     plan["targeting_incomplete"].add(doc)
-                if located:
-                    ranges[doc] = located
             elif doc.suffix.lower() in {
                 ".html",
                 ".htm",
@@ -1068,16 +1087,22 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     if inputs.get("page_targeting", {}).get("save_discovered"):
         for doc, text in sections.items():
             atomic_write(output / ".sections" / f"{doc.name}.txt", text)
-        # A reused record was extracted from the range its coverage recorded.
+        # A reused record was extracted from the pages its coverage recorded.
         used = {
-            doc: record.get("processing_metrics", {}).get("coverage", {}).get("selected_page_range")
+            doc: normalize_page_ranges(coverage["selected_page_ranges"])
             for doc, record in plan["reused"].items()
+            if "selected_page_ranges"
+            in (coverage := record.get("processing_metrics", {}).get("coverage", {}))
         }
         used.update(ranges)
         buffer = io.StringIO(newline="")
         writer = csv.writer(buffer)
         writer.writerow(["file_path", "start_page", "end_page"])
-        writer.writerows((str(doc), *used[doc]) for doc in plan["documents"] if used.get(doc))
+        writer.writerows(
+            (str(doc), start, end)
+            for doc in plan["documents"]
+            for start, end in used.get(doc) or ()
+        )
         atomic_write(output / "discovered_page_ranges.csv", buffer.getvalue())
     results = []
     for doc, record in plan["reused"].items():
@@ -1109,7 +1134,7 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
                     plan,
                     extractor=extractor,
                     run_id=run_id,
-                    page_range=ranges.get(doc),
+                    page_ranges=ranges.get(doc),
                     section_text=sections.get(doc),
                 )
                 running[future] = item

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from psweep.extraction.page_locator import PageLocator
+from psweep.extraction.page_locator import PageLocator, PageSelection
 
 
 class _FakeClient:
@@ -68,9 +68,8 @@ class TestLocate:
         monkeypatch.setattr(loc, "_ensure_client", lambda: fake)
 
         pages = _pages_with_section({10, 11}, total=20)
-        rng = loc.locate(pdf, pages=pages)
-        assert rng == (11, 12)
-        assert fake.calls == 1
+        assert loc.locate(pdf, pages=pages) == PageSelection(((11, 12),))
+        assert fake.calls == 2  # locate, then one reference pass that adds nothing
         assert (tmp_path / ".pages" / "doc.json").exists()
 
     def test_cache_hit_skips_llm(self, tmp_path, monkeypatch):
@@ -85,8 +84,7 @@ class TestLocate:
         loc2 = PageLocator("residential rate schedule per kwh")
         fake2 = _FakeClient([{"start": 1, "end": 2}])
         monkeypatch.setattr(loc2, "_ensure_client", lambda: fake2)
-        rng = loc2.locate(pdf, pages=pages)
-        assert rng == (11, 12)
+        assert loc2.locate(pdf, pages=pages) == PageSelection(((11, 12),))
         assert fake2.calls == 0  # served from cache
 
     def test_cache_invalidated_when_section_changes(self, tmp_path, monkeypatch):
@@ -106,9 +104,8 @@ class TestLocate:
         monkeypatch.setattr(loc2, "_ensure_client", lambda: fake2)
         # Give loc2 keywords that hit the fake pages so candidates exist.
         loc2._keywords = ["residential", "charge"]
-        rng = loc2.locate(pdf, pages=pages)
-        assert fake2.calls == 1
-        assert rng == (3, 4)
+        assert loc2.locate(pdf, pages=pages) == PageSelection(((3, 4),))
+        assert fake2.calls == 2
 
     def test_range_capped_to_max_selected_pages(self, tmp_path, monkeypatch):
         pdf = self._pdf(tmp_path)
@@ -119,8 +116,8 @@ class TestLocate:
             lambda: _FakeClient([{"start": 10, "end": 100}]),
         )
         pages = _pages_with_section({10, 11, 12}, total=120)
-        rng = loc.locate(pdf, pages=pages)
-        assert rng == (10, 14)  # 5 pages max
+        # The first 5 pages are kept; the rest of the answer is reported as omitted.
+        assert loc.locate(pdf, pages=pages) == PageSelection(((10, 14),), ((15, 100),))
 
     def test_returns_none_without_candidates(self, tmp_path):
         pdf = self._pdf(tmp_path)
@@ -138,7 +135,7 @@ class TestCacheIntegrity:
             "_ensure_client",
             lambda: _FakeClient([{"start": 2, "end": 3}]),
         )
-        assert locator.locate(source, pages=["rate schedule"] * 5) == (2, 3)
+        assert locator.locate(source, pages=["rate schedule"] * 5) == PageSelection(((2, 3),))
         return source, locator
 
     def test_explicit_empty_keywords_respected(self):
@@ -173,7 +170,7 @@ class TestCacheIntegrity:
         source, loc = self._seed(tmp_path, monkeypatch, max_selected_pages=2)
         cache = loc._cache_path(source)
         meta = json.loads(cache.read_text())
-        meta["range"] = bad_range
+        meta["ranges"] = [bad_range]
         cache.write_text(json.dumps(meta))
         assert loc._read_cache(source) is None
 
@@ -184,7 +181,7 @@ class TestCacheIntegrity:
             lambda _p: pytest.fail("parsed cache hit"),
         )
         monkeypatch.setattr(loc, "_ensure_client", lambda: pytest.fail("built client"))
-        assert loc.locate_cached(source) == (2, 3)
+        assert loc.locate_cached(source) == PageSelection(((2, 3),))
 
     def test_resolved_ambient_model_invalidates_cache(self, tmp_path, monkeypatch):
         config = {"model": "gpt-4o"}
@@ -222,7 +219,7 @@ class TestRangeResponses:
         source.write_bytes(b"fake")
         locator = PageLocator("rates")
         monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient(ranges))
-        expected = (4, 4) if len(ranges) > 1 else None
+        expected = PageSelection(((4, 4),)) if len(ranges) > 1 else None
         assert locator.locate(source, pages=["rates"] * 5) == expected
 
 
@@ -267,3 +264,81 @@ def test_locator_names_the_model_that_answered():
     assert loc.model is None
     loc._client = type("Client", (), {"raw_model": "gpt-x"})()
     assert loc.model == "gpt-x"
+
+
+class _ScriptedClient:
+    """Answers each call with the next scripted ranges (or raises) and keeps prompts."""
+
+    def __init__(self, *answers):
+        self._answers = list(answers)
+        self.prompts = []
+
+    def extract(self, **kwargs):
+        self.prompts.append(kwargs["user_prompt"])
+        answer = self._answers.pop(0) if self._answers else []
+        if isinstance(answer, Exception):
+            raise answer
+        return {"data": {"ranges": [{"start": s, "end": e} for s, e in answer]}}
+
+
+def _tariff_pages(total: int = 40) -> list[str]:
+    """Pages with a running header; page 10 is the section and refers to sheet 30."""
+    pages = [f"Utility Co\nTariff No. 13\nSheet {n} general rules" for n in range(1, total + 1)]
+    pages[9] = (
+        "Utility Co\nTariff No. 13\n"
+        + "Residential rate schedule energy charge per kwh customer charge. " * 20
+        + "\nMiscellaneous charges are specified in Sheet 30."
+    )
+    pages[29] = "Utility Co\nTariff No. 13\nSheet 30 MISCELLANEOUS CHARGES\nSee Sheet 35 riders."
+    return pages
+
+
+class TestReferences:
+    def _locate(self, tmp_path, monkeypatch, client, **kwargs):
+        pdf = tmp_path / "tariff.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        loc = PageLocator("residential rate schedule per kwh", **kwargs)
+        monkeypatch.setattr(loc, "_ensure_client", lambda: client)
+        return pdf, loc, loc.locate(pdf, pages=_tariff_pages())
+
+    def test_primary_answer_keeps_disjoint_ranges(self, tmp_path, monkeypatch):
+        client = _ScriptedClient([(3, 3), (8, 9)])
+        _, _, selection = self._locate(tmp_path, monkeypatch, client)
+        assert selection == PageSelection(((3, 3), (8, 9)))
+
+    def test_follows_references_transitively_and_caches(self, tmp_path, monkeypatch):
+        client = _ScriptedClient([(10, 10)], [(30, 31)], [(35, 35)], [])
+        pdf, loc, selection = self._locate(tmp_path, monkeypatch, client)
+        assert selection == PageSelection(((10, 10), (30, 31), (35, 35)))
+        assert len(client.prompts) == 4
+        first_hop = client.prompts[1]
+        # Full page text reaches the model, past the 600-character locate snippets.
+        assert "Miscellaneous charges are specified in Sheet 30." in first_hop
+        assert "[page 30] Sheet 30 MISCELLANEOUS CHARGES See Sheet 35 riders." in first_hop
+        assert "[page 1] Sheet 1 general rules" in first_hop  # running header stripped
+        assert "ALREADY SELECTED PAGES: 10\n" in first_hop
+        assert "ALREADY SELECTED PAGES: 10,30-31\n" in client.prompts[2]
+        assert "[page 30]\nUtility Co" in client.prompts[2]  # only new pages are read
+        assert "specified in Sheet 30." not in client.prompts[2]
+        assert not loc.incomplete
+        cached = PageLocator("residential rate schedule per kwh").locate_cached(pdf)
+        assert cached == selection
+
+    def test_parts_that_do_not_fit_the_budget_are_omitted(self, tmp_path, monkeypatch):
+        client = _ScriptedClient([(10, 10)], [(20, 24), (30, 31)], [(33, 34)])
+        _, _, selection = self._locate(tmp_path, monkeypatch, client, max_selected_pages=4)
+        # 20-24 does not fit beside page 10, but the smaller referenced part does.
+        assert selection == PageSelection(((10, 10), (30, 31)), ((20, 24), (33, 34)))
+        assert len(client.prompts) == 3
+
+    def test_failed_reference_pass_is_incomplete_and_not_cached(self, tmp_path, monkeypatch):
+        client = _ScriptedClient([(10, 10)], RuntimeError("provider down"))
+        pdf, loc, selection = self._locate(tmp_path, monkeypatch, client)
+        assert selection == PageSelection(((10, 10),))
+        assert loc.incomplete
+        assert not loc._cache_path(pdf).exists()
+
+    def test_outline_drops_running_headers_and_footers(self):
+        pages = ["Head\nA one\nFoot", "Head\nB  two\nFoot", "Head\nC three\nFoot"]
+        assert PageLocator._outline(pages) == "[page 1] A one\n[page 2] B two\n[page 3] C three"
+        assert PageLocator._outline(["Only page"]) == "[page 1] Only page"
