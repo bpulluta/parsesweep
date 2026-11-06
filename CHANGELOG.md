@@ -46,6 +46,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   types or encodings (`.jpg`, `.zip`, `.gz`) are rejected.
 - LLM calls retry every transient provider failure (408/429/5xx, connection
   errors) through the shared retry helper; TLS failures stay terminal.
+- LLM retries are no longer silent: each one logs a warning with the model,
+  the sanitized failure category and the attempt, e.g. `tariffs.pdf: gpt-4o
+  did not finish within the 120s timeout; retrying in 2s (attempt 2/4)`. Log
+  lines emitted while a document is located, extracted or transcribed start
+  with its name. Exhausted timeouts report `timed out` instead of
+  `provider failure`.
+- Extraction reports each document as soon as it finishes, so one slow
+  document no longer hides the others. Every running document has a live row
+  with its own timer, and each finished document's line shows its time.
+- `--debug` raises only ParseSweep's own loggers to DEBUG; third-party
+  libraries stay at warnings.
+- `discovered_page_ranges.csv` (`pages.auto_locate.save_discovered`) lists the
+  page range behind every current record. It was rewritten with only the
+  documents located in the latest run, so reused records lost their ranges,
+  and a run that located nothing left removed documents listed.
+- Extract withdraws records whose source document no longer exists under the
+  input folder, e.g. a document rejected in `review.csv` and dropped by
+  `psweep curate`. Their rows used to stay in the compiled table. Withdrawn
+  records are named in the extraction summary and listed under `withdrawn` in
+  the run manifest; `validate` reports a primary with records to withdraw as
+  stale, and challengers withdraw theirs.
 - Reasoning models (`gpt-5*`, o-series, `reasoning_models`) get JSON mode like
   every other model; only `temperature` is withheld. Without it, review,
   extraction and judge replies intermittently came back as malformed JSON.
@@ -61,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reprs. In roster mode an empty list or object is `NA`, like a null.
 
 ### Added
+- `psweep run --debug` forwards `--debug` to every stage. LLM calls log
+  their prompt size, timeout, response time and token counts at debug level.
 - Public-only DNS-pinned acquisition, decoded response limits, verified local
   TLS integration tests, and an opt-in external smoke-test layer.
 - Protected operating mode with an approved HTTPS model endpoint, private

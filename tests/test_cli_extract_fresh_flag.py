@@ -92,6 +92,31 @@ def test_extract_default_reuses_verified_output(
     assert manifest["status"]["result"] == "reused"
 
 
+def test_extract_reports_withdrawn_records(
+    tmp_path: Path,
+    schema_path: Path,
+    controlled_provider,
+) -> None:
+    """A record whose document left the input is withdrawn and named in the summary."""
+    docs = tmp_path / "documents"
+    (docs / "rejected").mkdir(parents=True)
+    (docs / "doc1.txt").write_text("hello world", encoding="utf-8")
+    (docs / "rejected" / "doc2.txt").write_text("stale world", encoding="utf-8")
+    output = tmp_path / "extracted"
+    assert _extract(docs, schema_path, output).exit_code == 0
+    (docs / "rejected" / "doc2.txt").unlink()
+
+    controlled_provider.reset_mock()
+    result = _extract(docs, schema_path, output)
+    assert result.exit_code == 0, result.output
+    controlled_provider.assert_not_called()
+    flat = " ".join(result.output.split())
+    assert "Withdrawn 1" in flat
+    assert "rejected/doc2.json" in flat
+    assert not (output / "rejected" / "doc2.json").exists()
+    assert (output / "doc1.json").exists()
+
+
 @pytest.mark.parametrize("invalid_evidence", ["empty_record", "missing_manifest", "wrong_digest"])
 def test_extract_does_not_reuse_unverified_output(
     tmp_path: Path,

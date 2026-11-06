@@ -31,8 +31,7 @@ import io
 import shutil
 import subprocess  # noqa: S404 - runs psweep stage subprocesses, no shell
 import sys
-from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, UTC
 from uuid import uuid4
@@ -44,6 +43,7 @@ from psweep.config.runtime_config_loader import resolve_compilation_metadata
 from psweep.compilation.input_provenance import (
     analyze_compile_input_provenance,
     INTERNAL_RECORD_DIRS,
+    list_compile_record_files,
 )
 from psweep.discovery.request_inputs import discovery_request_fields
 from jsonschema import ValidationError
@@ -92,6 +92,7 @@ from psweep.extraction.schema_utils import (
 from psweep.extraction.text_processor import calculate_completeness
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.file_io import artifact_sha256, atomic_json, atomic_write
+from psweep.utils.log_context import document_scope
 from psweep.utils.page_range import load_pages_csv, parse_page_range
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.workspace import Workspace, infer_domain
@@ -120,6 +121,7 @@ class ExtractionRunResult:
     status: str = "success"
     manifest_path: Path | None = None
     records: list[dict] = field(default_factory=list)
+    withdrawn: list[Path] = field(default_factory=list)
 
     @property
     def exit_code(self) -> int:
@@ -333,6 +335,24 @@ def _reuse_evidence(output: Path) -> dict:
         except (OSError, ValueError, TypeError, AttributeError):
             continue
     return evidence
+
+
+def _withdrawn_records(plan: dict) -> list[Path]:
+    """Records whose source document no longer exists under the input root."""
+    output, root = plan["output"], plan["root"]
+    claimed = set(plan["outputs"].values())
+    withdrawn = []
+    for path in list_compile_record_files(output) if output.is_dir() else []:
+        if path in claimed:
+            continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            source = Path(record["document"]["source_path"])
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
+        if source.is_relative_to(root) and not source.exists():
+            withdrawn.append(path)
+    return withdrawn
 
 
 def _reusable_record(path: Path, fingerprint: str, evidence: dict, validator):
@@ -642,6 +662,7 @@ def _prepare_extraction(
         "fingerprints": fingerprints,
         "inputs": inputs,
         "fresh": fresh,
+        "withdrawn": [] if fresh or validate_only else _withdrawn_records(plan),
     }
 
 
@@ -898,7 +919,8 @@ def _target_extraction_inputs(plan: dict):
         for doc in pending:
             if doc.suffix.lower() == ".pdf" and doc not in ranges:
                 page_locator.incomplete = False
-                located = page_locator.locate(doc)
+                with document_scope(doc.name):
+                    located = page_locator.locate(doc)
                 if page_locator.incomplete:
                     plan["targeting_incomplete"].add(doc)
                 if located:
@@ -911,7 +933,8 @@ def _target_extraction_inputs(plan: dict):
                 ".txt",
             }:
                 section_locator.incomplete = False
-                text = section_locator.locate(doc)
+                with document_scope(doc.name):
+                    text = section_locator.locate(doc)
                 if section_locator.incomplete:
                     plan["targeting_incomplete"].add(doc)
                 if text is not None:
@@ -997,6 +1020,7 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
         and doc not in plan.get("targeting_incomplete", set())
         and str(plan["outputs"][doc]) in successful_paths
     }
+    manifest["withdrawn"] = [str(path) for path in plan["withdrawn"]]
     manifest_path = output / "run_manifests" / f"{run_id.removeprefix('run://')}.manifest.json"
     atomic_json(manifest_path, manifest)
     return ExtractionRunResult(
@@ -1012,11 +1036,18 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
         status=status,
         manifest_path=manifest_path,
         records=results,
+        withdrawn=plan["withdrawn"],
     )
 
 
 def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
-    """Execute the plan once and publish its measured outcome."""
+    """Execute the plan once and publish its measured outcome.
+
+    ``on_progress(doc, None)`` fires when a pending document starts and
+    ``on_progress(doc, outcome)`` as soon as it finishes, so one slow document
+    never hides the others; ``records`` keep the planned document order. Log
+    records emitted while a document is located or extracted name it.
+    """
     output, pending = plan["output"], plan["pending"]
     inputs, llm = plan["inputs"], plan["llm"]
     extractor = None
@@ -1037,12 +1068,17 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     if inputs.get("page_targeting", {}).get("save_discovered"):
         for doc, text in sections.items():
             atomic_write(output / ".sections" / f"{doc.name}.txt", text)
-        if ranges:
-            buffer = io.StringIO(newline="")
-            writer = csv.writer(buffer)
-            writer.writerow(["file_path", "start_page", "end_page"])
-            writer.writerows((str(doc), *rng) for doc, rng in ranges.items() if rng)
-            atomic_write(output / "discovered_page_ranges.csv", buffer.getvalue())
+        # A reused record was extracted from the range its coverage recorded.
+        used = {
+            doc: record.get("processing_metrics", {}).get("coverage", {}).get("selected_page_range")
+            for doc, record in plan["reused"].items()
+        }
+        used.update(ranges)
+        buffer = io.StringIO(newline="")
+        writer = csv.writer(buffer)
+        writer.writerow(["file_path", "start_page", "end_page"])
+        writer.writerows((str(doc), *used[doc]) for doc in plan["documents"] if used.get(doc))
+        atomic_write(output / "discovered_page_ranges.csv", buffer.getvalue())
     results = []
     for doc, record in plan["reused"].items():
         results.append(
@@ -1057,37 +1093,42 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
             }
         )
     workers = inputs.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
-    queue, window = iter(pending), deque()
+    queue, running = enumerate(pending), {}
+    outcomes = [None] * len(pending)
     pool = ThreadPoolExecutor(max_workers=workers)
     try:
         while True:
-            while len(window) < workers * 2 and (doc := next(queue, None)):
+            # Submit only into free workers, so a started document is running.
+            while len(running) < workers and (item := next(queue, None)):
+                doc = item[1]
                 if on_progress:
                     on_progress(doc, None)
-                window.append(
-                    (
-                        doc,
-                        pool.submit(
-                            _extract_one_document,
-                            doc,
-                            plan,
-                            extractor=extractor,
-                            run_id=run_id,
-                            page_range=ranges.get(doc),
-                            section_text=sections.get(doc),
-                        ),
-                    )
+                future = pool.submit(
+                    document_scope(doc.name)(_extract_one_document),
+                    doc,
+                    plan,
+                    extractor=extractor,
+                    run_id=run_id,
+                    page_range=ranges.get(doc),
+                    section_text=sections.get(doc),
                 )
-            if not window:
+                running[future] = item
+            if not running:
                 break
-            doc, future = window.popleft()
-            results.append(future.result())
-            if on_progress:
-                on_progress(doc, results[-1])
+            done, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in sorted(done, key=running.get):
+                index, doc = running.pop(future)
+                outcomes[index] = future.result()
+                if on_progress:
+                    on_progress(doc, outcomes[index])
     except BaseException:
         pool.shutdown(wait=False, cancel_futures=True)
         raise
     pool.shutdown()
+    results.extend(outcomes)
+    for record in plan["withdrawn"]:
+        record.unlink(missing_ok=True)
+        logger.info("Withdrew %s: its source document left %s", record, plan["root"])
     return _complete_extraction(
         plan,
         results,

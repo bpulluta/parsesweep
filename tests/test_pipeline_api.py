@@ -557,6 +557,21 @@ def test_run_ui_does_not_predict_reuse_from_raw_checkpoint(
     assert "--fresh" not in command
 
 
+@pytest.mark.parametrize("flag", ["-q", "-v", "--debug"])
+def test_run_forwards_verbosity_to_every_stage(
+    tmp_path: Path, schema_path: Path, monkeypatch, flag
+) -> None:
+    """`run --debug` must reach the stages, where the logging happens."""
+    monkeypatch.chdir(tmp_path)
+    config, _ = _run_config(tmp_path, schema_path)
+    child = Mock(return_value=SimpleNamespace(returncode=1))
+    monkeypatch.setattr("psweep.pipeline.subprocess.run", child)
+
+    result = CliRunner().invoke(cli, ["run", "--config", str(config), "--yes", flag])
+    assert result.exit_code == 1, result.output
+    assert flag in child.call_args.args[0]
+
+
 @pytest.mark.parametrize("entrypoint", ["cli", "api"])
 @pytest.mark.parametrize("existing", [False, True])
 def test_parent_fresh_run_leaves_cleanup_to_extract_stage(

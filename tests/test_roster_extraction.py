@@ -298,6 +298,46 @@ def test_interrupt_cancels_queued_documents(workspace, monkeypatch):
     assert 1 <= len(calls) <= 2
 
 
+def test_slow_document_does_not_hide_finished_ones(workspace, monkeypatch):
+    """Progress follows completion order; records keep the planned order."""
+    for number in range(3):
+        _add_doc(workspace, f"bulk/doc{number}.txt", f"Document {number}.")
+    inputs = {
+        key: value
+        for key, value in workspace.inputs.items()
+        if key not in {"targets", "partition_by"}
+    }
+    plan = _prepare_extraction({**inputs, "max_concurrent": 2})
+    pending = list(plan["pending"])
+    slow_text = pending[0].read_text(encoding="utf-8")
+    release = threading.Event()
+
+    def extract(_client, text, schema, **kwargs):
+        if slow_text in text:
+            assert release.wait(10)
+        return workspace.llm(text, schema, **kwargs)
+
+    monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", extract)
+    running, finished = set(), []
+
+    def on_progress(doc, outcome):
+        if outcome is None:
+            running.add(doc)
+            assert len(running) <= 2
+            return
+        running.remove(doc)
+        finished.append(doc)
+        if len(finished) == len(pending) - 1:
+            release.set()
+
+    try:
+        result = _execute_extraction(plan, on_progress=on_progress)
+    finally:
+        release.set()
+    assert finished == [*pending[1:], pending[0]]
+    assert [record["file"] for record in result.records] == [doc.name for doc in pending]
+
+
 def test_shared_doc_without_candidates_makes_no_call(workspace):
     workspace.shared.write_text("Nothing about any roster jurisdiction.\n")
     _run(workspace.inputs)

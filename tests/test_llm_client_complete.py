@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx
 import litellm
+import openai
 import pytest
 
 from psweep.exceptions import ExtractionError
@@ -248,6 +251,56 @@ def test_only_transient_provider_failures_are_retried(monkeypatch, failure, sent
         else:
             assert client.complete(MESSAGES).content == "ok"
     assert sent.call_count == sent_calls
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        (
+            litellm.Timeout("sk-123 too slow", "m", "openai"),
+            "did not finish within the 90s timeout",
+        ),
+        (
+            litellm.ServiceUnavailableError("busy https://internal.example", "openai", "m"),
+            "request failed: provider failure (ServiceUnavailableError)",
+        ),
+    ],
+)
+def test_retries_are_logged_without_provider_text(monkeypatch, caplog, failure, reason):
+    """A slow or failing call stays visible while it retries; provider text never does."""
+    monkeypatch.setattr("psweep.extraction.llm_client.time.sleep", lambda _: None)
+    client = LLMClient(api_key="k", model="gemini-3.5-flash", base_url=BASE_URL, timeout=90)
+    with (
+        patch(
+            "psweep.extraction.llm_client.completion",
+            side_effect=[failure, failure, _reply()],
+        ),
+        patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        caplog.at_level(logging.DEBUG, logger="psweep"),
+    ):
+        assert client.complete(MESSAGES).content == "ok"
+    logged = [r for r in caplog.records if r.name == "psweep.extraction.llm_client"]
+    retry = f"gemini-3.5-flash {reason}; retrying in"
+    assert [r.getMessage() for r in logged if r.levelno == logging.WARNING] == [
+        f"{retry} 2s (attempt 2/4)",
+        f"{retry} 4s (attempt 3/4)",
+    ]
+    debug = [r.getMessage() for r in logged if r.levelno == logging.DEBUG]
+    assert "Sending gemini-3.5-flash request (2 prompt chars, 90s timeout)" in debug
+    answered = [m for m in debug if m.startswith("gemini-3.5-flash answered in ")]
+    assert len(answered) == 1 and answered[0].endswith("s (10 prompt, 5 output tokens)")
+    assert not any("sk-123" in r.getMessage() or "://" in r.getMessage() for r in logged)
+
+
+def test_exhausted_timeouts_are_named(monkeypatch):
+    monkeypatch.setattr("psweep.extraction.llm_client.time.sleep", lambda _: None)
+    timeout = openai.APITimeoutError(request=httpx.Request("POST", BASE_URL))
+    with (
+        patch("psweep.extraction.llm_client.completion", side_effect=timeout),
+        patch("psweep.extraction.llm_client.completion_cost", return_value=0.0),
+        pytest.raises(ExtractionError, match=r"failed: timed out \(APITimeoutError\)"),
+    ):
+        _proxy().complete(MESSAGES)
 
 
 @pytest.mark.parametrize(
