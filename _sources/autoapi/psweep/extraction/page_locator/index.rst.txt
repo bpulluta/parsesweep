@@ -9,20 +9,26 @@ psweep.extraction.page_locator
 
    Large source documents (e.g. a 600+ page tariff book) overflow the extraction
    context and get truncated before the section you actually want. This module
-   finds the page range that holds a described section so extraction can target
-   only those pages.
+   finds the pages that hold a described section, plus the parts of the document
+   that section refers to, so extraction can target only those pages.
 
    Strategy (cheap first, LLM second):
 
    1. Heuristic pre-filter — score each page by keyword hits and keep the dense
       pages plus a little context around them.
    2. LLM confirm — send a compact index (page number + snippet) of just the
-      candidate pages and ask which contiguous range contains the section.
+      candidate pages and ask which page ranges contain the section.
+   3. Reference following — send the newly selected pages in full plus a
+      one-line outline of every page, and ask which other parts they refer to
+      hold information the section needs (e.g. "charges are specified in
+      Sheet 75"). Repeat for the pages that adds until nothing new is referenced
+      or ``max_selected_pages`` is spent; relevant parts that do not fit are
+      reported as omitted.
 
    Results are cached in a ``.pages/<stem>.json`` sidecar, verified against
-   source SHA-256 and resolved model/effective settings. Cached bounds and
-   caps are checked without parsing. ``locate`` returns ``None`` on failure
-   so the caller can fall back to full-document extraction.
+   source SHA-256 and resolved model/effective settings. Cached selections are
+   checked against the page count and budget without parsing. ``locate`` returns
+   ``None`` on failure so the caller can fall back to full-document extraction.
 
 
 
@@ -32,6 +38,7 @@ Classes
 .. autoapisummary::
 
    psweep.extraction.page_locator.PageLocator
+   psweep.extraction.page_locator.PageSelection
 
 
 Module Contents
@@ -42,18 +49,23 @@ Module Contents
    Bases: :py:obj:`_BaseLocator`
 
 
-   Find the page range holding a described section in a large PDF.
+   Find the pages holding a described section, and those it refers to, in a large PDF.
 
 
-   .. py:method:: locate(pdf_path: str | pathlib.Path, pages: list[str] | None = None) -> tuple[int, int] | None
+   .. py:method:: locate(pdf_path: str | pathlib.Path, pages: list[str] | None = None) -> PageSelection | None
 
-      Return the 1-indexed inclusive page range for the section, or None.
+      Return the pages for the section and the parts it refers to, or None.
 
 
 
-   .. py:method:: locate_cached(pdf_path: str | pathlib.Path) -> tuple[int, int] | None
+   .. py:method:: locate_cached(pdf_path: str | pathlib.Path) -> PageSelection | None
 
-      Return a verified range without parsing or client setup.
+      Return a verified selection without parsing or client setup.
 
+
+
+.. py:class:: PageSelection
+
+   Pages to extract, and relevant pages left out to stay within the budget.
 
 

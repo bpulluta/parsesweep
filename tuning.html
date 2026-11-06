@@ -430,7 +430,10 @@ would otherwise be truncated.</p>
 </li>
 <li><p><strong>Raise <code class="docutils literal notranslate"><span class="pre">max_context</span></code></strong> (default <code class="docutils literal notranslate"><span class="pre">600000</span></code> characters) — more expensive.</p></li>
 </ol>
-<p>For one known file, <code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--pages</span> <span class="pre">615-759</span></code> or a <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code> row.</p>
+<p>Page targeting also adds the parts the section refers to, such as riders or
+charge sheets on other pages. If a run warns that it left out relevant pages,
+raise <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code>.</p>
+<p>For one known file, <code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--pages</span> <span class="pre">27,68-73</span></code> or <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code> rows.</p>
 </section>
 <section id="fields-come-back-empty-or-wrong">
 <h3>Fields come back empty or wrong<a class="headerlink" href="#fields-come-back-empty-or-wrong" title="Link to this heading">¶</a></h3>

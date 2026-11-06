@@ -951,7 +951,7 @@ positionally) and writes one JSON record per document to
 <span class="w">    </span><span class="nt">auto_locate</span><span class="p">:</span><span class="w">                  </span><span class="c1"># LLM fallback for documents the CSV does not cover</span>
 <span class="w">      </span><span class="nt">section_description</span><span class="p">:</span><span class="w"> </span><span class="s">"the</span><span class="nv"> </span><span class="s">residential</span><span class="nv"> </span><span class="s">rate</span><span class="nv"> </span><span class="s">schedules"</span>
 <span class="w">      </span><span class="nt">trigger_chars</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200000</span><span class="w">       </span><span class="c1"># default; only larger documents are targeted</span>
-<span class="w">      </span><span class="nt">max_selected_pages</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span><span class="w">      </span><span class="c1"># default</span>
+<span class="w">      </span><span class="nt">max_selected_pages</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span><span class="w">      </span><span class="c1"># default; total, referenced pages included</span>
 <span class="w">      </span><span class="nt">keywords</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">rate schedule</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># optional cheap pre-filter</span>
 <span class="w">      </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secondary</span><span class="w">            </span><span class="c1"># optional locator model</span>
 <span class="w">      </span><span class="nt">save_discovered</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">       </span><span class="c1"># write found ranges for review</span>
@@ -961,12 +961,23 @@ positionally) and writes one JSON record per document to
 the keys shown plus <code class="docutils literal notranslate"><span class="pre">enabled</span></code>; anything else fails validation. <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code>
 resolves against the config folder (the <code class="docutils literal notranslate"><span class="pre">--pages-csv</span></code> CLI flag against the
 working directory). A row’s <code class="docutils literal notranslate"><span class="pre">file_path</span></code> matches a document by path, by path
-relative to the input folder, or by file name. CSV rows win; leave both pages
-empty to force the full document. <code class="docutils literal notranslate"><span class="pre">pages.range</span></code>
-(or <code class="docutils literal notranslate"><span class="pre">--pages</span> <span class="pre">615-759</span></code>) selects one range for a single file. Located ranges are
-cached in <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> beside the document; any failure falls back to the full
-document. With <code class="docutils literal notranslate"><span class="pre">save_discovered</span></code>, <code class="docutils literal notranslate"><span class="pre">extracted/discovered_page_ranges.csv</span></code> (the
-<code class="docutils literal notranslate"><span class="pre">pages.csv</span></code> columns) lists the range behind every current record, reused
+relative to the input folder, or by file name; give a file one row per range.
+CSV rows win; leave both pages empty to force the full document. <code class="docutils literal notranslate"><span class="pre">pages.range</span></code>
+(or <code class="docutils literal notranslate"><span class="pre">--pages</span> <span class="pre">27,68-73</span></code>) selects pages for a single file: comma-separated pages
+and inclusive ranges.</p>
+<p><code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> shows the locator model the opening lines of every page and asks
+for the pages of the described section. It then reads those pages in full and
+adds the parts they refer to elsewhere in the document, such as “charges
+specified in Tariff Sheet 75” or “riders on Sheet 80”, and repeats with the
+added pages until nothing new is referenced. <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code> caps the
+total. Relevant pages it leaves out are logged as a warning and recorded in the
+record’s <code class="docutils literal notranslate"><span class="pre">coverage.omitted_page_ranges</span></code>. The extracted text marks each skipped
+stretch with <code class="docutils literal notranslate"><span class="pre">[Omitted</span> <span class="pre">pages:</span> <span class="pre">28-67]</span></code>.</p>
+<p>Selections are cached in <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> beside the document. If the section cannot
+be located, the full document is extracted. If a reference pass fails, the
+pages found so far are used and the document is located again on the next run.
+With <code class="docutils literal notranslate"><span class="pre">save_discovered</span></code>, <code class="docutils literal notranslate"><span class="pre">extracted/discovered_page_ranges.csv</span></code> (the <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code>
+columns, one row per range) lists the pages behind every current record, reused
 records included.</p>
 </section>
 <section id="llm-calls">

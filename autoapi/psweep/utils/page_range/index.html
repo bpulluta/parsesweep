@@ -358,17 +358,35 @@
         <article role="main" id="furo-main-content">
           <section id="module-psweep.utils.page_range">
 <span id="psweep-utils-page-range"></span><h1>psweep.utils.page_range<a class="headerlink" href="#module-psweep.utils.page_range" title="Link to this heading">¶</a></h1>
-<p>Utilities for handling page range specifications.</p>
+<p>Page selections: sorted, disjoint, inclusive 1-indexed page ranges.</p>
+<p>One grammar is shared by <code class="docutils literal notranslate"><span class="pre">--pages</span></code>, <code class="docutils literal notranslate"><span class="pre">extraction.pages.range</span></code> and messages:
+comma-separated pages or <code class="docutils literal notranslate"><span class="pre">start-end</span></code> ranges, e.g. <code class="docutils literal notranslate"><span class="pre">&quot;27,68-73&quot;</span></code>. A pages CSV
+lists one <code class="docutils literal notranslate"><span class="pre">start_page</span></code>/<code class="docutils literal notranslate"><span class="pre">end_page</span></code> row per range, so a file may have several.</p>
 <section id="functions">
 <h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.page_range.load_pages_csv" title="psweep.utils.page_range.load_pages_csv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_pages_csv</span></code></a>(→ dict[str, tuple[int, int] | None])</p></td>
-<td><p>Load page range mappings from CSV file.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.page_range.count_pages" title="psweep.utils.page_range.count_pages"><code class="xref py py-obj docutils literal notranslate"><span class="pre">count_pages</span></code></a>(→ int)</p></td>
+<td><p>Total pages in a selection.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.utils.page_range.parse_page_range" title="psweep.utils.page_range.parse_page_range"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parse_page_range</span></code></a>(→ tuple[int, int])</p></td>
-<td><p>Parse a page range specification string.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.utils.page_range.format_page_ranges" title="psweep.utils.page_range.format_page_ranges"><code class="xref py py-obj docutils literal notranslate"><span class="pre">format_page_ranges</span></code></a>(→ str)</p></td>
+<td><p>Render ranges in the shared grammar, e.g. <code class="docutils literal notranslate"><span class="pre">27,68-73</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.page_range.load_pages_csv" title="psweep.utils.page_range.load_pages_csv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_pages_csv</span></code></a>(→ dict[str, PageRanges | None])</p></td>
+<td><p>Map each file to its page ranges, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for the full document.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.utils.page_range.normalize_page_ranges" title="psweep.utils.page_range.normalize_page_ranges"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normalize_page_ranges</span></code></a>(→ PageRanges)</p></td>
+<td><p>Validate <code class="docutils literal notranslate"><span class="pre">(start,</span> <span class="pre">end)</span></code> pairs, then sort and merge touching ranges.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.page_range.page_numbers" title="psweep.utils.page_range.page_numbers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">page_numbers</span></code></a>(→ list[int])</p></td>
+<td><p>Expand ranges into sorted page numbers.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.utils.page_range.parse_page_ranges" title="psweep.utils.page_range.parse_page_ranges"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parse_page_ranges</span></code></a>(→ PageRanges)</p></td>
+<td><p>Parse <code class="docutils literal notranslate"><span class="pre">&quot;27,68-73&quot;</span></code> into normalized ranges; reject anything else.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.page_range.ranges_from_pages" title="psweep.utils.page_range.ranges_from_pages"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ranges_from_pages</span></code></a>(→ PageRanges)</p></td>
+<td><p>Compress page numbers into ranges.</p></td>
 </tr>
 </tbody>
 </table>
@@ -377,57 +395,53 @@
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
 <dl class="py function">
-<dt class="sig sig-object py" id="psweep.utils.page_range.load_pages_csv">
-<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">load_pages_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">csv_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.utils.page_range.load_pages_csv" title="Link to this definition">¶</a></dt>
-<dd><p>Load page range mappings from CSV file.</p>
-<p>CSV format:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>file_path,start_page,end_page
-tariff1.pdf,615,759
-tariff2.pdf,400,550
-small_doc.pdf,,
-</pre></div>
-</div>
-<p>Empty start/end pages mean process full document.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>csv_path</strong> (<em>Path</em>) – Path to CSV file</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Dictionary mapping file paths to page ranges (or None for full document)</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Dict[str, Optional[Tuple[int, int]]]</p>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – If CSV format is invalid</p>
-</dd>
-</dl>
+<dt class="sig sig-object py" id="psweep.utils.page_range.count_pages">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">count_pages</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ranges</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">PageRanges</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#psweep.utils.page_range.count_pages" title="Link to this definition">¶</a></dt>
+<dd><p>Total pages in a selection.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="psweep.utils.page_range.parse_page_range">
-<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">parse_page_range</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">page_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.utils.page_range.parse_page_range" title="Link to this definition">¶</a></dt>
-<dd><p>Parse a page range specification string.</p>
-<p>Supports formats:</p>
-<ul class="simple">
-<li><p>“100-200” (dash separator)</p></li>
-<li><p>“100:200” (colon separator)</p></li>
-<li><p>“100,200” (comma separator)</p></li>
-</ul>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>page_spec</strong> (<em>str</em>) – Page range string (e.g., “615-759”)</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple of (start_page, end_page) as 1-indexed integers</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[int, int]</p>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – If format is invalid</p>
-</dd>
-</dl>
+<dt class="sig sig-object py" id="psweep.utils.page_range.format_page_ranges">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">format_page_ranges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ranges</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">PageRanges</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.utils.page_range.format_page_ranges" title="Link to this definition">¶</a></dt>
+<dd><p>Render ranges in the shared grammar, e.g. <code class="docutils literal notranslate"><span class="pre">27,68-73</span></code>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.utils.page_range.load_pages_csv">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">load_pages_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">csv_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">PageRanges</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.utils.page_range.load_pages_csv" title="Link to this definition">¶</a></dt>
+<dd><p>Map each file to its page ranges, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for the full document.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>file_path,start_page,end_page
+tariff.pdf,27,27
+tariff.pdf,68,73
+small_doc.pdf,,
+</pre></div>
+</div>
+<p>Rows for the same file combine. Blank bounds select the full document and
+cannot be combined with ranges for that file.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.utils.page_range.normalize_page_ranges">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">normalize_page_ranges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ranges</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Iterable</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">PageRanges</span></span></span><a class="headerlink" href="#psweep.utils.page_range.normalize_page_ranges" title="Link to this definition">¶</a></dt>
+<dd><p>Validate <code class="docutils literal notranslate"><span class="pre">(start,</span> <span class="pre">end)</span></code> pairs, then sort and merge touching ranges.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.utils.page_range.page_numbers">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">page_numbers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ranges</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">PageRanges</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.utils.page_range.page_numbers" title="Link to this definition">¶</a></dt>
+<dd><p>Expand ranges into sorted page numbers.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.utils.page_range.parse_page_ranges">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">parse_page_ranges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">PageRanges</span></span></span><a class="headerlink" href="#psweep.utils.page_range.parse_page_ranges" title="Link to this definition">¶</a></dt>
+<dd><p>Parse <code class="docutils literal notranslate"><span class="pre">&quot;27,68-73&quot;</span></code> into normalized ranges; reject anything else.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.utils.page_range.ranges_from_pages">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.page_range.</span></span><span class="sig-name descname"><span class="pre">ranges_from_pages</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">PageRanges</span></span></span><a class="headerlink" href="#psweep.utils.page_range.ranges_from_pages" title="Link to this definition">¶</a></dt>
+<dd><p>Compress page numbers into ranges.</p>
 </dd></dl>
 
 </section>
@@ -494,8 +508,13 @@ small_doc.pdf,,
 <li><a class="reference internal" href="#">psweep.utils.page_range</a><ul>
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#psweep.utils.page_range.count_pages"><code class="docutils literal notranslate"><span class="pre">count_pages()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.page_range.format_page_ranges"><code class="docutils literal notranslate"><span class="pre">format_page_ranges()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.page_range.load_pages_csv"><code class="docutils literal notranslate"><span class="pre">load_pages_csv()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.utils.page_range.parse_page_range"><code class="docutils literal notranslate"><span class="pre">parse_page_range()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.page_range.normalize_page_ranges"><code class="docutils literal notranslate"><span class="pre">normalize_page_ranges()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.page_range.page_numbers"><code class="docutils literal notranslate"><span class="pre">page_numbers()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.page_range.parse_page_ranges"><code class="docutils literal notranslate"><span class="pre">parse_page_ranges()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.page_range.ranges_from_pages"><code class="docutils literal notranslate"><span class="pre">ranges_from_pages()</span></code></a></li>
 </ul>
 </li>
 </ul>

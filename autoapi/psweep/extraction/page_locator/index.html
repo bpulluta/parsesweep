@@ -361,26 +361,35 @@
 <p>LLM-assisted page targeting for large documents.</p>
 <p>Large source documents (e.g. a 600+ page tariff book) overflow the extraction
 context and get truncated before the section you actually want. This module
-finds the page range that holds a described section so extraction can target
-only those pages.</p>
+finds the pages that hold a described section, plus the parts of the document
+that section refers to, so extraction can target only those pages.</p>
 <p>Strategy (cheap first, LLM second):</p>
 <ol class="arabic simple">
 <li><p>Heuristic pre-filter — score each page by keyword hits and keep the dense
 pages plus a little context around them.</p></li>
 <li><p>LLM confirm — send a compact index (page number + snippet) of just the
-candidate pages and ask which contiguous range contains the section.</p></li>
+candidate pages and ask which page ranges contain the section.</p></li>
+<li><p>Reference following — send the newly selected pages in full plus a
+one-line outline of every page, and ask which other parts they refer to
+hold information the section needs (e.g. “charges are specified in
+Sheet 75”). Repeat for the pages that adds until nothing new is referenced
+or <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code> is spent; relevant parts that do not fit are
+reported as omitted.</p></li>
 </ol>
 <p>Results are cached in a <code class="docutils literal notranslate"><span class="pre">.pages/&lt;stem&gt;.json</span></code> sidecar, verified against
-source SHA-256 and resolved model/effective settings. Cached bounds and
-caps are checked without parsing. <code class="docutils literal notranslate"><span class="pre">locate</span></code> returns <code class="docutils literal notranslate"><span class="pre">None</span></code> on failure
-so the caller can fall back to full-document extraction.</p>
+source SHA-256 and resolved model/effective settings. Cached selections are
+checked against the page count and budget without parsing. <code class="docutils literal notranslate"><span class="pre">locate</span></code> returns
+<code class="docutils literal notranslate"><span class="pre">None</span></code> on failure so the caller can fall back to full-document extraction.</p>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.page_locator.PageLocator" title="psweep.extraction.page_locator.PageLocator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PageLocator</span></code></a></p></td>
-<td><p>Find the page range holding a described section in a large PDF.</p></td>
+<td><p>Find the pages holding a described section, and those it refers to, in a large PDF.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.page_locator.PageSelection" title="psweep.extraction.page_locator.PageSelection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PageSelection</span></code></a></p></td>
+<td><p>Pages to extract, and relevant pages left out to stay within the budget.</p></td>
 </tr>
 </tbody>
 </table>
@@ -392,19 +401,25 @@ so the caller can fall back to full-document extraction.</p>
 <dt class="sig sig-object py" id="psweep.extraction.page_locator.PageLocator">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.extraction.page_locator.</span></span><span class="sig-name descname"><span class="pre">PageLocator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">section_description</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">models</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trigger_chars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">DEFAULT_PAGE_TRIGGER_CHARS</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_selected_pages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">DEFAULT_MAX_SELECTED_PAGES</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keywords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_pages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snippet_chars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">600</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.extraction.page_locator.PageLocator" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">_BaseLocator</span></code></p>
-<p>Find the page range holding a described section in a large PDF.</p>
+<p>Find the pages holding a described section, and those it refers to, in a large PDF.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.extraction.page_locator.PageLocator.locate">
-<span class="sig-name descname"><span class="pre">locate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdf_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.extraction.page_locator.PageLocator.locate" title="Link to this definition">¶</a></dt>
-<dd><p>Return the 1-indexed inclusive page range for the section, or None.</p>
+<span class="sig-name descname"><span class="pre">locate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdf_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.extraction.page_locator.PageSelection" title="psweep.extraction.page_locator.PageSelection"><span class="pre">PageSelection</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.extraction.page_locator.PageLocator.locate" title="Link to this definition">¶</a></dt>
+<dd><p>Return the pages for the section and the parts it refers to, or None.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.extraction.page_locator.PageLocator.locate_cached">
-<span class="sig-name descname"><span class="pre">locate_cached</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdf_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.extraction.page_locator.PageLocator.locate_cached" title="Link to this definition">¶</a></dt>
-<dd><p>Return a verified range without parsing or client setup.</p>
+<span class="sig-name descname"><span class="pre">locate_cached</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdf_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.extraction.page_locator.PageSelection" title="psweep.extraction.page_locator.PageSelection"><span class="pre">PageSelection</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.extraction.page_locator.PageLocator.locate_cached" title="Link to this definition">¶</a></dt>
+<dd><p>Return a verified selection without parsing or client setup.</p>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="psweep.extraction.page_locator.PageSelection">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.extraction.page_locator.</span></span><span class="sig-name descname"><span class="pre">PageSelection</span></span><a class="headerlink" href="#psweep.extraction.page_locator.PageSelection" title="Link to this definition">¶</a></dt>
+<dd><p>Pages to extract, and relevant pages left out to stay within the budget.</p>
 </dd></dl>
 
 </section>
@@ -476,6 +491,7 @@ so the caller can fall back to full-document extraction.</p>
 <li><a class="reference internal" href="#psweep.extraction.page_locator.PageLocator.locate_cached"><code class="docutils literal notranslate"><span class="pre">PageLocator.locate_cached()</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#psweep.extraction.page_locator.PageSelection"><code class="docutils literal notranslate"><span class="pre">PageSelection</span></code></a></li>
 </ul>
 </li>
 </ul>

@@ -33,7 +33,7 @@ Module Contents
    Build canonical lineage metadata for extraction records.
 
 
-.. py:function:: record_extraction_scope(result: Any, *, page_range: tuple[int, int] | None = None, section_filtered: bool = False, parser_scope: dict | None = None) -> None
+.. py:function:: record_extraction_scope(result: Any, *, page_ranges: psweep.utils.page_range.PageRanges | None = None, omitted_page_ranges: psweep.utils.page_range.PageRanges | None = None, section_filtered: bool = False, parser_scope: dict | None = None) -> None
 
    Retain selected-input limitations in the canonical result.
 

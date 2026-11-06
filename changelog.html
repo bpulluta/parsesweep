@@ -379,6 +379,15 @@ ranking boost (use <code class="docutils literal notranslate"><span class="pre">
 working directory.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">extraction.pages</span></code> accepts only <code class="docutils literal notranslate"><span class="pre">csv</span></code>, <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> and <code class="docutils literal notranslate"><span class="pre">range</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> only its documented keys; unknown keys fail.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--pages</span></code> and <code class="docutils literal notranslate"><span class="pre">extraction.pages.range</span></code> take comma-separated pages and
+inclusive ranges (<code class="docutils literal notranslate"><span class="pre">27,68-73</span></code>); the <code class="docutils literal notranslate"><span class="pre">100:200</span></code> and <code class="docutils literal notranslate"><span class="pre">100,200</span></code> range forms are
+removed.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pages.auto_locate.max_selected_pages</span></code> caps the total selection, referenced
+pages included.</p></li>
+<li><p>Extraction record contract 2.0.0: <code class="docutils literal notranslate"><span class="pre">coverage.selected_page_range</span></code> becomes
+<code class="docutils literal notranslate"><span class="pre">coverage.selected_page_ranges</span></code>, a list of <code class="docutils literal notranslate"><span class="pre">[start,</span> <span class="pre">end]</span></code> pairs, and
+<code class="docutils literal notranslate"><span class="pre">coverage.omitted_page_ranges</span></code> is added. Existing records are re-extracted on
+the next run.</p></li>
 <li><p>Schema <code class="docutils literal notranslate"><span class="pre">identity.deduplication.strategy</span></code> and <code class="docutils literal notranslate"><span class="pre">comparison_mode</span></code> (never used)
 are removed and rejected as unknown keys.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">config/ADVANCED.yaml</span></code> is removed; <code class="docutils literal notranslate"><span class="pre">config/TEMPLATE.yaml</span></code> is a short, valid
@@ -445,6 +454,15 @@ reprs. In roster mode an empty list or object is <code class="docutils literal n
 <section id="added">
 <h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>Page targeting follows references. After locating the section, the locator
+reads the selected pages and adds the parts they refer to elsewhere in the
+document (e.g. “charges specified in Tariff Sheet 75”), then the parts those
+pages refer to, within <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code>. A selection can be several page
+ranges; skipped stretches are marked <code class="docutils literal notranslate"><span class="pre">[Omitted</span> <span class="pre">pages:</span> <span class="pre">28-67]</span></code> in the
+extracted text. Relevant pages left out by the budget are logged and recorded
+in <code class="docutils literal notranslate"><span class="pre">coverage.omitted_page_ranges</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pages.csv</span></code> accepts several rows per file, one per range;
+<code class="docutils literal notranslate"><span class="pre">discovered_page_ranges.csv</span></code> writes one row per range.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">run</span> <span class="pre">--debug</span></code> forwards <code class="docutils literal notranslate"><span class="pre">--debug</span></code> to every stage. LLM calls log
 their prompt size, timeout, response time and token counts at debug level.</p></li>
 <li><p>Public-only DNS-pinned acquisition, decoded response limits, verified local

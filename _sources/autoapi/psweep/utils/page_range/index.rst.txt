@@ -5,7 +5,11 @@ psweep.utils.page_range
 
 .. autoapi-nested-parse::
 
-   Utilities for handling page range specifications.
+   Page selections: sorted, disjoint, inclusive 1-indexed page ranges.
+
+   One grammar is shared by ``--pages``, ``extraction.pages.range`` and messages:
+   comma-separated pages or ``start-end`` ranges, e.g. ``"27,68-73"``. A pages CSV
+   lists one ``start_page``/``end_page`` row per range, so a file may have several.
 
 
 
@@ -14,53 +18,60 @@ Functions
 
 .. autoapisummary::
 
+   psweep.utils.page_range.count_pages
+   psweep.utils.page_range.format_page_ranges
    psweep.utils.page_range.load_pages_csv
-   psweep.utils.page_range.parse_page_range
+   psweep.utils.page_range.normalize_page_ranges
+   psweep.utils.page_range.page_numbers
+   psweep.utils.page_range.parse_page_ranges
+   psweep.utils.page_range.ranges_from_pages
 
 
 Module Contents
 ---------------
 
-.. py:function:: load_pages_csv(csv_path: pathlib.Path) -> dict[str, tuple[int, int] | None]
+.. py:function:: count_pages(ranges: PageRanges) -> int
 
-   Load page range mappings from CSV file.
+   Total pages in a selection.
 
-   CSV format:
+
+.. py:function:: format_page_ranges(ranges: PageRanges) -> str
+
+   Render ranges in the shared grammar, e.g. ``27,68-73``.
+
+
+.. py:function:: load_pages_csv(csv_path: pathlib.Path) -> dict[str, PageRanges | None]
+
+   Map each file to its page ranges, or ``None`` for the full document.
 
    .. code-block:: text
 
        file_path,start_page,end_page
-       tariff1.pdf,615,759
-       tariff2.pdf,400,550
+       tariff.pdf,27,27
+       tariff.pdf,68,73
        small_doc.pdf,,
 
-   Empty start/end pages mean process full document.
-
-   :param csv_path: Path to CSV file
-   :type csv_path: Path
-
-   :returns: Dictionary mapping file paths to page ranges (or None for full document)
-   :rtype: Dict[str, Optional[Tuple[int, int]]]
-
-   :raises ValueError: If CSV format is invalid
+   Rows for the same file combine. Blank bounds select the full document and
+   cannot be combined with ranges for that file.
 
 
-.. py:function:: parse_page_range(page_spec: str) -> tuple[int, int]
+.. py:function:: normalize_page_ranges(ranges: collections.abc.Iterable) -> PageRanges
 
-   Parse a page range specification string.
+   Validate ``(start, end)`` pairs, then sort and merge touching ranges.
 
-   Supports formats:
 
-   - "100-200" (dash separator)
-   - "100:200" (colon separator)
-   - "100,200" (comma separator)
+.. py:function:: page_numbers(ranges: PageRanges) -> list[int]
 
-   :param page_spec: Page range string (e.g., "615-759")
-   :type page_spec: str
+   Expand ranges into sorted page numbers.
 
-   :returns: Tuple of (start_page, end_page) as 1-indexed integers
-   :rtype: Tuple[int, int]
 
-   :raises ValueError: If format is invalid
+.. py:function:: parse_page_ranges(spec: str) -> PageRanges
+
+   Parse ``"27,68-73"`` into normalized ranges; reject anything else.
+
+
+.. py:function:: ranges_from_pages(pages: collections.abc.Iterable[int]) -> PageRanges
+
+   Compress page numbers into ranges.
 
 

@@ -27,20 +27,22 @@ Module Contents
    Return plain text per page (index 0 = page 1), best-effort.
 
 
-.. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, page_range: tuple | None = None, return_meta: bool = False, ocr_corrections: list | None = None)
+.. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, page_ranges: psweep.utils.page_range.PageRanges | None = None, return_meta: bool = False, ocr_corrections: list | None = None)
 
    Extract selected pages with native, pypdf, then OCR fallbacks.
 
-   Bounds are 1-indexed and inclusive. Overlapping bounds are clamped;
-   invalid scopes raise ValueError. Every parser honors the scope.
-   ``return_meta`` always returns a pair, including on failure.
-   Metadata describes actual ``page_range``, total ``page_count``, and
-   ``extracted_pages`` (OCR can skip failed pages). OCR also returns
-   ``raw_ocr_text`` for caching before applying current corrections.
+   ``page_ranges`` holds 1-indexed inclusive ``(start, end)`` pairs; ``None``
+   reads the whole PDF. Ranges running past the last page are clamped; invalid
+   selections raise ValueError. Every parser honors the selection and marks
+   pages left out between selected ones. ``return_meta`` always returns a pair,
+   including on failure. Metadata describes the clamped ``page_ranges`` and
+   ``selected_pages``, total ``page_count``, and ``extracted_pages`` (OCR can
+   skip failed pages). OCR also returns ``raw_ocr_text`` for caching before
+   applying current corrections.
 
 
-.. py:function:: validate_pdf_scope(pdf_path: pathlib.Path, page_range: tuple) -> tuple[int, int]
+.. py:function:: validate_pdf_scope(pdf_path: pathlib.Path, page_ranges: psweep.utils.page_range.PageRanges) -> psweep.utils.page_range.PageRanges
 
-   Check actual PDF bounds without parsing text or starting OCR.
+   Check selected pages against the PDF without parsing text or starting OCR.
 
 
