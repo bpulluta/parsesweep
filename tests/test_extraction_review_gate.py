@@ -1,9 +1,10 @@
 """Regression gates for independent Phase 2 integration findings."""
 
+import csv
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import DEFAULT, Mock
 
 import pytest
 
@@ -13,6 +14,7 @@ from psweep.extraction.document_utils import write_text_cache
 from psweep.extraction.page_locator import PageLocator
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 from psweep.utils.config import Config
+from psweep.utils.log_context import current_document
 
 
 @pytest.fixture
@@ -100,6 +102,26 @@ def test_proxy_with_explicit_azure_needs_no_direct_azure_endpoint(
     outcome = _execute_extraction(_prepare_extraction(inputs))
     assert outcome.exit_code == 0
     provider.assert_called_once()
+
+
+def test_document_work_logs_name_the_document(reviewed_inputs, monkeypatch):
+    """Locating (main thread) and extracting (worker) both log under the document."""
+    inputs, provider = reviewed_inputs
+    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+    seen = []
+    monkeypatch.setattr(
+        "psweep.extraction.section_locator.SectionLocator.locate",
+        lambda _self, _doc: seen.append(("locate", current_document())),
+    )
+
+    def extract(*_args, **_kwargs):
+        seen.append(("extract", current_document()))
+        return DEFAULT
+
+    provider.side_effect = extract
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert seen == [("locate", "doc.txt"), ("extract", "doc.txt")]
+    assert current_document() is None
 
 
 def test_invalid_locator_keywords_preserve_fresh_output(reviewed_inputs):
@@ -208,6 +230,79 @@ def test_locator_routing_change_invalidates_record_reuse(reviewed_inputs, monkey
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://second.openai.azure.com")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 2
+
+
+def test_saved_page_ranges_cover_reused_records(reviewed_inputs, monkeypatch):
+    """The review file lists the range behind every current record, reused or new."""
+    inputs, provider = reviewed_inputs
+    root = Path(inputs["path"])
+    (root / "doc.txt").unlink()
+    inputs["page_targeting"] = {
+        "enabled": True,
+        "section_description": "evidence",
+        "save_discovered": True,
+    }
+    found = {"a.pdf": (3, 4), "b.pdf": (7, 9), "c.pdf": None}
+    located = []
+
+    def locate(_self, doc):
+        located.append(doc.name)
+        return found[doc.name]
+
+    def parse(_doc, page_range=None, **_kwargs):
+        first, last = page_range or (1, 9)
+        return "Source evidence", {
+            "page_count": 9,
+            "page_range": (first, last),
+            "extracted_pages": list(range(first, last + 1)),
+        }
+
+    monkeypatch.setattr("psweep.extraction.page_locator.PageLocator.locate", locate)
+    monkeypatch.setattr("psweep.extraction.document_utils.extract_text_from_document", parse)
+    saved = Path(inputs["output"]) / "discovered_page_ranges.csv"
+
+    def run():
+        assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+        with saved.open(encoding="utf-8", newline="") as handle:
+            return {
+                Path(row["file_path"]).name: (int(row["start_page"]), int(row["end_page"]))
+                for row in csv.DictReader(handle)
+            }
+
+    (root / "a.pdf").write_bytes(b"first")
+    assert run() == {"a.pdf": (3, 4)}
+    (root / "b.pdf").write_bytes(b"second")
+    assert run() == {"a.pdf": (3, 4), "b.pdf": (7, 9)}
+    (root / "b.pdf").unlink()
+    assert run() == {"a.pdf": (3, 4)}
+    (root / "a.pdf").unlink()
+    (root / "c.pdf").write_bytes(b"third")
+    assert run() == {}
+    assert located == ["a.pdf", "b.pdf", "c.pdf"]
+    assert provider.call_count == 3
+
+
+def test_records_of_removed_documents_are_withdrawn(reviewed_inputs, tmp_path):
+    """A record whose document left the input folder is withdrawn; others survive."""
+    inputs, _provider = reviewed_inputs
+    root = Path(inputs["path"])
+    output = Path(inputs["output"]).resolve()
+    (root / "gone.txt").write_text("Gone evidence", encoding="utf-8")
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    single = {**inputs, "path": str(root / "doc.txt")}
+    assert _execute_extraction(_prepare_extraction(single)).withdrawn == []
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "other.txt").write_text("Other evidence", encoding="utf-8")
+    assert _execute_extraction(_prepare_extraction({**inputs, "path": str(foreign)})).exit_code == 0
+    (root / "gone.txt").unlink()
+    (foreign / "other.txt").unlink()
+    outcome = _execute_extraction(_prepare_extraction(inputs))
+    assert outcome.exit_code == 0
+    assert outcome.withdrawn == [output / "gone.json"]
+    assert sorted(path.name for path in output.glob("*.json")) == ["doc.json", "other.json"]
+    manifest = json.loads(outcome.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["withdrawn"] == [str(output / "gone.json")]
 
 
 def test_skipped_ocr_pages_survive_record_and_do_not_reuse(reviewed_inputs, monkeypatch):

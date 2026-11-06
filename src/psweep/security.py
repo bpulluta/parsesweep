@@ -190,6 +190,7 @@ _PROVIDER_ERROR_MARKERS = (
     "rate limit",
     "429",
     "timeout",
+    "timed out",
     "certificate verify failed",
     "connection error",
     "connection reset",

@@ -43,6 +43,7 @@ from psweep.extraction.transcription import (
     timestamp,
     transcript,
 )
+from psweep.utils.log_context import current_document, document_scope
 
 BASE_URL = "https://proxy.example.invalid/v1"
 PRICING = "psweep.extraction.llm_client."
@@ -315,6 +316,20 @@ def test_a_failed_chunk_fails_the_recording_and_cancels_the_rest(
     assert len(sent) <= 2
     assert transcriber.usage["calls"] == len(sent)
     assert transcriber.usage["unknown_cost_calls"] == len(sent)
+
+
+def test_chunk_logs_name_the_recording(monkeypatch, tmp_path, chunked, priced):
+    chunked(650)
+    seen = []
+
+    def complete(_self, _params):
+        seen.append(current_document())
+        return _response()
+
+    monkeypatch.setattr(LLMClient, "_complete", complete)
+    with document_scope("a.mp3"):
+        Transcriber(LLM, max_concurrent=2).transcribe(tmp_path / "a.mp3", tmp_path)
+    assert seen == ["a.mp3", "a.mp3"]
 
 
 def test_rate_limits_are_retried(monkeypatch, tmp_path, chunked, priced):

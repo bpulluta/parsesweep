@@ -9,6 +9,7 @@ from typing import Any
 import click
 from click.core import ParameterSource
 from rich.logging import RichHandler
+from rich.markup import escape
 
 from psweep.cli.run_view import RunView
 from psweep.cli.ui import (
@@ -23,6 +24,7 @@ from psweep.config import (
     load_runtime_config_file,
     resolve_command_config,
 )
+from psweep.utils.log_context import current_document
 
 
 def _explicit_cli_overrides(param_names: list[str]) -> dict[str, Any]:
@@ -79,34 +81,39 @@ def _resolve_runtime_command_inputs(
     return result
 
 
+class _DocumentFormatter(logging.Formatter):
+    """Prefix records with the document they were emitted for, unless they name it."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        message = super().format(record)
+        name = current_document()
+        return f"{escape(name)}: {message}" if name and name not in message else message
+
+
 def configure_logging(verbosity: str) -> None:
-    """Configure logging with RichHandler for clean integration with Rich UI."""
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
+    """Route log records through a RichHandler on the shared console.
 
-    if verbosity == "quiet":
-        level = logging.ERROR
-        show_level = False
-        show_path = False
-    elif verbosity == "debug":
-        level = logging.DEBUG
-        show_level = True
-        show_path = True
-    else:
-        level = logging.WARNING
-        show_level = False
-        show_path = False
-
+    ``debug`` lowers only ParseSweep's own loggers; third-party libraries stay
+    at WARNING so provider SDK request dumps never reach the terminal. Records
+    emitted while a document is processed start with its name.
+    """
+    level = {"quiet": logging.ERROR, "debug": logging.DEBUG}.get(verbosity, logging.WARNING)
+    debug = level == logging.DEBUG
     handler = RichHandler(
         console=console,
         show_time=False,
-        show_level=show_level,
-        show_path=show_path,
+        show_level=debug,
+        show_path=debug,
         markup=True,
     )
+    handler.setFormatter(_DocumentFormatter())
     handler.setLevel(level)
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
     root_logger.addHandler(handler)
-    root_logger.setLevel(level)
+    root_logger.setLevel(max(level, logging.WARNING))
+    # Only ParseSweep's own loggers ever go below WARNING; otherwise they inherit.
+    logging.getLogger(__name__.partition(".")[0]).setLevel(level if debug else logging.NOTSET)
 
 
 def begin_run(

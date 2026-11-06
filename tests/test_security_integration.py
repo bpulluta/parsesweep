@@ -207,7 +207,7 @@ def test_real_model_tls_option_is_per_client(tls_server, monkeypatch):
 
 
 @pytest.mark.parametrize("model", ["timeout-model", "unavailable-model"])
-def test_model_transport_failure_does_not_hide_retries(tls_server, monkeypatch, model):
+def test_model_transport_failure_does_not_hide_retries(tls_server, monkeypatch, caplog, model):
     from psweep.exceptions import ExtractionError
     from psweep.extraction.llm_client import RETRY_ATTEMPTS
 
@@ -220,12 +220,18 @@ def test_model_transport_failure_does_not_hide_retries(tls_server, monkeypatch, 
         base_url=f"https://localhost:{port}/v1",
         timeout=1,
     )
-    with pytest.raises(ExtractionError):
+    with pytest.raises(ExtractionError), caplog.at_level("WARNING", logger="psweep"):
         client.extract("synthetic", {"type": "object"})
     # Transient failures are retried by the client's own bounded loop only;
     # every request the endpoint saw is counted.
     assert len(calls) == RETRY_ATTEMPTS
     assert client.usage["calls"] == client.usage["unknown_cost_calls"] == len(calls)
+    # Every retry is announced with a sanitized reason, never the endpoint.
+    retries = [r.getMessage() for r in caplog.records if "retrying in" in r.getMessage()]
+    assert [m.rpartition("attempt ")[2] for m in retries] == ["2/4)", "3/4)", "4/4)"]
+    if model == "timeout-model":
+        assert all("did not finish within the 1s timeout;" in m for m in retries)
+    assert not any("localhost" in m or "://" in m for m in retries)
 
 
 def test_real_redirect_to_private_address_never_contacts_target(tls_server, monkeypatch):

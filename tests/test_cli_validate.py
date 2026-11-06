@@ -865,6 +865,26 @@ def test_preflight_freshness(fake):
     assert fake.calls == []
 
 
+def test_removed_document_leaves_every_table(fake):
+    bench = Bench(fake, 2)
+    for model in ("primary", "a"):
+        bench.script(model, {1: {"x": 1}, 2: {"x": 2}})
+    bench.write_docs()
+    bench.extract_compile()
+    bench.write_run({"models": ["a"]})
+    bench.validate()
+    Path("outputs/bench/discovered/curated/t2.txt").unlink()
+    output = bench.validate(code=1)
+    assert "primary extraction is stale (1 documents); run psweep extract" in output
+    bench.extract_compile()
+    fake.calls.clear()
+    bench.validate()
+    assert fake.calls == []
+    for table in ("compiled", "validated/a"):
+        rows = read_csv(f"outputs/bench/{table}/bench.csv")
+        assert {row["Site"]: row["X"] for row in rows} == {site(1): "1", site(2): "NA"}
+
+
 def test_overlapping_runs_are_rejected(fake):
     bench = Bench(fake, 1)
     for model in ("primary", "a"):

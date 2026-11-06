@@ -65,6 +65,7 @@ def cli() -> None:
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output.")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output.")
+@click.option("--debug", is_flag=True, help="Debug logs from every stage (LLM requests, retries).")
 def run(
     config_path: Path,
     fresh: bool = False,
@@ -75,6 +76,7 @@ def run(
     yes: bool = False,
     quiet: bool = False,
     verbose: bool = False,
+    debug: bool = False,
 ) -> None:
     """Run the full pipeline: discover → extract → compile → validate.
 
@@ -103,7 +105,7 @@ def run(
         click.echo(f"Error: Config not found: {config_path}", err=True)
         raise click.exceptions.Exit(1)
 
-    resolved_verbosity = Verbosity.from_flags(quiet=quiet, verbose=verbose, debug=False)
+    resolved_verbosity = Verbosity.from_flags(quiet=quiet, verbose=verbose, debug=debug)
     set_verbosity(resolved_verbosity)
     view = RunView("run", verbosity=resolved_verbosity)
 
@@ -244,11 +246,11 @@ def run(
         view.info("Cancelled.")
         raise click.exceptions.Exit(0)
 
-    flags: list[str] = []
-    if quiet:
-        flags.append("-q")
-    elif verbose:
-        flags.append("-v")
+    flags = {
+        Verbosity.QUIET: ["-q"],
+        Verbosity.VERBOSE: ["-v"],
+        Verbosity.DEBUG: ["--debug"],
+    }.get(resolved_verbosity, [])
     base_cmd = [sys.executable, "-m", "psweep.cli.main"]
 
     stage_cmds = build_run_stage_commands(

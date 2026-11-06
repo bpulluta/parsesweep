@@ -68,9 +68,9 @@ def _preflight(config_path: Path) -> dict:
         and plan["anchors"].get(doc) != set()
         and str(doc) not in failed
     ]
-    if stale:
+    if stale or plan["withdrawn"]:
         raise ValueError(
-            f"primary extraction is stale ({len(stale)} documents); "
+            f"primary extraction is stale ({len(stale) + len(plan['withdrawn'])} documents); "
             f"run psweep extract --config {config_path}"
         )
     compile_inputs = resolve_command_config(command="compile", cli_values={}, config_data=cfg)
@@ -143,6 +143,7 @@ def _challenger(
     if plan["pending"]:
         models = ctx["cfg"].get("models") or {}
         notify(_estimate(alias, len(plan["pending"]), primary_usage(), models))
+    if plan["pending"] or plan["withdrawn"]:
         result = _execute_extraction(plan)
         if result.manifest_path:
             costs = json.loads(Path(result.manifest_path).read_text(encoding="utf-8"))["costs"]
