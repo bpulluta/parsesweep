@@ -67,6 +67,7 @@ from .policies import (
 from .network import NetworkPolicyError, check_url, send_get
 from .transport import ResponseTooLargeError, max_file_bytes
 from .document_reviewer import DocumentReviewer
+from .eligibility import eligibility_columns, eligibility_held, screen_pdf
 from .publication import (
     PublicationPaths,
     artifact_sha256,
@@ -2142,6 +2143,12 @@ class DiscoveryEngine:
             "source_url",
             "status",
             "classification_passed",
+            "eligibility_state",
+            "eligibility_mode",
+            "eligibility_reason",
+            "eligibility_identity",
+            "eligibility_sha256",
+            "curated_selected",
             "url",
             "final_url",
             "mime_type",
@@ -2156,6 +2163,7 @@ class DiscoveryEngine:
             "target_metadata",
         ]
 
+        review_ran = any(r.get("review_selected") is not None for r in download_records)
         handle = StringIO(newline="")
         with contextlib.nullcontext(handle):
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -2172,6 +2180,8 @@ class DiscoveryEngine:
                         "source_url": record.get("source_url"),
                         "status": record.get("status"),
                         "classification_passed": record.get("classification_passed"),
+                        **eligibility_columns(record),
+                        "curated_selected": record_is_curated(record, review_ran=review_ran),
                         "url": record.get("url"),
                         "final_url": record.get("final_url"),
                         "mime_type": record.get("mime_type"),
@@ -2215,13 +2225,24 @@ class DiscoveryEngine:
             "relevance",
             "llm_is_primary",
             "llm_selected",
+            "eligibility_state",
+            "eligibility_mode",
+            "eligibility_reason",
+            "eligibility_identity",
+            "eligibility_sha256",
+            "curated_selected",
             "human_decision",
             "human_notes",
             "llm_reason",
             "relative_path",
             "path",
         ]
-        rows = [r for r in download_records if r.get("status") == "downloaded" and r.get("path")]
+        rows = [
+            r
+            for r in download_records
+            if r.get("path") and (r.get("status") == "downloaded" or eligibility_held(r))
+        ]
+        review_ran = any(r.get("review_selected") is not None for r in download_records)
         rows.sort(
             key=lambda r: (
                 str(r.get("target_label") or ""),
@@ -2248,8 +2269,10 @@ class DiscoveryEngine:
                             "review_selected",
                             record.get("status") == "downloaded",
                         ),
-                        "human_decision": "",
-                        "human_notes": "",
+                        **eligibility_columns(record),
+                        "curated_selected": record_is_curated(record, review_ran=review_ran),
+                        "human_decision": record.get("human_decision") or "",
+                        "human_notes": record.get("human_notes") or "",
                         "llm_reason": record.get("review_reason"),
                         "relative_path": rel,
                         "path": record.get("path"),
@@ -2282,7 +2305,7 @@ class DiscoveryEngine:
         review_ran: bool,
         review_failed: bool,
     ) -> bool:
-        return not review_failed and record_is_curated(record, review_ran=review_ran)
+        return record_is_curated({**record, "review_failed": review_failed}, review_ran=review_ran)
 
     @classmethod
     def _apply_document_retention(
@@ -2308,7 +2331,14 @@ class DiscoveryEngine:
 
         files_removed = 0
         bytes_removed = 0
-        protected = {path.resolve() for kept in keep for path in (kept, *text_cache_paths(kept))}
+        held = {
+            Path(str(r["path"])) for r in download_records if r.get("path") and eligibility_held(r)
+        }
+        protected = {
+            path.resolve()
+            for kept in (set(keep) | held)
+            for path in (kept, *text_cache_paths(kept))
+        }
 
         def _remove_file(path: Path) -> None:
             nonlocal files_removed, bytes_removed
@@ -2536,12 +2566,14 @@ class DiscoveryEngine:
         downloads: list[dict[str, object]],
         classifier_cfg: dict[str, object],
         notes: list[str],
+        *,
+        draft_patterns: list[str] | None = None,
     ) -> tuple[list[dict[str, object]], list[str]]:
-        """Run keyword-based content classification on downloaded files.
+        """Screen PDFs and classify relevance without conflating the decisions.
 
-        Reads the first pages of each downloaded file and checks for
-        required_keywords.  Failing records get status 'rejected_classifier'
-        when action='filter', except configured URLs, which are always kept.
+        Keyword filtering preserves configured-URL exemptions. Explicit PDF
+        screening applies to every downloaded PDF and holds uncertain originals
+        for human review rather than changing their acquisition status.
         """
         from .validators import ContentSampler
 
@@ -2549,12 +2581,17 @@ class DiscoveryEngine:
         nice_to_have = list(classifier_cfg.get("nice_to_have_keywords") or [])
         min_matches = int(classifier_cfg.get("min_required_matches", 1))
         action = str(classifier_cfg.get("action", "warn"))
+        screening = str(classifier_cfg.get("pdf_screening", "off"))
+        keyword_configured = any(key != "pdf_screening" for key in classifier_cfg)
         passed = failed = errors = 0
         for record in downloads:
             if record.get("status") != "downloaded":
                 continue
             file_path = record.get("path")
             if not file_path:
+                continue
+            screen_pdf(record, screening, draft_patterns or [])
+            if not keyword_configured:
                 continue
             try:
                 result = ContentSampler.validate_content(
@@ -2576,6 +2613,16 @@ class DiscoveryEngine:
             + (f", {errors} error(s)" if errors else "")
             + f" (action={action})."
         )
+        if screening != "off":
+            counts = Counter(
+                record["document_eligibility"]["state"]
+                for record in downloads
+                if record.get("document_eligibility")
+            )
+            notes.append(
+                f"PDF screening ({screening}): {dict(counts)}; "
+                f"{sum(eligibility_held(record) for record in downloads)} held for review."
+            )
         return downloads, notes
 
     def _code_host_get(
@@ -3442,7 +3489,14 @@ class DiscoveryEngine:
         records, notes = self._escalate_js_shells_to_browser(records, notes, request)
         classifier = request.document_classifier or {}
         if classifier:
-            records, notes = self._run_post_download_classifier(records, classifier, notes)
+            records, notes = self._run_post_download_classifier(
+                records,
+                classifier,
+                notes,
+                draft_patterns=(
+                    request.selection_draft_patterns if request.selection_exclude_draft else None
+                ),
+            )
         costs: dict[str, object] = {}
         if request.document_review:
             self._seed_recording_transcripts(
@@ -3518,10 +3572,15 @@ class DiscoveryEngine:
             cache_dir=cache_dir,
             identity_fields=identity_fields,
         )
-        # Configured URLs bypass review and keep_top: always selected.
-        reviewable = [r for r in downloads if r.get("source") != CONFIGURED_SOURCE]
+        # Held PDFs never consume grading/dedup/top-N capacity. Configured
+        # URLs still bypass relevance review, but not explicitly enabled screening.
+        reviewable = [
+            r for r in downloads if r.get("source") != CONFIGURED_SOURCE and not eligibility_held(r)
+        ]
         for record in downloads:
-            if record.get("source") == CONFIGURED_SOURCE:
+            if eligibility_held(record):
+                record["review_selected"] = False
+            elif record.get("source") == CONFIGURED_SOURCE:
                 record["review_selected"] = record.get("status") == "downloaded"
         try:
             reviewable, notes = reviewer.review(reviewable, notes)
@@ -3710,7 +3769,10 @@ class DiscoveryEngine:
                 result.curated_count = sum(
                     record_is_curated(record, review_ran=reviewed) for record in download_records
                 )
-            elif empty_parts and request.fresh:
+            elif empty_parts or (
+                (request.document_classifier or {}).get("pdf_screening") == "hold"
+                and not all_reused
+            ):
                 result.curated_dir = paths.run_curated_dir
         result.status = discovery_status(
             dry_run=request.dry_run,
@@ -3866,6 +3928,13 @@ class DiscoveryEngine:
                         attempted_partitions=attempted_parts,
                         blocked_partitions=blocked,
                         completed=set(new_entries),
+                        pdf_screening_patterns=(
+                            (request.selection_draft_patterns or [])
+                            if request.selection_exclude_draft
+                            else []
+                        )
+                        if (request.document_classifier or {}).get("pdf_screening") == "hold"
+                        else None,
                         _lock_held=True,
                     )
                     return snapshot_path

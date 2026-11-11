@@ -28,6 +28,7 @@ from psweep.extraction.document_utils import (
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
 from psweep.utils.retry import is_retryable
+from .eligibility import eligibility_held, screening_identity
 
 TOKEN_HEX_LENGTH = 32
 SHA256_HEX_LENGTH = 64
@@ -427,7 +428,7 @@ def record_is_curated(record: Mapping[str, object], *, review_ran: bool) -> bool
     decision = str(record.get("human_decision") or "").strip().lower()
     if decision in {"keep", "reject"}:
         return decision == "keep"
-    if record.get("review_failed"):
+    if record.get("review_failed") or eligibility_held(record):
         return False
     return (
         bool(record.get("review_selected")) if review_ran else record.get("status") == "downloaded"
@@ -551,6 +552,8 @@ def _merged_index(
     replaced_partitions: set[Path],
     withdrawn: set[DocumentOwner] = frozenset(),
     completed: set[str] = frozenset(),
+    held_hashes: Mapping[DocumentOwner, str] | None = None,
+    pdf_screening_patterns: list[str] | None = None,
     is_blocked=lambda _partition: False,
     run_content: str | None = None,
 ) -> tuple[str, set[str]]:
@@ -588,6 +591,9 @@ def _merged_index(
     promoted_owners = {document_owner(row) for row in promoted.values()}
     rows: dict[str, dict] = {}
     removed: set[str] = set()
+    identity = (
+        screening_identity(pdf_screening_patterns) if pdf_screening_patterns is not None else None
+    )
     for row in existing:
         key = row.get("relative_path", "")
         rel = _relative(key)
@@ -601,6 +607,30 @@ def _merged_index(
         ):
             removed.add(key)
             continue
+        if key not in promoted and rel.suffix.lower() == ".pdf":
+            path = domain_index.parent / "curated" / rel
+            held_hash = (held_hashes or {}).get(owner)
+            digest = artifact_sha256(path) if held_hash or identity else None
+            if held_hash and digest == held_hash:
+                # A completed inspection of identical bytes is authoritative
+                # even if a different document in this partition failed.
+                removed.add(key)
+                continue
+            if identity is not None and not (
+                row.get("eligibility_identity") == identity
+                and row.get("eligibility_sha256") == digest
+                and (
+                    row.get("eligibility_state") == "no_findings"
+                    or row.get("human_decision") == "keep"
+                )
+            ):
+                # Never silently hand an unchecked old PDF to the next pipeline
+                # stage after a partial acquisition. Keep the prior publication
+                # intact and fail before any swaps; retry/fresh can reconcile it.
+                raise PublicationError(
+                    f"PDF screening cannot safely retain unchecked prior document {key}; "
+                    "complete discovery before extraction or review that source explicitly."
+                )
         if key in rows:
             msg = f"Duplicate consolidated index path: {key}"
             raise PublicationError(msg)
@@ -684,6 +714,8 @@ def _stage_promotion(
     run_content: str | None = None,
     withdrawn: set[DocumentOwner] = frozenset(),
     completed: set[str] = frozenset(),
+    held_hashes: Mapping[DocumentOwner, str] | None = None,
+    pdf_screening_patterns: list[str] | None = None,
 ) -> list[tuple[Path, Path | None]]:
     """Stage a run's publication into consolidated curation.
 
@@ -717,6 +749,11 @@ def _stage_promotion(
     for src, rel, _ in files:
         _link(src, staged_root / rel)
     swaps: list[tuple[Path, Path | None]] = []
+    if not files and not (root / "curated").exists():
+        empty = staging / "empty-curated"
+        empty.mkdir()
+        swaps.append((root / "curated", empty))
+        replacements.clear()  # No existing partitions to replace under this new root.
     # Detach nested staged partitions before they are renamed by
     # publication.
     for i, part in enumerate(sorted(replacements)):
@@ -741,6 +778,8 @@ def _stage_promotion(
             replaced_partitions=replacements,
             withdrawn=withdrawn,
             completed=completed,
+            held_hashes=held_hashes,
+            pdf_screening_patterns=pdf_screening_patterns,
             is_blocked=is_blocked,
             run_content=run_content,
         )
@@ -818,6 +857,7 @@ def publish_manual_curation(
     attempted_partitions=None,
     blocked_partitions=None,
     completed: set[str] = frozenset(),
+    pdf_screening_patterns: list[str] | None = None,
     _lock_held: bool = False,
 ) -> tuple[Path, int]:
     """Publish local/consolidated human curation and its provenance
@@ -842,6 +882,13 @@ def publish_manual_curation(
                 run_content=run_index_content,
                 withdrawn=_withdrawn_owners(download_records),
                 completed=completed,
+                held_hashes={
+                    document_owner(record): record["document_eligibility"]["source_sha256"]
+                    for record in download_records
+                    if eligibility_held(record)
+                    and record["document_eligibility"].get("source_sha256")
+                },
+                pdf_screening_patterns=pdf_screening_patterns,
             )
             swaps.append((paths.run_curated_dir, local))
             updates = {**metadata_updates, run_index: run_index_content}
@@ -1095,6 +1142,11 @@ def effective_discovery_fingerprint(request: object) -> str:
         msg = f"Invalid effective discovery configuration value: {kind}"
         raise PublicationError(msg)
 
+    classifier = values.get("document_classifier") or {}
+    if classifier.get("pdf_screening", "off") != "off":
+        from psweep.extraction.pdf_inspection import INSPECTOR_VERSION
+
+        values["pdf_inspector_version"] = INSPECTOR_VERSION
     encoded = json.dumps(
         {"version": 2, "request": normalize(values)},
         sort_keys=True,

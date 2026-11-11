@@ -229,6 +229,7 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
                 "nice_to_have_keywords": _Key(_strings),
                 "min_required_matches": _Key(_int(0)),
                 "action": _Key(_choice("warn", "filter")),
+                "pdf_screening": _Key(_choice("off", "warn", "hold")),
             }
         ),
         "document_classifier",
