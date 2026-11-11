@@ -1,0 +1,47 @@
+psweep.extraction.pdf_inspection
+================================
+
+.. py:module:: psweep.extraction.pdf_inspection
+
+.. autoapi-nested-parse::
+
+   Deterministic PDF revision evidence, not a determination of legal status.
+
+   Only native PDF objects are inspected: no OCR, rendering, or body-keyword scan.
+   A negative result means no supported strong signal was found, not that a document
+   is final. Geometric thresholds are deliberately conservative detector constants,
+   versioned with the implementation; draft wording comes only from supplied regexes.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.pdf_inspection.inspect_pdf
+
+
+Module Contents
+---------------
+
+.. py:function:: inspect_pdf(path: pathlib.Path, *, draft_patterns: list[str] | None = None) -> dict
+
+   Inspect every native page for observable revision signals.
+
+   Returns JSON-safe state, version, SHA-256, page/inspection counts, evidence
+   (at most 50 entries, each text excerpt at most 200 characters), total evidence
+   count, and deduplicated limitation codes. Pages and evidence use 1-based page
+   numbers; metadata evidence has ``page=None``. ``inspected_pages`` counts pages
+   whose native inspection completed, including image pages with limited coverage.
+
+   ``flagged`` requires strong evidence, even when coverage is incomplete;
+   ``unknown`` means incomplete inspection without strong evidence; ``no_findings``
+   means no strong signal in supported objects. Highlights are weak evidence only.
+   No state establishes whether an ordinance is adopted, valid, or legally final.
+   Draft patterns search title/subject/keywords and full-match short header lines,
+   case-insensitively, matching the selection-stage pattern semantics;
+   no implicit vocabulary is used. Invalid patterns raise ValueError; unreadable,
+   corrupt, password-protected, or unsupported PDFs return ``unknown`` instead.
+
+

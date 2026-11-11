@@ -22,6 +22,7 @@ Submodules
    /autoapi/psweep/discovery/connectors/index
    /autoapi/psweep/discovery/constants/index
    /autoapi/psweep/discovery/document_reviewer/index
+   /autoapi/psweep/discovery/eligibility/index
    /autoapi/psweep/discovery/engine/index
    /autoapi/psweep/discovery/link_prioritizer/index
    /autoapi/psweep/discovery/models/index

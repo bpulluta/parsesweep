@@ -254,6 +254,7 @@
 </li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/constants/index.html">psweep.discovery.constants</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/document_reviewer/index.html">psweep.discovery.document_reviewer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/eligibility/index.html">psweep.discovery.eligibility</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
@@ -274,6 +275,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_factory/index.html">psweep.extraction.llm_factory</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
@@ -484,7 +486,7 @@ LLM credentials unless <code class="docutils literal notranslate"><span class="p
 <td><p><code class="docutils literal notranslate"><span class="pre">.csv</span></code>/<code class="docutils literal notranslate"><span class="pre">.json</span></code> path, inline list of rows, or <code class="docutils literal notranslate"><span class="pre">{cross_product:</span> <span class="pre">{dimensions:</span> <span class="pre">[...]}}</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sources</span></code></p></td>
-<td><p>Shared http(s) URLs downloaded for every run and always kept (saved under <code class="docutils literal notranslate"><span class="pre">_shared/</span></code>).</p></td>
+<td><p>Shared http(s) URLs saved under <code class="docutils literal notranslate"><span class="pre">_shared/</span></code>; bypass relevance selection, but obey explicitly enabled PDF screening.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">queries</span></code></p></td>
 <td><p>Search templates: <code class="docutils literal notranslate"><span class="pre">{field}</span></code> is required, <code class="docutils literal notranslate"><span class="pre">{field?}</span></code> optional. Search runs only when <code class="docutils literal notranslate"><span class="pre">queries</span></code> or a target <code class="docutils literal notranslate"><span class="pre">query</span></code> is set.</p></td>
@@ -498,8 +500,8 @@ LLM credentials unless <code class="docutils literal notranslate"><span class="p
 <p>Each target row is one target. Every column except <code class="docutils literal notranslate"><span class="pre">urls</span></code> and <code class="docutils literal notranslate"><span class="pre">query</span></code> is
 metadata: it fills query templates, partitions output and is recorded as
 provenance. <code class="docutils literal notranslate"><span class="pre">urls</span></code> lists the target’s own documents or pages (a list, or <code class="docutils literal notranslate"><span class="pre">a|b</span></code>
-in a CSV cell) and is always downloaded and kept; <code class="docutils literal notranslate"><span class="pre">query</span></code> replaces <code class="docutils literal notranslate"><span class="pre">queries</span></code>
-for that row. Discovery never infers geography from query text. CSV headers
+in a CSV cell) and bypasses relevance selection, but obeys explicitly enabled
+PDF screening; <code class="docutils literal notranslate"><span class="pre">query</span></code> replaces <code class="docutils literal notranslate"><span class="pre">queries</span></code> for that row. Discovery never infers geography from query text. CSV headers
 may carry a UTF-8 BOM.</p>
 <p>A target’s identity is its <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> values (every metadata column when
 <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> is unset). Identity names the target in checkpoints, review
@@ -788,11 +790,47 @@ crawl also needs a browser (<code class="docutils literal notranslate"><span cla
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">action</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">warn</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">warn</span></code> records the result; <code class="docutils literal notranslate"><span class="pre">filter</span></code> rejects failing downloads (never configured URLs).</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">warn</span></code> records the keyword result; <code class="docutils literal notranslate"><span class="pre">filter</span></code> rejects failing downloads (never configured URLs).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pdf_screening</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;off&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;off&quot;</span></code> skips PDF revision screening; <code class="docutils literal notranslate"><span class="pre">warn</span></code> records evidence; <code class="docutils literal notranslate"><span class="pre">hold</span></code> keeps flagged or incompletely inspected PDFs out of automated curation pending human review. Quote <code class="docutils literal notranslate"><span class="pre">&quot;off&quot;</span></code> in YAML so it is not parsed as a boolean.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p>PDF screening is independent of keyword relevance and applies to configured URLs
+as well as discovered PDFs. Other formats are unchanged. For example:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">discovery</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">document_classifier</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">pdf_screening</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hold</span>
+</pre></div>
+</div>
+<p>The inspector checks all native PDF pages for strikeout annotations and thin
+strokes/filled rectangles crossing text. Highlights are recorded as weak evidence
+and do not cause a hold on their own; colored text alone is not a revision signal.
+It also reuses <code class="docutils literal notranslate"><span class="pre">selection.draft_patterns</span></code> (when <code class="docutils literal notranslate"><span class="pre">selection.exclude_draft</span></code> is true)
+against title/subject/keywords metadata and full-line short headers, not arbitrary
+body sentences. There is no built-in draft vocabulary. Scanned/image-heavy,
+encrypted, corrupt, or otherwise incompletely inspected PDFs are held in <code class="docutils literal notranslate"><span class="pre">hold</span></code>
+mode, without OCR/vision calls. Text is never edited to remove crossed-out clauses.</p>
+<p>The manifest’s <code class="docutils literal notranslate"><span class="pre">document_eligibility</span></code> contains versioned, content-hashed evidence,
+page coverage and limitations. <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">download_index.csv</span></code> summarize
+eligibility and effective <code class="docutils literal notranslate"><span class="pre">curated_selected</span></code>. A hold is not a download/provider
+failure and does not consume a review top-N slot. Set <code class="docutils literal notranslate"><span class="pre">human_decision</span></code> to <code class="docutils literal notranslate"><span class="pre">keep</span></code> or
+<code class="docutils literal notranslate"><span class="pre">reject</span></code> in the existing ledger and run <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span> <span class="pre">--config</span> <span class="pre">…</span></code>; explicit human
+decisions override automated screening. Unresolved held originals and text caches
+are retained even with <code class="docutils literal notranslate"><span class="pre">retention.documents:</span> <span class="pre">curated</span></code> or <code class="docutils literal notranslate"><span class="pre">none</span></code> so they can be reviewed.</p>
+<p>Policy or detector changes invalidate discovery completion reuse. Existing curated
+files are reconciled on the next discovery run; if partial acquisition would retain
+an unchecked prior PDF, publication stops rather than silently passing it to
+extraction. Complete discovery and resolve holds before extracting from that corpus.
+Direct-path extraction and extraction without rediscovery deliberately bypass this
+screening; it is not a second extraction filter.</p>
+<p><strong>No findings does not mean legally final or currently in force.</strong> An adopted
+amendment can have strikeouts, and a clean-looking proposal can have none. Holds
+request human verification, not a determination of legal status. Use <code class="docutils literal notranslate"><span class="pre">warn</span></code> or
+leave screening off in domains that need proposals and change histories.</p>
 </section>
 <section id="document-review">
 <h3><code class="docutils literal notranslate"><span class="pre">document_review</span></code><a class="headerlink" href="#document-review" title="Link to this heading">¶</a></h3>
@@ -878,9 +916,10 @@ without review and transcribed at extraction. Edit <code class="docutils literal
 </tbody>
 </table>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">curated</span></code> and <code class="docutils literal notranslate"><span class="pre">none</span></code> keep the files and text caches of incomplete targets and
-sources, which the next run resumes from, and remove superseded run files once
-the checkpoint is written. Fully reused runs delete nothing.</p>
+<p><code class="docutils literal notranslate"><span class="pre">curated</span></code> and <code class="docutils literal notranslate"><span class="pre">none</span></code> keep unresolved PDF-screening holds as well as the files and
+text caches of incomplete targets and sources, which the next run resumes from.
+Superseded run copies are removed once the checkpoint points at the retained
+current copy. Fully reused runs delete nothing.</p>
 <p>Strict robots/ToS enforcement covers HTTP acquisition only and fails before any
 browser navigation. The default <code class="docutils literal notranslate"><span class="pre">User-Agent</span></code> is
 <code class="docutils literal notranslate"><span class="pre">Mozilla/5.0</span> <span class="pre">(compatible;</span> <span class="pre">ParseSweep/&lt;version&gt;)</span></code>.</p>

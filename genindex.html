@@ -252,6 +252,7 @@
 </li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/constants/index.html">psweep.discovery.constants</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/document_reviewer/index.html">psweep.discovery.document_reviewer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/eligibility/index.html">psweep.discovery.eligibility</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
@@ -272,6 +273,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_factory/index.html">psweep.extraction.llm_factory</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
@@ -1132,6 +1134,10 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/publication/index.html#psweep.discovery.publication.effective_discovery_fingerprint">effective_discovery_fingerprint() (in module psweep.discovery.publication)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/eligibility/index.html#psweep.discovery.eligibility.eligibility_columns">eligibility_columns() (in module psweep.discovery.eligibility)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/eligibility/index.html#psweep.discovery.eligibility.eligibility_held">eligibility_held() (in module psweep.discovery.eligibility)</a>
+</li>
         <li><a href="autoapi/psweep/utils/model_pricing/index.html#psweep.utils.model_pricing.estimate_extraction_cost">estimate_extraction_cost() (in module psweep.utils.model_pricing)</a>
 </li>
         <li><a href="autoapi/psweep/utils/model_pricing/index.html#psweep.utils.model_pricing.ExtractionEstimate.estimated_minutes">estimated_minutes (psweep.utils.model_pricing.ExtractionEstimate property)</a>
@@ -1326,6 +1332,8 @@
         <li><a href="autoapi/psweep/discovery/publication/index.html#psweep.discovery.publication.inherit_text_caches">inherit_text_caches() (in module psweep.discovery.publication)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/transport/index.html#psweep.discovery.transport.PublicHTTPAdapter.init_poolmanager">init_poolmanager() (psweep.discovery.transport.PublicHTTPAdapter method)</a>
+</li>
+        <li><a href="autoapi/psweep/extraction/pdf_inspection/index.html#psweep.extraction.pdf_inspection.inspect_pdf">inspect_pdf() (in module psweep.extraction.pdf_inspection)</a>
 </li>
         <li><a href="autoapi/psweep/extraction/transcription/index.html#psweep.extraction.transcription.is_audio">is_audio() (in module psweep.extraction.transcription)</a>
 </li>
@@ -1533,6 +1541,8 @@
 </li>
           <li><a href="autoapi/psweep/discovery/document_reviewer/index.html#module-psweep.discovery.document_reviewer">psweep.discovery.document_reviewer</a>
 </li>
+          <li><a href="autoapi/psweep/discovery/eligibility/index.html#module-psweep.discovery.eligibility">psweep.discovery.eligibility</a>
+</li>
           <li><a href="autoapi/psweep/discovery/engine/index.html#module-psweep.discovery.engine">psweep.discovery.engine</a>
 </li>
           <li><a href="autoapi/psweep/discovery/link_prioritizer/index.html#module-psweep.discovery.link_prioritizer">psweep.discovery.link_prioritizer</a>
@@ -1568,6 +1578,8 @@
           <li><a href="autoapi/psweep/extraction/llm_factory/index.html#module-psweep.extraction.llm_factory">psweep.extraction.llm_factory</a>
 </li>
           <li><a href="autoapi/psweep/extraction/page_locator/index.html#module-psweep.extraction.page_locator">psweep.extraction.page_locator</a>
+</li>
+          <li><a href="autoapi/psweep/extraction/pdf_inspection/index.html#module-psweep.extraction.pdf_inspection">psweep.extraction.pdf_inspection</a>
 </li>
           <li><a href="autoapi/psweep/extraction/pdf_utils/index.html#module-psweep.extraction.pdf_utils">psweep.extraction.pdf_utils</a>
 </li>
@@ -2044,8 +2056,6 @@
           <li><a href="autoapi/psweep/compilation/deduplicator/index.html#module-psweep.compilation.deduplicator">module</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     psweep.compilation.excel_formatter
 
@@ -2053,6 +2063,8 @@
           <li><a href="autoapi/psweep/compilation/excel_formatter/index.html#module-psweep.compilation.excel_formatter">module</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     psweep.compilation.input_provenance
 
@@ -2194,6 +2206,13 @@
 </li>
         </ul></li>
         <li>
+    psweep.discovery.eligibility
+
+        <ul>
+          <li><a href="autoapi/psweep/discovery/eligibility/index.html#module-psweep.discovery.eligibility">module</a>
+</li>
+        </ul></li>
+        <li>
     psweep.discovery.engine
 
         <ul>
@@ -2317,6 +2336,13 @@
 
         <ul>
           <li><a href="autoapi/psweep/extraction/page_locator/index.html#module-psweep.extraction.page_locator">module</a>
+</li>
+        </ul></li>
+        <li>
+    psweep.extraction.pdf_inspection
+
+        <ul>
+          <li><a href="autoapi/psweep/extraction/pdf_inspection/index.html#module-psweep.extraction.pdf_inspection">module</a>
 </li>
         </ul></li>
         <li>
@@ -2700,6 +2726,10 @@
 </li>
         <li><a href="autoapi/psweep/exceptions/index.html#psweep.exceptions.SchemaValidationError">SchemaValidationError</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/eligibility/index.html#psweep.discovery.eligibility.screen_pdf">screen_pdf() (in module psweep.discovery.eligibility)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/eligibility/index.html#psweep.discovery.eligibility.screening_identity">screening_identity() (in module psweep.discovery.eligibility)</a>
+</li>
         <li><a href="autoapi/psweep/extraction/section_locator/index.html#psweep.extraction.section_locator.SectionLocator">SectionLocator (class in psweep.extraction.section_locator)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/connectors/base/index.html#psweep.discovery.connectors.base.SeekerInput">SeekerInput (class in psweep.discovery.connectors.base)</a>
@@ -2708,10 +2738,10 @@
 </li>
         <li><a href="autoapi/psweep/discovery/connectors/digger/index.html#psweep.discovery.connectors.digger.SeleniumDiggerConnector">SeleniumDiggerConnector (class in psweep.discovery.connectors.digger)</a>
 </li>
-        <li><a href="autoapi/psweep/discovery/network/index.html#psweep.discovery.network.send_get">send_get() (in module psweep.discovery.network)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/psweep/discovery/network/index.html#psweep.discovery.network.send_get">send_get() (in module psweep.discovery.network)</a>
+</li>
         <li><a href="autoapi/psweep/workspace/index.html#psweep.workspace.Workspace.serpapi_cache">serpapi_cache (psweep.workspace.Workspace property)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/connectors/serpapi_seeker/index.html#psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout">SerpApiSearchTimeout</a>

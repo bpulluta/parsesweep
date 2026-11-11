@@ -20,6 +20,7 @@ Submodules
    /autoapi/psweep/extraction/llm_client/index
    /autoapi/psweep/extraction/llm_factory/index
    /autoapi/psweep/extraction/page_locator/index
+   /autoapi/psweep/extraction/pdf_inspection/index
    /autoapi/psweep/extraction/pdf_utils/index
    /autoapi/psweep/extraction/provenance/index
    /autoapi/psweep/extraction/record_writer/index

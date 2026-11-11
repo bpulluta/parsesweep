@@ -1,0 +1,45 @@
+psweep.discovery.eligibility
+============================
+
+.. py:module:: psweep.discovery.eligibility
+
+.. autoapi-nested-parse::
+
+   Domain-configured PDF screening decisions, separate from acquisition status.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.eligibility.eligibility_columns
+   psweep.discovery.eligibility.eligibility_held
+   psweep.discovery.eligibility.screen_pdf
+   psweep.discovery.eligibility.screening_identity
+
+
+Module Contents
+---------------
+
+.. py:function:: eligibility_columns(record: collections.abc.Mapping[str, object]) -> dict[str, object]
+
+   Flatten bounded inspection summaries for the existing human ledger/index.
+
+
+.. py:function:: eligibility_held(record: collections.abc.Mapping[str, object]) -> bool
+
+   Whether automated curation must wait for an explicit human decision.
+
+
+.. py:function:: screen_pdf(record: dict[str, object], mode: str, patterns: list[str]) -> None
+
+   Recompute evidence from current bytes; disabling screening clears old evidence.
+
+
+.. py:function:: screening_identity(patterns: list[str]) -> str
+
+   Bind detector semantics and configured label patterns, independently of action.
+
+

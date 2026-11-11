@@ -170,7 +170,7 @@ Module Contents
    partitions are published additively.
 
 
-.. py:function:: publish_manual_curation(*, paths: PublicationPaths, download_records: list[dict[str, object]], run_index: pathlib.Path, run_index_content: str, metadata_updates: collections.abc.Mapping[pathlib.Path, str], attempted_partitions=None, blocked_partitions=None, completed: set[str] = frozenset(), _lock_held: bool = False) -> tuple[pathlib.Path, int]
+.. py:function:: publish_manual_curation(*, paths: PublicationPaths, download_records: list[dict[str, object]], run_index: pathlib.Path, run_index_content: str, metadata_updates: collections.abc.Mapping[pathlib.Path, str], attempted_partitions=None, blocked_partitions=None, completed: set[str] = frozenset(), pdf_screening_patterns: list[str] | None = None, _lock_held: bool = False) -> tuple[pathlib.Path, int]
 
    Publish local/consolidated human curation and its provenance
    together; ``completed`` targets/sources reconcile their documents.
