@@ -68,15 +68,15 @@ LLM credentials unless `document_review` is configured; search needs
 | Key | Meaning |
 |-----|---------|
 | `targets` | `.csv`/`.json` path, inline list of rows, or `{cross_product: {dimensions: [...]}}`. |
-| `sources` | Shared http(s) URLs downloaded for every run and always kept (saved under `_shared/`). |
+| `sources` | Shared http(s) URLs saved under `_shared/`; bypass relevance selection, but obey explicitly enabled PDF screening. |
 | `queries` | Search templates: `{field}` is required, `{field?}` optional. Search runs only when `queries` or a target `query` is set. |
 | `partition_by` | Target fields that lay out curated output as `by_<f1>/<v1>/by_<f2>/<v2>/`. Without it a target's files go under `_targets/<id>/`. |
 
 Each target row is one target. Every column except `urls` and `query` is
 metadata: it fills query templates, partitions output and is recorded as
 provenance. `urls` lists the target's own documents or pages (a list, or `a|b`
-in a CSV cell) and is always downloaded and kept; `query` replaces `queries`
-for that row. Discovery never infers geography from query text. CSV headers
+in a CSV cell) and bypasses relevance selection, but obeys explicitly enabled
+PDF screening; `query` replaces `queries` for that row. Discovery never infers geography from query text. CSV headers
 may carry a UTF-8 BOM.
 
 A target's identity is its `partition_by` values (every metadata column when
@@ -190,7 +190,46 @@ crawl also needs a browser (`crawl.browser_escalation` or
 | `required_keywords` | — | Terms looked for in the first pages of each download. |
 | `nice_to_have_keywords` | — | Terms that raise the score; also the default `document_review.keywords`. |
 | `min_required_matches` | `1` | Required terms that must appear. |
-| `action` | `warn` | `warn` records the result; `filter` rejects failing downloads (never configured URLs). |
+| `action` | `warn` | `warn` records the keyword result; `filter` rejects failing downloads (never configured URLs). |
+| `pdf_screening` | `"off"` | `"off"` skips PDF revision screening; `warn` records evidence; `hold` keeps flagged or incompletely inspected PDFs out of automated curation pending human review. Quote `"off"` in YAML so it is not parsed as a boolean. |
+
+PDF screening is independent of keyword relevance and applies to configured URLs
+as well as discovered PDFs. Other formats are unchanged. For example:
+
+```yaml
+discovery:
+  document_classifier:
+    pdf_screening: hold
+```
+
+The inspector checks all native PDF pages for strikeout annotations and thin
+strokes/filled rectangles crossing text. Highlights are recorded as weak evidence
+and do not cause a hold on their own; colored text alone is not a revision signal.
+It also reuses `selection.draft_patterns` (when `selection.exclude_draft` is true)
+against title/subject/keywords metadata and full-line short headers, not arbitrary
+body sentences. There is no built-in draft vocabulary. Scanned/image-heavy,
+encrypted, corrupt, or otherwise incompletely inspected PDFs are held in `hold`
+mode, without OCR/vision calls. Text is never edited to remove crossed-out clauses.
+
+The manifest's `document_eligibility` contains versioned, content-hashed evidence,
+page coverage and limitations. `review.csv` and `download_index.csv` summarize
+eligibility and effective `curated_selected`. A hold is not a download/provider
+failure and does not consume a review top-N slot. Set `human_decision` to `keep` or
+`reject` in the existing ledger and run `psweep curate --config …`; explicit human
+decisions override automated screening. Unresolved held originals and text caches
+are retained even with `retention.documents: curated` or `none` so they can be reviewed.
+
+Policy or detector changes invalidate discovery completion reuse. Existing curated
+files are reconciled on the next discovery run; if partial acquisition would retain
+an unchecked prior PDF, publication stops rather than silently passing it to
+extraction. Complete discovery and resolve holds before extracting from that corpus.
+Direct-path extraction and extraction without rediscovery deliberately bypass this
+screening; it is not a second extraction filter.
+
+**No findings does not mean legally final or currently in force.** An adopted
+amendment can have strikeouts, and a clean-looking proposal can have none. Holds
+request human verification, not a determination of legal status. Use `warn` or
+leave screening off in domains that need proposals and change histories.
 
 ### `document_review`
 
@@ -226,9 +265,10 @@ without review and transcribed at extraction. Edit `human_decision` (`keep`/`rej
 | `policy.acknowledged_tos_domains` | — | Hosts whose terms you have reviewed. |
 | `retention.documents` | `all` | `all` keeps every download; `curated` deletes the run's non-curated downloads; `none` also deletes the run's documents and curated copy (rejected by `run` when extraction follows). |
 
-`curated` and `none` keep the files and text caches of incomplete targets and
-sources, which the next run resumes from, and remove superseded run files once
-the checkpoint is written. Fully reused runs delete nothing.
+`curated` and `none` keep unresolved PDF-screening holds as well as the files and
+text caches of incomplete targets and sources, which the next run resumes from.
+Superseded run copies are removed once the checkpoint points at the retained
+current copy. Fully reused runs delete nothing.
 
 Strict robots/ToS enforcement covers HTTP acquisition only and fails before any
 browser navigation. The default `User-Agent` is

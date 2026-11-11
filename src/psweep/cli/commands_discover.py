@@ -19,6 +19,7 @@ from psweep.cli.ui import (
 from psweep.config import RuntimeConfigError
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 from psweep.discovery.models import discovery_exit_code
+from psweep.discovery.eligibility import eligibility_held
 from psweep.discovery.request_inputs import discovery_request_fields
 
 
@@ -51,7 +52,7 @@ from psweep.discovery.request_inputs import discovery_request_fields
     "--source",
     "sources",
     multiple=True,
-    help="Document or page URL to download and keep (repeatable; replaces discovery.sources)",
+    help="URL to acquire with configured screening (repeatable; replaces discovery.sources)",
 )
 @click.option(
     "--query",
@@ -261,6 +262,7 @@ def discover(
     view.phase("Writing discovery index")
     notes = manifest_data.get("notes") or []
     errors = manifest_data.get("errors") or []
+    held_count = sum(eligibility_held(record) for record in manifest_data.get("downloads", []))
     if errors:
         view.warning(
             "Discovery finished with errors; results may be partial.",
@@ -282,6 +284,7 @@ def discover(
             "Status": manifest_data.get("status") or "unknown",
             "Downloaded": f"{downloaded_count}/{total_count}"
             + (f" (+{reused_count} reused)" if reused_count else ""),
+            **({"Held for review": str(held_count)} if held_count else {}),
             "Notes": str(len(notes)),
             "Errors": str(len(errors)),
         },
@@ -316,10 +319,14 @@ def discover(
         # Zero curated — guide the user toward fixing the problem.
         next_steps.extend(
             (
-                "No documents matched the review criteria. Options:",
+                (
+                    f"{held_count} PDF(s) held for human review; inspect eligibility evidence."
+                    if held_count
+                    else "No documents matched the review criteria. Options:"
+                ),
                 "  • Adjust discovery queries or selection filters in your config",
                 (
-                    f"  • Override LLM picks: edit {result.review_index_path} "
+                    f"  • Override automated selection: edit {result.review_index_path} "
                     "(set human_decision=keep), then run: pixi run psweep curate"
                 ),
             )
