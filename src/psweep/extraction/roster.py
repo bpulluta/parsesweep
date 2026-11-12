@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import functools
 import hashlib
 import json
 import re
-import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
@@ -16,11 +14,10 @@ from psweep.config import RuntimeConfigError
 from psweep.discovery.targets import identify_target, iter_targets, target_identity
 from psweep.extraction.section_locator import split_text_sections
 from psweep.utils.normalizers import US_STATES
+from psweep.utils.evidence import normalize, quote_present
 
 WINDOW_CHARS = 2_000
 WINDOW_CONTEXT_CHARS = 400
-_PUNCTUATION = re.compile(r"[^\w\s]|_")
-_LINE_HYPHEN = re.compile(r"(\w)[-\u2010\u2011]\s*\n\s*(?=\w)")
 _ADDRESS_STATE = re.compile(r",\s*([A-Z]{2})\b|\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b")
 # A row cell whose label names a state ("State: CA", "state_abbr: CA").
 _LABELLED_STATE = re.compile(
@@ -28,18 +25,6 @@ _LABELLED_STATE = re.compile(
     re.MULTILINE,
 )
 _STATE_CODES = frozenset(US_STATES.values())
-_ELLIPSIS = re.compile(r"\u2026|\.{3}")
-
-
-def normalize(text: Any) -> str:
-    """NFKD, strip marks and soft hyphens, join line-break hyphenation,
-    casefold, punctuation to space, collapse whitespace.
-    """
-    text = _LINE_HYPHEN.sub(r"\1", str(text).replace("\u00ad", ""))
-    text = unicodedata.normalize("NFKD", text)
-    if not text.isascii():
-        text = "".join(char for char in text if not unicodedata.combining(char))
-    return " ".join(_PUNCTUATION.sub(" ", text.casefold()).split())
 
 
 def _ngram_index(names: Iterable[tuple[str, Any]]) -> dict[tuple[str, ...], list]:
@@ -321,34 +306,6 @@ def evidence_nodes(node: Any, path: Sequence[str], location: str = ""):
     elif isinstance(node, dict) and path[0] in node:
         key = f"{location}.{path[0]}" if location else path[0]
         yield from evidence_nodes(node[path[0]], path[1:], key)
-
-
-@functools.lru_cache(maxsize=8)
-def _haystacks(source_text: str) -> frozenset[str]:
-    return frozenset(
-        f" {normalize(text)} " for text in (source_text, _LINE_HYPHEN.sub(r"\1 ", source_text))
-    )
-
-
-def _in_order(parts: list[str], haystack: str) -> bool:
-    start = 0
-    for part in parts:
-        start = haystack.find(f" {part} ", start)
-        if start < 0:
-            return False
-        start += len(part) + 1
-    return True
-
-
-def quote_present(quote: Any, source_text: str) -> bool:
-    """True when the normalized quote occurs, on word boundaries, in the normalized source.
-
-    An elided quote (``head … tail``) matches when its parts occur in order.
-    """
-    if quote is None:
-        return False
-    parts = [part for part in map(normalize, _ELLIPSIS.split(str(quote))) if part]
-    return bool(parts) and any(_in_order(parts, haystack) for haystack in _haystacks(source_text))
 
 
 @dataclass(frozen=True)

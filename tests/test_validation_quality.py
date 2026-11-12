@@ -142,6 +142,10 @@ def test_roster_fidelity_and_cost(tmp_path):
         "off_candidate_items": 2,
         "docs_ok": 3,
         "docs_failed": 2,
+        "documents_no_roster_match": 0,
+        "provider_failure_records": 0,
+        "failure_records_by_category": {"unknown": 2},
+        "unattributed_failure_records": 2,
         "documents_called": 2,
         "cost_usd": pytest.approx(0.04),
         "cost_per_document": pytest.approx(0.02),
@@ -151,6 +155,27 @@ def test_roster_fidelity_and_cost(tmp_path):
         "seconds_per_document": 2.5,
     }
     assert failed_documents(extracted) == {"docs/x.pdf", "docs/y.pdf"}
+
+
+def test_provider_failures_are_attributed_not_inferred_from_all_failed_docs(tmp_path):
+    metadata = _metadata(tmp_path, ROSTER_SCHEMA)
+    extracted = tmp_path / "extracted"
+    _record(extracted, "a", {"rows": []}, quality={"status": "no_roster_match"})
+    _manifest(extracted, "new", "2026-01-03T00:00:00Z")
+    path = extracted / "run_manifests" / "new.manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["errors"]["records"] = [
+        {"category": "network", "source": {"document_path": "a.pdf", "provider": "test"}},
+        {"category": "document_io", "source": {"document_path": "b.pdf"}},
+        {"category": "network", "source": {"document_path": "c.pdf"}},
+    ]
+    path.write_text(json.dumps(manifest))
+    quality = model_quality({"m": extracted}, metadata, quote_field=None, focus=["online"])["m"]
+    assert quality["docs_failed"] == 3
+    assert quality["provider_failure_records"] == 1
+    assert quality["failure_records_by_category"] == {"network": 2, "document_io": 1}
+    assert quality["unattributed_failure_records"] == 2
+    assert quality["documents_no_roster_match"] == 1
 
 
 def test_null_cost_on_a_called_record_blanks_cost(tmp_path):

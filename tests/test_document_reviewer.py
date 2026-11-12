@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from discovery_helpers import MeteredReviewClient
 import pytest
 
 from psweep.extraction import document_utils
@@ -40,8 +41,22 @@ def _record(tmp_path: Path, name: str, label: str) -> dict:
     }
 
 
+def _evidence(quote: str) -> dict:
+    return {
+        "identity_quote": quote,
+        "content_quote": quote,
+        "scope": {"value": "fixture scope", "quote": quote},
+        "claim_kind": {"value": "direct qualified claim", "quote": quote},
+        "source_date": None,
+        "coverage": {},
+    }
+
+
 def _stub_grades(reviewer: DocumentReviewer, grades: dict[str, dict]) -> None:
-    """Replace the LLM grade call with canned results keyed by filename."""
+    """Replace grading with intentional complete-contract orchestration fixtures."""
+    for grade in grades.values():
+        grade["evidence"] = _evidence("dummy")
+    reviewer._document_text = lambda _path: "dummy " * 100
     reviewer._ensure_client = object  # type: ignore[method-assign]
     reviewer._grade = lambda p, **kw: grades.get(Path(p).name)  # type: ignore[method-assign]
 
@@ -243,6 +258,7 @@ class TestReviewGradeCache:
         def _boom(_p):  # pragma: no cover - asserts no LLM call on cache hit
             raise AssertionError("LLM grade should not be called on cache hit")
 
+        r2._document_text = lambda _path: "dummy " * 100
         r2._ensure_client = object  # type: ignore[method-assign]
         r2._grade = _boom  # type: ignore[method-assign]
         rec2 = dict(rec)
@@ -279,6 +295,7 @@ class TestReviewGradeCache:
         rec["url"] = "https://mirror.example.org/comment.pdf"
         grades = {
             "comment.pdf": {
+                "evidence": _evidence("dummy"),
                 "is_primary": True,
                 "relevance": 0.9,
                 "doc_kind": "comment",
@@ -298,6 +315,7 @@ class TestReviewGradeCache:
             seen.append(kw.get("source_url", ""))
             return grades[Path(p).name]
 
+        r2._document_text = lambda _path: "dummy " * 100
         r2._ensure_client = object  # type: ignore[method-assign]
         r2._grade = _grade  # type: ignore[method-assign]
         rec2 = dict(rec)
@@ -323,13 +341,21 @@ class TestReviewGradeCache:
         )
 
 
-class _CapturingClient:
+class _CapturingClient(MeteredReviewClient):
     def __init__(self) -> None:
+        super().__init__()
         self.prompts: list[str] = []
 
-    def extract(self, *, text, schema, system_prompt, user_prompt):
+    def respond(self, *, text, schema, system_prompt, user_prompt):
         self.prompts.append(user_prompt)
-        return {"data": {"doc_kind": "comment", "reason": "ok", "grade": 4}}
+        return {
+            "data": {
+                "doc_kind": "comment",
+                "reason": "ok",
+                "grade": 4,
+                "evidence": _evidence(" ".join(text.split()[:3])),
+            }
+        }
 
 
 class TestReviewSourceUrlContext:
@@ -487,16 +513,22 @@ class TestByteIdenticalDedup:
         assert redundant == set()
 
 
-class _LevelClient:
+class _LevelClient(MeteredReviewClient):
     """Return one anchored level per call and record every prompt."""
 
     def __init__(self, level: int) -> None:
+        super().__init__()
         self.level = level
         self.prompts: list[str] = []
 
-    def extract(self, *, text, schema, system_prompt, user_prompt):
+    def respond(self, *, text, schema, system_prompt, user_prompt):
         self.prompts.append(user_prompt)
-        reply = {"doc_kind": "record", "reason": "ok", "grade": self.level}
+        reply = {
+            "doc_kind": "record",
+            "reason": "ok",
+            "grade": self.level,
+            "evidence": _evidence(" ".join(text.split()[:3])),
+        }
         return {"data": reply}
 
 
@@ -537,12 +569,13 @@ class TestAnchoredGrades:
         rec = _record(tmp_path, "doc.pdf", "County A")
         rec["url"] = "https://example.gov/doc.pdf"
         client = _LevelClient(4)
-        reviewer = DocumentReviewer(document_description="rates in {city}")
+        reviewer = DocumentReviewer(document_description="rates in {label}")
         reviewer._client = client
         reviewer.review([rec], [])
         (prompt,) = client.prompts
-        assert prompt.startswith("TARGET DOCUMENT: rates in {city}\n")
-        assert "SEARCH TARGET: label=County A\n" in prompt
+        assert prompt.startswith("TARGET DOCUMENT: rates in County A\n")
+        assert '"identity": {"label": "County A"}' in prompt
+        assert "untrusted hints, not facts" in prompt
         assert "SOURCE_URL: https://example.gov/doc.pdf" in prompt
         assert all(f"\n{level} = " in prompt for level in range(5))
         assert "grade (integer 0-4)" in prompt
@@ -699,3 +732,280 @@ class TestRecordings:
         reviewer.review(records[:1], [])
         assert client.prompts[0].endswith(self.TRANSCRIPT)
         assert records[0]["review_relevance"] == 1.0
+
+
+@pytest.mark.parametrize("domain", ["infrastructure", "equipment", "regulatory"])
+def test_grounded_contract_retains_qualified_source_context(tmp_path, monkeypatch, domain):
+    quote = f"{domain} Asset A is reported to meet the condition for phase B."
+    text = quote + " Publication issued 2024-02. " * 10
+    monkeypatch.setattr(document_utils, "extract_text_from_document", lambda _p: text)
+    evidence = _evidence(quote)
+    evidence.update(
+        claim_kind={"value": "attributed, conditional", "quote": quote},
+        scope={"value": "phase B only", "quote": quote},
+        source_date={"value": "2024-02", "precision": "month", "quote": "issued 2024-02"},
+        coverage={"role": {"quote": quote, "scope": "phase B only"}},
+    )
+
+    class Client(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            return {
+                "data": {"grade": 4, "doc_kind": domain, "reason": "quoted", "evidence": evidence}
+            }
+
+    record = _record(tmp_path, "source.txt", "Asset A")
+    reviewer = DocumentReviewer(
+        document_description="mandatory information", coverage={"role": "claim"}
+    )
+    reviewer._client = Client()
+    reviewer.review([record], [])
+    assert record["review_selected"]
+    assert record["review_evidence"] == evidence
+    assert record["review_coverage"]["sampled_chars"] == len(text)
+    assert record["review_initial_grade"]["evidence"] == evidence
+
+
+@pytest.mark.parametrize("quote", ["fabricated evidence", "source ... evidence", "", None])
+def test_invalid_primary_evidence_is_pending_without_success_cache(tmp_path, monkeypatch, quote):
+    monkeypatch.setattr(
+        document_utils, "extract_text_from_document", lambda _p: "source evidence " * 100
+    )
+    evidence = _evidence("source evidence")
+    evidence["content_quote"] = quote
+
+    class Client(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            return {
+                "data": {
+                    "grade": 4,
+                    "doc_kind": "source",
+                    "reason": "accepted",
+                    "evidence": evidence,
+                }
+            }
+
+    record = _record(tmp_path, "source.txt", "A")
+    reviewer = DocumentReviewer(document_description="records", cache_dir=tmp_path / "cache")
+    reviewer._client = Client()
+    reviewer.review([record], [])
+    assert record["review_failed"] and not record["review_selected"]
+    assert not list((tmp_path / "cache").glob("*.json"))
+
+
+def test_sample_join_cannot_ground_a_source_quote():
+    reviewer = DocumentReviewer(document_description="records")
+    grade = {**_equal_grade(1.0), "evidence": _evidence("last first")}
+    with pytest.raises(document_reviewer.ReviewError, match="evidence"):
+        reviewer._verify_evidence(grade, ["last", "first"])
+
+
+@pytest.mark.parametrize(
+    "source_date",
+    [
+        {"value": "2023-02-29", "precision": "day", "quote": "issued"},
+        {"value": "2024-13", "precision": "month", "quote": "issued"},
+        {"value": "0000", "precision": "year", "quote": "issued"},
+        {"value": "2024-01-01", "precision": "year", "quote": "issued"},
+        {"value": "2024", "precision": "unknown", "quote": "issued"},
+    ],
+)
+def test_date_format_calendar_and_precision_are_strict(source_date):
+    reviewer = DocumentReviewer(document_description="records")
+    evidence = {**_evidence("issued"), "source_date": source_date}
+    assert not reviewer._valid_evidence(evidence, primary=True)
+
+
+def test_unknown_coverage_and_old_cache_contract_are_rejected():
+    reviewer = DocumentReviewer(document_description="records", coverage={"known": "specific need"})
+    evidence = {**_evidence("source"), "coverage": {"invented": {"quote": "source"}}}
+    assert not reviewer._valid_evidence(evidence, primary=True)
+    assert not reviewer._valid_grade(_equal_grade(1.0))
+
+
+@pytest.mark.parametrize("different_scope", [False, True])
+def test_greedy_coverage_retains_complementary_sources_before_provenance(tmp_path, different_scope):
+    records = [_record(tmp_path, f"{name}.txt", "A") for name in ("a", "b", "z")]
+    reviewer = DocumentReviewer(
+        document_description="records",
+        keep_top=2,
+        deduplicate_redundant=False,
+        coverage={"history": "history", "status": "status"},
+    )
+    grades = {f"{name}.txt": _equal_grade(1.0) for name in ("a", "b", "z")}
+    _stub_grades(reviewer, grades)
+    for name, label in (("a", "history"), ("b", "history"), ("z", "status")):
+        grades[f"{name}.txt"]["evidence"]["coverage"] = {label: {"quote": "dummy"}}
+        if different_scope and name == "z":
+            grades[f"{name}.txt"]["evidence"]["scope"]["value"] = "other phase"
+    reviewer.review(records, [])
+    assert [r["review_selected"] for r in records] == [True, False, True]
+
+
+def test_coverage_descriptions_render_per_target_without_shared_mutation(tmp_path):
+    record = _record(tmp_path, "a.txt", "A")
+    reviewer = DocumentReviewer(
+        document_description="records", coverage={"role": "Records for {label}"}
+    )
+    _stub_grades(reviewer, {"a.txt": _equal_grade(1.0)})
+    reviewer.review([record], [])
+    import json
+
+    assert json.loads(record["review_target_context"])["coverage"] == {"role": "Records for A"}
+    assert reviewer._coverage == {"role": "Records for {label}"}
+
+
+@pytest.mark.parametrize("change", ["reference", "cycle", "scope", "claim", "content", "labels"])
+def test_dedup_rejects_unsupported_or_complementary_decisions(change):
+    from copy import deepcopy
+
+    reviewer = DocumentReviewer(document_description="records", coverage={"role": "need"})
+    records = [{"review_evidence": deepcopy(_evidence("same source"))} for _ in range(2)]
+    group = {
+        "keep_index": 0,
+        "redundant_indices": [1],
+        "reason": "same",
+        "evidence_refs": [
+            {"index": i, "field": "content_quote", "quote": "same source"} for i in (0, 1)
+        ],
+    }
+    groups = [group]
+    if change == "reference":
+        group["evidence_refs"][1]["quote"] = "invented"
+    elif change == "cycle":
+        groups.append({**group, "keep_index": 1, "redundant_indices": [0]})
+    elif change == "scope":
+        records[1]["review_evidence"]["scope"]["value"] = "other phase"
+    elif change == "claim":
+        records[1]["review_evidence"]["claim_kind"]["value"] = "reported"
+    elif change == "content":
+        records[1]["review_evidence"]["content_quote"] = "conflicting source"
+        group["evidence_refs"][1]["quote"] = "conflicting source"
+    else:
+        records[1]["review_evidence"]["coverage"] = {"role": {"quote": "same source"}}
+    with pytest.raises(document_reviewer.ReviewError, match="dedup"):
+        reviewer._redundant_indices({"data": {"redundancy_groups": groups}}, records)
+
+
+def test_structural_keys_do_not_drop_differing_content(tmp_path):
+    records = [_record(tmp_path, f"{name}.txt", "A") for name in ("a", "b")]
+    reviewer = DocumentReviewer(
+        document_description="records", keep_top=2, dedup_key_fields=["review_doc_kind"]
+    )
+    grades = {f"{name}.txt": _equal_grade(1.0) for name in ("a", "b")}
+    _stub_grades(reviewer, grades)
+    Path(records[1]["path"]).write_text("different bytes", encoding="utf-8")
+
+    class Client(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            return {"data": {"redundancy_groups": []}}
+
+    reviewer._client = Client()
+    reviewer._ensure_client = lambda: reviewer._client
+    reviewer.review(records, [])
+    assert all(record["review_selected"] for record in records)
+
+
+def test_missing_mandatory_content_is_a_valid_grade_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        document_utils, "extract_text_from_document", lambda _p: "identity only " * 30
+    )
+    evidence = _evidence("identity only")
+    evidence["content_quote"] = None
+
+    class Client(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            return {
+                "data": {
+                    "grade": 1,
+                    "doc_kind": "record",
+                    "reason": "missing required content",
+                    "evidence": evidence,
+                }
+            }
+
+    record = _record(tmp_path, "a.txt", "A")
+    reviewer = DocumentReviewer(document_description="mandatory requirements")
+    reviewer._client = Client()
+    reviewer.review([record], [])
+    assert record["review_relevance"] == 0.25
+    assert not record["review_selected"] and not record.get("review_failed")
+
+
+def test_fabricated_top_grade_escalates_without_caching_success(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        document_utils, "extract_text_from_document", lambda _p: "source evidence " * 30
+    )
+
+    class Client(MeteredReviewClient):
+        def __init__(self, quote):
+            super().__init__()
+            self.quote = quote
+            self.calls = 0
+
+        def respond(self, **_kwargs):
+            self.calls += 1
+            return {
+                "data": {
+                    "grade": 4,
+                    "doc_kind": "record",
+                    "reason": "source",
+                    "evidence": _evidence(self.quote),
+                }
+            }
+
+    small, large = Client("invented quote"), Client("source evidence")
+    record = _record(tmp_path, "a.txt", "A")
+    reviewer = DocumentReviewer(
+        document_description="records", escalate_model="large", cache_dir=tmp_path / "cache"
+    )
+    reviewer._client, reviewer._escalation_client = small, large
+    reviewer.review([record], [])
+    assert record["review_selected"] and small.calls == large.calls == 1
+    assert (
+        "initial_error" in record["review_grade"].get("audit", {}) or record["review_initial_error"]
+    )
+    assert not list((tmp_path / "cache").glob("*-initial.json"))
+
+
+@pytest.mark.parametrize("compatible", [True, False])
+def test_source_date_is_only_a_same_scope_grade_tiebreaker(tmp_path, compatible):
+    records = [_record(tmp_path, f"{name}.txt", "A") for name in ("a", "z")]
+    reviewer = DocumentReviewer(
+        document_description="records",
+        keep_top=1,
+        deduplicate_redundant=False,
+        coverage={"role": "need"},
+    )
+    grades = {f"{name}.txt": _equal_grade(1.0) for name in ("a", "z")}
+    _stub_grades(reviewer, grades)
+    for name, year in (("a", "2020"), ("z", "2024")):
+        evidence = grades[f"{name}.txt"]["evidence"]
+        evidence["coverage"] = {"role": {"quote": "dummy"}}
+        evidence["source_date"] = {"value": year, "precision": "year", "quote": "dummy"}
+    if not compatible:
+        grades["z.txt"]["evidence"]["scope"]["value"] = "different phase"
+    reviewer.review(records, [])
+    assert [r["review_selected"] for r in records] == (
+        [False, True] if compatible else [True, False]
+    )
+
+
+def test_forged_cached_quote_is_not_a_successful_reuse(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(
+        document_utils, "extract_text_from_document", lambda _p: "source evidence " * 30
+    )
+    record = _record(tmp_path, "a.txt", "A")
+    cache = tmp_path / "cache"
+    reviewer = DocumentReviewer(document_description="records", cache_dir=cache)
+    reviewer._client = _LevelClient(4)
+    reviewer.review([record], [])
+    (entry,) = cache.glob("*.json")
+    payload = json.loads(entry.read_text())
+    payload["llm"]["evidence"]["content_quote"] = "fabricated"
+    entry.write_text(json.dumps(payload), encoding="utf-8")
+    reviewer.review([record], [])
+    assert record["review_selected"] and not record["review_cached"]
+    assert len(reviewer._client.prompts) == 2
+    assert not reviewer._grade_memo and not reviewer._dedup_memo

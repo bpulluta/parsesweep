@@ -9,7 +9,7 @@ import pytest
 
 from psweep.discovery import DiscoveryRequest
 from psweep.discovery.connectors import SerpApiSeeker, SeekerInput
-from psweep.discovery.connectors.serpapi_seeker import render_query_template
+from psweep.discovery.targets import render_target_template
 from psweep.discovery.publication import effective_discovery_fingerprint
 from psweep.discovery.urls import canonical_url
 
@@ -175,12 +175,12 @@ def test_templates_missing_required_tokens_are_skipped(search):
 
 def test_required_template_token_fails():
     with pytest.raises(ValueError, match="Missing required template token"):
-        render_query_template("{jurisdiction} {state}", {"jurisdiction": "Example"})
+        render_target_template("{jurisdiction} {state}", {"jurisdiction": "Example"})
 
 
 def test_optional_template_token_is_removed():
     assert (
-        render_query_template(
+        render_target_template(
             "{jurisdiction} {state} {known_id?}",
             {"jurisdiction": "Example", "state": "CO"},
         )

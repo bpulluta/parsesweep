@@ -303,7 +303,7 @@ def test_invalid_json_fails_loudly(tmp_path: Path):
 
 
 def test_quotes_verify_against_labelled_rows(tmp_path: Path):
-    from psweep.extraction.roster import quote_present
+    from psweep.utils.evidence import quote_present
 
     path = _doc(tmp_path, "l.csv", "Jurisdiction Name,State,Solar + Storage\nPima County,AZ,TRUE\n")
     text = extract_text_from_document(path)

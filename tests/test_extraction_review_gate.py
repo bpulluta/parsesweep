@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import DEFAULT, Mock
+from threading import Event, Lock, get_ident
 
 import pytest
 
@@ -125,6 +126,160 @@ def test_document_work_logs_name_the_document(reviewed_inputs, monkeypatch):
     assert current_document() is None
 
 
+def test_targeting_and_extraction_share_bounded_document_workers(reviewed_inputs, monkeypatch):
+    """A slow locator must not block extraction of a different started document."""
+    inputs, provider = reviewed_inputs
+    root = Path(inputs["path"])
+    (root / "doc.txt").unlink()
+    for name in ("a-slow.txt", "b-fast.txt", "c-next.txt", "d-next.txt"):
+        (root / name).write_text("Source evidence")
+    inputs.update(
+        max_concurrent=2, page_targeting={"enabled": True, "section_description": "evidence"}
+    )
+    extracted = Event()
+    lock = Lock()
+    locators = {}
+    seen = []
+
+    def locate(locator, doc):
+        with lock:
+            locators.setdefault(get_ident(), set()).add(id(locator))
+            seen.append(doc.name)
+        if doc.name == "a-slow.txt":
+            assert extracted.wait(5), "all-document locator barrier blocked extraction"
+
+    def extract(*_args, **_kwargs):
+        if current_document() == "b-fast.txt":
+            extracted.set()
+        return DEFAULT
+
+    monkeypatch.setattr("psweep.extraction.section_locator.SectionLocator.locate", locate)
+    provider.side_effect = extract
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert len(locators) == 2
+    assert all(len(values) == 1 for values in locators.values())
+    assert len(set.union(*locators.values())) == 2
+    assert sorted(seen) == ["a-slow.txt", "b-fast.txt", "c-next.txt", "d-next.txt"]
+
+
+@pytest.mark.parametrize("field", ["asset", "jurisdiction", "instrument"])
+def test_targeting_binds_subject_from_configured_identity_not_the_label(
+    reviewed_inputs, monkeypatch, field
+):
+    inputs, _provider = reviewed_inputs
+    inputs.update(
+        partition_by=["region", field],
+        page_targeting={"enabled": True, "section_description": "evidence"},
+    )
+    with (Path(inputs["path"]) / "download_index.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["path", "source_scope", "target_id", "target_label", "target_metadata"],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "path": "doc.txt",
+                "source_scope": "target",
+                "target_id": "fixture",
+                "target_label": "North — Alpha, Unit 7",
+                "target_metadata": json.dumps(
+                    {"region": "North", field: "Alpha, Unit 7", "location": "Other"}
+                ),
+            }
+        )
+    seen = []
+    monkeypatch.setattr(
+        "psweep.extraction.section_locator.SectionLocator.locate",
+        lambda locator, _doc: seen.append(locator._subject_hints),
+    )
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert seen == [["North — Alpha, Unit 7", "Alpha, Unit 7"]]
+
+
+@pytest.mark.parametrize("save", [False, True])
+def test_completed_section_text_is_released_before_the_next_document(
+    reviewed_inputs, monkeypatch, save
+):
+    inputs, _provider = reviewed_inputs
+    root = Path(inputs["path"])
+    (root / "next.txt").write_text("Source evidence")
+    inputs.update(
+        max_concurrent=1,
+        page_targeting={
+            "enabled": True,
+            "section_description": "evidence",
+            "save_discovered": save,
+        },
+    )
+    retained = {}
+    prepare = pipeline._target_extraction_inputs
+
+    def capture(plan):
+        result = prepare(plan)
+        retained["sections"] = result[1]
+        return result
+
+    monkeypatch.setattr(pipeline, "_target_extraction_inputs", capture)
+    monkeypatch.setattr(
+        "psweep.extraction.section_locator.SectionLocator.locate",
+        lambda _self, _doc: "Source evidence",
+    )
+
+    def progress(_doc, outcome):
+        if outcome is not None:
+            assert retained["sections"] == {}
+
+    assert _execute_extraction(_prepare_extraction(inputs), on_progress=progress).exit_code == 0
+    saved = list((Path(inputs["output"]) / ".sections").glob("*.txt"))
+    assert len(saved) == (2 if save else 0)
+    assert all(path.read_text() == "Source evidence" for path in saved)
+
+
+def test_subject_context_and_locator_version_invalidate_record_reuse(reviewed_inputs, monkeypatch):
+    inputs, provider = reviewed_inputs
+    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+    index = Path(inputs["path"]) / "download_index.csv"
+    inputs["path"] = str(Path(inputs["path"]) / "doc.txt")
+
+    def write_context(label):
+        index.write_text(
+            "path,source_scope,target_id,target_label,target_metadata\n"
+            f'doc.txt,target,1,{label},"{{""zone"":""North""}}"\n'
+        )
+
+    write_context("Subject Alpha")
+    seen = []
+    monkeypatch.setattr(
+        "psweep.extraction.section_locator.SectionLocator.locate",
+        lambda locator, _doc: seen.append(locator._source_context.target_label),
+    )
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert _execute_extraction(_prepare_extraction(inputs)).status == "reused"
+    write_context("Subject Beta")
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    monkeypatch.setattr(pipeline.page_locator, "LOCATOR_BEHAVIOR_VERSION", "future")
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert provider.call_count == 3
+    assert seen == ["Subject Alpha", "Subject Beta", "Subject Beta"]
+
+
+def test_uncertain_targeting_falls_back_visibly_and_does_not_reuse(
+    reviewed_inputs, monkeypatch, caplog
+):
+    inputs, provider = reviewed_inputs
+    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+
+    def locate(locator, _doc):
+        locator.incomplete = True
+
+    monkeypatch.setattr("psweep.extraction.section_locator.SectionLocator.locate", locate)
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert provider.call_count == 2
+    assert "full-document" in caplog.text
+
+
 def test_invalid_locator_keywords_preserve_fresh_output(reviewed_inputs):
     """A locator setup typo is rejected before destructive freshness work."""
     inputs, provider = reviewed_inputs
@@ -226,7 +381,7 @@ def test_locator_routing_change_invalidates_record_reuse(reviewed_inputs, monkey
     monkeypatch.setattr(
         pipeline,
         "_target_extraction_inputs",
-        lambda plan: (plan["ranges"], {}, []),
+        lambda plan: (plan["ranges"], {}, [], lambda _doc: None),
     )
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://second.openai.azure.com")

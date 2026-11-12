@@ -47,6 +47,16 @@ def _proxy(model="gemini-3.5-flash"):
     return LLMClient(api_key="k", model=model, base_url=BASE_URL)
 
 
+def test_usage_snapshot_cannot_mutate_client_counters():
+    client = _proxy()
+    snapshot = client.usage_snapshot
+    snapshot["calls"] = 999
+    client._count(calls=1, input_tokens=10)
+    assert snapshot["calls"] == 999
+    assert client.usage_snapshot["calls"] == 1
+    assert client.usage_snapshot["input_tokens"] == 10
+
+
 def test_complete_routes_through_the_proxy_with_request_params():
     client = _proxy()
     with (

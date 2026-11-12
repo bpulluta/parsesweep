@@ -167,6 +167,11 @@ def build_extraction_record(
             "source_url": source.url if source else None,
             "source_scope": source.scope if source else None,
             "target_id": source.target_id if source else None,
+            **(
+                {"review_evidence": source.review_evidence}
+                if source and source.review_evidence
+                else {}
+            ),
         },
         "lineage": lineage,
         "payload": result.data,

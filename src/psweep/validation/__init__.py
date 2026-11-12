@@ -151,13 +151,17 @@ def _challenger(
     if not compiled_table_fresh(
         root / "extracted", ctx["schema"], config_path=config_path, output_dir=root
     ):
-        compile_extractions(
+        compiled = compile_extractions(
             root / "extracted",
             ctx["schema"],
             config_path=config_path,
             output_dir=root,
             report_format="csv",
         )
+        calls += compiled.costs.get("llm_calls", 0)
+        cost += compiled.costs.get("total_cost_usd", 0) or 0.0
+        if compiled.status in {"partial_failure", "failed"}:
+            raise ValueError(f"Challenger '{alias}' has unresolved evidence reconciliation")
     return root / ctx["table"].name, calls, cost
 
 

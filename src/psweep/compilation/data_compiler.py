@@ -70,6 +70,22 @@ class DataCompiler:
         self.excel_formatter = ExcelFormatter()
         self.csv_exporter = CsvExporter()
         self.payload_validator = build_schema_validator(schema_metadata.schema)
+        from .reconciliation import policy_contract
+
+        self.reconciliation_policy = policy_contract(schema_metadata, self.inputs, self.roster)
+        self.reconciliation_stats: dict[str, int] = {}
+        self.reconciliation_costs: dict[str, Any] = {}
+
+    @property
+    def status(self) -> str:
+        """Unresolved reconciliation is never certified as a successful build."""
+        if not self.reconciliation_stats.get("unresolved"):
+            return "success"
+        return (
+            "partial_failure"
+            if (self.roster_stats or {}).get("targets_with_evidence")
+            else "failed"
+        )
 
     @property
     def mode(self) -> str:
@@ -93,7 +109,18 @@ class DataCompiler:
             for row in iter_targets(self.inputs["targets"]):
                 targets.update(json.dumps(row, sort_keys=True, default=str).encode() + b"\n")
             roster = {"fields": list(self.roster.fields), "targets_sha256": targets.hexdigest()}
+        reconciliation = None
+        if self.reconciliation_policy:
+            from .reconciliation import VERSION, resolve_model
+
+            _, routing = resolve_model(self.reconciliation_policy, self.inputs)
+            reconciliation = {
+                "version": VERSION,
+                "policy": self.reconciliation_policy,
+                "routing": routing,
+            }
         identity = {
+            "reconciliation": reconciliation,
             "schema_sha256": artifact_sha256(self.schema_metadata.schema_path),
             "compilation": compilation,
             "roster": roster,
@@ -123,6 +150,7 @@ class DataCompiler:
         json_dir: Path,
         *,
         apply_deduplication: bool = True,
+        allow_model: bool = True,
     ) -> tuple[pd.DataFrame, dict[str, Any]]:
         """Return the compiled frame (field-name columns) and a schema summary."""
         from psweep.security import validate_protected_paths
@@ -143,9 +171,30 @@ class DataCompiler:
             print(f"📋 {schema_info['type']}: {main} ({self.mode} mode)")
 
         if self.roster is not None:
-            df, self.roster_stats = compile_roster(
-                self._records(files), self.schema_metadata, self.roster, self.inputs["targets"]
-            )
+            if self.reconciliation_policy:
+                from .reconciliation import Reconciler
+                from psweep.workspace import Workspace, infer_domain
+
+                cache_dir = (
+                    self.inputs.get("_reconciliation_cache")
+                    or Workspace(
+                        self.inputs.get("domain") or infer_domain(json_dir)
+                    ).reconciliation_cache
+                )
+                reconciler = Reconciler(
+                    self.schema_metadata,
+                    self.inputs,
+                    self.roster,
+                    cache_dir,
+                    allow_model=allow_model,
+                )
+                df, self.roster_stats, self.reconciliation_stats, self.reconciliation_costs = (
+                    reconciler.compile(self._records(files))
+                )
+            else:
+                df, self.roster_stats = compile_roster(
+                    self._records(files), self.schema_metadata, self.roster, self.inputs["targets"]
+                )
             self.total_items = len(df)
             self.duplicates_removed = 0
             return df, schema_info

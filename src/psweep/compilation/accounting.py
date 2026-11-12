@@ -19,7 +19,16 @@ from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
+from psweep.utils.file_io import atomic_json
 from psweep.workspace import Workspace
+
+
+_COST_COUNTERS = (
+    "total_input_tokens",
+    "total_output_tokens",
+    "llm_calls",
+    "unknown_cost_calls",
+)
 
 
 def _omit_none(d: dict[str, Any]) -> dict[str, Any]:
@@ -62,6 +71,34 @@ def canonical_discovery_manifest_path(domain: str, manifest_path: Path, run_id: 
     return str(candidate if candidate.exists() else manifest_path)
 
 
+def _sum_compilation_costs(costs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Sum new reconciliation usage, never historical decision-cache costs."""
+    return {
+        "total_cost_usd": _round_cost(
+            math.fsum(float(cost.get("total_cost_usd") or 0.0) for cost in costs)
+        ),
+        **{key: sum(int(cost.get(key) or 0) for cost in costs) for key in _COST_COUNTERS},
+        "models": sorted({model for cost in costs for model in cost.get("models") or []}),
+    }
+
+
+def _reconciliation_receipts(domain: str, warnings: list[str]) -> dict[str, dict[str, Any]]:
+    """Read immutable per-call usage, including calls whose export never completed."""
+    receipts: dict[str, dict[str, Any]] = {}
+    for path in (Workspace(domain).reconciliation_cache / "attempts").glob("*.json"):
+        try:
+            receipt = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(receipt, dict) or not receipt.get("attempt_id"):
+                raise ValueError("Receipt must contain an attempt_id")
+            if not isinstance(receipt.get("costs"), dict):
+                raise TypeError("Receipt must contain costs")
+            _sum_compilation_costs([receipt["costs"]])
+            receipts.setdefault(str(receipt["attempt_id"]), receipt)
+        except (OSError, ValueError, TypeError) as exc:
+            warnings.append(f"reconciliation_receipt_parse_error: {path.name} — {exc}")
+    return receipts
+
+
 def build_pipeline_accounting(
     *,
     domain: str,
@@ -72,9 +109,11 @@ def build_pipeline_accounting(
     """Build run_accounting.json: a factual, cumulative log of discover, extract and compile.
 
     Histories accumulate across immutable run manifests (discovery runs, plus
-    ``run_manifests/`` under the extraction and compilation dirs). Discovery and
-    extraction LLM costs sum into ``summary.total_cost_usd``; compilation makes no
-    LLM calls and records output stats only; flat-rate search APIs count queries only.
+    ``run_manifests/`` under the extraction and compilation dirs). Discovery,
+    extraction and reconciliation LLM costs sum into ``summary.total_cost_usd``.
+    By default compilation makes no LLM calls; opt-in reconciliation receipts retain
+    spend after failed exports, with matching manifest costs counted only as fallback.
+    Flat-rate search APIs count queries only.
     """
     warnings: list[str] = []
 
@@ -656,6 +695,12 @@ def build_pipeline_accounting(
         if compile_manifest_dir.is_dir()
         else []
     )
+    receipts = _reconciliation_receipts(domain, warnings)
+    receipt_runs: dict[str, set[str]] = {}
+    for attempt_id, receipt in receipts.items():
+        receipt_runs.setdefault(str(receipt.get("run_id") or ""), set()).add(attempt_id)
+    covered_attempt_ids: set[str] = set()
+    compilation_costs: list[dict[str, Any]] = []
     seen_compile_run_ids: set[str] = set()
     for mf_path in compile_manifest_files:
         try:
@@ -671,6 +716,17 @@ def build_pipeline_accounting(
         seen_compile_run_ids.add(run_id)
         run_timing = mf.get("timing") or {}
         status_block = mf.get("status") or {}
+        run_costs = mf.get("costs")
+        if isinstance(run_costs, dict):
+            attempt_ids = set(run_costs.get("attempt_ids") or [])
+            if not attempt_ids and run_costs.get("run_id"):
+                attempt_ids = receipt_runs.get(str(run_costs["run_id"]), set())
+            new_attempt_ids = attempt_ids - covered_attempt_ids
+            if attempt_ids and attempt_ids.issubset(receipts):
+                compilation_costs.extend(receipts[key]["costs"] for key in new_attempt_ids)
+            elif not attempt_ids or new_attempt_ids == attempt_ids:
+                compilation_costs.append(run_costs)
+            covered_attempt_ids.update(attempt_ids)
         compilation_runs.append(
             _omit_none(
                 {
@@ -685,6 +741,8 @@ def build_pipeline_accounting(
                     "schema_id": (mf.get("lineage") or {}).get("schema_id"),
                     "started_at": run_timing.get("started_at"),
                     "completed_at": run_timing.get("finished_at"),
+                    "costs": run_costs,
+                    "reconciliation": mf.get("reconciliation"),
                     **(mf.get("outputs") or {}),
                 }
             )
@@ -699,6 +757,22 @@ def build_pipeline_accounting(
         compilation_runs.sort(key=lambda run: run.get("completed_at") or "")
         stages["compilation"]["run_count"] = len(compilation_runs)
         stages["compilation"]["runs"] = compilation_runs
+        stages["compilation"]["status"] = compilation_runs[-1]["status"]
+        if "reconciliation" in compilation_runs[-1]:
+            stages["compilation"]["reconciliation"] = compilation_runs[-1]["reconciliation"]
+
+    orphan_receipts = [
+        receipt for attempt_id, receipt in receipts.items() if attempt_id not in covered_attempt_ids
+    ]
+    compilation_costs.extend(receipt["costs"] for receipt in orphan_receipts)
+    if orphan_receipts:
+        stages["compilation"]["unpublished_attempts"] = len(orphan_receipts)
+    if compilation_costs:
+        aggregate = _sum_compilation_costs(compilation_costs)
+        stages["compilation"]["aggregate"] = aggregate
+        total_llm_cost = _round_cost(math.fsum([total_llm_cost, aggregate["total_cost_usd"]]))
+        total_llm_calls += aggregate["llm_calls"]
+        total_tokens += aggregate["total_input_tokens"] + aggregate["total_output_tokens"]
 
     # ------------------------------------------------------------------
     # Summary block — designed for quick first-read at any scale
@@ -717,7 +791,9 @@ def build_pipeline_accounting(
         "extraction_runs": total_extraction_runs,
     }
     # Unknown-priced calls are not measured zero-cost operations.
-    unknown_calls = stages.get("extraction", {}).get("unknown_cost_calls", 0)
+    unknown_calls = stages.get("extraction", {}).get("unknown_cost_calls", 0) + stages[
+        "compilation"
+    ].get("aggregate", {}).get("unknown_cost_calls", 0)
     if unknown_calls:
         summary["unknown_cost_calls"] = unknown_calls
         summary["cost_scope"] = "known_metered_llm_only"
@@ -771,10 +847,16 @@ def write_compilation_run_manifest(
     mode: str,
     stats: dict[str, Any],
     started_at: datetime,
-    build_fingerprint: str,
+    build_fingerprint: str | None,
     table_sha256: str | None,
+    status: str = "success",
+    costs: dict[str, Any] | None = None,
+    reconciliation: dict[str, Any] | None = None,
 ) -> Path | None:
-    """Persist one immutable compilation run manifest (compile makes no LLM calls)."""
+    """Persist one immutable compilation result and any current-run model usage."""
+    from psweep.security import validate_protected_paths
+
+    validate_protected_paths({"output_dir": output_dir})
     run_manifest_dir = output_dir / "run_manifests"
     run_manifest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -784,7 +866,7 @@ def write_compilation_run_manifest(
         "manifest_version": "2.0.0",
         "run_id": f"compile://{stamp}",
         "mode": mode,
-        "status": {"result": "success"},
+        "status": {"result": status},
         "timing": {
             "started_at": started_at.isoformat().replace("+00:00", "Z"),
             "finished_at": completed_at.isoformat().replace("+00:00", "Z"),
@@ -797,9 +879,13 @@ def write_compilation_run_manifest(
         },
         "outputs": stats,
     }
+    if costs is not None:
+        manifest["costs"] = costs
+    if reconciliation is not None:
+        manifest["reconciliation"] = reconciliation
     manifest_path = run_manifest_dir / f"{stamp}.manifest.json"
     try:
-        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        atomic_json(manifest_path, manifest)
     except OSError:
         return None
     return manifest_path

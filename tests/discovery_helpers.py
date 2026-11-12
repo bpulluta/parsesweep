@@ -11,9 +11,67 @@ test modules belong here.
 
 from __future__ import annotations
 
+from threading import Lock
 from types import SimpleNamespace
 
 from psweep.discovery.models import CandidateScore, DiscoveryCandidate
+
+
+def review_evidence(quote: str) -> dict:
+    """Complete reviewer evidence for an explicit quoted offline source fixture."""
+    return {
+        "identity_quote": quote,
+        "content_quote": quote,
+        "scope": {"value": "fixture source scope", "quote": quote},
+        "claim_kind": {"value": "direct fixture claim", "quote": quote},
+        "source_date": None,
+        "coverage": {},
+    }
+
+
+class MeteredReviewClient:
+    """Keep injected review clients on the production physical-attempt usage contract."""
+
+    def extract(self, *args, before_request=None, **kwargs):
+        if before_request:
+            before_request()
+        try:
+            result = self.respond(*args, **kwargs)
+        except Exception as exc:
+            self._measure(getattr(exc, "usage", None))
+            raise
+        self._measure(result)
+        return result
+
+    def respond(self, *args, **kwargs):
+        """Supply a response without replacing metering or the request-budget boundary."""
+        raise NotImplementedError
+
+    def __init__(self):
+        self.usage = {
+            "calls": 0,
+            "cost": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "unknown_cost_calls": 0,
+        }
+        self._usage_lock = Lock()
+
+    @property
+    def usage_snapshot(self):
+        with self._usage_lock:
+            return dict(self.usage)
+
+    def _measure(self, result):
+        result = result if isinstance(result, dict) else {}
+        with self._usage_lock:
+            usage = self.usage
+            usage["calls"] += 1
+            usage["unknown_cost_calls"] += any(
+                key not in result for key in ("cost", "input_tokens", "output_tokens")
+            )
+            for key in ("cost", "input_tokens", "output_tokens"):
+                usage[key] += result.get(key, 0)
 
 
 def make_candidate(

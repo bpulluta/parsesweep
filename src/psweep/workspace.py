@@ -78,6 +78,11 @@ class Workspace:
         return self.root / "compiled"
 
     @property
+    def reconciliation_cache(self) -> Path:
+        """Verified decisions, alternatives and durable usage outside compiled exports."""
+        return self.root / ".reconciliation"
+
+    @property
     def compiled_name(self) -> str:
         """Base name of the compiled CSV/XLSX (``<domain>.csv``); the one place it is derived."""
         return self.domain

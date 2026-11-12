@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -12,13 +13,14 @@ from typing import Any
 from psweep.compilation.input_provenance import list_compile_record_files, read_compile_record
 from psweep.extraction.document_utils import extract_text_from_document, read_text_cache
 from psweep.extraction.pdf_utils import extract_pages_text
-from psweep.extraction.roster import evidence_nodes, quote_present
+from psweep.extraction.roster import evidence_nodes
+from psweep.utils.evidence import quote_present
 from psweep.extraction.schema_utils import evidence_paths
 from psweep.utils.schema_metadata import SchemaMetadata
 
 
-def failed_documents(extracted_dir: Path) -> set[str]:
-    """Document paths with errors in the newest run manifest (by ``timing.finished_at``)."""
+def _latest_errors(extracted_dir: Path) -> list[dict]:
+    """Error records in the newest run manifest (by ``timing.finished_at``)."""
     newest, finished = None, None
     for path in sorted((Path(extracted_dir) / "run_manifests").glob("*.manifest.json")):
         try:
@@ -28,10 +30,14 @@ def failed_documents(extracted_dir: Path) -> set[str]:
             raise ValueError(f"{path}: unreadable run manifest ({type(exc).__name__})") from exc
         if finished is None or stamp > finished:
             newest, finished = manifest, stamp
-    records = ((newest or {}).get("errors") or {}).get("records") or []
+    return ((newest or {}).get("errors") or {}).get("records") or []
+
+
+def failed_documents(extracted_dir: Path) -> set[str]:
+    """Document paths with errors in the newest run manifest."""
     return {
         record["source"]["document_path"]
-        for record in records
+        for record in _latest_errors(extracted_dir)
         if (record.get("source") or {}).get("document_path")
     }
 
@@ -75,6 +81,7 @@ class _Tally:
     off_candidate: int = 0
     docs: int = 0
     called: int = 0
+    no_roster_match: int = 0
     unknown_cost: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
@@ -86,6 +93,7 @@ class _Tally:
         quality = record.get("quality") or {}
         metrics = record.get("processing_metrics") or {}
         self.docs += 1
+        self.no_roster_match += quality.get("status") == "no_roster_match"
         self.off_candidate += quality.get("off_candidate_items") or 0
         if quality.get("completeness") is not None:
             self.completeness.append(quality["completeness"])
@@ -109,6 +117,15 @@ class _Tally:
     def summary(self, extracted_dir: Path, measured: bool) -> dict:
         checked = self.verified + self.unverified
         total = None if self.unknown_cost else self.cost
+        errors = _latest_errors(extracted_dir)
+        categories = Counter(error.get("category") or "unknown" for error in errors)
+        # Attribute only transport/context failures with explicit provider identity.
+        # Document/OCR/schema failures and untyped records are not provider failures.
+        provider_failures = sum(
+            bool((error.get("source") or {}).get("provider"))
+            and error.get("category") in {"network", "context_budget"}
+            for error in errors
+        )
         return {
             "quotes_verified": self.verified if measured else None,
             "quotes_unverified": self.unverified if measured else None,
@@ -117,7 +134,13 @@ class _Tally:
             "completeness_mean": _mean(self.completeness),
             "off_candidate_items": self.off_candidate,
             "docs_ok": self.docs,
-            "docs_failed": len(failed_documents(extracted_dir)),
+            "docs_failed": len(
+                {(e.get("source") or {}).get("document_path") for e in errors} - {None}
+            ),
+            "documents_no_roster_match": self.no_roster_match,
+            "provider_failure_records": provider_failures,
+            "failure_records_by_category": dict(categories),
+            "unattributed_failure_records": len(errors) - provider_failures,
             "documents_called": self.called,
             "cost_usd": total,
             "cost_per_document": total / self.called if total is not None and self.called else None,
