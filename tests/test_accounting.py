@@ -198,3 +198,160 @@ def test_extraction_stage_names_every_model_that_spent(monkeypatch, tmp_path):
         "gpt-x",
         ["gemini-3.5-flash", "gpt-x"],
     ]
+
+
+def _usage(cost=0.2, **overrides):
+    return {
+        "total_cost_usd": cost,
+        "total_input_tokens": 100,
+        "total_output_tokens": 10,
+        "llm_calls": 1,
+        "unknown_cost_calls": 0,
+        "models": ["resolver-model"],
+        **overrides,
+    }
+
+
+def _compile_manifest(output, costs, *, status="success", reconciliation=None):
+    return write_compilation_run_manifest(
+        output_dir=output,
+        schema_id="schema.json",
+        mode="roster",
+        stats={"records": 2},
+        started_at=datetime.now(UTC),
+        build_fingerprint="fingerprint",
+        table_sha256="table",
+        status=status,
+        costs=costs,
+        reconciliation=reconciliation,
+    )
+
+
+def _receipt(workspace, attempt_id, costs, *, run_id="resolver-run"):
+    _write_json(
+        workspace.reconciliation_cache / "attempts" / f"{attempt_id}.json",
+        {
+            "attempt_id": attempt_id,
+            "run_id": run_id,
+            "costs": costs,
+            "completed_at": "2026-01-01T00:00:00Z",
+        },
+    )
+
+
+def test_compilation_manifest_status_usage_and_summary(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    workspace = Workspace("widgets")
+    stats = {"targets": 2, "resolved": 1, "unresolved": 1, "cached": 0, "pending": 0}
+    costs = _usage()
+    _compile_manifest(workspace.compiled, costs, status="partial_failure", reconciliation=stats)
+    manifest = latest_compilation_manifest(workspace.compiled)
+    assert manifest["status"] == {"result": "partial_failure"}
+    assert manifest["costs"] == costs
+    assert manifest["reconciliation"] == stats
+    accounting = build_pipeline_accounting(
+        domain=workspace.domain,
+        extraction_dir=workspace.extracted,
+        output_dir=workspace.compiled,
+        compilation_stats={"records": 2},
+    )
+    assert accounting["summary"]["total_cost_usd"] == 0.2
+    assert accounting["summary"]["llm_calls_total"] == 1
+    assert accounting["summary"]["tokens_total"] == 110
+    stage = accounting["stages"]["compilation"]
+    assert stage["status"] == "partial_failure"
+    assert stage["aggregate"] == costs
+    assert stage["reconciliation"] == stats
+
+
+def test_receipts_deduplicate_manifest_and_preserve_export_abort_spend(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    workspace = Workspace("widgets")
+    _receipt(workspace, "a", _usage())
+    # A duplicate file for the same actual attempt is not a second call.
+    _write_json(
+        workspace.reconciliation_cache / "attempts" / "duplicate.json",
+        {"attempt_id": "a", "run_id": "resolver-run", "costs": _usage()},
+    )
+    _receipt(workspace, "aborted", _usage(0.3), run_id="aborted-run")
+    # Prefer durable receipts over a manifest describing those same calls.
+    _compile_manifest(workspace.compiled, _usage(9, attempt_ids=["a"], run_id="resolver-run"))
+    # A subsequent cache hit incurs no new calls or spend.
+    _compile_manifest(
+        workspace.compiled,
+        _usage(
+            0,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            llm_calls=0,
+            models=[],
+            attempt_ids=[],
+            run_id="cache-run",
+        ),
+    )
+    accounting = build_pipeline_accounting(
+        domain=workspace.domain,
+        extraction_dir=workspace.extracted,
+        output_dir=workspace.compiled,
+        compilation_stats={},
+    )
+    assert accounting["summary"]["total_cost_usd"] == 0.5
+    assert accounting["summary"]["llm_calls_total"] == 2
+    assert accounting["summary"]["tokens_total"] == 220
+    assert accounting["stages"]["compilation"]["unpublished_attempts"] == 1
+
+
+def test_missing_receipt_uses_manifest_without_double_counting_present_receipt(
+    monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    workspace = Workspace("widgets")
+    _receipt(workspace, "a", _usage())
+    _compile_manifest(workspace.compiled, _usage(0.4, llm_calls=2, attempt_ids=["a", "b"]))
+    accounting = build_pipeline_accounting(
+        domain=workspace.domain,
+        extraction_dir=workspace.extracted,
+        output_dir=workspace.compiled,
+        compilation_stats={},
+    )
+    assert accounting["summary"]["total_cost_usd"] == 0.4
+    assert accounting["summary"]["llm_calls_total"] == 2
+    assert "unpublished_attempts" not in accounting["stages"]["compilation"]
+
+
+def test_orphan_unknown_price_usage_is_not_reported_as_free(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    workspace = Workspace("widgets")
+    _receipt(workspace, "unknown", _usage(0, unknown_cost_calls=1))
+    _write_json(workspace.reconciliation_cache / "attempts" / "bad.json", {"costs": {}})
+    accounting = build_pipeline_accounting(
+        domain=workspace.domain,
+        extraction_dir=workspace.extracted,
+        output_dir=workspace.compiled,
+        compilation_stats={},
+    )
+    assert accounting["summary"]["unknown_cost_calls"] == 1
+    assert accounting["summary"]["cost_scope"] == "known_metered_llm_only"
+    assert accounting["summary"]["llm_calls_total"] == 1
+    assert "pricing unavailable" in accounting["summary"]["zero_cost_reason"]
+    assert accounting["warnings"][0].startswith("reconciliation_receipt_parse_error:")
+
+
+def test_receipt_matching_by_run_id_and_duplicate_manifests(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    workspace = Workspace("widgets")
+    _receipt(workspace, "a", _usage())
+    path = _compile_manifest(workspace.compiled, _usage(9, run_id="resolver-run"))
+    saved = json.loads(path.read_text())
+    _write_json(workspace.compiled / "run_manifests" / "duplicate.manifest.json", saved)
+    # Distinct export run manifests cannot recount an existing provider attempt.
+    _compile_manifest(workspace.compiled, _usage(9, attempt_ids=["a"], run_id="resolver-run"))
+    accounting = build_pipeline_accounting(
+        domain=workspace.domain,
+        extraction_dir=workspace.extracted,
+        output_dir=workspace.compiled,
+        compilation_stats={},
+    )
+    assert accounting["summary"]["total_cost_usd"] == 0.2
+    assert accounting["summary"]["llm_calls_total"] == 1
+    assert accounting["stages"]["compilation"]["run_count"] == 2

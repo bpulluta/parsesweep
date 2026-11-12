@@ -18,7 +18,8 @@ import pandas as pd
 
 from psweep.compilation.data_compiler import apply_value_normalizations
 from psweep.compilation.roster import NA
-from psweep.extraction.roster import Roster, normalize
+from psweep.extraction.roster import Roster
+from psweep.utils.evidence import normalize
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.utils.spreadsheet import csv_literal
 from psweep.validation.judge import class_key
@@ -43,6 +44,7 @@ class Cell:
     quote: str | None
     url: str | None
     conflict: bool
+    assessed: bool = True
 
 
 @dataclass(frozen=True)
@@ -120,10 +122,39 @@ def _header(source: Source) -> set[str]:
     return set(header)
 
 
-def _clean(raw: str) -> str:
-    """Undo compile's formula escaping (``csv_literal``); NA becomes ''."""
+def _clean(raw: str, *, reference: bool = False) -> str:
+    """Undo formula escaping; retain explicit reference NA as a labelled absence."""
     text = raw[1:] if raw[:1] == "'" and csv_literal(raw[1:]) == raw else raw
-    return "" if text.strip() in {"", NA} else text
+    return "" if not text.strip() or (text.strip() == NA and not reference) else text
+
+
+def _assessment_columns(
+    source: Source, fields: Sequence[str], titles: dict[str, str]
+) -> dict[str, str]:
+    """Optional reference-only masks use compiled titles, not schema field names."""
+    header = _header(source)
+    return {
+        f"{f}__assessed": f"{titles.get(f, f)}__assessed"
+        for f in fields
+        if f"{titles.get(f, f)}__assessed" in header
+    }
+
+
+def _reference_cell(source: Source, field: str, row: dict, titles: dict[str, str]) -> Cell:
+    """Blank = unlabelled; NA = known absence; a strict boolean mask overrides both.
+
+    Unknown is not a reserved domain value: mark an unknown/placeholder false in
+    ``<compiled title>__assessed``. A true mask on a blank labels a known absence.
+    """
+    raw = row[field]
+    mask = row.get(f"{field}__assessed", "").strip().lower()
+    if mask not in {"", "true", "false"}:
+        raise ValueError(
+            f"{source.label}: {titles.get(field, field)}__assessed must be true or false"
+        )
+    assessed = mask == "true" if mask else bool(raw.strip())
+    value = None if not raw.strip() or raw.strip() == NA else raw
+    return Cell(value, None, None, False, assessed)
 
 
 def _frames(
@@ -134,6 +165,8 @@ def _frames(
 ) -> Iterator[pd.DataFrame]:
     """Stream cleaned field-name frames; ``metadata`` applies rows-mode value normalization."""
     names = {titles.get(f, f): f for f in fields}
+    if source.role == "reference":
+        names.update({title: f for f, title in _assessment_columns(source, fields, titles).items()})
     with pd.read_csv(
         source.path,
         dtype=str,
@@ -143,7 +176,9 @@ def _frames(
         chunksize=_CHUNK,
     ) as reader:
         for raw_chunk in reader:
-            chunk = raw_chunk.rename(columns=names).map(_clean)
+            chunk = raw_chunk.rename(columns=names).map(
+                lambda raw: _clean(raw, reference=source.role == "reference")
+            )
             yield apply_value_normalizations(chunk, metadata) if metadata else chunk
 
 
@@ -287,7 +322,7 @@ def _roster_reference(
                 raise ValueError(
                     f"{source.label}: duplicate roster target {display} in {source.path}"
                 )
-            rows[key] = display, {f: Cell(row[f] or None, None, None, False) for f in focus}
+            rows[key] = display, {f: _reference_cell(source, f, row, titles) for f in focus}
     return rows
 
 
@@ -378,7 +413,15 @@ def _stage(
                 parts = [_part(value) for value in display]
                 cells = [
                     display,
-                    {f: row[f] or None for f in focus},
+                    {
+                        f: [cell.value, cell.assessed]
+                        for f in focus
+                        for cell in [
+                            _reference_cell(source, f, row, columns.titles)
+                            if source.role == "reference"
+                            else Cell(row[f] or None, None, None, False)
+                        ]
+                    },
                     row[quote[0]] or None if quote else None,
                 ]
                 batch.append(
@@ -455,7 +498,9 @@ def _load(
     _, key, rank, ordinal, cells_json = record
     display, values, quote = json.loads(cells_json)
     shown = None if rank in references else quote
-    cells = {f: Cell(value, shown, None, False) for f, value in values.items()}
+    cells = {
+        f: Cell(value, shown, None, False, assessed) for f, (value, assessed) in values.items()
+    }
     scope = tuple(display[i] for i in scope_at)
     grams = _grams(quote) if quote_field else frozenset()
     return _Row(rank, ordinal, key, tuple(display), scope, cells, grams)

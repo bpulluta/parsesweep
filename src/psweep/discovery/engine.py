@@ -10,7 +10,7 @@ import os
 import re
 import threading
 import time
-from collections import Counter
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
 from datetime import datetime, UTC
@@ -31,12 +31,21 @@ from psweep.utils.error_taxonomy import (
     summarize_error_records,
 )
 
+from .adaptive_search import (
+    attempted_urls,
+    covered_labels,
+    distinct_accepted_count,
+    eligible_targets,
+    source_unique_records,
+)
+from .attempt_budget import AttemptBudget, AttemptBudgetExceeded
 from .candidate_selector import CandidateSelector
 from .concurrency import bounded_results
 from psweep.utils.file_io import atomic_write
 from psweep.workspace import Workspace
 from .connectors import DiggerInput, resolve_digger_connector
 from .targets import TARGET_INPUT_FIELDS, identify_target, target_identity
+from .review_policy import iter_review_scopes, render_review_scope
 from .constants import (
     DEFAULT_MAX_CONCURRENT_DOWNLOADS,
     DOCUMENT_EXTENSIONS,
@@ -107,8 +116,7 @@ import operator
 # Download partition and index label for shared (non-target) documents.
 SHARED_PARTITION = "_shared"
 
-# Download method of an outcome reused from an earlier run of an incomplete
-# target or source, made without a network request.
+# Download method of a verified prior outcome, reused without a network request.
 REUSED_DOWNLOAD_METHOD = "reused"
 
 # Record fields kept as the final outcome of a child of an incomplete owner.
@@ -156,6 +164,10 @@ class DiscoveryRequest:
     sources: list[str] = field(default_factory=list)
     # Search query templates; a target row ``query`` overrides them per target.
     queries: list[str] = field(default_factory=list)
+    # One bounded, review-qualified recovery stage for weak targets.
+    fallback_queries: list[str] | None = None
+    max_review_calls: int | None = None
+    max_search_calls: int | None = None
     targets: list[dict[str, object]] | None = None
     crawl_provider: str = "http"
     # 0 = never follow links; N = fetch HTML pages up to N-1 links deep.
@@ -312,6 +324,10 @@ class DiscoveryEngine:
         self._retry_errors = []
         self._retry_costs = Counter()
         self._retry_search_calls = 0
+        self._attempt_budget = AttemptBudget()
+        self._reviewer = None
+        self._fallback_pending: set[str] = set()
+        self._acquisition_pending: dict[str, set[str]] = defaultdict(set)
 
     @staticmethod
     def _emit_progress(request: DiscoveryRequest, message: str) -> None:
@@ -473,7 +489,7 @@ class DiscoveryEngine:
     @staticmethod
     def _resolve_seeker_cache_dir(request: DiscoveryRequest) -> str | None:
         """Return the canonical SerpApi cache directory for this request."""
-        if not getattr(request, "seeker_cache", False):
+        if not (request.seeker_cache or request.fallback_queries):
             return None
         return str(Workspace(request.domain).serpapi_cache)
 
@@ -499,46 +515,49 @@ class DiscoveryEngine:
         )
 
     @staticmethod
-    def _filter_seeker_scope(request, groups, query_results, notes):
-        """Filter source scope before per-target selection."""
-        scoped = []
-        counts = []
-        for group in groups:
-            eligible = [
-                candidate
-                for candidate in group
-                if DiscoveryEngine._passes_final_url_selection_guard(
-                    final_url=candidate.url,
-                    request=request,
-                )[0]
-            ]
-            scoped.append(eligible)
-            counts.append((len(group), len(group) - len(eligible)))
-        notes.extend(
-            f"Search '{summary['query']}': returned {summary['returned']}, "
-            f"retained {summary['retained']} (limit {summary['limit']}, "
-            f"cache={'hit' if summary['cache_hit'] else 'miss'})."
-            for summary in query_results
+    def _seeker_jobs(inputs, *, query_slot: bool):
+        """Keep initial target order; fallback visits every owner by query slot."""
+        if not query_slot:
+            yield from enumerate(inputs)
+            return
+        for slot in range(max((len(item.queries) for item in inputs), default=0)):
+            for idx, item in enumerate(inputs):
+                if slot < len(item.queries):
+                    yield idx, dataclass_replace(item, queries=[item.queries[slot]], context=None)
+
+    @staticmethod
+    def _seeker_candidate(raw, target, request):
+        url = decode_discovery_url(str(raw.get("url") or ""))
+        if not url:
+            return None
+        return DiscoveryCandidate(
+            url=url,
+            source=str(raw["source"]),
+            score=CandidateScore(
+                url_signal=0.5,
+                anchor_signal=0.1,
+                content_signal=0.0,
+                trust_signal=0.4,
+                weights=dict(SEEKER_ONLY_SCORE_WEIGHTS),
+            ),
+            reasons=list(raw.get("reasons") or []),
+            title=raw.get("title") or None,
+            snippet=raw.get("snippet") or None,
+            target_metadata=DiscoveryEngine._target_metadata(target),
+            source_scope="target" if target else "shared",
+            target_id=identify_target(target, request.partition_by) if target else None,
         )
-        return scoped, counts
 
-    @staticmethod
-    def _annotate_search_metrics(metrics, counts, groups, incomplete_targets):
-        """Retain candidate counts and source-scope rejections."""
-        for metric in metrics:
-            idx = metric["target_index"]
-            metric["input_candidates"], metric["scope_rejected"] = counts[idx]
-            if metric["scope_rejected"] and not groups[idx]:
-                metric["outcome"] = "excluded_source_scope"
-            if idx in incomplete_targets:
-                metric["search_complete"] = False
-
-    @staticmethod
     def _run_seeker(
+        self,
         request: DiscoveryRequest,
         seeker_state: dict[str, object],
         current_notes: list[str],
         current_errors: list[dict[str, object]],
+        *,
+        excluded_urls: dict[str, set[str]] | None = None,
+        excluded_queries: dict[str, set[str]] | None = None,
+        query_slot: bool = False,
     ) -> tuple[
         list[DiscoveryCandidate],
         list[str],
@@ -554,6 +573,15 @@ class DiscoveryEngine:
         of live search attempts, including retries/timeouts (cache hits excluded;
         actual provider billing for failures may differ).
         """
+        if request.dry_run and request.fallback_queries:
+            return (
+                [],
+                [*current_notes, "Adaptive dry run: search and review requests skipped."],
+                current_errors,
+                [],
+                [],
+                0,
+            )
         if not seeker_state.get("enabled") or not seeker_state.get("available"):
             return [], current_notes, current_errors, [], [], 0
 
@@ -583,30 +611,64 @@ class DiscoveryEngine:
                     float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
                 ),
                 cache_refresh=request.fresh and not request.dry_run,
+                before_request=self._attempt_budget.reserve_search,
             )
-            seeker_inputs = DiscoveryEngine._build_seeker_inputs(request)
-            # Collect results per-target so selection can be applied independently
-            raw_candidates_by_target: list[list[dict[str, object]]] = []
-            total_inputs = len(seeker_inputs)
+            from .connectors.serpapi_seeker import resolve_search_queries
+
             seeker_targets = request.targets or [None]
-            for idx, (target, seeker_input) in enumerate(
-                zip(seeker_targets, seeker_inputs, strict=True),
-                start=1,
+            seeker_inputs = []
+            for target, original_input in zip(
+                seeker_targets, self._build_seeker_inputs(request), strict=True
             ):
-                target_label = DiscoveryEngine._target_label(target, idx, request.partition_by)
+                item = original_input
+                key = identify_target(target, request.partition_by) if target else ""
+                if query_slot or excluded_queries is not None:
+                    item = dataclass_replace(
+                        item,
+                        queries=[
+                            query
+                            for query in resolve_search_queries(item)
+                            if query not in (excluded_queries or {}).get(key, set())
+                        ],
+                        context=None,
+                    )
+                seeker_inputs.append(item)
+            primary_per_target = max(1, int(request.selection_primary_per_target or 1))
+            selector = self._build_selector(request)
+            total_inputs = len(seeker_inputs)
+            selected_by_target = [[] for _ in seeker_inputs]
+            target_selection_metrics = [
+                {
+                    "target_index": idx,
+                    "input_candidates": 0,
+                    "scope_rejected": 0,
+                    "selected_candidates": 0,
+                    "outcome": "no_candidates",
+                }
+                for idx in range(total_inputs)
+            ]
+            selection_notes_by_target = [[] for _ in seeker_inputs]
+            # Only bounded selections survive each job. URL/rank bookkeeping is
+            # transient; raw provider rows never overlap full-corpus candidates.
+            seen = [{} for _ in seeker_inputs]
+            slots = [0 for _ in seeker_inputs]
+            total_discovered = 0
+            for idx, seeker_input in self._seeker_jobs(seeker_inputs, query_slot=query_slot):
                 if not seeker_input.queries:
-                    raw_candidates_by_target.append([])
                     continue
-                DiscoveryEngine._emit_progress(
+                target = seeker_targets[idx]
+                target_label = self._target_label(target, idx + 1, request.partition_by)
+                self._emit_progress(
                     request,
-                    f"seeker {idx}/{total_inputs}: searching {target_label} "
+                    f"seeker {idx + 1}/{total_inputs}: searching {target_label} "
                     f"| queries={len(seeker_input.queries)}",
                 )
                 try:
                     discovered = seeker.discover(seeker_input)
                 except SerpApiSearchTimeout as exc:
                     discovered = exc.candidates
-                    incomplete_targets.add(idx - 1)
+                    incomplete_targets.add(idx)
+                    target_selection_metrics[idx]["pending_reason"] = "provider"
                     errors.extend(
                         build_error_record(
                             TimeoutError(f"{target_label}: {message}"),
@@ -620,31 +682,83 @@ class DiscoveryEngine:
                         f"{len(exc.query_errors)} query timeout(s); retained "
                         f"{len(discovered)} candidate(s)."
                     )
-                except Exception as exc:  # noqa: BLE001 - review is best-effort
-                    # Preserve already-completed targets and keep this target retryable.
+                except Exception as exc:  # noqa: BLE001 - provider isolation
                     discovered = []
-                    incomplete_targets.add(idx - 1)
+                    incomplete_targets.add(idx)
+                    target_selection_metrics[idx]["pending_reason"] = (
+                        "budget" if isinstance(exc, AttemptBudgetExceeded) else "provider"
+                    )
                     errors.append(
                         build_error_record(
-                            exc,
-                            stage="discovery.seeker_discover",
-                            provider="serpapi",
+                            exc, stage="discovery.seeker_discover", provider="serpapi"
                         )
                     )
                     notes.append(f"Search failed for {target_label}; target remains retryable.")
-                raw_candidates_by_target.append([{**raw, "_target": target} for raw in discovered])
-                DiscoveryEngine._emit_progress(
+                group = list(selected_by_target[idx])
+                metric = target_selection_metrics[idx]
+                for rank, raw in enumerate(discovered):
+                    candidate = self._seeker_candidate(raw, target, request)
+                    if candidate is None:
+                        continue
+                    rank_key = (rank, slots[idx])
+                    previous_rank = seen[idx].get(candidate.url)
+                    if previous_rank is not None:
+                        if (
+                            query_slot
+                            and rank_key < previous_rank
+                            and candidate.url
+                            not in (excluded_urls or {}).get(candidate.target_id or "", set())
+                            and self._passes_final_url_selection_guard(
+                                final_url=candidate.url, request=request
+                            )[0]
+                        ):
+                            seen[idx][candidate.url] = rank_key
+                            group = [item for item in group if item.url != candidate.url]
+                            group.append(candidate)
+                        continue
+                    seen[idx][candidate.url] = rank_key
+                    total_discovered += 1
+                    if candidate.url in (excluded_urls or {}).get(candidate.target_id or "", set()):
+                        continue
+                    metric["input_candidates"] += 1
+                    if not self._passes_final_url_selection_guard(
+                        final_url=candidate.url, request=request
+                    )[0]:
+                        metric["scope_rejected"] += 1
+                        continue
+                    group.append(candidate)
+                if query_slot:
+                    group.sort(key=lambda candidate: seen[idx][candidate.url])
+                selected, selection_notes, metrics = selector.select(
+                    [group],
+                    primary_per_target=primary_per_target,
+                    target_contexts=[self._target_metadata(target)] if target else None,
+                    include_metrics=True,
+                    labels=[target_label],
+                )
+                selected_by_target[idx] = selected
+                selection_notes_by_target[idx] = selection_notes
+                metric["selected_candidates"] = len(selected)
+                metric["outcome"] = metrics[0]["outcome"]
+                if (
+                    metric["scope_rejected"]
+                    and metric["input_candidates"] == metric["scope_rejected"]
+                ):
+                    metric["outcome"] = "excluded_source_scope"
+                slots[idx] += 1
+                if not query_slot or slots[idx] == len(seeker_inputs[idx].queries):
+                    seen[idx].clear()
+                del discovered, group
+                self._emit_progress(
                     request,
-                    f"seeker {idx}/{total_inputs}: {target_label} "
-                    f"-> {len(discovered)} candidate(s)",
+                    f"seeker {idx + 1}/{total_inputs}: {target_label} "
+                    f"-> {len(selected)} selected candidate(s)",
                 )
-        except Exception as exc:  # noqa: BLE001 - provider isolation: recorded as an error record
+            for idx in incomplete_targets:
+                target_selection_metrics[idx]["search_complete"] = False
+        except Exception as exc:  # noqa: BLE001 - provider isolation
             errors.append(
-                build_error_record(
-                    exc,
-                    stage="discovery.seeker_discover",
-                    provider="serpapi",
-                )
+                build_error_record(exc, stage="discovery.seeker_discover", provider="serpapi")
             )
             return (
                 [],
@@ -652,77 +766,21 @@ class DiscoveryEngine:
                 normalize_error_records(errors),
                 [],
                 [],
-                seeker.queries_run if seeker is not None else 0,
+                seeker.queries_run if seeker else 0,
             )
 
-        def _to_candidate(
-            raw: dict[str, object],
-        ) -> DiscoveryCandidate | None:
-            url = decode_discovery_url(str(raw.get("url") or ""))
-            if not url:
-                return None
-            target = raw.get("_target")
-            return DiscoveryCandidate(
-                url=url,
-                source=str(raw["source"]),
-                score=CandidateScore(
-                    url_signal=0.5,
-                    anchor_signal=0.1,
-                    content_signal=0.0,
-                    trust_signal=0.4,
-                    weights=dict(SEEKER_ONLY_SCORE_WEIGHTS),
-                ),
-                reasons=list(raw.get("reasons") or []),
-                title=raw.get("title") or None,
-                snippet=raw.get("snippet") or None,
-                target_metadata=DiscoveryEngine._target_metadata(target),
-                source_scope="target" if target else "shared",
-                target_id=identify_target(target, request.partition_by) if target else None,
-            )
-
-        candidates_by_target: list[list[DiscoveryCandidate]] = [
-            [c for raw in raws if (c := _to_candidate(raw)) is not None]
-            for raws in raw_candidates_by_target
-        ]
-        total_discovered = sum(len(g) for g in candidates_by_target)
+        candidates = list(chain.from_iterable(selected_by_target))
+        notes.extend(
+            f"Search '{item['query']}': returned {item['returned']}, "
+            f"retained {item['retained']} (limit {item['limit']}, "
+            f"cache={'hit' if item['cache_hit'] else 'miss'})."
+            for item in getattr(seeker, "query_results", [])
+        )
         notes.append(
-            f"SerpApi seeker returned {total_discovered} candidate(s) across "
-            f"{len(candidates_by_target)} target(s)."
+            f"SerpApi seeker returned {total_discovered} candidate(s) "
+            f"across {total_inputs} target(s)."
         )
-
-        candidates_by_target, scope_counts = DiscoveryEngine._filter_seeker_scope(
-            request,
-            candidates_by_target,
-            getattr(seeker, "query_results", []),
-            notes,
-        )
-
-        # ---------------------------------------------------------------
-        # Per-target selection (draft filter + recency)
-        # ---------------------------------------------------------------
-        primary_per_target = max(1, int(request.selection_primary_per_target or 1))
-        selector = DiscoveryEngine._build_selector(request)
-        candidates, selection_notes, target_selection_metrics = selector.select(
-            candidates_by_target,
-            primary_per_target=primary_per_target,
-            target_contexts=[DiscoveryEngine._target_metadata(target) for target in request.targets]
-            if request.targets
-            else None,
-            include_metrics=True,
-            labels=[
-                DiscoveryEngine._target_label(target, idx, request.partition_by)
-                for idx, target in enumerate(request.targets, start=1)
-            ]
-            if request.targets
-            else None,
-        )
-        DiscoveryEngine._annotate_search_metrics(
-            target_selection_metrics,
-            scope_counts,
-            candidates_by_target,
-            incomplete_targets,
-        )
-        notes.extend(selection_notes)
+        notes.extend(chain.from_iterable(selection_notes_by_target))
         notes.append(
             f"Per-target selection (primary_per_target={primary_per_target}) "
             f"reduced {total_discovered} candidate(s) to {len(candidates)}."
@@ -1485,19 +1543,27 @@ class DiscoveryEngine:
         only counts new fetches: configured URLs and reused outcomes are free.
         """
         staged = [c for c in candidates if c.source == CONFIGURED_SOURCE]
-        cut: list[DiscoveryCandidate] = []
-        fetches = 0
-        for candidate in candidates:
-            if candidate.source == CONFIGURED_SOURCE:
-                continue
-            if cls._reuse_key(candidate) in reusable:
+        ordinary = [c for c in candidates if c.source != CONFIGURED_SOURCE]
+        if max_downloads is None:
+            return staged + ordinary, []
+        pending: dict[str, deque[DiscoveryCandidate]] = defaultdict(deque)
+        for candidate in ordinary:
+            key = cls._reuse_key(candidate)
+            if key in reusable:
                 staged.append(candidate)
-            elif max_downloads is None or fetches < max_downloads:
-                staged.append(candidate)
-                fetches += 1
             else:
-                cut.append(candidate)
-        return staged, cut
+                pending[key[0]].append(candidate)
+        owners = deque(pending)
+        fetches = 0
+        while owners and fetches < max_downloads:
+            owner = owners.popleft()
+            staged.append(pending[owner].popleft())
+            fetches += 1
+            if pending[owner]:
+                owners.append(owner)
+        # Audit/checkpoint cuts keep input order, independently of fair staging.
+        cut_ids = {id(candidate) for group in pending.values() for candidate in group}
+        return staged, [candidate for candidate in ordinary if id(candidate) in cut_ids]
 
     def _download_candidates(
         self,
@@ -1653,7 +1719,7 @@ class DiscoveryEngine:
             files = sum(r.get("status") == "downloaded" for r in reused)
             notes.append(
                 f"Resume reused {files} prior download(s) and {len(reused) - files} other "
-                "final outcome(s) of incomplete targets/sources without a network request; "
+                "final outcome(s) without a network request; "
                 f"{len(downloads) - len(reused)} candidate(s) fetched."
             )
         browser_fallback_count = sum(
@@ -2159,6 +2225,7 @@ class DiscoveryEngine:
             "review_is_primary",
             "review_relevance",
             "review_doc_kind",
+            "review_evidence",
             "error",
             "target_metadata",
         ]
@@ -2192,6 +2259,13 @@ class DiscoveryEngine:
                         "review_is_primary": record.get("review_is_primary"),
                         "review_relevance": record.get("review_relevance"),
                         "review_doc_kind": record.get("review_doc_kind"),
+                        "review_evidence": (
+                            json.dumps(
+                                record["review_evidence"], ensure_ascii=False, sort_keys=True
+                            )
+                            if isinstance(record.get("review_evidence"), dict)
+                            else None
+                        ),
                         "error": record.get("error"),
                         "target_metadata": (json.dumps(raw_meta) if raw_meta else None),
                     }
@@ -2464,9 +2538,27 @@ class DiscoveryEngine:
         context = CandidateSelector._normalize_template_context(  # noqa: SLF001 - package-internal helper
             DiscoveryEngine._target_metadata(target) or {}
         )
+        review = request.document_review or {}
+        description, coverage = render_review_scope(
+            str(review.get("document_description") or ""), review.get("coverage"), target
+        )
         payload = {
             "urls": target.get("urls") or [],
             "queries": resolve_search_queries(DiscoveryEngine._seeker_input(request, target)),
+            "fallback_queries": resolve_search_queries(
+                DiscoveryEngine._seeker_input(
+                    dataclass_replace(request, queries=request.fallback_queries or []),
+                    {key: value for key, value in target.items() if key != "query"},
+                )
+            )
+            if request.fallback_queries
+            else [],
+            "review_context": {
+                field: target.get(field)
+                for field in (request.document_review or {}).get("context_fields") or []
+            },
+            "review_description": description,
+            "review_coverage": coverage,
             "selection": [
                 CandidateSelector._resolve_templates(templates or [], context)  # noqa: SLF001 - package-internal helper
                 for templates in (
@@ -3064,7 +3156,7 @@ class DiscoveryEngine:
         ``link_prioritization.domain_scores`` names code hosts), then the
         JS-shell browser-crawl retry.
         """
-        if self._code_host_domains(request):
+        if self._code_host_domains(request) and not request.fallback_queries:
             download_records, notes = self._retry_failed_targets_on_code_hosting(
                 request=request,
                 download_records=download_records,
@@ -3370,6 +3462,7 @@ class DiscoveryEngine:
             )
             * 60.0,
             cache_refresh=request.fresh and not request.dry_run,
+            before_request=self._attempt_budget.reserve_search,
         )
 
         retry_candidates = []
@@ -3379,6 +3472,12 @@ class DiscoveryEngine:
                 before = seeker.queries_run
                 results = seeker.discover(SeekerInput(queries=[query], max_results=5))
             except Exception as exc:  # noqa: BLE001 - provider isolation: recorded as a retry error
+                if isinstance(exc, AttemptBudgetExceeded):
+                    origin.update(
+                        review_failed=True,
+                        review_retryable=True,
+                        review_error="Search attempt budget exhausted during code-host recovery",
+                    )
                 self._retry_errors.append(
                     build_error_record(
                         exc,
@@ -3483,6 +3582,8 @@ class DiscoveryEngine:
         request: DiscoveryRequest,
         records: list[dict[str, object]],
         notes: list[str],
+        *,
+        review: bool = True,
     ) -> tuple[list[dict[str, object]], list[str], dict[str, object]]:
         """Apply recovery, classification, and review to each batch."""
         records, notes = self._resolve_code_host_shells(records, notes, request)
@@ -3498,20 +3599,308 @@ class DiscoveryEngine:
                 ),
             )
         costs: dict[str, object] = {}
-        if request.document_review:
+        if request.document_review and review:
+            if request.fallback_queries:
+                records_for_review = source_unique_records(records)
+            else:
+                records_for_review = records
             self._seed_recording_transcripts(
                 Workspace(request.domain).discovered / "curated", records
             )
-            records, notes, costs = self._run_document_review(
-                records,
+            _reviewed, notes, costs = self._run_document_review(
+                records_for_review,
                 request.document_review,
                 notes,
                 cache_dir=Workspace(request.domain).review_cache,
                 models=request.models,
                 classifier_keywords=classifier.get("nice_to_have_keywords"),
                 identity_fields=request.partition_by,
+                attempt_budget=self._attempt_budget,
+                max_per_host_per_target=(
+                    request.selection_max_per_host_per_target if request.fallback_queries else 0
+                ),
             )
         return records, notes, costs
+
+    def _acquire_batch(
+        self,
+        *,
+        request: DiscoveryRequest,
+        candidates: list[DiscoveryCandidate],
+        documents_dir: Path,
+        prior: dict[str, dict[str, dict[str, object]]],
+        incomplete_keys: set[str],
+        blocked: _PartitionIndex,
+        notes: list[str],
+        review: bool = True,
+    ):
+        """Acquire a batch with shared reuse, owner fairness, budgets and processing."""
+        reusable = self._reusable_outcomes(candidates, prior)
+        _, cut = self._stage_downloads(candidates, self._remaining_downloads, reusable)
+        self._block_candidates(
+            request=request,
+            candidates=cut,
+            incomplete_keys=incomplete_keys,
+            blocked=blocked,
+            cause=f"budget runtime.max_files={request.max_files}",
+        )
+        records, errors, download_notes = self._download_candidates(
+            request=request,
+            candidates=candidates,
+            documents_dir=documents_dir,
+            max_downloads=self._remaining_downloads,
+            reusable=reusable,
+        )
+        notes.extend(download_notes)
+        if self._remaining_downloads is not None:
+            self._remaining_downloads = max(
+                0,
+                self._remaining_downloads
+                - sum(
+                    record.get("download_method") != REUSED_DOWNLOAD_METHOD
+                    and record.get("source") != CONFIGURED_SOURCE
+                    for record in records
+                ),
+            )
+        records, notes, costs = self._process_downloads(request, records, notes, review=review)
+        return records, errors, notes, costs
+
+    def _run_adaptive_search(
+        self,
+        *,
+        request: DiscoveryRequest,
+        records: list[dict[str, object]],
+        candidates: list[DiscoveryCandidate],
+        documents_dir: Path,
+        prior: dict[str, dict[str, dict[str, object]]],
+        incomplete_keys: set[str],
+        blocked: _PartitionIndex,
+    ):
+        """Run one extra acquisition stage, then select over all source evidence."""
+        from .connectors.serpapi_seeker import resolve_search_queries
+
+        summary = {
+            "enabled": bool(request.fallback_queries),
+            "eligible_targets": 0,
+            "pending_targets": 0,
+            "completed_targets": 0,
+            "low_coverage_targets": 0,
+            "queries_executed": 0,
+            "candidates": 0,
+            "downloads": 0,
+            "accepted": 0,
+        }
+        if request.dry_run or not request.fallback_queries:
+            return [], [], [], {}, [], summary
+        eligible = eligible_targets(
+            request.targets or [],
+            records,
+            keep_top=int(request.document_review.get("keep_top", 1)),
+            partition_by=request.partition_by,
+            incomplete_keys=incomplete_keys,
+            coverage=request.document_review.get("coverage"),
+        )
+        # A successful prior download may fill coverage while an interrupted
+        # fallback query is still pending; finish that stage rather than forget it.
+        grouped = self._group_records_by_target(records)
+        eligible_keys = {identify_target(t, request.partition_by) for t in eligible}
+        eligible.extend(
+            target
+            for target in request.targets or []
+            if (key := identify_target(target, request.partition_by)) in self._fallback_pending
+            and key not in eligible_keys
+            and key not in incomplete_keys
+            and not any(is_retryable(record) for record in grouped.get(key, []))
+        )
+        summary["eligible_targets"] = len(eligible)
+        if not eligible:
+            return [], [], [], {}, [], summary
+        keys = {identify_target(target, request.partition_by) for target in eligible}
+        self._fallback_pending.update(keys)
+        fallback_request = dataclass_replace(
+            request,
+            queries=list(request.fallback_queries),
+            sources=[],
+            targets=[{k: v for k, v in target.items() if k != "query"} for target in eligible],
+            max_files=self._remaining_downloads,
+        )
+        exclusions = attempted_urls(records)
+        for candidate in candidates:
+            exclusions.setdefault(candidate.target_id or "", set()).add(candidate.url)
+        initial_queries = {
+            identify_target(target, request.partition_by): set(
+                resolve_search_queries(self._seeker_input(request, target))
+            )
+            for target in eligible
+        }
+        found, notes, errors, _lineage, metrics, calls = self._run_seeker(
+            fallback_request,
+            {"provider": "serpapi", "enabled": True, "available": True},
+            [],
+            [],
+            excluded_urls=exclusions,
+            excluded_queries=initial_queries,
+            query_slot=True,
+        )
+        summary["queries_executed"] = calls
+        failed, search_blocks = self._initial_completion_blocks(
+            request=fallback_request,
+            selection_metrics=metrics,
+            seeker_failed=bool(errors and not metrics),
+        )
+        incomplete_keys.update(failed)
+        for partition in search_blocks:
+            blocked.add(partition, "fallback search unfinished")
+        found, crawl_errors, crawl_notes, state, unfinished = self._crawl_candidates(
+            request=fallback_request,
+            candidates=found,
+            prior=prior,
+        )
+        errors.extend(crawl_errors)
+        notes.extend(crawl_notes)
+        found = [
+            candidate
+            for candidate in found
+            if candidate.url not in exclusions.get(candidate.target_id or "", set())
+        ]
+        if state["applied"]:
+            found, filtered_notes = self._apply_post_routing_selection_filters(
+                request=fallback_request,
+                candidates=found,
+            )
+            notes.extend(filtered_notes)
+        found = [
+            candidate
+            for candidate in found
+            if candidate.url not in exclusions.get(candidate.target_id or "", set())
+        ]
+        self._block_candidates(
+            request=request,
+            candidates=unfinished,
+            incomplete_keys=incomplete_keys,
+            blocked=blocked,
+            cause="fallback crawl unfinished",
+        )
+        summary["candidates"] = len(found)
+        batch, gating_notes = self._filter_candidates_for_download(found)
+        notes.extend(gating_notes)
+        downloaded, download_errors, notes, costs = self._acquire_batch(
+            request=request,
+            candidates=batch,
+            documents_dir=documents_dir,
+            prior=prior,
+            incomplete_keys=incomplete_keys,
+            blocked=blocked,
+            notes=notes,
+            review=False,
+        )
+        errors.extend(download_errors)
+        records.extend(downloaded)
+        if downloaded:
+            unique = source_unique_records(
+                [record for record in records if record.get("target_id") in keys]
+            )
+            _reviewed, notes, merged_costs = self._run_document_review(
+                unique,
+                request.document_review,
+                notes,
+                cache_dir=Workspace(request.domain).review_cache,
+                models=request.models,
+                classifier_keywords=(request.document_classifier or {}).get(
+                    "nice_to_have_keywords"
+                ),
+                identity_fields=request.partition_by,
+                attempt_budget=self._attempt_budget,
+                max_per_host_per_target=request.selection_max_per_host_per_target,
+            )
+            for key, value in merged_costs.items():
+                costs[key] = costs.get(key, 0) + value
+        summary["downloads"] = len(downloaded)
+        summary["accepted"] = sum(
+            distinct_accepted_count(group)
+            for key, group in self._group_records_by_target(records).items()
+            if key in keys
+        )
+        grouped = self._group_records_by_target(records)
+        self._fallback_pending.difference_update(
+            key
+            for key in keys
+            if key not in incomplete_keys
+            and not any(is_retryable(record) for record in grouped.get(key, []))
+        )
+        summary["pending_targets"] = len(keys & self._fallback_pending)
+        summary["completed_targets"] = len(keys - self._fallback_pending)
+        coverage = set(request.document_review.get("coverage") or {})
+        summary["low_coverage_targets"] = sum(
+            distinct_accepted_count(grouped.get(key, []))
+            < int(request.document_review.get("keep_top", 1))
+            or bool(coverage - covered_labels(grouped.get(key, [])))
+            for key in keys - self._fallback_pending
+        )
+        notes.append(
+            f"Fallback outcome: {summary['completed_targets']} exhausted target(s) complete "
+            f"({summary['low_coverage_targets']} below source/coverage goal); "
+            f"{summary['pending_targets']} interrupted target(s) remain retryable."
+        )
+        # Remap subset metrics to the original active roster for completion.
+        indices = {
+            identify_target(t, request.partition_by): idx
+            for idx, t in enumerate(request.targets or [])
+        }
+        for metric in metrics:
+            target = fallback_request.targets[int(metric["target_index"])]
+            metric["target_index"] = indices[identify_target(target, request.partition_by)]
+            metric["stage"] = "fallback"
+        notes.append(
+            f"Fallback: {len(eligible)} weak target(s), {calls} search attempt(s), "
+            f"{len(downloaded)} download(s), {summary['accepted']} distinct accepted source(s)."
+        )
+        return found, notes, errors, costs, metrics, summary
+
+    def _annotate_target_outcomes(self, request, records, metrics, incomplete_keys):
+        """Compact operational counts; coverage is evidence, not an accuracy score."""
+        if not request.document_review or not request.targets:
+            return
+        grouped = self._group_records_by_target(records)
+        required = set(request.document_review.get("coverage") or {})
+        goal = int(request.document_review.get("keep_top", 1))
+        for metric in metrics:
+            target = request.targets[int(metric["target_index"])]
+            key = identify_target(target, request.partition_by)
+            outcomes = grouped.get(key, [])
+            missing = sorted(required - covered_labels(outcomes))
+            accepted = distinct_accepted_count(outcomes)
+            reasons = set(self._acquisition_pending.get(key, set()))
+            if metric.get("search_complete") is False:
+                reasons.add("search_" + str(metric.get("pending_reason") or "provider"))
+            for record in outcomes:
+                if record.get("review_failed"):
+                    reasons.add(
+                        "review_budget"
+                        if record.get("review_budget_exhausted")
+                        else "review_evidence"
+                        if "evidence" in str(record.get("review_error") or "")
+                        else "review_provider"
+                    )
+                elif is_retryable(record):
+                    reasons.add("download_provider")
+            pending = (
+                key in incomplete_keys
+                or key in self._fallback_pending
+                or metric.get("search_complete") is False
+                or any(is_retryable(record) for record in outcomes)
+            )
+            if pending and not reasons:
+                reasons.add("acquisition_unfinished")
+            low = accepted < goal or bool(missing)
+            metric.update(
+                downloaded=sum(record.get("status") == "downloaded" for record in outcomes),
+                accepted_sources=accepted,
+                review_failed=sum(bool(record.get("review_failed")) for record in outcomes),
+                missing_coverage=missing,
+                pending_reasons=sorted(reasons),
+                source_status="pending" if pending else "low_coverage" if low else "qualified",
+            )
 
     @staticmethod
     def _seed_recording_transcripts(curated_dir: Path, records: list[dict[str, object]]) -> None:
@@ -3531,8 +3920,8 @@ class DiscoveryEngine:
                 donors = [p for p in published.iterdir() if p.is_file() and is_audio(p)]
                 inherit_text_caches(paths, donors)
 
-    @staticmethod
     def _run_document_review(
+        self,
         downloads: list[dict[str, object]],
         review_cfg: dict[str, object],
         notes: list[str],
@@ -3540,6 +3929,9 @@ class DiscoveryEngine:
         models: dict[str, object] | None = None,
         classifier_keywords: list[str] | None = None,
         identity_fields: list[str] | None = None,
+        *,
+        attempt_budget: AttemptBudget | None = None,
+        max_per_host_per_target: int = 0,
     ) -> tuple[list[dict[str, object]], list[str], dict[str, object]]:
         """LLM-grade downloaded files and promote the primary one(s).
 
@@ -3555,7 +3947,7 @@ class DiscoveryEngine:
             notes.append("Document review skipped (no document_description configured).")
             return downloads, notes, {}
 
-        reviewer = DocumentReviewer(
+        reviewer = self._reviewer or DocumentReviewer(
             document_description=description,
             model=(str(review_cfg["model"]) if review_cfg.get("model") else None),
             models={str(k): str(v) for k, v in (models or {}).items()} or None,
@@ -3571,7 +3963,22 @@ class DiscoveryEngine:
             or None,
             cache_dir=cache_dir,
             identity_fields=identity_fields,
+            context_fields=review_cfg.get("context_fields"),
+            coverage=review_cfg.get("coverage"),
+            escalate_model=review_cfg.get("escalate_model"),
+            attempt_budget=attempt_budget,
+            max_per_host_per_target=max_per_host_per_target,
         )
+        self._reviewer = reviewer
+        previous_costs = reviewer.get_costs()
+
+        def cost_delta():
+            return {
+                key: value - previous_costs.get(key, 0)
+                for key, value in reviewer.get_costs().items()
+                if isinstance(value, (int, float))
+            }
+
         # Held PDFs never consume grading/dedup/top-N capacity. Configured
         # URLs still bypass relevance review, but not explicitly enabled screening.
         reviewable = [
@@ -3584,14 +3991,14 @@ class DiscoveryEngine:
                 record["review_selected"] = record.get("status") == "downloaded"
         try:
             reviewable, notes = reviewer.review(reviewable, notes)
-            return downloads, notes, reviewer.get_costs()
+            return downloads, notes, cost_delta()
         except Exception as exc:  # noqa: BLE001 - review is best-effort
             # Failed review protects prior consolidated partitions.
             for failed_record in reviewable:
                 failed_record["review_failed"] = True
                 failed_record["review_retryable"] = True
             notes.append(f"Document review error (skipped): {exc}")
-            return downloads, notes, reviewer.get_costs()
+            return downloads, notes, cost_delta()
 
     def _initial_completion_blocks(
         self,
@@ -3637,6 +4044,9 @@ class DiscoveryEngine:
             key = owner_key(candidate.target_id, candidate.source_url)
             if key:
                 incomplete_keys.add(key)
+                self._acquisition_pending[key].add(
+                    "download_budget" if cause.startswith("budget") else "crawl_unfinished"
+                )
             blocked.add(
                 self._partition(request, candidate.target_id, candidate.target_metadata),
                 cause,
@@ -3969,6 +4379,9 @@ class DiscoveryEngine:
                 prior=prior_outcomes,
             ).items()
         }
+        for key in self._fallback_pending:
+            saved.setdefault(key, {"incomplete": True, "run_id": result.run_id, "outcomes": {}})
+            saved[key]["fallback_pending"] = True
         if entries and result.download_index_path:
             evidence = {
                 str(snapshot_path): artifact_sha256(snapshot_path),
@@ -4134,6 +4547,29 @@ class DiscoveryEngine:
         DiscoveryResult
             Manifest path, downloaded documents, and acquisition errors.
         """
+        if request.fallback_queries and not (
+            request.document_review
+            and str(request.document_review.get("document_description") or "").strip()
+        ):
+            raise ValueError("search.fallback_queries requires document_review")
+        # Direct callers receive the same before-request template safety as
+        # config/CLI preflight; target hints are not partition identity.
+        if request.document_review or request.fallback_queries:
+            review = request.document_review or {}
+            for _ in iter_review_scopes(
+                str(review.get("document_description") or ""),
+                review.get("context_fields"),
+                review.get("coverage"),
+                request.targets or [{}],
+                additional_templates=request.fallback_queries or [],
+            ):
+                pass
+        self._attempt_budget = AttemptBudget(
+            max_review_calls=request.max_review_calls, max_search_calls=request.max_search_calls
+        )
+        self._reviewer = None
+        self._fallback_pending = set()
+        self._acquisition_pending = defaultdict(set)
         started_at = datetime.now(UTC)
         self._rate_limiter = _RequestRateLimiter(request.min_request_interval_ms)
         self._retry_errors = []
@@ -4168,10 +4604,36 @@ class DiscoveryEngine:
             completed_checkpoint_keys = self._load_checkpoint(
                 checkpoint_path, fingerprint=fingerprint
             )
-            prior_outcomes = load_prior_outcomes(checkpoint_path, fingerprint=fingerprint)
         original_sources = list(request.sources)
         request, skip_notes = self._skip_completed_inputs(request, completed_checkpoint_keys)
+        if not request.fresh:
+            active_keys = set(self._input_digests(request)) | {
+                owner_key(None, url) for url in request.sources
+            }
+            prior_outcomes = load_prior_outcomes(
+                checkpoint_path, fingerprint=fingerprint, owner_keys=active_keys
+            )
+        if request.fallback_queries and (
+            request.dry_run
+            or not self._search_enabled(request)
+            or (original_targets and not request.targets)
+        ):
+            seeker_errors = []
+            all_errors = []
         seeker_notes.extend(skip_notes)
+        if request.fallback_queries and not request.seeker_cache:
+            seeker_notes.append(
+                "Adaptive search stores successful query results in the search cache "
+                "to resume unfinished stages without repeated paid requests."
+            )
+        if request.fallback_queries and checkpoint_path.is_file() and not request.fresh:
+            with contextlib.suppress(OSError, ValueError, TypeError, AttributeError):
+                checkpoint = json.loads(checkpoint_path.read_text())
+                self._fallback_pending = {
+                    key
+                    for key, entry in checkpoint.get("entries", {}).items()
+                    if entry.get("fingerprint") == fingerprint and entry.get("fallback_pending")
+                }
 
         # Search only active targets with a healthy provider.
         prioritizer_lineage: list[dict[str, object]] = []
@@ -4213,6 +4675,32 @@ class DiscoveryEngine:
             notes=seeker_notes,
             discovered_count=seeker_raw_count,
         )
+        if request.fallback_queries:
+            # Reconstruct only outcomes belonging to this active target. All
+            # download evidence is checked again by _reusable_outcomes; stale
+            # bytes are not resurrected as qualified sources.
+            existing = {(candidate.url, candidate.target_id) for candidate in candidates}
+            for target in request.targets or []:
+                key = identify_target(target, request.partition_by)
+                for url in prior_outcomes.get(key, {}):
+                    if (url, key) not in existing:
+                        candidate = self._seeker_candidate(
+                            {
+                                "url": url,
+                                "source": "serpapi_google",
+                                "reasons": ["Prior incomplete source outcome"],
+                            },
+                            target,
+                            request,
+                        )
+                        if (
+                            candidate is not None
+                            and self._passes_final_url_selection_guard(
+                                final_url=candidate.url, request=request
+                            )[0]
+                        ):
+                            candidates.append(candidate)
+                            existing.add((url, key))
         candidates_after_seeker = len(candidates)
 
         candidates, crawl_errors, crawl_notes, crawl_state, crawl_unfinished = (
@@ -4242,7 +4730,7 @@ class DiscoveryEngine:
         incomplete_keys, blocked_parts = self._initial_completion_blocks(
             request=request,
             selection_metrics=target_selection_metrics,
-            seeker_failed=bool(seeker_errors),
+            seeker_failed=bool(seeker_errors and not target_selection_metrics),
         )
         self._block_candidates(
             request=request,
@@ -4262,41 +4750,19 @@ class DiscoveryEngine:
             download_notes.extend(gating_notes)
             download_errors: list[dict[str, object]] = []
             if candidates_for_download:
-                download_cap = request.max_files
-                reusable = self._reusable_outcomes(candidates_for_download, prior_outcomes)
-                _, cut = self._stage_downloads(candidates_for_download, download_cap, reusable)
-                self._block_candidates(
-                    request=request,
-                    candidates=cut,
-                    incomplete_keys=incomplete_keys,
-                    blocked=blocked_parts,
-                    cause=f"budget runtime.max_files={download_cap}",
-                )
-                download_records, download_errors, stage_download_notes = self._download_candidates(
-                    request=request,
-                    candidates=candidates_for_download,
-                    documents_dir=documents_dir,
-                    max_downloads=download_cap,
-                    reusable=reusable,
-                )
-                download_notes.extend(stage_download_notes)
-                if self._remaining_downloads is not None:
-                    self._remaining_downloads = max(
-                        0,
-                        self._remaining_downloads
-                        - sum(
-                            record.get("download_method") != REUSED_DOWNLOAD_METHOD
-                            for record in download_records
-                        ),
+                download_records, download_errors, download_notes, review_costs = (
+                    self._acquire_batch(
+                        request=request,
+                        candidates=candidates_for_download,
+                        documents_dir=documents_dir,
+                        prior=prior_outcomes,
+                        incomplete_keys=incomplete_keys,
+                        blocked=blocked_parts,
+                        notes=download_notes,
                     )
-
-                download_records, download_notes, review_costs = self._process_downloads(
-                    request,
-                    download_records,
-                    download_notes,
                 )
                 review_cfg = request.document_review
-                if review_cfg and download_records:
+                if review_cfg and download_records and not request.fallback_queries:
                     classifier_cfg = getattr(request, "document_classifier", None) or {}
                     download_records, download_notes = self._run_post_review_retries(
                         request=request,
@@ -4353,6 +4819,74 @@ class DiscoveryEngine:
                         "withdrawn, and the next run continues."
                     )
 
+        (
+            fallback_candidates,
+            fallback_notes,
+            fallback_errors,
+            fallback_costs,
+            fallback_metrics,
+            fallback_summary,
+        ) = self._run_adaptive_search(
+            request=request,
+            records=download_records,
+            candidates=candidates,
+            documents_dir=documents_dir,
+            prior=prior_outcomes,
+            incomplete_keys=incomplete_keys,
+            blocked=blocked_parts,
+        )
+        candidates.extend(fallback_candidates)
+        download_notes.extend(fallback_notes)
+        all_errors = normalize_error_records([*all_errors, *fallback_errors])
+        fallback_summary["targets"] = fallback_metrics
+        seeker_queries_run += int(fallback_summary.get("queries_executed") or 0)
+        metrics_by_target = {metric["target_index"]: metric for metric in target_selection_metrics}
+        for metric in fallback_metrics:
+            previous = metrics_by_target.get(metric["target_index"])
+            if previous is None:
+                target_selection_metrics.append(metric)
+            else:
+                for count in ("input_candidates", "selected_candidates", "scope_rejected"):
+                    previous[count] = int(previous.get(count) or 0) + int(metric.get(count) or 0)
+                if metric.get("search_complete") is False:
+                    previous["search_complete"] = False
+                    previous["pending_reason"] = metric.get("pending_reason", "provider")
+                previous["fallback_outcome"] = metric.get("outcome")
+        for key, value in fallback_costs.items():
+            review_costs[key] = review_costs.get(key, 0) + value
+        if request.fallback_queries and not request.dry_run:
+            hard_blocks_before_completion = set(blocked_parts) - review_only_blocks
+            new_checkpoint_entries = self._download_completions(
+                request=request,
+                download_records=download_records,
+                incomplete_keys=incomplete_keys,
+                blocked=blocked_parts,
+                run_id=run_id,
+                started_at=started_at,
+            )
+            hard_blocks = hard_blocks_before_completion | {
+                self._partition(request, record.get("target_id"), record.get("target_metadata"))
+                for record in download_records
+                if record.get("status") == "failed" and is_retryable(record)
+            }
+            review_only_blocks = {
+                self._partition(request, record.get("target_id"), record.get("target_metadata"))
+                for record in download_records
+                if record.get("review_failed") and is_retryable(record)
+            } - hard_blocks
+            if request.fresh:
+                attempted_parts.update(
+                    Path(str(record["relative_path"])).parent
+                    for record in download_records
+                    if record.get("relative_path")
+                )
+        self._annotate_target_outcomes(
+            request, download_records, target_selection_metrics, incomplete_keys
+        )
+        if fallback_metrics:
+            self._annotate_target_outcomes(
+                request, download_records, fallback_metrics, incomplete_keys
+            )
         empty_parts = self._empty_target_completions(
             request=request,
             selection_metrics=target_selection_metrics,
@@ -4431,8 +4965,26 @@ class DiscoveryEngine:
                     "candidates_in": candidates_after_seeker,
                     "candidates_out": candidates_after_crawl,
                 },
+                "fallback": fallback_summary,
+                "attempt_budget": self._attempt_budget.snapshot(),
                 "downloads": self._build_download_summary(download_records),
-                "document_review": ({"costs": review_costs} if review_costs else {}),
+                "document_review": (
+                    {
+                        "costs": review_costs,
+                        "configured_url_bypass": sum(
+                            record.get("source") == CONFIGURED_SOURCE for record in download_records
+                        ),
+                        "automatically_qualified": sum(
+                            record.get("source") != CONFIGURED_SOURCE
+                            and bool(record.get("review_selected"))
+                            and bool(record.get("review_is_primary"))
+                            and not record.get("review_failed")
+                            for record in download_records
+                        ),
+                    }
+                    if request.document_review
+                    else {}
+                ),
                 "acceptance_metrics": self._build_acceptance_metrics(
                     request=request,
                     seeker_state=seeker_state,

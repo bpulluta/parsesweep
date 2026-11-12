@@ -91,6 +91,10 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
         "skip_existing": ("advanced", "Skip files that already have output JSON."),
     },
     "compilation": {
+        "reconciliation": (
+            "optional",
+            "Opt-in model-assisted selection of atomic source observations.",
+        ),
         "output": ("optional", "Output formatting: column_order, exclude_fields (output headers)."),
         "normalization": ("optional", "Field normalization (e.g., state abbreviation)."),
         "severity_tokens": (
@@ -447,6 +451,13 @@ def _validate_compilation_section_schema(
     compilation: dict[str, Any],
 ) -> None:
     """Deep-validate the ``compilation`` section at load time."""
+    if "reconciliation" in compilation:
+        from psweep.compilation.reconciliation import validate_policy
+
+        try:
+            validate_policy(compilation["reconciliation"])
+        except (ValueError, TypeError) as exc:
+            raise RuntimeConfigError(str(exc)) from exc
     provenance_policy = compilation.get("provenance_policy")
     if provenance_policy is not None:
         if not isinstance(provenance_policy, str):
@@ -795,7 +806,7 @@ def _model_references(config_data: dict[str, Any]) -> list[str]:
     def _walk(node: Any) -> None:
         if isinstance(node, dict):
             for key, value in node.items():
-                if key == "model" and isinstance(value, str):
+                if key in {"model", "escalate_model"} and isinstance(value, str):
                     found.append(value)
                 else:
                     _walk(value)
@@ -803,7 +814,7 @@ def _model_references(config_data: dict[str, Any]) -> list[str]:
             for item in node:
                 _walk(item)
 
-    for section_name in ("discovery", "extraction"):
+    for section_name in ("discovery", "extraction", "compilation"):
         _walk(config_data.get(section_name))
     return found
 
@@ -972,6 +983,7 @@ _FIELD_MAP: dict[str, str] = {
     "normalization": "normalization",
     "compilation_output": "output",
     "severity_tokens": "severity_tokens",
+    "reconciliation": "reconciliation",
 }
 
 
@@ -1016,9 +1028,16 @@ def resolve_compilation_metadata(resolved: dict[str, Any]):
     from psweep.utils.schema_metadata import SchemaMetadata
 
     try:
-        return SchemaMetadata.for_compilation(Path(resolved["schema"]), resolved)
-    except (SchemaError, ConfigurationError, ValueError, OSError) as exc:
+        metadata = SchemaMetadata.for_compilation(Path(resolved["schema"]), resolved)
+        if (resolved.get("reconciliation") or {}).get("enabled"):
+            from psweep.compilation.reconciliation import policy_contract
+            from psweep.extraction.roster import load_roster
+
+            policy_contract(metadata, resolved, load_roster(resolved, metadata))
+    except (SchemaError, ConfigurationError, ValueError, TypeError, OSError) as exc:
         raise RuntimeConfigError(f"Compilation contract is invalid: {exc}") from exc
+    else:
+        return metadata
 
 
 # Section -> (resolved field, Workspace attribute) pairs for derived stage paths.
@@ -1125,6 +1144,8 @@ def resolve_command_config(
     if "models" in cfg:
         merged["models"] = cfg.get("models")
         sources["models"] = "config.models"
+    if section_name == "compilation":
+        merged["_reconciliation_model"] = (cfg.get("extraction") or {}).get("model")
 
     # Top-level per-model context-window map feeds the extraction fail-fast
     # guard; passed through untouched (no model names hardcoded in code).

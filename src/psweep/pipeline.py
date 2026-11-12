@@ -35,8 +35,10 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, UTC
 from uuid import uuid4
+from threading import local
 from pathlib import Path
 from collections.abc import Callable, Sequence
+from typing import Any
 
 from psweep.config import load_runtime_config_file, resolve_command_config
 from psweep.config.runtime_config_loader import resolve_compilation_metadata
@@ -46,12 +48,13 @@ from psweep.compilation.input_provenance import (
     list_compile_record_files,
 )
 from psweep.discovery.request_inputs import discovery_request_fields
+from psweep.discovery.concurrency import bounded_results
 from jsonschema import ValidationError
 
 from psweep.exceptions import APIKeyError, PipelineError
 from psweep.outcomes import EXIT_PARTIAL, exit_code
 from psweep import extraction as extraction_api
-from psweep.extraction import document_utils, transcription
+from psweep.extraction import document_utils, transcription, page_locator
 from psweep.extraction.page_locator import (
     PageLocator,
     DEFAULT_PAGE_TRIGGER_CHARS,
@@ -154,6 +157,9 @@ class CompilationResult:
     total_rows: int
     deduplicated: bool
     warnings: list[str] = field(default_factory=list)
+    status: str = "success"
+    reconciliation: dict[str, int] = field(default_factory=dict)
+    costs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -460,7 +466,11 @@ def _extraction_fingerprints(
             "max_context": inputs.get("max_context", DEFAULT_MAX_CONTEXT),
             "schema_sha256": artifact_sha256(schema_path),
             "page_targeting": targeting,
+            "locator_behavior_version": (
+                page_locator.LOCATOR_BEHAVIOR_VERSION if targeting.get("enabled") else None
+            ),
             "roster_fields": roster.fields if roster else None,
+            "target_identity_fields": inputs.get("partition_by"),
             "locator": {
                 key: (locator or {}).get(key)
                 for key in (
@@ -893,73 +903,87 @@ def _extract_one_document(
 
 
 def _target_extraction_inputs(plan: dict):
-    """Resolve optional targeting once for planned documents only."""
+    """Build lazy document targeting with worker-local clients and mutable hints."""
     inputs, llm = plan["inputs"], plan["llm"]
-    pending = [
-        doc
-        for doc in plan["pending"]
-        if doc not in plan["candidates"]
-        and doc not in plan["roster_errors"]
-        and plan["anchors"].get(doc) != set()
-    ]
     plan["targeting_incomplete"] = set()
     plan["targeting_omitted"] = {}
-    ranges = dict(plan["ranges"])
-    sections = {}
+    ranges, sections, locator_clients = dict(plan["ranges"]), {}, []
     targeting = inputs.get("page_targeting") or {}
-    locator_clients = []
-    if pending and targeting.get("enabled"):
-        options = {
-            "model": targeting.get("model"),
-            "models": inputs.get("models"),
-            "default_model": llm["model"],
-            "llm_config": (inputs.get("llm_config") if targeting.get("model") else llm),
-            "keywords": targeting.get("keywords"),
-            "trigger_chars": targeting.get("trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS),
-        }
-        page_locator = PageLocator(
-            targeting["section_description"],
-            max_selected_pages=targeting.get("max_selected_pages", DEFAULT_MAX_SELECTED_PAGES),
-            **options,
-        )
-        section_locator = SectionLocator(targeting["section_description"], **options)
-        for doc in pending:
-            if doc.suffix.lower() == ".pdf" and doc not in ranges:
-                page_locator.incomplete = False
-                with document_scope(doc.name):
-                    selection = page_locator.locate(doc)
-                    if selection:
-                        ranges[doc] = selection.ranges
-                        logger.info(
-                            "Page targeting selected pages %s",
-                            format_page_ranges(selection.ranges),
-                        )
-                    if selection and selection.omitted:
-                        plan["targeting_omitted"][doc] = selection.omitted
-                        logger.warning(
-                            "Page targeting left out relevant pages %s to stay within "
-                            "max_selected_pages; raise pages.auto_locate.max_selected_pages "
-                            "to include them",
-                            format_page_ranges(selection.omitted),
-                        )
-                if page_locator.incomplete:
-                    plan["targeting_incomplete"].add(doc)
-            elif doc.suffix.lower() in {
-                ".html",
-                ".htm",
-                ".doc",
-                ".docx",
-                ".txt",
-            }:
-                section_locator.incomplete = False
-                with document_scope(doc.name):
-                    text = section_locator.locate(doc)
-                if section_locator.incomplete:
-                    plan["targeting_incomplete"].add(doc)
-                if text is not None:
-                    sections[doc] = text
-        locator_clients = [page_locator, section_locator]
-    return ranges, sections, locator_clients
+    worker = local()
+    prepared = set()
+
+    def target(doc):
+        if (
+            not targeting.get("enabled")
+            or doc in prepared
+            or doc in plan["candidates"]
+            or doc in plan["roster_errors"]
+            or plan["anchors"].get(doc) == set()
+        ):
+            return
+        ext = doc.suffix.lower()
+        if ext == ".pdf" and doc not in ranges:
+            locator_type = PageLocator
+        elif ext in {".html", ".htm", ".doc", ".docx", ".txt"}:
+            locator_type = SectionLocator
+        else:
+            return
+        if not hasattr(worker, "locators"):
+            worker.locators = {}
+        if locator_type not in worker.locators:
+            options = {
+                "model": targeting.get("model"),
+                "models": inputs.get("models"),
+                "default_model": llm["model"],
+                "llm_config": (inputs.get("llm_config") if targeting.get("model") else llm),
+                "keywords": targeting.get("keywords"),
+                "trigger_chars": targeting.get("trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS),
+            }
+            if locator_type is PageLocator:
+                options["max_selected_pages"] = targeting.get(
+                    "max_selected_pages", DEFAULT_MAX_SELECTED_PAGES
+                )
+            locator = locator_type(targeting["section_description"], **options)
+            worker.locators[locator_type] = locator
+            locator_clients.append(locator)
+        locator = worker.locators[locator_type]
+        info = source_context(doc, plan["context"])
+        roster = plan["roster"]
+        fields = roster.fields if roster else inputs.get("partition_by")
+        identity = {}
+        if info is not None:
+            identity = roster.targets.get(info.target_id, {}) if roster else info.target_metadata
+        subject = identity.get(fields[-1]) if fields else None
+        locator.set_source_context(info, subject=str(subject) if subject is not None else None)
+        with document_scope(doc.name):
+            selection = locator.locate(doc)
+            if locator_type is PageLocator:
+                if selection:
+                    ranges[doc] = selection.ranges
+                    logger.info(
+                        "Page targeting selected pages %s", format_page_ranges(selection.ranges)
+                    )
+                if selection and selection.omitted:
+                    plan["targeting_omitted"][doc] = selection.omitted
+                    logger.warning(
+                        "Page targeting left out relevant pages %s to stay within "
+                        "max_selected_pages; raise pages.auto_locate.max_selected_pages "
+                        "to include them",
+                        format_page_ranges(selection.omitted),
+                    )
+            elif selection is not None:
+                sections[doc] = selection
+            if locator.incomplete:
+                plan["targeting_incomplete"].add(doc)
+                logger.warning(
+                    "Targeting incomplete; %s (record will not be reused)",
+                    "using full-document extraction"
+                    if selection is None
+                    else "using a partial page selection",
+                )
+        prepared.add(doc)
+
+    return ranges, sections, locator_clients, target
 
 
 def _complete_extraction(plan, results, extractor, locator_clients, run_id, started):
@@ -1081,12 +1105,73 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
         )
     run_id = f"run://{uuid4().hex}"
     started = datetime.now(UTC).isoformat()
-    ranges, sections, locator_clients = _target_extraction_inputs(plan)
+    workers = inputs.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
+    ranges, sections, locator_clients, target = _target_extraction_inputs(plan)
     if plan["fresh"] and output.exists() and plan["documents"]:
+        # Preserve prior output if a needed locator lacks credentials. Normal
+        # runs target inside extraction workers instead of a preparation barrier.
+        for _ in bounded_results(target, pending, workers=workers):
+            pass
         shutil.rmtree(output)
+    results = []
+    for doc, record in plan["reused"].items():
+        results.append(
+            {
+                "file": doc.name,
+                "success": True,
+                "skipped": True,
+                "items": record.get("item_count", 0),
+                "cost": 0,
+                "output_path": str(plan["outputs"][doc]),
+                "coverage": record.get("processing_metrics", {}).get("coverage", {}),
+            }
+        )
+
+    def extract(doc):
+        target(doc)
+        return _extract_one_document(
+            doc,
+            plan,
+            extractor=extractor,
+            run_id=run_id,
+            page_ranges=ranges.get(doc),
+            section_text=sections.get(doc),
+        )
+
+    queue, running = enumerate(pending), {}
+    outcomes = [None] * len(pending)
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        while True:
+            # Submit only into free workers, so a started document is running.
+            while len(running) < workers and (item := next(queue, None)):
+                doc = item[1]
+                if on_progress:
+                    on_progress(doc, None)
+                future = pool.submit(document_scope(doc.name)(extract), doc)
+                running[future] = item
+            if not running:
+                break
+            done, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in sorted(done, key=running.get):
+                index, doc = running.pop(future)
+                outcomes[index] = future.result()
+                section = sections.pop(doc, None)
+                if section is not None and inputs.get("page_targeting", {}).get("save_discovered"):
+                    atomic_write(
+                        output
+                        / ".sections"
+                        / doc.relative_to(plan["root"]).with_suffix(doc.suffix + ".txt"),
+                        section,
+                    )
+                if on_progress:
+                    on_progress(doc, outcomes[index])
+    except BaseException:
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown()
+    results.extend(outcomes)
     if inputs.get("page_targeting", {}).get("save_discovered"):
-        for doc, text in sections.items():
-            atomic_write(output / ".sections" / f"{doc.name}.txt", text)
         # A reused record was extracted from the pages its coverage recorded.
         used = {
             doc: normalize_page_ranges(coverage["selected_page_ranges"])
@@ -1104,53 +1189,6 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
             for start, end in used.get(doc) or ()
         )
         atomic_write(output / "discovered_page_ranges.csv", buffer.getvalue())
-    results = []
-    for doc, record in plan["reused"].items():
-        results.append(
-            {
-                "file": doc.name,
-                "success": True,
-                "skipped": True,
-                "items": record.get("item_count", 0),
-                "cost": 0,
-                "output_path": str(plan["outputs"][doc]),
-                "coverage": record.get("processing_metrics", {}).get("coverage", {}),
-            }
-        )
-    workers = inputs.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
-    queue, running = enumerate(pending), {}
-    outcomes = [None] * len(pending)
-    pool = ThreadPoolExecutor(max_workers=workers)
-    try:
-        while True:
-            # Submit only into free workers, so a started document is running.
-            while len(running) < workers and (item := next(queue, None)):
-                doc = item[1]
-                if on_progress:
-                    on_progress(doc, None)
-                future = pool.submit(
-                    document_scope(doc.name)(_extract_one_document),
-                    doc,
-                    plan,
-                    extractor=extractor,
-                    run_id=run_id,
-                    page_ranges=ranges.get(doc),
-                    section_text=sections.get(doc),
-                )
-                running[future] = item
-            if not running:
-                break
-            done, _ = wait(running, return_when=FIRST_COMPLETED)
-            for future in sorted(done, key=running.get):
-                index, doc = running.pop(future)
-                outcomes[index] = future.result()
-                if on_progress:
-                    on_progress(doc, outcomes[index])
-    except BaseException:
-        pool.shutdown(wait=False, cancel_futures=True)
-        raise
-    pool.shutdown()
-    results.extend(outcomes)
     for record in plan["withdrawn"]:
         record.unlink(missing_ok=True)
         logger.info("Withdrew %s: its source document left %s", record, plan["root"])
@@ -1244,9 +1282,11 @@ def compiled_table_fresh(
     compiler, ext_dir, out_dir, table = _compiler(
         extraction_dir, schema, config_path=config_path, output_dir=output_dir
     )
-    lineage = (latest_compilation_manifest(out_dir) or {}).get("lineage") or {}
+    manifest = latest_compilation_manifest(out_dir) or {}
+    lineage = manifest.get("lineage") or {}
     return (
-        table.is_file()
+        manifest.get("status", {}).get("result", "success") == "success"
+        and table.is_file()
         and bool(lineage.get("build_fingerprint"))
         and lineage.get("table_sha256") == artifact_sha256(table)
         and lineage["build_fingerprint"] == compiler.fingerprint(ext_dir)
@@ -1289,6 +1329,7 @@ def compile_extractions(
     df, _schema_info = compiler.compile_from_directory(
         ext_dir,
         apply_deduplication=not dry_run,
+        allow_model=not dry_run,
     )
 
     rows = len(df)
@@ -1307,12 +1348,27 @@ def compile_extractions(
             frame = compiler._prepare_output_dataframe(export_df)  # noqa: SLF001 - package-internal helper
             compiler.validate_export(frame, schema_metadata.get_output_formats())
     else:
-        output_files, frame = compiler.export(
-            df,
-            out_dir,
-            table.stem,
-            schema_metadata.get_output_formats(),
-        )
+        try:
+            output_files, frame = compiler.export(
+                df,
+                out_dir,
+                table.stem,
+                schema_metadata.get_output_formats(),
+            )
+        except Exception:
+            write_compilation_run_manifest(
+                output_dir=out_dir,
+                schema_id=str(schema_metadata.schema_path),
+                mode=compiler.mode,
+                stats={},
+                started_at=started_at,
+                build_fingerprint=build_fingerprint,
+                table_sha256=None,
+                status="failed",
+                costs=compiler.reconciliation_costs,
+                reconciliation=compiler.reconciliation_stats,
+            )
+            raise
         write_compilation_run_manifest(
             output_dir=out_dir,
             schema_id=str(schema_metadata.schema_path),
@@ -1327,6 +1383,9 @@ def compile_extractions(
             started_at=started_at,
             build_fingerprint=build_fingerprint,
             table_sha256=artifact_sha256(table) if table.is_file() else None,
+            status=compiler.status,
+            costs=compiler.reconciliation_costs,
+            reconciliation=compiler.reconciliation_stats,
         )
 
     return CompilationResult(
@@ -1337,6 +1396,9 @@ def compile_extractions(
         and compiler.mode == "rows"
         and bool(schema_metadata.get_deduplication_key_fields()),
         warnings=provenance_warnings,
+        status="dry_run" if dry_run else compiler.status,
+        reconciliation=compiler.reconciliation_stats,
+        costs=compiler.reconciliation_costs,
     )
 
 

@@ -35,6 +35,7 @@ from psweep.security import (
     tls_context,
 )
 from psweep.exceptions import ExtractionError
+from psweep.exceptions import AttemptBudgetExceeded
 from .llm_factory import DEFAULT_MODEL, detect_provider
 from psweep.utils.retry import compute_backoff, is_transient_error
 from .schema_utils import strict_compatible
@@ -182,6 +183,12 @@ class LLMClient:
 
         logger.info("Initialized LLM client: provider=%s, model=%s", self.provider, self.model)
 
+    @property
+    def usage_snapshot(self) -> dict[str, int | float]:
+        """Return a thread-safe copy of the canonical physical-attempt counters."""
+        with self._usage_lock:
+            return dict(self.usage)
+
     def _count(self, **deltas) -> None:
         with self._usage_lock:
             for key, value in deltas.items():
@@ -276,19 +283,24 @@ class LLMClient:
                     return client.chat.completions.create(**request)
                 return completion(**params, client=client, num_retries=0)
 
-    def _complete_with_backoff(self, params: dict[str, Any]):
+    def _complete_with_backoff(self, params: dict[str, Any], before_request=None):
         """Retry transient provider failures (``is_transient_error``) with the shared backoff.
 
         Each retry is logged with the sanitized failure category only, so slow
         or failing calls are visible without exposing provider text.
         """
         for attempt in range(1, RETRY_ATTEMPTS + 1):
+            if attempt > 1 and before_request is not None:
+                before_request()
+                self._count(calls=1)
             try:
                 return self._complete(params)
+            except AttemptBudgetExceeded:
+                raise
             except Exception as exc:
                 if attempt == RETRY_ATTEMPTS or not is_transient_error(exc):
                     raise
-                self._count(calls=1, unknown_cost_calls=1)
+                self._count(calls=int(before_request is None), unknown_cost_calls=1)
                 wait = compute_backoff(
                     attempt + 1, initial_backoff_seconds=2.0, max_backoff_seconds=30.0
                 )
@@ -352,7 +364,9 @@ class LLMClient:
             logger.debug("Model price unavailable (%s)", type(exc).__name__)
             return None
 
-    def complete(self, messages: list[dict[str, Any]], **params: Any) -> Completion:
+    def complete(
+        self, messages: list[dict[str, Any]], *, before_request=None, **params: Any
+    ) -> Completion:
         """Send one chat request and account for it.
 
         Owns provider routing, transient-failure backoff, usage/cost accounting and
@@ -360,6 +374,8 @@ class LLMClient:
         options such as ``temperature`` or ``response_format``. A reply
         without choices raises ``ExtractionError`` carrying its usage.
         """
+        if before_request is not None:
+            before_request()
         request = {**self._route(), "messages": messages, **params}
         # Split from content parsing so the two failure modes produce distinct
         # error messages: proxy/network errors vs model returned non-JSON text.
@@ -372,16 +388,24 @@ class LLMClient:
         )
         started = time.monotonic()
         try:
-            response = self._complete_with_backoff(request)
+            response = (
+                self._complete_with_backoff(request, before_request=before_request)
+                if before_request is not None
+                else self._complete_with_backoff(request)
+            )
+        except AttemptBudgetExceeded:
+            raise
         except json.JSONDecodeError:
             # LiteLLM failed to parse the HTTP response body from the proxy.
             # Common causes: empty body, SSE stream when non-streaming expected,
             # or an HTML/text error page from a gateway.
             self._count(unknown_cost_calls=1)
-            raise ExtractionError(
+            error = ExtractionError(
                 f"Proxy returned a non-JSON response body for model={self.raw_model!r}. "
                 "Verify the model and endpoint configuration."
-            ) from None
+            )
+            error.provider_failure = True
+            raise error from None
         except Exception as e:  # noqa: BLE001 - provider boundary: raw errors are sanitized below
             # Some routed/provider-backed models reject `temperature` entirely.
             # Retry once without temperature when the provider explicitly says the
@@ -395,9 +419,13 @@ class LLMClient:
                 raise self._provider_error(e) from None
             request = dict(request)
             request.pop("temperature", None)
+            if before_request is not None:
+                before_request()
             self._count(calls=1)
             try:
                 response = self._complete(request)
+            except AttemptBudgetExceeded:
+                raise
             except Exception as retry_error:  # noqa: BLE001 - provider boundary: raw errors are sanitized below
                 self._count(unknown_cost_calls=1)
                 logger.error(  # noqa: TRY400 - see above
@@ -433,6 +461,7 @@ class LLMClient:
                 f"Empty response from provider={self.provider}, model={self.model}"
             )
             error.usage = measured
+            error.provider_failure = True
             raise error
         return Completion(
             content=choices[0].message.content,
@@ -447,6 +476,7 @@ class LLMClient:
         system_prompt: str | None = None,
         user_prompt: str | None = None,
         suppress_errors: bool = False,
+        before_request=None,
     ) -> dict[str, Any]:
         """
         Extract structured data using LLM.
@@ -498,7 +528,11 @@ class LLMClient:
                 "No markdown, no code fences, no explanation."
             )
 
-        reply = self.complete(messages, **params)
+        reply = (
+            self.complete(messages, before_request=before_request, **params)
+            if before_request is not None
+            else self.complete(messages, **params)
+        )
         measured = reply.usage
         cost = measured["cost"]
         input_tokens = measured["input_tokens"]
@@ -602,6 +636,10 @@ class LLMClient:
             f"LLM request failed: {provider_error_category(error)} ({type(error).__name__})"
         )
         wrapped.retryable = is_transient_error(error)
+        wrapped.provider_failure = True
+        wrapped.route_failure = is_transient_error(error) or getattr(
+            error, "status_code", None
+        ) in {401, 403}
         return wrapped
 
     @staticmethod

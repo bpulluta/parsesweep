@@ -10,7 +10,7 @@ import requests
 
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 from psweep.discovery.connectors.serpapi_seeker import SerpApiSeeker
-from discovery_helpers import FakeResponse, patch_socket_stream
+from discovery_helpers import FakeResponse, patch_socket_stream, review_evidence
 
 
 DOMAIN_DIR = "outputs/fixture/discovered"
@@ -698,6 +698,8 @@ def test_owner_whose_name_changes_keeps_one_curated_path(monkeypatch, tmp_path):
     assert old.is_file()
 
     landing["https://a.gov/doc"] = "https://a.gov/files/new-slug.pdf"
+    # Remote redirects are only checked again when the user requests a refresh.
+    request.fresh = True
     request.targets = [{"label": "target", "urls": ["https://a.gov/doc", "https://a.gov/b.pdf"]}]
     DiscoveryEngine().run(request)
     assert {p.name for p in curated.glob("*.pdf")} == {"new-slug.pdf", "b.pdf"}
@@ -779,7 +781,13 @@ def test_unreadable_search_hit_is_a_skip_not_a_run_error(monkeypatch, tmp_path):
     def grade(_self, path, **_kwargs):
         if path.endswith("shell.pdf"):
             raise UnreadableDocumentError("insufficient extracted text for document review")
-        return {"is_primary": True, "relevance": 0.9, "doc_kind": "record", "reason": "ok"}
+        return {
+            "is_primary": True,
+            "relevance": 0.9,
+            "doc_kind": "record",
+            "reason": "ok",
+            "evidence": review_evidence("fixture source"),
+        }
 
     monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda _self: object())
     monkeypatch.setattr(DocumentReviewer, "_grade", grade)
@@ -915,6 +923,7 @@ def test_rejected_download_of_incomplete_target_is_not_fetched_again(
             "relevance": 0.9 if primary else 0.1,
             "doc_kind": "record",
             "reason": "ok",
+            "evidence": review_evidence("fixture source"),
         }
 
     monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda _self: object())
@@ -954,6 +963,100 @@ def test_terminal_child_outcome_is_not_requested_again(monkeypatch, tmp_path):
         assert sorted(fetched) == sorted(expected)
     fetched.clear()
     assert DiscoveryEngine().run(request).status == "reused" and fetched == []
+
+
+def test_completed_downloads_reused_when_acquisition_settings_change(monkeypatch, tmp_path):
+    """A new selection budget fetches new hits, not verified completed downloads."""
+    urls = [f"https://agency.gov/{name}.pdf" for name in "abc"]
+    _fake_search(monkeypatch, {"organic_results": [{"link": url} for url in urls]})
+    fetched = _fetch_by_url(monkeypatch)
+    request = _request(tmp_path, selection_primary_per_target=2)
+    assert DiscoveryEngine().run(request).status == "success"
+    assert len(fetched) == 2
+    prior = set(fetched)
+
+    fetched.clear()
+    request.selection_primary_per_target = 3
+    result = DiscoveryEngine().run(request)
+    assert result.status == "success"
+    assert set(fetched) == set(urls) - prior
+    manifest = json.loads(result.manifest_path.read_text())
+    assert manifest["stage_summaries"]["downloads"]["reused"] == 2
+    fetched.clear()
+    assert DiscoveryEngine().run(request).status == "reused"
+    assert fetched == []
+
+
+def test_extraction_model_change_reuses_completed_discovery(monkeypatch, tmp_path):
+    """Extraction models are not acquisition semantics when review is absent."""
+    url = "https://agency.gov/a.pdf"
+    search = _fake_search(monkeypatch, {"organic_results": [{"link": url}]})
+    fetched = _fetch_by_url(monkeypatch)
+    request = _request(tmp_path, models={"primary": "extract-a"})
+    assert DiscoveryEngine().run(request).status == "success"
+    fetched.clear()
+    request.models = {"primary": "extract-b"}
+    result = DiscoveryEngine().run(request)
+    assert result.status == "reused"
+    assert fetched == [] and search.call_count == 1
+    assert not result.documents_dir.exists()
+
+
+def test_completed_resume_refetches_only_changed_document(monkeypatch, tmp_path):
+    """An invalidated owner keeps intact children and repairs the changed file."""
+    urls = [f"https://agency.gov/{name}.pdf" for name in "ab"]
+    _fake_search(monkeypatch, {"organic_results": [{"link": url} for url in urls]})
+    fetched = _fetch_by_url(monkeypatch)
+    request = _request(tmp_path)
+    DiscoveryEngine().run(request)
+    curated = tmp_path / DOMAIN_DIR / "curated/by_label/target"
+    (curated / "a.pdf").write_bytes(b"tampered")
+    fetched.clear()
+    DiscoveryEngine().run(request)
+    assert fetched == [urls[0]]
+
+
+@pytest.mark.parametrize("retention", ["curated", "none"])
+def test_completed_file_reuse_survives_run_document_retention(monkeypatch, tmp_path, retention):
+    """The consolidated curated copy suffices after run downloads were removed."""
+    urls = [f"https://agency.gov/{name}.pdf" for name in "ab"]
+    _fake_search(monkeypatch, {"organic_results": [{"link": url} for url in urls]})
+    fetched = _fetch_by_url(monkeypatch)
+    request = _request(tmp_path, selection_primary_per_target=1, retention_documents=retention)
+    DiscoveryEngine().run(request)
+    fetched.clear()
+    request.selection_primary_per_target = 2
+    DiscoveryEngine().run(request)
+    assert fetched == [urls[1]]
+
+
+def test_fresh_completed_run_refetches_verified_downloads(monkeypatch, tmp_path):
+    """Explicit refresh fetches completed owners too, bypassing local file reuse."""
+    urls = [f"https://agency.gov/{name}.pdf" for name in "ab"]
+    _fake_search(monkeypatch, {"organic_results": [{"link": url} for url in urls]})
+    fetched = _fetch_by_url(monkeypatch)
+    request = _request(tmp_path)
+    DiscoveryEngine().run(request)
+    fetched.clear()
+    request.fresh = True
+    DiscoveryEngine().run(request)
+    assert set(fetched) == set(urls)
+
+
+def test_completed_file_reuse_rejects_tampered_snapshot(monkeypatch, tmp_path):
+    """Unverified manifest bytes cannot authorize reuse of their paths or hashes."""
+    url = "https://agency.gov/a.pdf"
+    _fake_search(monkeypatch, {"organic_results": [{"link": url}]})
+    fetched = _fetch_by_url(monkeypatch)
+    request = _request(tmp_path)
+    DiscoveryEngine().run(request)
+    entries = json.loads((tmp_path / DOMAIN_DIR / "checkpoint.json").read_text())["entries"]
+    entry = next(iter(entries.values()))
+    snapshot = next(Path(p) for p in entry["artifacts"] if p.endswith(".json"))
+    snapshot.write_text("{}")
+    fetched.clear()
+    DiscoveryEngine().run(request)
+    assert fetched == [url]
 
 
 def test_fresh_run_ignores_prior_downloads(monkeypatch, tmp_path):

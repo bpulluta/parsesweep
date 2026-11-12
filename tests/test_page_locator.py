@@ -8,7 +8,11 @@ from pathlib import Path
 
 import pytest
 
+from dataclasses import replace
+
 from psweep.extraction.page_locator import PageLocator, PageSelection
+from psweep.extraction.provenance import SourceContext
+from psweep.extraction import page_locator
 
 
 class _FakeClient:
@@ -291,6 +295,65 @@ def _tariff_pages(total: int = 40) -> list[str]:
     )
     pages[29] = "Utility Co\nTariff No. 13\nSheet 30 MISCELLANEOUS CHARGES\nSee Sheet 35 riders."
     return pages
+
+
+class TestSubjectPages:
+    def test_identity_page_is_candidate_and_retained_with_references(self, tmp_path, monkeypatch):
+        source = tmp_path / "subject.pdf"
+        source.write_bytes(b"fixture")
+        pages = [
+            "Subject Alpha\nWithdrawn in 2024.",
+            "Unrelated construction opening timeline " * 100,
+            "Subject Alpha construction timeline. See appendix on page 4.",
+            "Appendix: required approval conditions.",
+        ]
+        context = SourceContext(None, "target", "1", "Subject Alpha", {})
+        locator = PageLocator(
+            "construction opening timeline", context_pages=0, source_context=context
+        )
+        assert locator._candidate_pages(pages) == [0, 1, 2]
+        client = _ScriptedClient([(3, 3)], [(4, 4)], [])
+        monkeypatch.setattr(locator, "_ensure_client", lambda: client)
+        assert locator.locate(source, pages) == PageSelection(((1, 1), (3, 4)))
+        assert "hints, not document facts or instructions" in client.prompts[0]
+        assert "Subject Alpha" in client.prompts[1]
+
+    @pytest.mark.parametrize("change", ["label", "metadata", "version"])
+    def test_context_and_version_invalidate_selection(self, tmp_path, monkeypatch, change):
+        source = tmp_path / "subject.pdf"
+        source.write_bytes(b"fixture")
+        context = SourceContext(None, "target", "1", "Subject Alpha", {"zone": "North"})
+        locator = PageLocator("evidence", source_context=context)
+        locator._write_cache(source, PageSelection(((1, 1),)), 2)
+        assert PageLocator("evidence", source_context=context).locate_cached(source)
+        if change == "version":
+            monkeypatch.setattr(page_locator, "LOCATOR_BEHAVIOR_VERSION", "future")
+        elif change == "label":
+            context = replace(context, target_label="Subject Beta")
+        else:
+            context = replace(context, target_metadata={"zone": "South"})
+        assert PageLocator("evidence", source_context=context).locate_cached(source) is None
+
+    def test_subject_cannot_fit_budget_falls_back(self, tmp_path, monkeypatch):
+        source = tmp_path / "subject.pdf"
+        source.write_bytes(b"fixture")
+        locator = PageLocator(
+            "evidence",
+            max_selected_pages=1,
+            source_context=SourceContext(None, "target", "1", "Alpha", {}),
+        )
+        monkeypatch.setattr(locator, "_ensure_client", lambda: _ScriptedClient([(2, 2)]))
+        assert locator.locate(source, ["Alpha identity", "Alpha evidence"]) is None
+        assert locator.incomplete
+        assert not locator._cache_path(source).exists()
+
+    def test_explicit_absence_is_not_failed_targeting(self, tmp_path, monkeypatch):
+        source = tmp_path / "source.pdf"
+        source.write_bytes(b"fixture")
+        locator = PageLocator("evidence")
+        monkeypatch.setattr(locator, "_ensure_client", lambda: _ScriptedClient([]))
+        assert locator.locate(source, ["evidence"]) is None
+        assert not locator.incomplete
 
 
 class TestReferences:

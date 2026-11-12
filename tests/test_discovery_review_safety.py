@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from threading import Barrier, Lock
 
+from discovery_helpers import MeteredReviewClient
 import pytest
 
 from psweep.discovery import document_reviewer
@@ -19,13 +20,22 @@ from psweep.utils.retry import is_retryable
 from psweep.extraction import document_utils, llm_factory
 
 
+_EVIDENCE = {
+    "identity_quote": "fixture document",
+    "content_quote": "fixture document",
+    "scope": {"value": "fixture scope", "quote": "fixture document"},
+    "claim_kind": {"value": "direct", "quote": "fixture document"},
+    "source_date": None,
+    "coverage": {},
+}
 _GRADE = {
+    "evidence": _EVIDENCE,
     "is_primary": True,
     "relevance": 0.9,
     "doc_kind": "record",
     "reason": "fixture",
 }
-_REPLY = {"doc_kind": "record", "reason": "fixture", "grade": 4}
+_REPLY = {"doc_kind": "record", "reason": "fixture", "grade": 4, "evidence": _EVIDENCE}
 
 
 @pytest.fixture(autouse=True)
@@ -217,8 +227,8 @@ def test_invalid_grade_fails_explicitly_and_retains_usage(tmp_path, reply):
     """Bad grade fields never become truthy selections or erase usage."""
     record = _record(tmp_path)
 
-    class Client:
-        def extract(self, **kwargs):
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
             return {
                 "data": reply,
                 "cost": 0.25,
@@ -245,8 +255,8 @@ def test_invalid_grade_is_retried_once(tmp_path):
     record = _record(tmp_path)
     replies = [{**_REPLY, "grade": "4"}, _REPLY]
 
-    class Client:
-        def extract(self, **kwargs):
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
             return {"data": replies.pop(0)}
 
     reviewer = DocumentReviewer(document_description="records")
@@ -263,8 +273,8 @@ def test_parallel_grades_accumulate_all_returned_usage(tmp_path):
     calls = []
     lock = Lock()
 
-    class Client:
-        def extract(self, **kwargs):
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
             with lock:
                 calls.append(None)
                 first_round = len(calls) <= 4
@@ -295,8 +305,8 @@ def test_llm_exception_is_sanitized_and_usage_is_unknown(tmp_path):
     """An exception carries no invented usage or leaked provider message."""
     record = _record(tmp_path)
 
-    class Client:
-        def extract(self, **kwargs):
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
             raise RuntimeError("api_key=never-expose-this https://x/?token=secret")
 
     reviewer = DocumentReviewer(document_description="records")
@@ -320,8 +330,8 @@ def test_llm_failure_reports_sanitized_provider_category(tmp_path):
     record = _record(tmp_path)
     provider = RuntimeError("Rate limit reached for org-synthetic at https://x/?token=secret")
 
-    class Client:
-        def extract(self, **kwargs):
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
             raise LLMClient._provider_error(provider)
 
     reviewer = DocumentReviewer(document_description="records")
@@ -360,7 +370,7 @@ def test_pending_grade_futures_are_bounded(tmp_path, monkeypatch):
             future.set_result(fn(*args, **kwargs))
             return future
 
-    monkeypatch.setattr(document_reviewer, "ThreadPoolExecutor", Executor)
+    monkeypatch.setattr("psweep.discovery.concurrency.ThreadPoolExecutor", Executor)
     reviewer = _stub_reviewer()
     reviewer.review(records, [])
     assert state["maximum"] <= 4
@@ -374,8 +384,8 @@ def test_comparative_dedup_exception_marks_survivors_without_losing_grades(
     """A failed comparative call blocks survivors but retains raw grades."""
     records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
 
-    class Client:
-        def extract(self, **kwargs):
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
             raise RuntimeError("api_key=secret-provider-message")
 
     reviewer = _stub_reviewer(keep_top=2)
@@ -399,8 +409,8 @@ def test_comparative_prompt_includes_the_complete_response_contract(tmp_path):
     """Custom prompts must request required group reasons as well as indices."""
     records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
 
-    class Client:
-        def extract(self, **kwargs):
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
             assert json.dumps(kwargs["schema"], indent=2) in kwargs["user_prompt"]
             return {
                 "data": {
@@ -409,6 +419,10 @@ def test_comparative_prompt_includes_the_complete_response_contract(tmp_path):
                             "keep_index": 0,
                             "redundant_indices": [1],
                             "reason": "same text",
+                            "evidence_refs": [
+                                {"index": i, "field": "content_quote", "quote": "fixture document"}
+                                for i in (0, 1)
+                            ],
                         }
                     ]
                 }
@@ -507,8 +521,8 @@ def test_invalid_comparative_assessment_preserves_grade_and_usage(tmp_path, data
     """Invalid dedup data fails explicitly with the actual returned usage."""
     records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
 
-    class Client:
-        def extract(self, **kwargs):
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
             return {
                 "data": data,
                 "cost": 0.2,
@@ -568,3 +582,82 @@ def test_failed_text_extraction_is_a_terminal_skip(tmp_path, monkeypatch):
     assert not record.get("review_failed") and not is_retryable(record)
     assert reviewer.get_costs()["llm_calls"] == 0
     assert any("too little text" in note for note in notes)
+
+
+def test_review_failure_memo_does_not_retain_document_frames(tmp_path):
+    """Retry suppression stores data, never a traceback holding extracted source text."""
+    record = _record(tmp_path)
+
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
+            raise RuntimeError("private provider failure")
+
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._client = Client()
+    reviewer.review([record], [])
+    (failure,) = reviewer._review_failures.values()
+    assert not isinstance(failure, BaseException)
+    assert reviewer.get_costs()["llm_calls"] == 1
+    reviewer.review([record], [])
+    assert reviewer.get_costs()["llm_calls"] == 1
+    assert record["review_failed"]
+
+
+def test_comparison_failure_memo_does_not_retain_tracebacks(tmp_path):
+    records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
+
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
+            raise RuntimeError("private provider failure")
+
+    reviewer = _stub_reviewer(keep_top=2)
+    reviewer._deduplicate_redundant = True
+    reviewer._client = Client()
+    reviewer.review(records, [])
+    (failure,) = reviewer._dedup_failures.values()
+    assert not isinstance(failure, BaseException)
+    reviewer.review(records, [])
+    assert reviewer.get_costs()["llm_calls"] == 1
+    assert all(record["review_failed"] for record in records)
+
+
+def test_cache_miss_hashes_source_only_once_and_does_not_memoize_unused_grades(
+    tmp_path, monkeypatch
+):
+    record = _record(tmp_path)
+    hashed = []
+    digest = DocumentReviewer._file_sha256
+
+    def hash_file(path):
+        hashed.append(path)
+        return digest(path)
+
+    monkeypatch.setattr(DocumentReviewer, "_file_sha256", staticmethod(hash_file))
+
+    class Client(MeteredReviewClient):
+        def respond(self, **kwargs):
+            return {"data": _REPLY}
+
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._client = Client()
+    reviewer.review([record], [])
+    assert record["review_selected"]
+    assert hashed == [record["path"]]
+    assert reviewer._grade_memo == {}
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("scope", {"value": "claim", "quote": "source", "extra": True}),
+        ("scope", {"value": " ", "quote": "source"}),
+        ("claim_kind", {"value": 3, "quote": "source"}),
+        ("source_date", {"value": "2024", "quote": " ", "precision": "year"}),
+        ("coverage", {"known": {"quote": "source", "extra": True}}),
+        ("coverage", {"known": {"quote": " "}}),
+    ],
+)
+def test_evidence_schema_and_semantic_checks_stay_strict(field, value):
+    reviewer = DocumentReviewer(document_description="records", coverage={"known": "need"})
+    evidence = {**_EVIDENCE, field: value}
+    assert not reviewer._valid_evidence(evidence, primary=True)

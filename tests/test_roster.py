@@ -11,6 +11,7 @@ from psweep.config import RuntimeConfigError
 from psweep.discovery.targets import identify_target
 from psweep.exceptions import SchemaValidationError
 from psweep.extraction.llm_client import LLMClient
+from psweep.utils.evidence import normalize, quote_present
 from psweep.extraction.roster import (
     WINDOW_CHARS,
     QuoteRows,
@@ -19,8 +20,6 @@ from psweep.extraction.roster import (
     candidate_hash,
     candidates_block,
     load_roster,
-    normalize,
-    quote_present,
     roster_fields,
     scan_candidates,
     verify_quotes,
