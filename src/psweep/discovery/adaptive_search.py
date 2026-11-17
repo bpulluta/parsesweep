@@ -91,9 +91,7 @@ def target_has_sufficient_evidence(
     records_list = list(records)
     if distinct_accepted_count(records_list) < keep_top:
         return False
-    if coverage and set(coverage) - covered_labels(records_list):
-        return False
-    return True
+    return not (coverage and set(coverage) - covered_labels(records_list))
 
 
 def eligible_targets(

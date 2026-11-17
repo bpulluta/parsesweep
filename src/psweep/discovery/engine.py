@@ -3254,7 +3254,8 @@ class DiscoveryEngine:
         if not code_hosting_domains:
             return download_records, notes
 
-        # Find targets with insufficient curated docs AND JS-shell downloads from code-hosting domains
+        # Find targets with insufficient curated docs AND JS-shell downloads from
+        # code-hosting domains
         by_target = self._group_records_by_target(download_records)
         doc_review = request.document_review or {}
         keep_top = int(doc_review.get("keep_top", 1))
