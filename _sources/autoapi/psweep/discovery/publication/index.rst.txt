@@ -94,9 +94,9 @@ Module Contents
    partitions (``--fresh``) are ignored.
 
 
-.. py:function:: checkpoint_artifacts_valid(entry: collections.abc.Mapping[str, object]) -> bool
+.. py:function:: checkpoint_artifacts_valid(entry: collections.abc.Mapping[str, object], *, _digest_memo: dict[_ArtifactDigestKey, str] | None = None) -> bool
 
-   Validate hashed artifact evidence for a completed target.
+   Validate hashed evidence, optionally sharing a load-local digest memo.
 
 
 .. py:function:: csv_content(fieldnames: list[str], rows: list[dict]) -> str
@@ -139,14 +139,14 @@ Module Contents
    valid.
 
 
-.. py:function:: load_prior_outcomes(path: pathlib.Path, *, fingerprint: str) -> dict[str, dict[str, dict[str, object]]]
+.. py:function:: load_prior_outcomes(path: pathlib.Path, *, fingerprint: str, owner_keys: set[str] | None = None) -> dict[str, dict[str, dict[str, object]]]
 
-   Final child outcomes saved for incomplete targets and sources.
+   Verified downloads and unfinished owners' final child outcomes.
 
-   Returns ``{owner key: {url: outcome}}``. A download carries its file
-   path and SHA-256, which the caller verifies before reuse, so it holds
-   under any settings; other final outcomes (terminal failures, skips)
-   hold only for the same ``fingerprint``.
+   Returns ``{owner key: {url: outcome}}``. Completed owners recover downloads
+   from their immutable, hashed snapshot when re-evaluation is needed.
+   Downloads hold across settings changes while their bytes match. Incomplete
+   owners also retain terminal failures and skips for the same fingerprint.
 
 
 .. py:function:: materialize_curated(*, documents_dir: pathlib.Path, download_records: list[dict[str, object]], curated_dir: pathlib.Path | None = None) -> tuple[pathlib.Path, int, int]

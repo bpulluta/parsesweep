@@ -39,9 +39,11 @@ Module Contents
    Build run_accounting.json: a factual, cumulative log of discover, extract and compile.
 
    Histories accumulate across immutable run manifests (discovery runs, plus
-   ``run_manifests/`` under the extraction and compilation dirs). Discovery and
-   extraction LLM costs sum into ``summary.total_cost_usd``; compilation makes no
-   LLM calls and records output stats only; flat-rate search APIs count queries only.
+   ``run_manifests/`` under the extraction and compilation dirs). Discovery,
+   extraction and reconciliation LLM costs sum into ``summary.total_cost_usd``.
+   By default compilation makes no LLM calls; opt-in reconciliation receipts retain
+   spend after failed exports, with matching manifest costs counted only as fallback.
+   Flat-rate search APIs count queries only.
 
 
 .. py:function:: canonical_discovery_manifest_path(domain: str, manifest_path: pathlib.Path, run_id: str) -> str
@@ -59,8 +61,8 @@ Module Contents
    The newest compilation run manifest (stamped file names sort chronologically).
 
 
-.. py:function:: write_compilation_run_manifest(*, output_dir: pathlib.Path, schema_id: str, mode: str, stats: dict[str, Any], started_at: datetime.datetime, build_fingerprint: str, table_sha256: str | None) -> pathlib.Path | None
+.. py:function:: write_compilation_run_manifest(*, output_dir: pathlib.Path, schema_id: str, mode: str, stats: dict[str, Any], started_at: datetime.datetime, build_fingerprint: str | None, table_sha256: str | None, status: str = 'success', costs: dict[str, Any] | None = None, reconciliation: dict[str, Any] | None = None) -> pathlib.Path | None
 
-   Persist one immutable compilation run manifest (compile makes no LLM calls).
+   Persist one immutable compilation result and any current-run model usage.
 
 

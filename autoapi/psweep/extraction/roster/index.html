@@ -230,6 +230,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -242,6 +243,8 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -262,6 +265,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/targets/index.html">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/urls/index.html">psweep.discovery.urls</a></li>
@@ -293,6 +297,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -396,12 +401,6 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.roster.load_roster" title="psweep.extraction.roster.load_roster"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_roster</span></code></a>(→ Roster | None)</p></td>
 <td><p>Load the discovery target roster when roster mode is derived.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.roster.normalize" title="psweep.extraction.roster.normalize"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normalize</span></code></a>(→ str)</p></td>
-<td><p>NFKD, strip marks and soft hyphens, join line-break hyphenation,</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.roster.quote_present" title="psweep.extraction.roster.quote_present"><code class="xref py py-obj docutils literal notranslate"><span class="pre">quote_present</span></code></a>(→ bool)</p></td>
-<td><p>True when the normalized quote occurs, on word boundaries, in the normalized source.</p></td>
-</tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.roster.roster_fields" title="psweep.extraction.roster.roster_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">roster_fields</span></code></a>(→ tuple[str, ...] | None)</p></td>
 <td><p>Roster mode is on iff targets exist and key_fields equal partition_by.</p></td>
 </tr>
@@ -479,20 +478,6 @@ that is exactly a roster name (card layouts).</p>
 <dt class="sig sig-object py" id="psweep.extraction.roster.load_roster">
 <span class="sig-prename descclassname"><span class="pre">psweep.extraction.roster.</span></span><span class="sig-name descname"><span class="pre">load_roster</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.extraction.roster.Roster" title="psweep.extraction.roster.Roster"><span class="pre">Roster</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.extraction.roster.load_roster" title="Link to this definition">¶</a></dt>
 <dd><p>Load the discovery target roster when roster mode is derived.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="psweep.extraction.roster.normalize">
-<span class="sig-prename descclassname"><span class="pre">psweep.extraction.roster.</span></span><span class="sig-name descname"><span class="pre">normalize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.extraction.roster.normalize" title="Link to this definition">¶</a></dt>
-<dd><p>NFKD, strip marks and soft hyphens, join line-break hyphenation,
-casefold, punctuation to space, collapse whitespace.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="psweep.extraction.roster.quote_present">
-<span class="sig-prename descclassname"><span class="pre">psweep.extraction.roster.</span></span><span class="sig-name descname"><span class="pre">quote_present</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quote</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.extraction.roster.quote_present" title="Link to this definition">¶</a></dt>
-<dd><p>True when the normalized quote occurs, on word boundaries, in the normalized source.</p>
-<p>An elided quote (<code class="docutils literal notranslate"><span class="pre">head</span> <span class="pre">…</span> <span class="pre">tail</span></code>) matches when its parts occur in order.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -592,8 +577,6 @@ per rejection.</p>
 <li><a class="reference internal" href="#psweep.extraction.roster.candidates_block"><code class="docutils literal notranslate"><span class="pre">candidates_block()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.roster.evidence_nodes"><code class="docutils literal notranslate"><span class="pre">evidence_nodes()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.roster.load_roster"><code class="docutils literal notranslate"><span class="pre">load_roster()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.roster.normalize"><code class="docutils literal notranslate"><span class="pre">normalize()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.roster.quote_present"><code class="docutils literal notranslate"><span class="pre">quote_present()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.roster.roster_fields"><code class="docutils literal notranslate"><span class="pre">roster_fields()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.roster.scan_candidates"><code class="docutils literal notranslate"><span class="pre">scan_candidates()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.roster.verify_quotes"><code class="docutils literal notranslate"><span class="pre">verify_quotes()</span></code></a></li>

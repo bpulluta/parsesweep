@@ -22,6 +22,7 @@ Functions
    psweep.discovery.urls.decode_discovery_url
    psweep.discovery.urls.is_http_url
    psweep.discovery.urls.matches_allowed_domain
+   psweep.discovery.urls.matches_domain_pattern
    psweep.discovery.urls.matches_url_exclusion
    psweep.discovery.urls.normalize_url_text
    psweep.discovery.urls.redact_url
@@ -59,6 +60,14 @@ Module Contents
 .. py:function:: matches_allowed_domain(url: str, allowed_domains: list[str] | None) -> bool
 
    Match an exact hostname or subdomain, never an arbitrary substring.
+
+
+.. py:function:: matches_domain_pattern(host: str, pattern: str) -> bool
+
+   Match a host against a domain pattern.
+
+   Leading-dot patterns match hostname suffixes; patterns without a leading dot
+   match the host itself or any of its subdomains.
 
 
 .. py:function:: matches_url_exclusion(url: str, patterns: list[re.Pattern]) -> bool

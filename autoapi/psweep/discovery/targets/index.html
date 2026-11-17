@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.discovery.transport" href="../transport/index.html"><link rel="prev" title="psweep.discovery.request_inputs" href="../request_inputs/index.html">
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.discovery.transport" href="../transport/index.html"><link rel="prev" title="psweep.discovery.review_policy" href="../review_policy/index.html">
 
     <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>psweep.discovery.targets - ParseSweep 2.0.1</title>
@@ -230,6 +230,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -242,6 +243,8 @@
 </ul>
 </li>
 <li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" checked="" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -262,6 +265,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../urls/index.html">psweep.discovery.urls</a></li>
@@ -293,6 +297,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -387,10 +392,13 @@ large cross product with <code class="docutils literal notranslate"><span class=
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.targets.iter_targets" title="psweep.discovery.targets.iter_targets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">iter_targets</span></code></a>(→ collections.abc.Iterator[dict[str, Any]])</p></td>
 <td><p>Yield normalized target rows, stopping after <code class="docutils literal notranslate"><span class="pre">limit</span></code> rows.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.targets.resolve_targets_spec" title="psweep.discovery.targets.resolve_targets_spec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_targets_spec</span></code></a>(→ TargetSpec)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.targets.render_target_template" title="psweep.discovery.targets.render_target_template"><code class="xref py py-obj docutils literal notranslate"><span class="pre">render_target_template</span></code></a>(→ str)</p></td>
+<td><p>Render required/optional target fields without interpreting inserted text.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.targets.resolve_targets_spec" title="psweep.discovery.targets.resolve_targets_spec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_targets_spec</span></code></a>(→ TargetSpec)</p></td>
 <td><p>Validate a spec and return it with paths resolved against <code class="docutils literal notranslate"><span class="pre">config_dir</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.targets.target_identity" title="psweep.discovery.targets.target_identity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">target_identity</span></code></a>(→ dict[str, Any])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.targets.target_identity" title="psweep.discovery.targets.target_identity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">target_identity</span></code></a>(→ dict[str, Any])</p></td>
 <td><p>Fields that identify a target: <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> when set, else every</p></td>
 </tr>
 </tbody>
@@ -417,6 +425,12 @@ large cross product with <code class="docutils literal notranslate"><span class=
 <dt class="sig sig-object py" id="psweep.discovery.targets.iter_targets">
 <span class="sig-prename descclassname"><span class="pre">psweep.discovery.targets.</span></span><span class="sig-name descname"><span class="pre">iter_targets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TargetSpec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">limit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">collections.abc.Iterator</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.discovery.targets.iter_targets" title="Link to this definition">¶</a></dt>
 <dd><p>Yield normalized target rows, stopping after <code class="docutils literal notranslate"><span class="pre">limit</span></code> rows.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.targets.render_target_template">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.targets.</span></span><span class="sig-name descname"><span class="pre">render_target_template</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">template</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.discovery.targets.render_target_template" title="Link to this definition">¶</a></dt>
+<dd><p>Render required/optional target fields without interpreting inserted text.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -451,14 +465,14 @@ non-input field. Other (passthrough) fields never affect identity.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../request_inputs/index.html">
+          <a class="prev-page" href="../review_policy/index.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">psweep.discovery.request_inputs</div>
+                <div class="title">psweep.discovery.review_policy</div>
                 
               </div>
             </a>
@@ -502,6 +516,7 @@ non-input field. Other (passthrough) fields never affect identity.</p>
 <li><a class="reference internal" href="#psweep.discovery.targets.TargetSpecError"><code class="docutils literal notranslate"><span class="pre">TargetSpecError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.targets.identify_target"><code class="docutils literal notranslate"><span class="pre">identify_target()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.targets.iter_targets"><code class="docutils literal notranslate"><span class="pre">iter_targets()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.discovery.targets.render_target_template"><code class="docutils literal notranslate"><span class="pre">render_target_template()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.targets.resolve_targets_spec"><code class="docutils literal notranslate"><span class="pre">resolve_targets_spec()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.targets.target_identity"><code class="docutils literal notranslate"><span class="pre">target_identity()</span></code></a></li>
 </ul>

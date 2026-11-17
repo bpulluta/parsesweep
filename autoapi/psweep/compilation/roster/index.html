@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.config" href="../../config/index.html"><link rel="prev" title="psweep.compilation.publication" href="../publication/index.html">
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.config" href="../../config/index.html"><link rel="prev" title="psweep.compilation.reconciliation" href="../reconciliation/index.html">
 
     <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>psweep.compilation.roster - ParseSweep 2.0.1</title>
@@ -230,6 +230,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -242,6 +243,8 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -262,6 +265,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/targets/index.html">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/urls/index.html">psweep.discovery.urls</a></li>
@@ -293,6 +297,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -369,6 +374,18 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.compilation.roster.compile_roster" title="psweep.compilation.roster.compile_roster"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compile_roster</span></code></a>(→ tuple[pandas.DataFrame, dict[str, int]])</p></td>
 <td><p>Return the roster-shaped frame (field-name columns) and accounting stats.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.compilation.roster.roster_attributes" title="psweep.compilation.roster.roster_attributes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">roster_attributes</span></code></a>(→ tuple[list[str], set[str]])</p></td>
+<td><p>Derive output attributes and evidence fields once from the schema contract.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.compilation.roster.roster_extras" title="psweep.compilation.roster.roster_extras"><code class="xref py py-obj docutils literal notranslate"><span class="pre">roster_extras</span></code></a>(→ dict[str, str])</p></td>
+<td><p>Validate and project roster passthrough without overwriting schema/output columns.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.compilation.roster.roster_frame" title="psweep.compilation.roster.roster_frame"><code class="xref py py-obj docutils literal notranslate"><span class="pre">roster_frame</span></code></a>(→ pandas.DataFrame)</p></td>
+<td><p>Project both roster resolvers to one deterministic output-column contract.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.compilation.roster.roster_row" title="psweep.compilation.roster.roster_row"><code class="xref py py-obj docutils literal notranslate"><span class="pre">roster_row</span></code></a>(→ dict)</p></td>
+<td><p>Assemble the shared roster output envelope around resolver-specific evidence.</p></td>
+</tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.compilation.roster.value_key" title="psweep.compilation.roster.value_key"><code class="xref py py-obj docutils literal notranslate"><span class="pre">value_key</span></code></a>(→ tuple[str, Any])</p></td>
 <td><p>Agreement key: numbers by value; text casefolded with whitespace collapsed.</p></td>
 </tr>
@@ -382,6 +399,30 @@
 <dt class="sig sig-object py" id="psweep.compilation.roster.compile_roster">
 <span class="sig-prename descclassname"><span class="pre">psweep.compilation.roster.</span></span><span class="sig-name descname"><span class="pre">compile_roster</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">records</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roster</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../extraction/roster/index.html#psweep.extraction.roster.Roster" title="psweep.extraction.roster.Roster"><span class="pre">psweep.extraction.roster.Roster</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">targets_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">pandas.DataFrame</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.compilation.roster.compile_roster" title="Link to this definition">¶</a></dt>
 <dd><p>Return the roster-shaped frame (field-name columns) and accounting stats.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.compilation.roster.roster_attributes">
+<span class="sig-prename descclassname"><span class="pre">psweep.compilation.roster.</span></span><span class="sig-name descname"><span class="pre">roster_attributes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">metadata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roster</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../extraction/roster/index.html#psweep.extraction.roster.Roster" title="psweep.extraction.roster.Roster"><span class="pre">psweep.extraction.roster.Roster</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">set</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.compilation.roster.roster_attributes" title="Link to this definition">¶</a></dt>
+<dd><p>Derive output attributes and evidence fields once from the schema contract.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.compilation.roster.roster_extras">
+<span class="sig-prename descclassname"><span class="pre">psweep.compilation.roster.</span></span><span class="sig-name descname"><span class="pre">roster_extras</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roster</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../extraction/roster/index.html#psweep.extraction.roster.Roster" title="psweep.extraction.roster.Roster"><span class="pre">psweep.extraction.roster.Roster</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">attributes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.compilation.roster.roster_extras" title="Link to this definition">¶</a></dt>
+<dd><p>Validate and project roster passthrough without overwriting schema/output columns.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.compilation.roster.roster_frame">
+<span class="sig-prename descclassname"><span class="pre">psweep.compilation.roster.</span></span><span class="sig-name descname"><span class="pre">roster_frame</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rows</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roster</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../extraction/roster/index.html#psweep.extraction.roster.Roster" title="psweep.extraction.roster.Roster"><span class="pre">psweep.extraction.roster.Roster</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">attributes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pandas.DataFrame</span></span></span><a class="headerlink" href="#psweep.compilation.roster.roster_frame" title="Link to this definition">¶</a></dt>
+<dd><p>Project both roster resolvers to one deterministic output-column contract.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.compilation.roster.roster_row">
+<span class="sig-prename descclassname"><span class="pre">psweep.compilation.roster.</span></span><span class="sig-name descname"><span class="pre">roster_row</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">row</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extras</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sources</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#psweep.compilation.roster.roster_row" title="Link to this definition">¶</a></dt>
+<dd><p>Assemble the shared roster output envelope around resolver-specific evidence.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -409,14 +450,14 @@
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../publication/index.html">
+          <a class="prev-page" href="../reconciliation/index.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">psweep.compilation.publication</div>
+                <div class="title">psweep.compilation.reconciliation</div>
                 
               </div>
             </a>
@@ -457,6 +498,10 @@
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.compilation.roster.compile_roster"><code class="docutils literal notranslate"><span class="pre">compile_roster()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.compilation.roster.roster_attributes"><code class="docutils literal notranslate"><span class="pre">roster_attributes()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.compilation.roster.roster_extras"><code class="docutils literal notranslate"><span class="pre">roster_extras()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.compilation.roster.roster_frame"><code class="docutils literal notranslate"><span class="pre">roster_frame()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.compilation.roster.roster_row"><code class="docutils literal notranslate"><span class="pre">roster_row()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.compilation.roster.value_key"><code class="docutils literal notranslate"><span class="pre">value_key()</span></code></a></li>
 </ul>
 </li>

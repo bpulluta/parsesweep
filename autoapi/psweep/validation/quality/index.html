@@ -230,6 +230,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -242,6 +243,8 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -262,6 +265,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/targets/index.html">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/urls/index.html">psweep.discovery.urls</a></li>
@@ -293,6 +297,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -367,7 +372,7 @@
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.validation.quality.failed_documents" title="psweep.validation.quality.failed_documents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">failed_documents</span></code></a>(→ set[str])</p></td>
-<td><p>Document paths with errors in the newest run manifest (by <code class="docutils literal notranslate"><span class="pre">timing.finished_at</span></code>).</p></td>
+<td><p>Document paths with errors in the newest run manifest.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.validation.quality.model_quality" title="psweep.validation.quality.model_quality"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_quality</span></code></a>(→ dict[str, dict])</p></td>
 <td><p>Quality and cost of each contender's current records (<code class="docutils literal notranslate"><span class="pre">None</span></code> = blank).</p></td>
@@ -381,7 +386,7 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.validation.quality.failed_documents">
 <span class="sig-prename descclassname"><span class="pre">psweep.validation.quality.</span></span><span class="sig-name descname"><span class="pre">failed_documents</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">extracted_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">set</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.validation.quality.failed_documents" title="Link to this definition">¶</a></dt>
-<dd><p>Document paths with errors in the newest run manifest (by <code class="docutils literal notranslate"><span class="pre">timing.finished_at</span></code>).</p>
+<dd><p>Document paths with errors in the newest run manifest.</p>
 </dd></dl>
 
 <dl class="py function">

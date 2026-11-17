@@ -15,6 +15,10 @@ Functions
 .. autoapisummary::
 
    psweep.compilation.roster.compile_roster
+   psweep.compilation.roster.roster_attributes
+   psweep.compilation.roster.roster_extras
+   psweep.compilation.roster.roster_frame
+   psweep.compilation.roster.roster_row
    psweep.compilation.roster.value_key
 
 
@@ -24,6 +28,26 @@ Module Contents
 .. py:function:: compile_roster(records: collections.abc.Iterable[dict[str, Any]], metadata, roster: psweep.extraction.roster.Roster, targets_spec: Any) -> tuple[pandas.DataFrame, dict[str, int]]
 
    Return the roster-shaped frame (field-name columns) and accounting stats.
+
+
+.. py:function:: roster_attributes(metadata, roster: psweep.extraction.roster.Roster) -> tuple[list[str], set[str]]
+
+   Derive output attributes and evidence fields once from the schema contract.
+
+
+.. py:function:: roster_extras(target: dict, roster: psweep.extraction.roster.Roster, attributes: collections.abc.Iterable[str]) -> dict[str, str]
+
+   Validate and project roster passthrough without overwriting schema/output columns.
+
+
+.. py:function:: roster_frame(rows: list[dict], roster: psweep.extraction.roster.Roster, attributes: list[str]) -> pandas.DataFrame
+
+   Project both roster resolvers to one deterministic output-column contract.
+
+
+.. py:function:: roster_row(row: dict, extras: dict, sources: collections.abc.Iterable[str], confidence: str, evidence: dict) -> dict
+
+   Assemble the shared roster output envelope around resolver-specific evidence.
 
 
 .. py:function:: value_key(value: Any) -> tuple[str, Any]

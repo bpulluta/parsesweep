@@ -1,0 +1,45 @@
+psweep.discovery.attempt_budget
+===============================
+
+.. py:module:: psweep.discovery.attempt_budget
+
+.. autoapi-nested-parse::
+
+   Thread-safe outbound-attempt reservations; cache hits require no reservation.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.attempt_budget.AttemptBudget
+
+
+Module Contents
+---------------
+
+.. py:class:: AttemptBudget(*, max_review_calls: int | None = None, max_search_calls: int | None = None)
+
+   Limit physical search attempts per run and review attempts per target/run.
+
+
+   .. py:method:: reserve_review(target_key: str) -> None
+
+      Reserve one grading, escalation, deduplication or retry request.
+
+
+
+   .. py:method:: reserve_search() -> None
+
+      Reserve one live search, including transient retries.
+
+
+
+   .. py:method:: snapshot() -> dict
+
+      Read counters without admitting more work.
+
+
+

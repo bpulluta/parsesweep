@@ -230,6 +230,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -242,6 +243,8 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -262,6 +265,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/urls/index.html">psweep.discovery.urls</a></li>
@@ -293,6 +297,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -400,6 +405,32 @@ starter covering all four stages, and every key is documented once in
 <section id="fixed">
 <h3>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>Large runs no longer retain completed section text or failed-review traceback
+graphs. Review hashes each uncached source once; reconciliation reuses bounded
+worker clients while retaining per-target attempt receipts.</p></li>
+<li><p>Locator subject anchoring uses configured identity rather than comma-parsing
+display labels or guessing from metadata; names containing commas stay intact.</p></li>
+<li><p>Source-review qualifications now include sampled-segment verified identity/content,
+scope, claim-kind and optional publication evidence. Conservative comparison keeps
+complementary/conflicting observations; optional YAML coverage guides selection.</p></li>
+<li><p>Capped new downloads and fallback queries distribute work fairly across owners;
+checkpoint loads hash stable shared artifacts once per load without cross-run trust.</p></li>
+<li><p>Source-review grades3–4 require mandatory domain-described evidence even for
+partial matches; deciding source content must be cited rather than inferred.</p></li>
+<li><p>Aggregate search accounting includes fallback attempts, not initial queries alone.</p></li>
+<li><p>Invalid reconciliation selections receive at most one schema-guided repair;
+diagnostics identify required fields/constraints and all calls remain metered.
+Valid abstentions are not retried and unsupported claims are never generated.</p></li>
+<li><p>Locators retain target identity/header context rather than selecting unrelated
+sections by keyword density alone. Subject/version-aware caches invalidate
+old selections; targeting runs inside bounded extraction document workers.</p></li>
+<li><p>HTML section targeting checks readable content against <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code> after
+removing markup, scripts/styles and navigation, avoiding unnecessary locator
+calls for short articles on large web pages.</p></li>
+<li><p>Discovery resumes verified downloads from completed targets when acquisition
+settings change, fetching only new/missing/changed files unless <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> is
+passed. Extraction-only model aliases no longer invalidate discovery; its
+fingerprint includes only the resolved discovery-review model.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">filelock</span></code> is overridden to 4.2.x (CVE-2026-112909, CVE-2026-112910);
 LiteLLM’s <code class="docutils literal notranslate"><span class="pre">&lt;4</span></code> cap only affects its proxy CLI. The dependency audit is clean.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">selection.require_any</span></code> matches source URLs, titles and snippets, so opaque
@@ -456,6 +487,19 @@ reprs. In roster mode an empty list or object is <code class="docutils literal n
 <section id="added">
 <h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>Automatic discovery qualification with per-target review description/context,
+optional stronger-model escalation, one weak-target fallback-query stage and
+physical search/review attempt budgets. Cache/checkpoint resume retains
+successful work; domain meanings stay in YAML and verified URLs are optional.</p></li>
+<li><p>Validation populated-answer precision, coverage, reference-supported recall
+and target-level summaries. Reference blanks are unlabelled; explicit NA or
+<code class="docutils literal notranslate"><span class="pre">&lt;title&gt;__assessed=true</span></code> labels absence. Pooled dependent-cell intervals are
+not reported as independent observations; <code class="docutils literal notranslate"><span class="pre">min_accuracy</span></code> remains assessed accuracy.</p></li>
+<li><p>Optional roster <code class="docutils literal notranslate"><span class="pre">compilation.reconciliation</span></code> keeps YAML-defined field groups
+atomic and selects existing source observations for contested/schema-invalid
+targets. Selection-only replies, abstention, bounded requests, dated evidence,
+content-addressed decisions and durable attempt receipts preserve provenance
+and costs. Compilation remains model-free by default and during dry runs.</p></li>
 <li><p>Page targeting follows references. After locating the section, the locator
 reads the selected pages and adds the parts they refer to elsewhere in the
 document (e.g. “charges specified in Tariff Sheet 75”), then the parts those

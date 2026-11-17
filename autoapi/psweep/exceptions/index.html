@@ -230,6 +230,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compilation/reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -242,6 +243,8 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../discovery/adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../discovery/attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -262,6 +265,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../discovery/review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/targets/index.html">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../discovery/urls/index.html">psweep.discovery.urls</a></li>
@@ -293,6 +297,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -376,31 +381,34 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.APIKeyError" title="psweep.exceptions.APIKeyError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">APIKeyError</span></code></a></p></td>
 <td><p>Raised when no valid API credentials are found in the environment.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.CompilationError" title="psweep.exceptions.CompilationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">CompilationError</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.AttemptBudgetExceeded" title="psweep.exceptions.AttemptBudgetExceeded"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AttemptBudgetExceeded</span></code></a></p></td>
+<td><p>No request was sent; pending work can resume under a new run budget.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.CompilationError" title="psweep.exceptions.CompilationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">CompilationError</span></code></a></p></td>
 <td><p>Raised when JSON→Excel/CSV compilation fails.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.ConfigurationError" title="psweep.exceptions.ConfigurationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ConfigurationError</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.ConfigurationError" title="psweep.exceptions.ConfigurationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ConfigurationError</span></code></a></p></td>
 <td><p>Raised when a run.yaml or schema cannot be loaded or validated.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.DiscoveryError" title="psweep.exceptions.DiscoveryError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscoveryError</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.DiscoveryError" title="psweep.exceptions.DiscoveryError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscoveryError</span></code></a></p></td>
 <td><p>Raised when web document discovery fails.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.ExtractionError" title="psweep.exceptions.ExtractionError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ExtractionError</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.ExtractionError" title="psweep.exceptions.ExtractionError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ExtractionError</span></code></a></p></td>
 <td><p>Raised when document extraction fails at the engine level.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.ParseSweepError" title="psweep.exceptions.ParseSweepError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ParseSweepError</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.ParseSweepError" title="psweep.exceptions.ParseSweepError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ParseSweepError</span></code></a></p></td>
 <td><p>Base exception for all ParseSweep errors.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.PipelineError" title="psweep.exceptions.PipelineError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PipelineError</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.PipelineError" title="psweep.exceptions.PipelineError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PipelineError</span></code></a></p></td>
 <td><p>Raised when a multi-stage pipeline run fails.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaError" title="psweep.exceptions.SchemaError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaError</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaError" title="psweep.exceptions.SchemaError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaError</span></code></a></p></td>
 <td><p>Raised when a schema file is missing, malformed, or fails $metadata validation.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaMetadataError" title="psweep.exceptions.SchemaMetadataError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaMetadataError</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaMetadataError" title="psweep.exceptions.SchemaMetadataError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaMetadataError</span></code></a></p></td>
 <td><p>Raised when a schema's <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> section is missing or invalid.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaValidationError" title="psweep.exceptions.SchemaValidationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaValidationError</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaValidationError" title="psweep.exceptions.SchemaValidationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaValidationError</span></code></a></p></td>
 <td><p>Raised when a schema's structure fails validation.</p></td>
 </tr>
 </tbody>
@@ -414,6 +422,14 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.exceptions.</span></span><span class="sig-name descname"><span class="pre">APIKeyError</span></span><a class="headerlink" href="#psweep.exceptions.APIKeyError" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#psweep.exceptions.ConfigurationError" title="psweep.exceptions.ConfigurationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ConfigurationError</span></code></a></p>
 <p>Raised when no valid API credentials are found in the environment.</p>
+<p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="psweep.exceptions.AttemptBudgetExceeded">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.exceptions.</span></span><span class="sig-name descname"><span class="pre">AttemptBudgetExceeded</span></span><a class="headerlink" href="#psweep.exceptions.AttemptBudgetExceeded" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">RuntimeError</span></code></p>
+<p>No request was sent; pending work can resume under a new run budget.</p>
 <p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
@@ -555,6 +571,7 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <li><a class="reference internal" href="#exceptions">Exceptions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.exceptions.APIKeyError"><code class="docutils literal notranslate"><span class="pre">APIKeyError</span></code></a></li>
+<li><a class="reference internal" href="#psweep.exceptions.AttemptBudgetExceeded"><code class="docutils literal notranslate"><span class="pre">AttemptBudgetExceeded</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.CompilationError"><code class="docutils literal notranslate"><span class="pre">CompilationError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.ConfigurationError"><code class="docutils literal notranslate"><span class="pre">ConfigurationError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.DiscoveryError"><code class="docutils literal notranslate"><span class="pre">DiscoveryError</span></code></a></li>

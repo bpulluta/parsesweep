@@ -15,6 +15,8 @@ Submodules
 .. toctree::
    :maxdepth: 1
 
+   /autoapi/psweep/discovery/adaptive_search/index
+   /autoapi/psweep/discovery/attempt_budget/index
    /autoapi/psweep/discovery/browser/index
    /autoapi/psweep/discovery/candidate_selector/index
    /autoapi/psweep/discovery/code_host_adapters/index
@@ -30,6 +32,7 @@ Submodules
    /autoapi/psweep/discovery/policies/index
    /autoapi/psweep/discovery/publication/index
    /autoapi/psweep/discovery/request_inputs/index
+   /autoapi/psweep/discovery/review_policy/index
    /autoapi/psweep/discovery/targets/index
    /autoapi/psweep/discovery/transport/index
    /autoapi/psweep/discovery/urls/index

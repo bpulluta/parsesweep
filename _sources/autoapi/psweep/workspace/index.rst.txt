@@ -82,6 +82,13 @@ Module Contents
       Internal pointer to the most recent discovery run.
 
 
+   .. py:property:: reconciliation_cache
+      :type: pathlib.Path
+
+
+      Verified decisions, alternatives and durable usage outside compiled exports.
+
+
    .. py:property:: review_cache
       :type: pathlib.Path
 

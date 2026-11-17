@@ -1,0 +1,39 @@
+psweep.utils.evidence
+=====================
+
+.. py:module:: psweep.utils.evidence
+
+.. autoapi-nested-parse::
+
+   Pure source-quote normalization shared by discovery, extraction and validation.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.evidence.normalize
+   psweep.utils.evidence.quote_in_segments
+   psweep.utils.evidence.quote_present
+
+
+Module Contents
+---------------
+
+.. py:function:: normalize(text: Any) -> str
+
+   NFKD, remove marks/soft hyphens, join line hyphenation, normalize punctuation.
+
+
+.. py:function:: quote_in_segments(quote: Any, segments: collections.abc.Iterable[str]) -> bool
+
+   Match within one real sampled segment; never bridge disconnected windows.
+
+
+.. py:function:: quote_present(quote: Any, source_text: str) -> bool
+
+   Match on normalized word boundaries; ellipsis fragments must occur in order.
+
+

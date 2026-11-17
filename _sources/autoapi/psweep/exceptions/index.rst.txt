@@ -25,6 +25,7 @@ Exceptions
 .. autoapisummary::
 
    psweep.exceptions.APIKeyError
+   psweep.exceptions.AttemptBudgetExceeded
    psweep.exceptions.CompilationError
    psweep.exceptions.ConfigurationError
    psweep.exceptions.DiscoveryError
@@ -45,6 +46,16 @@ Module Contents
 
 
    Raised when no valid API credentials are found in the environment.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:exception:: AttemptBudgetExceeded
+
+   Bases: :py:obj:`RuntimeError`
+
+
+   No request was sent; pending work can resume under a new run budget.
 
    Initialize self.  See help(type(self)) for accurate signature.
 

@@ -49,7 +49,7 @@ Functions
 Module Contents
 ---------------
 
-.. py:class:: SectionLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, llm_config: dict | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, keywords: list[str] | None = None, snippet_chars: int = 600)
+.. py:class:: SectionLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, llm_config: dict | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, keywords: list[str] | None = None, snippet_chars: int = 600, source_context: psweep.extraction.provenance.SourceContext | None = None, subject: str | None = None)
 
    Bases: :py:obj:`psweep.extraction.page_locator._BaseLocator`
 

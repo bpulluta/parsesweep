@@ -230,6 +230,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -242,6 +243,8 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -262,6 +265,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/urls/index.html">psweep.discovery.urls</a></li>
@@ -293,6 +297,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -402,9 +407,29 @@ pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </
 <span class="w">  </span><span class="nt">partition_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">state</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">name</span><span class="p p-Indicator">]</span><span class="w">         </span><span class="c1"># curated/by_state/&lt;s&gt;/by_name/&lt;n&gt;/</span>
 <span class="w">  </span><span class="nt">selection</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">max_per_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">  </span><span class="c1"># Optional automatic qualification; domain requirements stay in this YAML.</span>
+<span class="w">  </span><span class="c1"># document_review:</span>
+<span class="w">  </span><span class="c1">#   document_description: "Installation manual for {name} in {state}."</span>
+<span class="w">  </span><span class="c1">#   model: secondary</span>
+<span class="w">  </span><span class="c1">#   escalate_model: primary</span>
+<span class="w">  </span><span class="c1">#   keep_top: 2</span>
+<span class="w">  </span><span class="c1">#   coverage:</span>
+<span class="w">  </span><span class="c1">#     installation: "Explicit installation instructions for {name}."</span>
+<span class="w">  </span><span class="c1">#     specification: "Applicable technical specifications for {name}."</span>
+<span class="w">  </span><span class="c1"># search:</span>
+<span class="w">  </span><span class="c1">#   cache: true</span>
+<span class="w">  </span><span class="c1">#   fallback_queries: ['"{name}" {state} manufacturer installation manual']</span>
+<span class="w">  </span><span class="c1"># runtime:</span>
+<span class="w">  </span><span class="c1">#   max_review_calls: 8              # physical attempts per target/run</span>
+<span class="w">  </span><span class="c1">#   max_search_calls: 100            # physical attempts across this run</span>
 <span class="nt">extraction</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">primary</span>
 <span class="nt">compilation</span><span class="p">:</span>
+<span class="w">  </span><span class="c1"># Optional roster conflict resolver: docs/config-reference.md</span>
+<span class="w">  </span><span class="c1"># reconciliation:</span>
+<span class="w">  </span><span class="c1">#   enabled: true</span>
+<span class="w">  </span><span class="c1">#   model: primary</span>
+<span class="w">  </span><span class="c1">#   field_groups: [[amount, unit]]    # exact fields from your schema</span>
 <span class="w">  </span><span class="nt">output</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">default_format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">csv</span><span class="w">               </span><span class="c1"># csv | excel | both</span>
 <span class="nt">validation</span><span class="p">:</span>
@@ -548,6 +573,10 @@ both row locations. <code class="docutils literal notranslate"><span class="pre"
 <td><p>—</p></td>
 <td><p>Extra SerpApi parameters sent verbatim (<code class="docutils literal notranslate"><span class="pre">{engine:</span> <span class="pre">bing}</span></code>, <code class="docutils literal notranslate"><span class="pre">{tbm:</span> <span class="pre">nws}</span></code>); <code class="docutils literal notranslate"><span class="pre">q</span></code>, <code class="docutils literal notranslate"><span class="pre">num</span></code>, <code class="docutils literal notranslate"><span class="pre">api_key</span></code> are reserved.</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fallback_queries</span></code></p></td>
+<td><p>absent/off</p></td>
+<td><p>One additional set of target templates, only for targets below <code class="docutils literal notranslate"><span class="pre">document_review.keep_top</span></code> distinct automatically qualified sources. Requires <code class="docutils literal notranslate"><span class="pre">document_review.document_description</span></code>.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -640,6 +669,14 @@ query variants of a configured page (its pagination), which belong to that page.
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">runtime.min_request_interval_ms</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
 <td><p>Minimum delay between outbound requests.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">runtime.max_review_calls</span></code></p></td>
+<td><p>unbounded</p></td>
+<td><p>Physical review LLM attempts per target per run, including escalation, transport retries, malformed-grade reattempts and comparative deduplication. Cache reuse consumes none.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">runtime.max_search_calls</span></code></p></td>
+<td><p>unbounded</p></td>
+<td><p>Physical live search attempts across the run, including retries and fallback/recovery searches. Cache reuse consumes none.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">retry_policy.max_attempts</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">3</span></code></p></td>
@@ -846,45 +883,158 @@ leave screening off in domains that need proposals and change histories.</p>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">document_description</span></code></p></td>
 <td><p>—</p></td>
-<td><p>What a correct document is; may use <code class="docutils literal notranslate"><span class="pre">{field}</span></code> target templates.</p></td>
+<td><p>What a correct document is; rendered separately per target with required <code class="docutils literal notranslate"><span class="pre">{field}</span></code> and optional <code class="docutils literal notranslate"><span class="pre">{field?}</span></code> templates. Missing required/malformed tokens fail preflight.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">context_fields</span></code></p></td>
+<td><p>identity only</p></td>
+<td><p>Extra roster metadata columns supplied as scope hints (e.g. organization, address). Names must exist; blank hint values are omitted. Does not change <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> or target IDs.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model</span></code></p></td>
 <td><p><a class="reference internal" href="#environment-variables">default model</a></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">models:</span></code> alias or model name.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">escalate_model</span></code></p></td>
+<td><p>absent/off</p></td>
+<td><p>One stronger semantic grading decision for grade-2 ambiguity or failed/malformed initial grading, subject to actual-attempt budgets.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">keep_top</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
 <td><p>Primary documents kept per target.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_chars</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">coverage</span></code></p></td>
+<td><p>absent/off</p></td>
+<td><p>Domain-defined label → evidence-description map. Descriptions support target templates. Verified labels guide complementary source selection and trigger fallback for missing coverage. Labels use letters/digits/<code class="docutils literal notranslate"><span class="pre">_</span></code>/<code class="docutils literal notranslate"><span class="pre">-</span></code>, starting with a letter.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_chars</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">12000</span></code></p></td>
 <td><p>Text sent per document.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">keywords</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">keywords</span></code></p></td>
 <td><p>classifier keywords</p></td>
 <td><p>Terms used to pick the excerpt sent for review.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">deduplicate_redundant</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">deduplicate_redundant</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Drop redundant copies before keeping the top ones.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">deduplication.key_fields</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">deduplication.key_fields</span></code></p></td>
 <td><p>—</p></td>
 <td><p>Fields that identify redundant copies (e.g. <code class="docutils literal notranslate"><span class="pre">[path_basename,</span> <span class="pre">review_doc_kind]</span></code>).</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>The reviewer grades each document 0–4 against an anchored rubric. In
+<p>The reviewer grades each document 0–4 against an anchored rubric. Grades3–4
+must satisfy every mandatory requirement in <code class="docutils literal notranslate"><span class="pre">document_description</span></code>; ‘partial’
+means missing optional detail, not missing required evidence. The reason quotes
+the deciding source content or identifies what is absent. In
 <code class="docutils literal notranslate"><span class="pre">review.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">relevance</span></code> = grade / 4 and <code class="docutils literal notranslate"><span class="pre">llm_is_primary</span></code> = grade ≥ 3;
-selection keeps the top <code class="docutils literal notranslate"><span class="pre">keep_top</span></code> non-redundant primaries per target, ranked by
-relevance. Grades are cached by content and grading inputs in
+selection keeps at most <code class="docutils literal notranslate"><span class="pre">keep_top</span></code> non-redundant primaries per target. Without
+coverage, grades and reproducible provenance break ties. With coverage, newly
+covered verified labels take priority, then grade; supported publication dates
+break ties only for matching scope/claim-kind and compatible date precision.
+Grades are cached by content and grading inputs in
 <code class="docutils literal notranslate"><span class="pre">discovered/.review_cache/</span></code> and reused across runs. Recordings are graded on
 their transcript: a run’s copy inherits the curated copy’s transcript (matched
 by SHA-256) before review. A recording not yet transcribed (first run) is kept
 without review and transcribed at extraction. Edit <code class="docutils literal notranslate"><span class="pre">human_decision</span></code> (<code class="docutils literal notranslate"><span class="pre">keep</span></code>/<code class="docutils literal notranslate"><span class="pre">reject</span></code>) in <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> and run
 <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span> <span class="pre">--config</span> <span class="pre">…</span></code> to republish the curated selection; the next
 <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span></code> withdraws the records of documents it dropped.</p>
+</section>
+<section id="automatic-qualification-and-bounded-recovery">
+<h3>Automatic qualification and bounded recovery<a class="headerlink" href="#automatic-qualification-and-bounded-recovery" title="Link to this heading">¶</a></h3>
+<p>Review receives structured target identity plus configured context fields as
+untrusted hints, never proof of a source fact. Templates change the description
+per target without changing the data contract. Source text must establish the
+specific entity/scope. Grades0–1 reject; grades3–4 qualify; grade2 can escalate
+when <code class="docutils literal notranslate"><span class="pre">escalate_model</span></code> is configured. Exhausted provider routes are not repeatedly
+hammered during that run: eligible escalation is used or work remains pending.
+Successful initial grades are reused when a failed escalation resumes.
+Document/request-specific rejections do not disable unrelated requests on that
+route. Comparative deduplication can also use the configured escalation route
+after an exhausted initial-route failure, with both attempts budgeted and metered.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">search.fallback_queries</span></code>, discovery runs at most one extra stage for
+weak targets below <code class="docutils literal notranslate"><span class="pre">document_review.keep_top</span></code> distinct qualified sources or
+missing configured coverage labels, including targets with zero downloads.
+It does not infer field-level gaps from
+schema field names. Pending search/download/review failures must finish first;
+provider outages do not launch search loops. Combined initial/fallback sources
+are deduplicated by exact content/final URL, globally top-N selected and subject
+to host diversity. Configured target URLs explicitly bypass relevance review
+and are not counted as automatically verified evidence.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">discovery</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">queries</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">'"{name}"</span><span class="nv"> </span><span class="s">"{area?}"</span><span class="nv"> </span><span class="s">technical</span><span class="nv"> </span><span class="s">specification'</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">search</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">cache</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">fallback_queries</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">'"{name}"</span><span class="nv"> </span><span class="s">"{area?}"</span><span class="nv"> </span><span class="s">manufacturer</span><span class="nv"> </span><span class="s">installation</span><span class="nv"> </span><span class="s">record'</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">document_review</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">document_description</span><span class="p">:</span><span class="w"> </span><span class="s">"Direct</span><span class="nv"> </span><span class="s">specification</span><span class="nv"> </span><span class="s">evidence</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">{name}</span><span class="nv"> </span><span class="s">at</span><span class="nv"> </span><span class="s">{address?};</span><span class="nv"> </span><span class="s">not</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">sibling</span><span class="nv"> </span><span class="s">asset."</span>
+<span class="w">    </span><span class="nt">context_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">organization</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">address</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secondary</span>
+<span class="w">    </span><span class="nt">escalate_model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">primary</span>
+<span class="w">    </span><span class="nt">keep_top</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">    </span><span class="nt">coverage</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">specification</span><span class="p">:</span><span class="w"> </span><span class="s">"An</span><span class="nv"> </span><span class="s">explicit</span><span class="nv"> </span><span class="s">capacity</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">unit</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">{name}."</span>
+<span class="w">      </span><span class="nt">applicability</span><span class="p">:</span><span class="w"> </span><span class="s">"A</span><span class="nv"> </span><span class="s">direct</span><span class="nv"> </span><span class="s">statement</span><span class="nv"> </span><span class="s">of</span><span class="nv"> </span><span class="s">which</span><span class="nv"> </span><span class="s">variant/site</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">specification</span><span class="nv"> </span><span class="s">covers."</span>
+<span class="w">  </span><span class="nt">selection</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">max_per_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8</span>
+<span class="w">    </span><span class="nt">max_per_host_per_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">  </span><span class="nt">runtime</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">max_review_calls</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+<span class="w">    </span><span class="nt">max_search_calls</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span>
+</pre></div>
+</div>
+<p>Limits above are examples, not a recommendation for every domain. Review-call
+limits apply per target per run; search limits apply across the run. Both count
+physical requests/retries, including failures with unknown pricing, and cache
+hits are free. Guard exhaustion sends no request and leaves resumable pending
+work. These bound attempts, not dollars when provider pricing/usage is unknown.</p>
+<p>Adaptive search persists query results even when ordinary <code class="docutils literal notranslate"><span class="pre">search.cache</span></code> is
+disabled (reported in notes) so interrupted stages can resume without repaying
+valid queries. Configured TTL remains honored; expired responses may need a
+new request. Completed unchanged targets still skip work. Low source coverage
+after exhausting fallback is reported separately from an interrupted failure.
+Adaptive dry runs/config checks make no paid calls. Without fallback,
+discovery dry-run search semantics remain unchanged.</p>
+</section>
+<section id="grounded-review-evidence-and-bounded-selection">
+<h3>Grounded review evidence and bounded selection<a class="headerlink" href="#grounded-review-evidence-and-bounded-selection" title="Link to this heading">¶</a></h3>
+<p>The existing grading call returns <code class="docutils literal notranslate"><span class="pre">review_evidence</span></code>: identity/content quotations,
+quoted scope and claim-kind descriptions, optional quoted source-publication date
+and precision, and quoted configured coverage labels. Accepted grades3–4 require
+identity/content and scope/claim evidence that occurs in an actual sampled segment.
+Quotes cannot bridge disconnected sample windows or borrow target metadata.
+Invalid/fabricated evidence follows the existing failed-review/escalation path;
+old grade contracts are invalidated by prompt/schema identity. This verifies text
+occurrence, not entailment, factual truth or document-wide completeness.</p>
+<p>Source dates are calendar-valid ISO values with day/month/year precision, tied
+to quoted text; unknown dates remain unknown. Download timestamps never substitute
+for publication dates. Direct/reported statements and scope stay source-specific
+hints in the extraction record and reconciliation input; they are not automatically
+promoted to achieved facts or a domain-independent authority ranking.</p>
+<p>Comparative dedup uses verified source evidence and requires references for keep/drop
+decisions. Complementary labels, differing scopes/history, conflicting claims or
+unsupported/cyclic decisions cannot silently erase a source. Structural keys group
+comparisons but differing content is not dropped on key equality alone. Exact-byte
+and URL mirrors remain cheap to deduplicate.</p>
+<p>Finite <code class="docutils literal notranslate"><span class="pre">runtime.max_files</span></code> allocates new ordinary fetch opportunities round-robin
+across owners, retaining their ranking. Configured/reused outcomes stay free;
+unbounded file acquisition retains its existing order. Fallback queries likewise
+run by query slot across weak targets before the next slot, preventing early targets
+from consuming every remaining request. Partial budgets/HTTP/provider failures
+remain pending; exhausted missing coverage is distinct and reported in compact
+target summaries. One source can cover multiple labels; labels do not bypass
+mandatory qualification or automatically exceed <code class="docutils literal notranslate"><span class="pre">keep_top</span></code>/host limits.</p>
+<p>Checkpoint verification memoizes actual hashes only within a load by file identity
+and stat fingerprint, so shared artifacts are hashed once rather than once per owner.
+It rejects symlinks, missing/changed files and changes during hashing; there is no
+persisted stat-only trust across runs. Disk review caches avoid retaining duplicate
+successful decisions in long-lived memory; direct no-cache reviewer use can still
+retain decision/failure memos for its instance lifetime.</p>
+<p>No manually verified per-location URLs/aliases are required. Domain-specific
+source preferences, scope and query wording stay in YAML; schema fields and
+validity rules remain the extraction data contract. Qualification grades and
+quote presence do not independently establish truth or an accuracy threshold.</p>
 </section>
 <section id="policy-and-retention">
 <h3><code class="docutils literal notranslate"><span class="pre">policy</span></code> and <code class="docutils literal notranslate"><span class="pre">retention</span></code><a class="headerlink" href="#policy-and-retention" title="Link to this heading">¶</a></h3>
@@ -1004,6 +1154,19 @@ relative to the input folder, or by file name; give a file one row per range.
 CSV rows win; leave both pages empty to force the full document. <code class="docutils literal notranslate"><span class="pre">pages.range</span></code>
 (or <code class="docutils literal notranslate"><span class="pre">--pages</span> <span class="pre">27,68-73</span></code>) selects pages for a single file: comma-separated pages
 and inclusive ranges.</p>
+<p>Targeting normally runs within each bounded extraction worker, so a slow
+locator doesn’t hold up every other document. A fresh run with existing output
+performs bounded targeting preflight before deleting old records. Its <code class="docutils literal notranslate"><span class="pre">model</span></code>
+is independent of <code class="docutils literal notranslate"><span class="pre">extraction.model</span></code>; when omitted it inherits that model.
+Target-scoped selections retain subject identity/header context. The subject
+comes from the last configured <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> field (the roster’s name field),
+not from parsing a display label or guessing metadata fields. Discovery labels
+and metadata remain untrusted scope hints, never factual evidence. Cache
+identities include the configured identity, subject hints and locator behavior
+version. HTML/HTM targeting uses readable
+section text against <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code>, not raw markup size, so scripts/styles
+and navigation do not turn a short article into a paid locator call. Locator
+failures fall back to full-document extraction, subject to <code class="docutils literal notranslate"><span class="pre">max_context</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> shows the locator model the opening lines of every page and asks
 for the pages of the described section. It then reads those pages in full and
 adds the parts they refer to elsewhere in the document, such as “charges
@@ -1017,7 +1180,9 @@ be located, the full document is extracted. If a reference pass fails, the
 pages found so far are used and the document is located again on the next run.
 With <code class="docutils literal notranslate"><span class="pre">save_discovered</span></code>, <code class="docutils literal notranslate"><span class="pre">extracted/discovered_page_ranges.csv</span></code> (the <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code>
 columns, one row per range) lists the pages behind every current record, reused
-records included.</p>
+records included. Non-PDF selections are saved under <code class="docutils literal notranslate"><span class="pre">extracted/.sections/</span></code> as
+each document finishes; completed section text is then released from memory,
+whether saving is enabled or not.</p>
 </section>
 <section id="llm-calls">
 <h3>LLM calls<a class="headerlink" href="#llm-calls" title="Link to this heading">¶</a></h3>
@@ -1056,7 +1221,9 @@ each file is transcribed once.</p>
 <section id="compilation">
 <h2>Compilation<a class="headerlink" href="#compilation" title="Link to this heading">¶</a></h2>
 <p>Compilation merges <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/extracted/</span></code> into
-<code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/compiled/&lt;domain&gt;.csv</span></code> / <code class="docutils literal notranslate"><span class="pre">.xlsx</span></code> and makes no LLM calls.</p>
+<code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/compiled/&lt;domain&gt;.csv</span></code> / <code class="docutils literal notranslate"><span class="pre">.xlsx</span></code>. By default it makes no LLM
+calls; optional roster reconciliation below uses paid calls only for disputed
+or schema-inconsistent answers.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -1140,6 +1307,93 @@ agreeing sources, <code class="docutils literal notranslate"><span class="pre">m
 <code class="docutils literal notranslate"><span class="pre">conflict:</span> <span class="pre">true</span></code> when sources disagree).</p>
 <p>Excel batches above 1,048,575 rows or with cells over 32,767 characters fail
 before export; use CSV for large outputs.</p>
+<section id="optional-evidence-reconciliation">
+<h3>Optional evidence reconciliation<a class="headerlink" href="#optional-evidence-reconciliation" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">compilation.reconciliation</span></code> is opt-in and requires roster mode. It selects
+existing source observations, rather than generating replacement facts. Keep
+fields, descriptions and ordinary JSON Schema constraints in the schema; put
+resolution behavior only in YAML:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">compilation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">reconciliation</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">primary</span>
+<span class="w">    </span><span class="nt">source_date_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source_provenance.document_date</span>
+<span class="w">    </span><span class="nt">field_groups</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">amount</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">unit</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">status</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">status_description</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">instructions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;-</span>
+<span class="w">      </span><span class="no">Prefer statements about the queried asset over related assets. Distinguish</span>
+<span class="w">      </span><span class="no">achieved history from superseded plans and abstain where scope is unclear.</span>
+</pre></div>
+</div>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enabled</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Enable atomic, evidence-preserving roster reconciliation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model</span></code></p></td>
+<td><p>extraction model</p></td>
+<td><p>Existing <code class="docutils literal notranslate"><span class="pre">models:</span></code> alias or concrete model.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">source_date_field</span></code></p></td>
+<td><p>absent/unknown</p></td>
+<td><p>Exact root-relative payload path to the source’s publication/update date, optionally a <code class="docutils literal notranslate"><span class="pre">{value,</span> <span class="pre">quote}</span></code> field. Invalid or absent dates remain unknown; extraction time is never used as publication time.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">field_groups</span></code></p></td>
+<td><p>singleton item fields</p></td>
+<td><p>Disjoint lists of exact main-item field names selected together from one original item. Identity fields cannot be grouped. Structured/evidence values are already indivisible.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">instructions</span></code></p></td>
+<td><p>generic evidence rules</p></td>
+<td><p>Domain-authored interpretation guidance, not new fields or generated facts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_context</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">100000</span></code></p></td>
+<td><p>Character budget for full prompt, competing observations, schema and response contract. Oversized targets remain unresolved; competitors are not silently truncated.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Agreeing schema-valid answers need no model call. Disputed units or an invalid
+assembled item trigger one logical request per target (transient provider
+retries still apply). The model returns supplied observation IDs or abstains;
+IDs, atomic selections and assembled item constraints are validated before
+export. A structurally invalid decision gets at most one schema-guided repair
+request using the same evidence and budget; valid abstentions are not retried.
+Failure diagnostics name fields/constraints without echoing provider content.
+Both requests and provider retries are included in metered accounting.
+Unresolved claims are <code class="docutils literal notranslate"><span class="pre">NA</span></code>, not an inconsistent majority-vote fallback.
+Nonnullable requirements that prevent abstention remain explicit failures.
+A partial result exits 3; no usable answers with failures exits 1. Dry runs and
+config checks make no calls or cache writes and report pending targets.</p>
+<p>Per-field <code class="docutils literal notranslate"><span class="pre">evidence</span></code> retains value/quote/URL/conflict and adds source date,
+observation ID and resolution state. <code class="docutils literal notranslate"><span class="pre">_reconciliation</span></code> contains the reason,
+unresolved units and a <code class="docutils literal notranslate"><span class="pre">decisions/&lt;hash&gt;.json</span></code> alternatives reference relative
+to <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/.reconciliation/</span></code>. These sidecars retain original competing
+observations without growing spreadsheet cells past Excel limits. Confidence
+is support bookkeeping, not certified truth or automatic model confidence.</p>
+<p>Verified content-addressed decisions and durable attempt receipts live in
+<code class="docutils literal notranslate"><span class="pre">.reconciliation/</span></code>; identity includes the observations, schema, instructions,
+groups, resolved model/routing and algorithm version. Cached choices are
+revalidated and reused without credentials or new spending; cached abstentions
+remain visibly unresolved. Provider/budget/invalid-answer failures are not
+reused as authoritative decisions. <code class="docutils literal notranslate"><span class="pre">compile</span> <span class="pre">--fresh</span></code> replaces exported tables,
+not verified decisions. Actual calls, retries, unknown-price calls and failures
+are included in accounting, even when a later export fails.</p>
+<p>This does not automatically discover missing sources, turn publication recency
+into source authority, distinguish phases absent from the contract, or detect
+semantic contradictions expressed only in prose when all supplied values agree.
+Group related facts and describe scope/phase distinctions in the existing
+schema and YAML instructions; rows mode intentionally rejects this option.</p>
+</section>
 </section>
 <section id="validation">
 <h2>Validation<a class="headerlink" href="#validation" title="Link to this heading">¶</a></h2>
@@ -1175,6 +1429,36 @@ contender models and human reference sheets. <code class="docutils literal notra
 </tbody>
 </table>
 </div>
+<section id="precision-coverage-and-reference-labels">
+<h3>Precision, coverage and reference labels<a class="headerlink" href="#precision-coverage-and-reference-labels" title="Link to this heading">¶</a></h3>
+<p>Validation reports populated-answer precision (<code class="docutils literal notranslate"><span class="pre">correct_populated</span> <span class="pre">/</span> <span class="pre">assessed_populated</span></code>), answer coverage (<code class="docutils literal notranslate"><span class="pre">populated_answers</span> <span class="pre">/</span> <span class="pre">answer_opportunities</span></code>)
+and reference-supported recall alongside existing assessed-cell accuracy.
+Unknown labels do not reward abstentions. In reference CSVs:</p>
+<ul class="simple">
+<li><p>A populated cell is assessed by default; explicit <code class="docutils literal notranslate"><span class="pre">NA</span></code> labels known absence.</p></li>
+<li><p>An empty cell is unlabelled, unless optional <code class="docutils literal notranslate"><span class="pre">&lt;compiled</span> <span class="pre">title&gt;__assessed=true</span></code>
+explicitly labels absence.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;compiled</span> <span class="pre">title&gt;__assessed=false</span></code> excludes any value as unknown/unassessed;
+no domain-specific magic unknown word is reserved. Nonblank masks must be
+<code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">min_accuracy</span></code> remains an assessed all-cell accuracy gate, not populated-answer
+precision. Model agreement is labelled separately and is not ground truth.
+Counts include missing/no-answer targets and expose unassessed populated claims,
+reference contradictions and evidence conflicts. Exact-target source precision
+still needs a separate sampled source audit; reviewer labels alone cannot certify it.</p>
+<p>Per-field Wilson intervals are provided in roster mode (one cell per target).
+Pooled cell intervals are null because fields/rows from one target are correlated.
+Target-level summaries provide answer/no-answer/partially assessed counts and
+an all-answered correctness interval over fully assessed answered targets.
+Those denominators must be read with coverage; blanks cannot establish an 85%
+precision claim. Processing time and billed extraction cost per target are
+amortized record-only means, not complete discovery spend or target wall time.</p>
+<p>For a defensible rollout, freeze a representative random/stratified holdout
+without manually seeded references, separate it from tuning cases, and label
+source-supported answers. Report status/milestone results and coverage separately,
+with denominators and uncertainty. Architecture or provider/model choice is not
+proof of greater-than-85% performance.</p>
 <p>At least one of <code class="docutils literal notranslate"><span class="pre">models</span></code> or <code class="docutils literal notranslate"><span class="pre">references</span></code> is required. Cells where every
 contender agrees are not judged; the judge sees only disagreements, checking
 each candidate against its quote. Misses are labelled <code class="docutils literal notranslate"><span class="pre">no_docs</span></code> (no curated
@@ -1182,6 +1466,7 @@ document) or <code class="docutils literal notranslate"><span class="pre">extrac
 <code class="docutils literal notranslate"><span class="pre">validate</span> <span class="pre">--sample</span> <span class="pre">N</span> <span class="pre">[--seed</span> <span class="pre">S]</span></code> writes a blank, seeded labelling sheet with no
 LLM calls. Outputs in <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/validated/</span></code>: <code class="docutils literal notranslate"><span class="pre">cells.csv</span></code>,
 <code class="docutils literal notranslate"><span class="pre">summary.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">summary.json</span></code>.</p>
+</section>
 </section>
 <section id="document-types-and-limits">
 <h2>Document types and limits<a class="headerlink" href="#document-types-and-limits" title="Link to this heading">¶</a></h2>
@@ -1263,7 +1548,15 @@ each target and shared source separately, keyed by the effective config
 fingerprint and SHA-256 evidence of its files. Adding a target fetches only
 that target; changing a target’s <code class="docutils literal notranslate"><span class="pre">urls</span></code> or rendered queries re-runs it.</p>
 <ul class="simple">
-<li><p>A <strong>complete</strong> item makes no requests on the next run.</p></li>
+<li><p>A <strong>complete</strong> item makes no requests on the next run. Fully reused runs write
+an audit snapshot, not another <code class="docutils literal notranslate"><span class="pre">documents/</span></code> or <code class="docutils literal notranslate"><span class="pre">curated/</span></code> copy.</p></li>
+<li><p>Extraction/page-locator model changes do not invalidate discovery. Only the
+resolved model used by configured <code class="docutils literal notranslate"><span class="pre">document_review</span></code> affects its fingerprint.</p></li>
+<li><p>When acquisition settings or a target’s inputs change, discovery re-evaluates
+that work but reuses matching URL/owner downloads from verified local bytes;
+it fetches only new, missing or changed documents. Classification and review
+are re-applied under the current settings. Use <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to fetch remote
+changes at already-downloaded URLs, including changed redirect destinations.</p></li>
 <li><p>An item left <strong>incomplete</strong> — transient failure, unfinished crawl or
 search, <code class="docutils literal notranslate"><span class="pre">max_pages</span></code> or <code class="docutils literal notranslate"><span class="pre">max_files</span></code> reached — publishes what it has
 additively, and the next run re-fetches the listing, reuses every earlier
@@ -1422,6 +1715,8 @@ and browser variables are described in <a class="reference internal" href="secur
 <li><a class="reference internal" href="#selection-and-link-prioritization"><code class="docutils literal notranslate"><span class="pre">selection</span></code> and <code class="docutils literal notranslate"><span class="pre">link_prioritization</span></code></a></li>
 <li><a class="reference internal" href="#document-classifier"><code class="docutils literal notranslate"><span class="pre">document_classifier</span></code></a></li>
 <li><a class="reference internal" href="#document-review"><code class="docutils literal notranslate"><span class="pre">document_review</span></code></a></li>
+<li><a class="reference internal" href="#automatic-qualification-and-bounded-recovery">Automatic qualification and bounded recovery</a></li>
+<li><a class="reference internal" href="#grounded-review-evidence-and-bounded-selection">Grounded review evidence and bounded selection</a></li>
 <li><a class="reference internal" href="#policy-and-retention"><code class="docutils literal notranslate"><span class="pre">policy</span></code> and <code class="docutils literal notranslate"><span class="pre">retention</span></code></a></li>
 </ul>
 </li>
@@ -1432,8 +1727,14 @@ and browser variables are described in <a class="reference internal" href="secur
 <li><a class="reference internal" href="#audio">Audio</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#compilation">Compilation</a></li>
-<li><a class="reference internal" href="#validation">Validation</a></li>
+<li><a class="reference internal" href="#compilation">Compilation</a><ul>
+<li><a class="reference internal" href="#optional-evidence-reconciliation">Optional evidence reconciliation</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#validation">Validation</a><ul>
+<li><a class="reference internal" href="#precision-coverage-and-reference-labels">Precision, coverage and reference labels</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#document-types-and-limits">Document types and limits</a></li>
 <li><a class="reference internal" href="#runs-reuse-and-exit-codes">Runs, reuse and exit codes</a><ul>
 <li><a class="reference internal" href="#outputs">Outputs</a></li>

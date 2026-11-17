@@ -28,6 +28,7 @@ Functions
 
    psweep.discovery.targets.identify_target
    psweep.discovery.targets.iter_targets
+   psweep.discovery.targets.render_target_template
    psweep.discovery.targets.resolve_targets_spec
    psweep.discovery.targets.target_identity
 
@@ -53,6 +54,11 @@ Module Contents
 .. py:function:: iter_targets(spec: TargetSpec, limit: int | None = None) -> collections.abc.Iterator[dict[str, Any]]
 
    Yield normalized target rows, stopping after ``limit`` rows.
+
+
+.. py:function:: render_target_template(template: str, target: collections.abc.Mapping[str, Any]) -> str
+
+   Render required/optional target fields without interpreting inserted text.
 
 
 .. py:function:: resolve_targets_spec(spec: Any, config_dir: pathlib.Path, identity_fields: collections.abc.Sequence[str] | None = None) -> TargetSpec

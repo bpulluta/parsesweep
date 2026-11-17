@@ -36,7 +36,7 @@ Module Contents
    activate roster mode exactly as in extraction.
 
 
-   .. py:method:: compile_from_directory(json_dir: pathlib.Path, *, apply_deduplication: bool = True) -> tuple[pandas.DataFrame, dict[str, Any]]
+   .. py:method:: compile_from_directory(json_dir: pathlib.Path, *, apply_deduplication: bool = True, allow_model: bool = True) -> tuple[pandas.DataFrame, dict[str, Any]]
 
       Return the compiled frame (field-name columns) and a schema summary.
 
@@ -81,6 +81,13 @@ Module Contents
       ``roster`` when a roster is configured, else ``rows``.
 
       :type: Compilation mode
+
+
+   .. py:property:: status
+      :type: str
+
+
+      Unresolved reconciliation is never certified as a successful build.
 
 
 .. py:function:: apply_value_normalizations(df: pandas.DataFrame, metadata) -> pandas.DataFrame

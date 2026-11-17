@@ -1,0 +1,58 @@
+psweep.compilation.reconciliation
+=================================
+
+.. py:module:: psweep.compilation.reconciliation
+
+.. autoapi-nested-parse::
+
+   Opt-in roster reconciliation selects atomic source observations, never generated facts.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.compilation.reconciliation.Reconciler
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.compilation.reconciliation.policy_contract
+   psweep.compilation.reconciliation.resolve_model
+   psweep.compilation.reconciliation.validate_policy
+
+
+Module Contents
+---------------
+
+.. py:class:: Reconciler(metadata, inputs, roster, cache_dir, *, allow_model)
+
+   Resolve a bounded target at a time; index original observations on disk.
+
+
+   .. py:method:: compile(records)
+
+      Index once, resolve bounded target jobs, then export in roster order.
+
+
+
+.. py:function:: policy_contract(metadata, inputs, roster)
+
+   Check runtime paths against the actual schema; keep behavior out of metadata.
+
+
+.. py:function:: resolve_model(policy, inputs)
+
+   Resolve reconciliation precedence and credential-free routing identity once.
+
+
+.. py:function:: validate_policy(policy)
+
+   Validate the small runtime surface without reading records or creating clients.
+
+

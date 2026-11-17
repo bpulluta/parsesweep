@@ -228,6 +228,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -240,6 +241,8 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -260,6 +263,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/urls/index.html">psweep.discovery.urls</a></li>
@@ -291,6 +295,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -806,8 +811,6 @@
 </li>
         <li><a href="autoapi/psweep/scaffolding/index.html#psweep.scaffolding.apply_main_array_field_selection">apply_main_array_field_selection() (in module psweep.scaffolding)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/compilation/data_compiler/index.html#psweep.compilation.data_compiler.apply_value_normalizations">apply_value_normalizations() (in module psweep.compilation.data_compiler)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/publication/index.html#psweep.discovery.publication.artifact_sha256">artifact_sha256() (in module psweep.discovery.publication)</a>
@@ -816,11 +819,19 @@
           <li><a href="autoapi/psweep/utils/file_io/index.html#psweep.utils.file_io.artifact_sha256">(in module psweep.utils.file_io)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/publication/index.html#psweep.discovery.publication.assign_document_names">assign_document_names() (in module psweep.discovery.publication)</a>
 </li>
         <li><a href="autoapi/psweep/utils/file_io/index.html#psweep.utils.file_io.atomic_json">atomic_json() (in module psweep.utils.file_io)</a>
 </li>
         <li><a href="autoapi/psweep/utils/file_io/index.html#psweep.utils.file_io.atomic_write">atomic_write() (in module psweep.utils.file_io)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/attempt_budget/index.html#psweep.discovery.attempt_budget.AttemptBudget">AttemptBudget (class in psweep.discovery.attempt_budget)</a>
+</li>
+        <li><a href="autoapi/psweep/exceptions/index.html#psweep.exceptions.AttemptBudgetExceeded">AttemptBudgetExceeded</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/adaptive_search/index.html#psweep.discovery.adaptive_search.attempted_urls">attempted_urls() (in module psweep.discovery.adaptive_search)</a>
 </li>
         <li><a href="autoapi/psweep/scaffolding/index.html#psweep.scaffolding.available_main_array_fields">available_main_array_fields() (in module psweep.scaffolding)</a>
 </li>
@@ -954,6 +965,8 @@
 </li>
         <li><a href="autoapi/psweep/pipeline/index.html#psweep.pipeline.CompilationResult">CompilationResult (class in psweep.pipeline)</a>
 </li>
+        <li><a href="autoapi/psweep/compilation/reconciliation/index.html#psweep.compilation.reconciliation.Reconciler.compile">compile() (psweep.compilation.reconciliation.Reconciler method)</a>
+</li>
         <li><a href="autoapi/psweep/pipeline/index.html#psweep.pipeline.compile_extractions">compile_extractions() (in module psweep.pipeline)</a>
 </li>
         <li><a href="autoapi/psweep/compilation/data_compiler/index.html#psweep.compilation.data_compiler.DataCompiler.compile_from_directory">compile_from_directory() (psweep.compilation.data_compiler.DataCompiler method)</a>
@@ -1003,6 +1016,8 @@
         <li><a href="autoapi/psweep/utils/normalizers/index.html#psweep.utils.normalizers.county_to_fips">county_to_fips() (in module psweep.utils.normalizers)</a>
 </li>
         <li><a href="autoapi/psweep/validation/index.html#psweep.validation.covered_keys">covered_keys() (in module psweep.validation)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/adaptive_search/index.html#psweep.discovery.adaptive_search.covered_labels">covered_labels() (in module psweep.discovery.adaptive_search)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/connectors/digger/index.html#psweep.discovery.connectors.digger.crawl">crawl() (in module psweep.discovery.connectors.digger)</a>
 </li>
@@ -1096,6 +1111,8 @@
 </li>
         <li><a href="autoapi/psweep/scaffolding/index.html#psweep.scaffolding.display_cli_path">display_cli_path() (in module psweep.scaffolding)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/adaptive_search/index.html#psweep.discovery.adaptive_search.distinct_accepted_count">distinct_accepted_count() (in module psweep.discovery.adaptive_search)</a>
+</li>
         <li><a href="autoapi/psweep/discovery/publication/index.html#psweep.discovery.publication.document_owner">document_owner() (in module psweep.discovery.publication)</a>
 </li>
         <li>
@@ -1137,6 +1154,8 @@
         <li><a href="autoapi/psweep/discovery/eligibility/index.html#psweep.discovery.eligibility.eligibility_columns">eligibility_columns() (in module psweep.discovery.eligibility)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/eligibility/index.html#psweep.discovery.eligibility.eligibility_held">eligibility_held() (in module psweep.discovery.eligibility)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/adaptive_search/index.html#psweep.discovery.adaptive_search.eligible_targets">eligible_targets() (in module psweep.discovery.adaptive_search)</a>
 </li>
         <li><a href="autoapi/psweep/utils/model_pricing/index.html#psweep.utils.model_pricing.estimate_extraction_cost">estimate_extraction_cost() (in module psweep.utils.model_pricing)</a>
 </li>
@@ -1353,6 +1372,8 @@
 </li>
         <li><a href="autoapi/psweep/discovery/transport/index.html#psweep.discovery.transport.BoundedResponse.iter_content">iter_content() (psweep.discovery.transport.BoundedResponse method)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/review_policy/index.html#psweep.discovery.review_policy.iter_review_scopes">iter_review_scopes() (in module psweep.discovery.review_policy)</a>
+</li>
         <li><a href="autoapi/psweep/discovery/targets/index.html#psweep.discovery.targets.iter_targets">iter_targets() (in module psweep.discovery.targets)</a>
 </li>
     </ul></td>
@@ -1453,6 +1474,8 @@
 </li>
         <li><a href="autoapi/psweep/discovery/urls/index.html#psweep.discovery.urls.matches_allowed_domain">matches_allowed_domain() (in module psweep.discovery.urls)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/urls/index.html#psweep.discovery.urls.matches_domain_pattern">matches_domain_pattern() (in module psweep.discovery.urls)</a>
+</li>
         <li><a href="autoapi/psweep/discovery/connectors/digger/index.html#psweep.discovery.connectors.digger.matches_include_patterns">matches_include_patterns() (in module psweep.discovery.connectors.digger)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/urls/index.html#psweep.discovery.urls.matches_url_exclusion">matches_url_exclusion() (in module psweep.discovery.urls)</a>
@@ -1505,6 +1528,8 @@
 </li>
           <li><a href="autoapi/psweep/compilation/publication/index.html#module-psweep.compilation.publication">psweep.compilation.publication</a>
 </li>
+          <li><a href="autoapi/psweep/compilation/reconciliation/index.html#module-psweep.compilation.reconciliation">psweep.compilation.reconciliation</a>
+</li>
           <li><a href="autoapi/psweep/compilation/roster/index.html#module-psweep.compilation.roster">psweep.compilation.roster</a>
 </li>
           <li><a href="autoapi/psweep/config/index.html#module-psweep.config">psweep.config</a>
@@ -1520,6 +1545,10 @@
           <li><a href="autoapi/psweep/config/runtime_config_loader/index.html#module-psweep.config.runtime_config_loader">psweep.config.runtime_config_loader</a>
 </li>
           <li><a href="autoapi/psweep/discovery/index.html#module-psweep.discovery">psweep.discovery</a>
+</li>
+          <li><a href="autoapi/psweep/discovery/adaptive_search/index.html#module-psweep.discovery.adaptive_search">psweep.discovery.adaptive_search</a>
+</li>
+          <li><a href="autoapi/psweep/discovery/attempt_budget/index.html#module-psweep.discovery.attempt_budget">psweep.discovery.attempt_budget</a>
 </li>
           <li><a href="autoapi/psweep/discovery/browser/index.html#module-psweep.discovery.browser">psweep.discovery.browser</a>
 </li>
@@ -1556,6 +1585,8 @@
           <li><a href="autoapi/psweep/discovery/publication/index.html#module-psweep.discovery.publication">psweep.discovery.publication</a>
 </li>
           <li><a href="autoapi/psweep/discovery/request_inputs/index.html#module-psweep.discovery.request_inputs">psweep.discovery.request_inputs</a>
+</li>
+          <li><a href="autoapi/psweep/discovery/review_policy/index.html#module-psweep.discovery.review_policy">psweep.discovery.review_policy</a>
 </li>
           <li><a href="autoapi/psweep/discovery/targets/index.html#module-psweep.discovery.targets">psweep.discovery.targets</a>
 </li>
@@ -1611,6 +1642,8 @@
 </li>
           <li><a href="autoapi/psweep/utils/error_taxonomy/index.html#module-psweep.utils.error_taxonomy">psweep.utils.error_taxonomy</a>
 </li>
+          <li><a href="autoapi/psweep/utils/evidence/index.html#module-psweep.utils.evidence">psweep.utils.evidence</a>
+</li>
           <li><a href="autoapi/psweep/utils/file_io/index.html#module-psweep.utils.file_io">psweep.utils.file_io</a>
 </li>
           <li><a href="autoapi/psweep/utils/item_matcher/index.html#module-psweep.utils.item_matcher">psweep.utils.item_matcher</a>
@@ -1656,7 +1689,7 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/transport/index.html#psweep.discovery.transport.NetworkPolicyError">NetworkPolicyError</a>
 </li>
-        <li><a href="autoapi/psweep/extraction/roster/index.html#psweep.extraction.roster.normalize">normalize() (in module psweep.extraction.roster)</a>
+        <li><a href="autoapi/psweep/utils/evidence/index.html#psweep.utils.evidence.normalize">normalize() (in module psweep.utils.evidence)</a>
 </li>
         <li><a href="autoapi/psweep/utils/error_taxonomy/index.html#psweep.utils.error_taxonomy.normalize_error_records">normalize_error_records() (in module psweep.utils.error_taxonomy)</a>
 </li>
@@ -1716,6 +1749,8 @@
         <li><a href="autoapi/psweep/exceptions/index.html#psweep.exceptions.PipelineError">PipelineError</a>
 </li>
         <li><a href="autoapi/psweep/pipeline/index.html#psweep.pipeline.PipelineResult">PipelineResult (class in psweep.pipeline)</a>
+</li>
+        <li><a href="autoapi/psweep/compilation/reconciliation/index.html#psweep.compilation.reconciliation.policy_contract">policy_contract() (in module psweep.compilation.reconciliation)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/policies/index.html#psweep.discovery.policies.PolicyCheckResult">PolicyCheckResult (class in psweep.discovery.policies)</a>
 </li>
@@ -2063,8 +2098,6 @@
           <li><a href="autoapi/psweep/compilation/excel_formatter/index.html#module-psweep.compilation.excel_formatter">module</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     psweep.compilation.input_provenance
 
@@ -2077,6 +2110,15 @@
 
         <ul>
           <li><a href="autoapi/psweep/compilation/publication/index.html#module-psweep.compilation.publication">module</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li>
+    psweep.compilation.reconciliation
+
+        <ul>
+          <li><a href="autoapi/psweep/compilation/reconciliation/index.html#module-psweep.compilation.reconciliation">module</a>
 </li>
         </ul></li>
         <li>
@@ -2133,6 +2175,20 @@
 
         <ul>
           <li><a href="autoapi/psweep/discovery/index.html#module-psweep.discovery">module</a>
+</li>
+        </ul></li>
+        <li>
+    psweep.discovery.adaptive_search
+
+        <ul>
+          <li><a href="autoapi/psweep/discovery/adaptive_search/index.html#module-psweep.discovery.adaptive_search">module</a>
+</li>
+        </ul></li>
+        <li>
+    psweep.discovery.attempt_budget
+
+        <ul>
+          <li><a href="autoapi/psweep/discovery/attempt_budget/index.html#module-psweep.discovery.attempt_budget">module</a>
 </li>
         </ul></li>
         <li>
@@ -2259,6 +2315,13 @@
 
         <ul>
           <li><a href="autoapi/psweep/discovery/request_inputs/index.html#module-psweep.discovery.request_inputs">module</a>
+</li>
+        </ul></li>
+        <li>
+    psweep.discovery.review_policy
+
+        <ul>
+          <li><a href="autoapi/psweep/discovery/review_policy/index.html#module-psweep.discovery.review_policy">module</a>
 </li>
         </ul></li>
         <li>
@@ -2451,6 +2514,13 @@
 </li>
         </ul></li>
         <li>
+    psweep.utils.evidence
+
+        <ul>
+          <li><a href="autoapi/psweep/utils/evidence/index.html#module-psweep.utils.evidence">module</a>
+</li>
+        </ul></li>
+        <li>
     psweep.utils.file_io
 
         <ul>
@@ -2585,10 +2655,12 @@
   <h2>Q</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="autoapi/psweep/extraction/roster/index.html#psweep.extraction.roster.quote_present">quote_present() (in module psweep.extraction.roster)</a>
+        <li><a href="autoapi/psweep/utils/evidence/index.html#psweep.utils.evidence.quote_in_segments">quote_in_segments() (in module psweep.utils.evidence)</a>
 </li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/psweep/utils/evidence/index.html#psweep.utils.evidence.quote_present">quote_present() (in module psweep.utils.evidence)</a>
+</li>
         <li><a href="autoapi/psweep/extraction/roster/index.html#psweep.extraction.roster.QuoteRows">QuoteRows (class in psweep.extraction.roster)</a>
 </li>
     </ul></td>
@@ -2609,6 +2681,10 @@
 </li>
         <li><a href="autoapi/psweep/extraction/document_utils/index.html#psweep.extraction.document_utils.read_text_cache">read_text_cache() (in module psweep.extraction.document_utils)</a>
 </li>
+        <li><a href="autoapi/psweep/compilation/reconciliation/index.html#psweep.compilation.reconciliation.Reconciler">Reconciler (class in psweep.compilation.reconciliation)</a>
+</li>
+        <li><a href="autoapi/psweep/workspace/index.html#psweep.workspace.Workspace.reconciliation_cache">reconciliation_cache (psweep.workspace.Workspace property)</a>
+</li>
         <li><a href="autoapi/psweep/extraction/record_writer/index.html#psweep.extraction.record_writer.record_extraction_scope">record_extraction_scope() (in module psweep.extraction.record_writer)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/publication/index.html#psweep.discovery.publication.record_is_curated">record_is_curated() (in module psweep.discovery.publication)</a>
@@ -2625,7 +2701,9 @@
 </li>
         <li><a href="autoapi/psweep/config/errors/index.html#psweep.config.errors.reject_unknown_keys">reject_unknown_keys() (in module psweep.config.errors)</a>
 </li>
-        <li><a href="autoapi/psweep/discovery/connectors/serpapi_seeker/index.html#psweep.discovery.connectors.serpapi_seeker.render_query_template">render_query_template() (in module psweep.discovery.connectors.serpapi_seeker)</a>
+        <li><a href="autoapi/psweep/discovery/review_policy/index.html#psweep.discovery.review_policy.render_review_scope">render_review_scope() (in module psweep.discovery.review_policy)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/targets/index.html#psweep.discovery.targets.render_target_template">render_target_template() (in module psweep.discovery.targets)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/transport/index.html#psweep.discovery.transport.request_get">request_get() (in module psweep.discovery.transport)</a>
 </li>
@@ -2636,6 +2714,10 @@
 </li>
         </ul></li>
         <li><a href="autoapi/psweep/security/index.html#psweep.security.require_model_endpoint">require_model_endpoint() (in module psweep.security)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/attempt_budget/index.html#psweep.discovery.attempt_budget.AttemptBudget.reserve_review">reserve_review() (psweep.discovery.attempt_budget.AttemptBudget method)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/attempt_budget/index.html#psweep.discovery.attempt_budget.AttemptBudget.reserve_search">reserve_search() (psweep.discovery.attempt_budget.AttemptBudget method)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/code_host_adapters/index.html#psweep.discovery.code_host_adapters.resolve_adapter">resolve_adapter() (in module psweep.discovery.code_host_adapters)</a>
 </li>
@@ -2650,6 +2732,8 @@
         <li><a href="autoapi/psweep/config/discovery_config/index.html#psweep.config.discovery_config.resolve_discovery_section">resolve_discovery_section() (in module psweep.config.discovery_config)</a>
 </li>
         <li><a href="autoapi/psweep/extraction/llm_factory/index.html#psweep.extraction.llm_factory.resolve_llm_kwargs">resolve_llm_kwargs() (in module psweep.extraction.llm_factory)</a>
+</li>
+        <li><a href="autoapi/psweep/compilation/reconciliation/index.html#psweep.compilation.reconciliation.resolve_model">resolve_model() (in module psweep.compilation.reconciliation)</a>
 </li>
         <li><a href="autoapi/psweep/extraction/llm_factory/index.html#psweep.extraction.llm_factory.resolve_model_name">resolve_model_name() (in module psweep.extraction.llm_factory)</a>
 </li>
@@ -2677,7 +2761,15 @@
 </li>
         <li><a href="autoapi/psweep/extraction/roster/index.html#psweep.extraction.roster.Roster">Roster (class in psweep.extraction.roster)</a>
 </li>
+        <li><a href="autoapi/psweep/compilation/roster/index.html#psweep.compilation.roster.roster_attributes">roster_attributes() (in module psweep.compilation.roster)</a>
+</li>
+        <li><a href="autoapi/psweep/compilation/roster/index.html#psweep.compilation.roster.roster_extras">roster_extras() (in module psweep.compilation.roster)</a>
+</li>
         <li><a href="autoapi/psweep/extraction/roster/index.html#psweep.extraction.roster.roster_fields">roster_fields() (in module psweep.extraction.roster)</a>
+</li>
+        <li><a href="autoapi/psweep/compilation/roster/index.html#psweep.compilation.roster.roster_frame">roster_frame() (in module psweep.compilation.roster)</a>
+</li>
+        <li><a href="autoapi/psweep/compilation/roster/index.html#psweep.compilation.roster.roster_row">roster_row() (in module psweep.compilation.roster)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/engine/index.html#psweep.discovery.engine.DiscoveryEngine.run">run() (psweep.discovery.engine.DiscoveryEngine method)</a>
 </li>
@@ -2738,19 +2830,23 @@
 </li>
         <li><a href="autoapi/psweep/discovery/connectors/digger/index.html#psweep.discovery.connectors.digger.SeleniumDiggerConnector">SeleniumDiggerConnector (class in psweep.discovery.connectors.digger)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/network/index.html#psweep.discovery.network.send_get">send_get() (in module psweep.discovery.network)</a>
 </li>
         <li><a href="autoapi/psweep/workspace/index.html#psweep.workspace.Workspace.serpapi_cache">serpapi_cache (psweep.workspace.Workspace property)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/connectors/serpapi_seeker/index.html#psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout">SerpApiSearchTimeout</a>
 </li>
         <li><a href="autoapi/psweep/discovery/connectors/serpapi_seeker/index.html#psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker">SerpApiSeeker (class in psweep.discovery.connectors.serpapi_seeker)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/attempt_budget/index.html#psweep.discovery.attempt_budget.AttemptBudget.snapshot">snapshot() (psweep.discovery.attempt_budget.AttemptBudget method)</a>
+</li>
         <li><a href="autoapi/psweep/validation/align/index.html#psweep.validation.align.Source">Source (class in psweep.validation.align)</a>
 </li>
         <li><a href="autoapi/psweep/extraction/provenance/index.html#psweep.extraction.provenance.source_context">source_context() (in module psweep.extraction.provenance)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/adaptive_search/index.html#psweep.discovery.adaptive_search.source_unique_records">source_unique_records() (in module psweep.discovery.adaptive_search)</a>
 </li>
         <li><a href="autoapi/psweep/extraction/provenance/index.html#psweep.extraction.provenance.SourceContext">SourceContext (class in psweep.extraction.provenance)</a>
 </li>
@@ -2759,6 +2855,8 @@
         <li><a href="autoapi/psweep/utils/file_io/index.html#psweep.utils.file_io.staged_file">staged_file() (in module psweep.utils.file_io)</a>
 </li>
         <li><a href="autoapi/psweep/extraction/roster/index.html#psweep.extraction.roster.Roster.states">states() (psweep.extraction.roster.Roster method)</a>
+</li>
+        <li><a href="autoapi/psweep/compilation/data_compiler/index.html#psweep.compilation.data_compiler.DataCompiler.status">status (psweep.compilation.data_compiler.DataCompiler property)</a>
 </li>
         <li><a href="autoapi/psweep/validation/tables/index.html#psweep.validation.tables.status">status() (in module psweep.validation.tables)</a>
 </li>
@@ -2795,6 +2893,8 @@
           <li><a href="commands/index.html#cmdoption-psweep-curate-arg-TARGET">psweep-curate command line option</a>
 </li>
         </ul></li>
+        <li><a href="autoapi/psweep/discovery/adaptive_search/index.html#psweep.discovery.adaptive_search.target_has_sufficient_evidence">target_has_sufficient_evidence() (in module psweep.discovery.adaptive_search)</a>
+</li>
         <li><a href="autoapi/psweep/discovery/targets/index.html#psweep.discovery.targets.target_identity">target_identity() (in module psweep.discovery.targets)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/targets/index.html#psweep.discovery.targets.TargetSpecError">TargetSpecError</a>
@@ -2809,6 +2909,8 @@
 </li>
         <li><a href="autoapi/psweep/compilation/data_flattener/index.html#psweep.compilation.data_flattener.to_cell">to_cell() (in module psweep.compilation.data_flattener)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/connectors/base/index.html#psweep.discovery.connectors.base.DiggerArtifact.to_dict">to_dict() (psweep.discovery.connectors.base.DiggerArtifact method)</a>
 
         <ul>
@@ -2821,8 +2923,6 @@
           <li><a href="autoapi/psweep/discovery/models/index.html#psweep.discovery.models.DiscoveryManifest.to_dict">(psweep.discovery.models.DiscoveryManifest method)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/link_prioritizer/index.html#psweep.discovery.link_prioritizer.PrioritizedCandidate.to_lineage_dict">to_lineage_dict() (psweep.discovery.link_prioritizer.PrioritizedCandidate method)</a>
 </li>
         <li><a href="autoapi/psweep/config/model_registry/index.html#psweep.config.model_registry.ModelRegistry.to_llm_kwargs">to_llm_kwargs() (psweep.config.model_registry.ModelRegistry method)</a>
@@ -2853,6 +2953,8 @@
 </li>
         <li><a href="autoapi/psweep/extraction/transcription/index.html#psweep.extraction.transcription.Transcriber.usage">usage (psweep.extraction.transcription.Transcriber property)</a>
 </li>
+        <li><a href="autoapi/psweep/extraction/llm_client/index.html#psweep.extraction.llm_client.LLMClient.usage_snapshot">usage_snapshot (psweep.extraction.llm_client.LLMClient property)</a>
+</li>
     </ul></td>
   </tr></table>
 </section>
@@ -2869,11 +2971,15 @@
 </li>
         <li><a href="autoapi/psweep/extraction/pdf_utils/index.html#psweep.extraction.pdf_utils.validate_pdf_scope">validate_pdf_scope() (in module psweep.extraction.pdf_utils)</a>
 </li>
+        <li><a href="autoapi/psweep/compilation/reconciliation/index.html#psweep.compilation.reconciliation.validate_policy">validate_policy() (in module psweep.compilation.reconciliation)</a>
+</li>
         <li><a href="autoapi/psweep/security/index.html#psweep.security.validate_protected_paths">validate_protected_paths() (in module psweep.security)</a>
 </li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/transport/index.html#psweep.discovery.transport.validate_public_url">validate_public_url() (in module psweep.discovery.transport)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/review_policy/index.html#psweep.discovery.review_policy.validate_review_policy">validate_review_policy() (in module psweep.discovery.review_policy)</a>
 </li>
         <li><a href="autoapi/psweep/validation/tables/index.html#psweep.validation.tables.validate_tables">validate_tables() (in module psweep.validation.tables)</a>
 </li>

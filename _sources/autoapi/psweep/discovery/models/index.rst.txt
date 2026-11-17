@@ -75,7 +75,7 @@ Module Contents
       Serialize this candidate to a plain dict for JSON output.
 
       :returns: Flat representation suitable for writing to the discovery manifest.
-                ``status`` falls back to ``score.acceptance_class()`` when not
+                ``acceptance_status`` falls back to ``score.acceptance_class()`` when not
                 explicitly set.
       :rtype: dict[str, Any]
 

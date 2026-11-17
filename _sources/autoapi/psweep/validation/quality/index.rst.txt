@@ -23,7 +23,7 @@ Module Contents
 
 .. py:function:: failed_documents(extracted_dir: pathlib.Path) -> set[str]
 
-   Document paths with errors in the newest run manifest (by ``timing.finished_at``).
+   Document paths with errors in the newest run manifest.
 
 
 .. py:function:: model_quality(dirs: collections.abc.Mapping[str, pathlib.Path], metadata: psweep.utils.schema_metadata.SchemaMetadata, *, quote_field: str | None, focus: collections.abc.Sequence[str], ocr_corrections: list | None = None) -> dict[str, dict]

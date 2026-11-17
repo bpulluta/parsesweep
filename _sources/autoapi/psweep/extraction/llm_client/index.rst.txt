@@ -80,7 +80,7 @@ Module Contents
    :type timeout: int
 
 
-   .. py:method:: complete(messages: list[dict[str, Any]], **params: Any) -> Completion
+   .. py:method:: complete(messages: list[dict[str, Any]], *, before_request=None, **params: Any) -> Completion
 
       Send one chat request and account for it.
 
@@ -91,7 +91,7 @@ Module Contents
 
 
 
-   .. py:method:: extract(text: str, schema: dict[str, Any], system_prompt: str | None = None, user_prompt: str | None = None, suppress_errors: bool = False) -> dict[str, Any]
+   .. py:method:: extract(text: str, schema: dict[str, Any], system_prompt: str | None = None, user_prompt: str | None = None, suppress_errors: bool = False, before_request=None) -> dict[str, Any]
 
       Extract structured data using LLM.
 
@@ -107,6 +107,13 @@ Module Contents
       :returns: dict with 'data' (extracted data) and 'cost' (API cost in USD)
       :rtype: Dict[str, Any]
 
+
+
+   .. py:property:: usage_snapshot
+      :type: dict[str, int | float]
+
+
+      Return a thread-safe copy of the canonical physical-attempt counters.
 
 
 .. py:function:: prompt_schema(schema: dict[str, Any]) -> dict[str, Any]

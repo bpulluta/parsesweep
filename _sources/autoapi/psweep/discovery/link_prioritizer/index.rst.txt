@@ -100,7 +100,6 @@ Module Contents
 
    Match a host against a normalized ``domain_scores`` pattern.
 
-   Leading-dot patterns match hostname suffixes; host patterns match the host
-   itself or any of its subdomains.
+   Delegates to the shared matcher in urls.py.
 
 

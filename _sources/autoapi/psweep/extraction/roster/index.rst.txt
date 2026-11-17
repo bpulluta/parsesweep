@@ -28,8 +28,6 @@ Functions
    psweep.extraction.roster.candidates_block
    psweep.extraction.roster.evidence_nodes
    psweep.extraction.roster.load_roster
-   psweep.extraction.roster.normalize
-   psweep.extraction.roster.quote_present
    psweep.extraction.roster.roster_fields
    psweep.extraction.roster.scan_candidates
    psweep.extraction.roster.verify_quotes
@@ -96,19 +94,6 @@ Module Contents
 .. py:function:: load_roster(inputs: dict[str, Any], metadata) -> Roster | None
 
    Load the discovery target roster when roster mode is derived.
-
-
-.. py:function:: normalize(text: Any) -> str
-
-   NFKD, strip marks and soft hyphens, join line-break hyphenation,
-   casefold, punctuation to space, collapse whitespace.
-
-
-.. py:function:: quote_present(quote: Any, source_text: str) -> bool
-
-   True when the normalized quote occurs, on word boundaries, in the normalized source.
-
-   An elided quote (``head … tail``) matches when its parts occur in order.
 
 
 .. py:function:: roster_fields(inputs: dict[str, Any], key_fields: collections.abc.Sequence[str]) -> tuple[str, ...] | None

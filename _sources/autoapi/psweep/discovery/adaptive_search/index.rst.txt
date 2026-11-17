@@ -1,0 +1,68 @@
+psweep.discovery.adaptive_search
+================================
+
+.. py:module:: psweep.discovery.adaptive_search
+
+.. autoapi-nested-parse::
+
+   Bounded fallback scheduling and exact-source coverage (no provider calls).
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.adaptive_search.attempted_urls
+   psweep.discovery.adaptive_search.covered_labels
+   psweep.discovery.adaptive_search.distinct_accepted_count
+   psweep.discovery.adaptive_search.eligible_targets
+   psweep.discovery.adaptive_search.source_unique_records
+   psweep.discovery.adaptive_search.target_has_sufficient_evidence
+
+
+Module Contents
+---------------
+
+.. py:function:: attempted_urls(records: collections.abc.Iterable[collections.abc.Mapping]) -> dict[str, set[str]]
+
+   Exclude requested and redirected URLs independently for each target.
+
+
+.. py:function:: covered_labels(records: collections.abc.Iterable[collections.abc.Mapping]) -> set[str]
+
+   Read verified roles only from successfully selected primary sources.
+
+   The reviewer owns quote verification; scheduling never infers roles from
+   grades, reasons, configured URLs, or rejected/secondary evidence.
+
+
+.. py:function:: distinct_accepted_count(records: collections.abc.Iterable[collections.abc.Mapping]) -> int
+
+   Count automatic qualified sources, collapsing final URL or byte mirrors.
+
+
+.. py:function:: eligible_targets(targets: collections.abc.Iterable[dict[str, object]], records: collections.abc.Iterable[dict[str, object]], *, keep_top: int, partition_by: list[str] | None, incomplete_keys: set[str], coverage: collections.abc.Mapping[str, str] | None = None) -> list[dict[str, object]]
+
+   Schedule weak targets only after all initial work has a final outcome.
+
+
+.. py:function:: source_unique_records(records: list[dict[str, object]]) -> list[dict[str, object]]
+
+   Keep mirrors for audit, but grade/select only one exact source per target.
+
+   Failures are deliberately excluded: merged review must not retry a failed
+   decision or clear its pending flags in the same run. Rejected/held documents
+   are handled by the existing reviewer and eligibility gate.
+
+
+.. py:function:: target_has_sufficient_evidence(records: collections.abc.Iterable[collections.abc.Mapping], *, keep_top: int, coverage: collections.abc.Mapping[str, str] | None = None) -> bool
+
+   Check if a target has met its sufficiency requirements.
+
+   A target is considered sufficient when:
+   - It has collected at least `keep_top` accepted documents, AND
+   - If coverage is specified, all required labels have been covered.
+
+

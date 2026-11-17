@@ -1,0 +1,39 @@
+psweep.discovery.review_policy
+==============================
+
+.. py:module:: psweep.discovery.review_policy
+
+.. autoapi-nested-parse::
+
+   Pure review-policy checks and target binding shared by every runtime entry point.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.review_policy.iter_review_scopes
+   psweep.discovery.review_policy.render_review_scope
+   psweep.discovery.review_policy.validate_review_policy
+
+
+Module Contents
+---------------
+
+.. py:function:: iter_review_scopes(description: str, context_fields: list[str] | None, coverage: dict[str, str] | None, targets: collections.abc.Iterable[collections.abc.Mapping[str, Any]], *, additional_templates: collections.abc.Iterable[str] = ()) -> collections.abc.Iterator[tuple[str, dict[str, str]]]
+
+   Validate all bindings before callers act on them, without materializing target rows.
+
+
+.. py:function:: render_review_scope(description: str, coverage: dict[str, str] | None, target: collections.abc.Mapping[str, Any]) -> tuple[str, dict[str, str]]
+
+   Render domain-authored review requirements against one untrusted target row.
+
+
+.. py:function:: validate_review_policy(context_fields: list[str] | None, coverage: dict[str, str] | None) -> None
+
+   Check metadata hints and coverage labels without provider setup or target mutation.
+
+

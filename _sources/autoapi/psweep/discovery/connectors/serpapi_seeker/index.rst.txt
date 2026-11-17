@@ -30,7 +30,6 @@ Functions
 
 .. autoapisummary::
 
-   psweep.discovery.connectors.serpapi_seeker.render_query_template
    psweep.discovery.connectors.serpapi_seeker.resolve_search_queries
 
 
@@ -47,7 +46,7 @@ Module Contents
    Initialize self.  See help(type(self)) for accurate signature.
 
 
-.. py:class:: SerpApiSeeker(api_key: str | None = None, ssl_verify: bool | None = None, retry_max_attempts: int = 3, retry_initial_backoff_seconds: float = 1.0, retry_max_backoff_seconds: float = 8.0, min_request_interval_seconds: float = 0.0, cache_dir: str | None = None, cache_ttl_seconds: float = 0.0, cache_refresh: bool = False, timeout_seconds: float = 45)
+.. py:class:: SerpApiSeeker(api_key: str | None = None, ssl_verify: bool | None = None, retry_max_attempts: int = 3, retry_initial_backoff_seconds: float = 1.0, retry_max_backoff_seconds: float = 8.0, min_request_interval_seconds: float = 0.0, cache_dir: str | None = None, cache_ttl_seconds: float = 0.0, cache_refresh: bool = False, timeout_seconds: float = 45, before_request=None)
 
    Bases: :py:obj:`psweep.discovery.connectors.base.BaseSeekerConnector`
 
@@ -83,11 +82,6 @@ Module Contents
 
       Check if this connector supports the provider.
 
-
-
-.. py:function:: render_query_template(template: str, context: dict[str, Any]) -> str
-
-   Render ``{field}`` (required) and ``{field?}`` (optional) tokens.
 
 
 .. py:function:: resolve_search_queries(seeker_input: psweep.discovery.connectors.base.SeekerInput) -> list[str]

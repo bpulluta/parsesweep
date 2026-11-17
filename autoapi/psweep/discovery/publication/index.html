@@ -230,6 +230,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/publication/index.html">psweep.compilation.publication</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/reconciliation/index.html">psweep.compilation.reconciliation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/roster/index.html">psweep.compilation.roster</a></li>
 </ul>
 </li>
@@ -242,6 +243,8 @@
 </ul>
 </li>
 <li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" checked="" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../adaptive_search/index.html">psweep.discovery.adaptive_search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../attempt_budget/index.html">psweep.discovery.attempt_budget</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
@@ -262,6 +265,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../policies/index.html">psweep.discovery.policies</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../request_inputs/index.html">psweep.discovery.request_inputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../review_policy/index.html">psweep.discovery.review_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../targets/index.html">psweep.discovery.targets</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../transport/index.html">psweep.discovery.transport</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../urls/index.html">psweep.discovery.urls</a></li>
@@ -293,6 +297,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/evidence/index.html">psweep.utils.evidence</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/log_context/index.html">psweep.utils.log_context</a></li>
@@ -400,7 +405,7 @@ by the next writer.</p>
 <td><p>Give every downloaded record one stable, readable consolidated path.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.publication.checkpoint_artifacts_valid" title="psweep.discovery.publication.checkpoint_artifacts_valid"><code class="xref py py-obj docutils literal notranslate"><span class="pre">checkpoint_artifacts_valid</span></code></a>(→ bool)</p></td>
-<td><p>Validate hashed artifact evidence for a completed target.</p></td>
+<td><p>Validate hashed evidence, optionally sharing a load-local digest memo.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.publication.csv_content" title="psweep.discovery.publication.csv_content"><code class="xref py py-obj docutils literal notranslate"><span class="pre">csv_content</span></code></a>(→ str)</p></td>
 <td><p>Serialize discovery provenance rows as a complete CSV.</p></td>
@@ -421,7 +426,7 @@ by the next writer.</p>
 <td><p>Load matching v2 completions whose artifact evidence remains</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.publication.load_prior_outcomes" title="psweep.discovery.publication.load_prior_outcomes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_prior_outcomes</span></code></a>(→ dict[str, dict[str, dict[str, ...)</p></td>
-<td><p>Final child outcomes saved for incomplete targets and sources.</p></td>
+<td><p>Verified downloads and unfinished owners' final child outcomes.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.publication.materialize_curated" title="psweep.discovery.publication.materialize_curated"><code class="xref py py-obj docutils literal notranslate"><span class="pre">materialize_curated</span></code></a>(→ tuple[pathlib.Path, int, int])</p></td>
 <td><p>Stage selected documents before replacing run-local curation.</p></td>
@@ -494,8 +499,8 @@ partitions (<code class="docutils literal notranslate"><span class="pre">--fresh
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.discovery.publication.checkpoint_artifacts_valid">
-<span class="sig-prename descclassname"><span class="pre">psweep.discovery.publication.</span></span><span class="sig-name descname"><span class="pre">checkpoint_artifacts_valid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">object</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.discovery.publication.checkpoint_artifacts_valid" title="Link to this definition">¶</a></dt>
-<dd><p>Validate hashed artifact evidence for a completed target.</p>
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.publication.</span></span><span class="sig-name descname"><span class="pre">checkpoint_artifacts_valid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">object</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">_digest_memo</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">_ArtifactDigestKey</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.discovery.publication.checkpoint_artifacts_valid" title="Link to this definition">¶</a></dt>
+<dd><p>Validate hashed evidence, optionally sharing a load-local digest memo.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -544,12 +549,12 @@ valid.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.discovery.publication.load_prior_outcomes">
-<span class="sig-prename descclassname"><span class="pre">psweep.discovery.publication.</span></span><span class="sig-name descname"><span class="pre">load_prior_outcomes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fingerprint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">object</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.discovery.publication.load_prior_outcomes" title="Link to this definition">¶</a></dt>
-<dd><p>Final child outcomes saved for incomplete targets and sources.</p>
-<p>Returns <code class="docutils literal notranslate"><span class="pre">{owner</span> <span class="pre">key:</span> <span class="pre">{url:</span> <span class="pre">outcome}}</span></code>. A download carries its file
-path and SHA-256, which the caller verifies before reuse, so it holds
-under any settings; other final outcomes (terminal failures, skips)
-hold only for the same <code class="docutils literal notranslate"><span class="pre">fingerprint</span></code>.</p>
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.publication.</span></span><span class="sig-name descname"><span class="pre">load_prior_outcomes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fingerprint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">owner_keys</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">set</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">object</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.discovery.publication.load_prior_outcomes" title="Link to this definition">¶</a></dt>
+<dd><p>Verified downloads and unfinished owners’ final child outcomes.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">{owner</span> <span class="pre">key:</span> <span class="pre">{url:</span> <span class="pre">outcome}}</span></code>. Completed owners recover downloads
+from their immutable, hashed snapshot when re-evaluation is needed.
+Downloads hold across settings changes while their bytes match. Incomplete
+owners also retain terminal failures and skips for the same fingerprint.</p>
 </dd></dl>
 
 <dl class="py function">
