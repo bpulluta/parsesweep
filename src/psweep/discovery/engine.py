@@ -749,10 +749,22 @@ class DiscoveryEngine:
             # outcome below.
             self._reserve_seeker_budget_in_roster_order(seeker_jobs)
 
-            discovery_results = bounded_results(
-                lambda job: self._discover_target_candidates(seeker, job[0], job[1]),
-                seeker_jobs,
+            # bounded_results yields in *completion* order, but the consumption
+            # loop below keeps per-target state (seen[idx], slots[idx], ...)
+            # that is only correct when visited in submission order -- e.g. two
+            # query-slot jobs for the same target must be consumed in slot
+            # order, not whichever one's thread happens to finish first. Tag
+            # each job with its position so the actual discovery calls can
+            # still run concurrently, while the results are put back in
+            # submission order before anything reads them.
+            positioned_jobs = list(enumerate(seeker_jobs))
+            positioned_results = bounded_results(
+                lambda job: (job[0], self._discover_target_candidates(seeker, job[1][0], job[1][1])),
+                positioned_jobs,
                 workers=max_concurrent,
+            )
+            discovery_results = (
+                result for _position, result in sorted(positioned_results, key=lambda item: item[0])
             )
 
             for idx, discovered, error_records, error_type in discovery_results:
