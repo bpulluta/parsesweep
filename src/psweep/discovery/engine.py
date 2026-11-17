@@ -319,8 +319,6 @@ class _RequestRateLimiter:
 class DiscoveryEngine:
     """Coordinate discovery and publish verified artifacts."""
 
-    _target_idx_local = threading.local()
-
     def __init__(self) -> None:
         self._policy_evaluator = DiscoveryPolicyEvaluator()
         self._rate_limiter = None
@@ -517,15 +515,6 @@ class DiscoveryEngine:
             target_exclude=request.selection_target_exclude or None,
         )
 
-    def _before_seeker_request(self) -> None:
-        """Pre-request callback that respects pre-reserved budget allocations.
-
-        Uses thread-local target_idx to enforce roster-order fairness under
-        concurrent dispatch.
-        """
-        target_idx = getattr(self._target_idx_local, "value", None)
-        self._attempt_budget.reserve_search(target_idx=target_idx)
-
     def _build_seeker(self, request: DiscoveryRequest):
         """Construct a SerpApiSeeker from request settings.
 
@@ -546,7 +535,7 @@ class DiscoveryEngine:
                 float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
             ),
             cache_refresh=request.fresh and not request.dry_run,
-            before_request=self._before_seeker_request,
+            before_request=self._attempt_budget.reserve_search,
         )
 
     @staticmethod
@@ -601,7 +590,9 @@ class DiscoveryEngine:
         discovered = []
         error_type = None
         try:
-            self._target_idx_local.value = idx
+            # Set a target-aware callback that respects pre-reserved budget allocations.
+            # This closure captures idx so each target's queries are attributed correctly.
+            seeker.before_request = lambda: self._attempt_budget.reserve_search(target_idx=idx)
             discovered = seeker.discover(seeker_input)
         except SerpApiSearchTimeout as exc:
             discovered = exc.candidates
