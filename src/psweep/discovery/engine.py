@@ -329,6 +329,7 @@ class DiscoveryEngine:
         self._reviewer = None
         self._fallback_pending: set[str] = set()
         self._acquisition_pending: dict[str, set[str]] = defaultdict(set)
+        self._seeker_target_idx_local = threading.local()
 
     @staticmethod
     def _emit_progress(request: DiscoveryRequest, message: str) -> None:
@@ -535,8 +536,20 @@ class DiscoveryEngine:
                 float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
             ),
             cache_refresh=request.fresh and not request.dry_run,
-            before_request=self._attempt_budget.reserve_search,
+            before_request=self._before_seeker_request,
         )
+
+    def _before_seeker_request(self) -> None:
+        """Reserve one live search for whichever target the calling worker is on.
+
+        Bound once as the seeker's ``before_request`` callback (never reassigned,
+        so concurrent workers never race over a shared mutable callback). The
+        calling target's index comes from thread-local storage set in
+        ``_discover_target_candidates``: each worker thread runs exactly one job
+        at a time, so this is race-free without any per-call object mutation.
+        """
+        target_idx = getattr(self._seeker_target_idx_local, "value", None)
+        self._attempt_budget.reserve_search(target_idx=target_idx)
 
     @staticmethod
     def _seeker_jobs(inputs, *, query_slot: bool):
@@ -549,35 +562,29 @@ class DiscoveryEngine:
                 if slot < len(item.queries):
                     yield idx, dataclass_replace(item, queries=[item.queries[slot]], context=None)
 
-    def _reserve_seeker_budget_in_roster_order(self, seeker_jobs):
-        """Pre-reserve search budget for targets in roster order.
+    def _reserve_seeker_budget_in_roster_order(self, seeker_jobs) -> None:
+        """Pre-allocate each job's share of the search budget before dispatch.
 
-        When max_search_calls is set, allocate budget slots to the first N targets
-        (in original roster order) that fit within the budget. Only targets that
-        successfully get pre-reserved should be dispatched.
+        Reserves one budget unit per job (``len(si.queries)`` units for a job
+        carrying more than one query) strictly in ``seeker_jobs`` order -- the same
+        order jobs are dispatched in, which is roster order for a plain pass and
+        slot-major (every target's first query, then every target's second, ...)
+        for a query-slot pass. Once one job would overflow the remaining budget,
+        it and every job after it are left unreserved, so budget keeps going to
+        earlier-roster/earlier-slot jobs even once dispatch is concurrent.
 
-        Returns: set of target indices that got budget pre-reserved (empty if no budget limit).
+        Jobs are still dispatched regardless of reservation -- a cache hit costs
+        no budget and needs none -- but an unreserved job's real search attempt
+        will fail with ``AttemptBudgetExceeded`` (see ``_before_seeker_request``).
+        A no-op when there is no budget limit.
         """
-        reserved_targets = set()
         if self._attempt_budget.max_search_calls is None:
-            return reserved_targets
-
-        # Count total queries per target across all seeker_jobs entries
-        # (when query_slot=True, same target appears multiple times with different queries)
-        queries_per_target = {}
+            return
         for idx, si in seeker_jobs:
-            queries_per_target.setdefault(idx, 0)
-            queries_per_target[idx] += len(si.queries)
-
-        # Pre-reserve in roster order; stop when budget exhausted
-        for idx in sorted(queries_per_target.keys()):
             try:
-                self._attempt_budget.pre_reserve_target_searches(idx, queries_per_target[idx])
-                reserved_targets.add(idx)
+                self._attempt_budget.pre_reserve_target_searches(idx, len(si.queries))
             except AttemptBudgetExceeded:
                 break
-
-        return reserved_targets
 
     def _discover_target_candidates(self, seeker, idx: int, seeker_input):
         """Execute discovery for a single target. Returns (idx, discovered, error_records, error_type).
@@ -591,6 +598,7 @@ class DiscoveryEngine:
         discovered = []
         error_type = None
         try:
+            self._seeker_target_idx_local.value = idx
             discovered = seeker.discover(seeker_input)
         except SerpApiSearchTimeout as exc:
             discovered = exc.candidates
@@ -732,20 +740,18 @@ class DiscoveryEngine:
             seeker_jobs = list(self._seeker_jobs(seeker_inputs, query_slot=query_slot))
             seeker_jobs = [(idx, si) for idx, si in seeker_jobs if si.queries]
 
-            # Pre-reserve search slots in roster order to ensure first N targets always
+            # Pre-reserve search slots in roster/slot order to ensure earlier jobs always
             # get priority, regardless of concurrent scheduling. This preserves the
             # pre-Step-11b guarantee that "first N targets in roster order get the budget."
-            reserved_targets = self._reserve_seeker_budget_in_roster_order(seeker_jobs)
-
-            # Only dispatch targets that have budget pre-reserved (or if no budget limit)
-            if reserved_targets or self._attempt_budget.max_search_calls is None:
-                jobs_to_dispatch = [(idx, si) for idx, si in seeker_jobs if idx in reserved_targets or self._attempt_budget.max_search_calls is None]
-            else:
-                jobs_to_dispatch = []
+            # Every job still dispatches -- a cache hit costs no budget -- but a job
+            # left unreserved will fail with AttemptBudgetExceeded on any real search
+            # attempt (see _before_seeker_request), surfacing as the usual "budget"
+            # outcome below.
+            self._reserve_seeker_budget_in_roster_order(seeker_jobs)
 
             discovery_results = bounded_results(
                 lambda job: self._discover_target_candidates(seeker, job[0], job[1]),
-                jobs_to_dispatch,
+                seeker_jobs,
                 workers=max_concurrent,
             )
 

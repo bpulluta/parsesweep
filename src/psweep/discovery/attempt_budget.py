@@ -20,7 +20,8 @@ class AttemptBudget:
         self.max_search_calls = max_search_calls
         self._reviews: Counter[str] = Counter()
         self._searches = 0
-        self._pre_reserved_per_target: dict[int, int] = {}  # target_idx -> pre-reserved count
+        self._pre_reserved_remaining: dict[int, int] = {}
+        self._total_committed = 0
         self._lock = Lock()
 
     def reserve_review(self, target_key: str) -> None:
@@ -34,31 +35,46 @@ class AttemptBudget:
             self._reviews[target_key] += 1
 
     def pre_reserve_target_searches(self, target_idx: int, count: int) -> None:
-        """Pre-allocate search slots for a target in roster order.
+        """Pre-allocate ``count`` search slots for one job, in dispatch order.
 
-        This ensures targets are processed in roster order even under concurrent dispatch,
-        by marking which targets get budget priority. Does NOT increment _searches yet;
-        that happens during actual execution via reserve_search().
-
-        If a target is pre-reserved multiple times (e.g., multiple seeker phases),
-        accumulate the counts rather than overwriting.
+        Call once per seeker job, strictly in the order jobs will be dispatched
+        (roster order, or slot-major order for a query-slot pass), so budget
+        keeps going to earlier jobs even once dispatch itself becomes
+        concurrent. ``target_idx`` may repeat across calls (once per slot); its
+        allocation accumulates. The admission check is against a running total
+        committed across every call ever made on this budget -- that total is
+        never decremented, since every real search reserve_search() later
+        counts was first admitted here and must not be charged twice.
         """
         with self._lock:
-            if self.max_search_calls is not None:
-                total_reserved = sum(self._pre_reserved_per_target.values()) + count
-                if self._searches + total_reserved > self.max_search_calls:
-                    raise AttemptBudgetExceeded("Search attempt budget exhausted for run")
-            self._pre_reserved_per_target[target_idx] = self._pre_reserved_per_target.get(target_idx, 0) + count
+            total = self._total_committed + count
+            if self.max_search_calls is not None and total > self.max_search_calls:
+                raise AttemptBudgetExceeded("Search attempt budget exhausted for run")
+            self._total_committed = total
+            self._pre_reserved_remaining[target_idx] = (
+                self._pre_reserved_remaining.get(target_idx, 0) + count
+            )
 
-    def reserve_search(self) -> None:
+    def reserve_search(self, target_idx: int | None = None) -> None:
         """Reserve one live search, including transient retries.
 
-        Budget slots are pre-allocated before dispatch via pre_reserve_target_searches().
-        Only targets with pre-reserved slots are dispatched, so this will always succeed
-        during normal execution (pre-reserved slots are "spent" on the counter).
+        Cache hits never call this. When ``target_idx`` is given and a budget
+        is set, the unit is drawn strictly from that target's own allocation
+        (see ``pre_reserve_target_searches``), so concurrent dispatch across
+        targets can never race for the same budget unit.
         """
         with self._lock:
-            if self.max_search_calls is not None and self._searches >= self.max_search_calls:
+            if self.max_search_calls is None:
+                self._searches += 1
+                return
+            if target_idx is not None:
+                remaining = self._pre_reserved_remaining.get(target_idx, 0)
+                if remaining <= 0:
+                    raise AttemptBudgetExceeded("Search attempt budget exhausted for run")
+                self._pre_reserved_remaining[target_idx] = remaining - 1
+                self._searches += 1
+                return
+            if self._searches >= self.max_search_calls:
                 raise AttemptBudgetExceeded("Search attempt budget exhausted for run")
             self._searches += 1
 
