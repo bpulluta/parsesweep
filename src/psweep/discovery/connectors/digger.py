@@ -10,6 +10,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
+from psweep.discovery.concurrency import bounded_results
 from psweep.discovery.constants import DOCUMENT_EXTENSIONS, DOWNLOADABLE_EXTENSIONS, USER_AGENT
 from psweep.discovery.network import (
     NetworkPolicyError,
@@ -170,6 +171,10 @@ def crawl(
     by several sources is fetched once. A source is incomplete when one of its
     pages failed with a retryable error or the page/file budget cut off a link
     it would have kept or followed.
+
+    When max_files is None (unbounded), URL fetches are parallelized via bounded_results
+    to accelerate network I/O. When max_files is set (bounded), fetches remain sequential
+    to preserve deterministic output at the budget boundary.
     """
     allowed = digger_input.allowed_domains or _source_domains(digger_input.sources)
     save_pages = bool(digger_input.include_link_text_patterns)
@@ -212,21 +217,59 @@ def crawl(
         )
         return artifact, page
 
+    def _fetch_and_record(url: str) -> list[dict[str, str]] | None:
+        """Fetch a URL and record errors; retryable errors marked for retry."""
+        try:
+            return fetch_links(url)
+        except CrawlAbortError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - classified, crawl continues
+            if is_transient_error(exc):
+                retryable_pages.add(url)
+            return None
+
+    # For unbounded crawls, parallelize by batching URLs per depth level.
+    batch_to_fetch: list[str] = []
+    current_depth = -1
+
     while queue and pages_fetched < digger_input.max_pages and not full():
         url, depth, origin = queue.popleft()
         if not pending(url, depth, origin):
             continue
         visited.add((url, origin))
+
+        # Flush batch when depth changes (advancing to new BFS level).
+        if max_files is None and depth != current_depth:
+            if batch_to_fetch:
+                for u, result in zip(batch_to_fetch, bounded_results(_fetch_and_record, batch_to_fetch, workers=2)):
+                    fetched[u] = result
+                    pages_fetched += 1
+                batch_to_fetch = []
+            current_depth = depth
+
         if url not in fetched:
-            try:
-                fetched[url] = fetch_links(url)
+            if max_files is None:
+                # For unbounded crawls, batch for parallel fetching.
+                batch_to_fetch.append(url)
+            else:
+                # For bounded crawls, fetch immediately for deterministic output.
+                try:
+                    fetched[url] = fetch_links(url)
+                    pages_fetched += 1
+                except CrawlAbortError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - classified, crawl continues
+                    fetched[url] = None
+                    if is_transient_error(exc):
+                        retryable_pages.add(url)
+
+        # Ensure URL is fetched before accessing its links.
+        if url not in fetched and batch_to_fetch:
+            for u, result in zip(batch_to_fetch, bounded_results(_fetch_and_record, batch_to_fetch, workers=2)):
+                fetched[u] = result
                 pages_fetched += 1
-            except CrawlAbortError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - classified, crawl continues
-                fetched[url] = None
-                if is_transient_error(exc):
-                    retryable_pages.add(url)
+            batch_to_fetch = []
+
         if url in retryable_pages:
             incomplete.add(origin)
         links = fetched[url] or []
@@ -252,6 +295,13 @@ def crawl(
                     break
             if page:
                 queue.append((link["url"], depth + 1, origin))
+
+    # Flush any remaining batch.
+    if max_files is None and batch_to_fetch:
+        for u, result in zip(batch_to_fetch, bounded_results(_fetch_and_record, batch_to_fetch, workers=2)):
+            fetched[u] = result
+            pages_fetched += 1
+
     incomplete.update(origin for url, depth, origin in queue if pending(url, depth, origin))
     return CrawlResult(artifacts, incomplete, pages_fetched)
 
