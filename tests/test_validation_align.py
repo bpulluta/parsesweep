@@ -194,6 +194,80 @@ def _by_match(clusters, match):
     return [c for c in clusters if c.match == match]
 
 
+@pytest.mark.parametrize("roster_mode", [False, True])
+def test_reference_assessment_masks_keep_blanks_distinct_from_labelled_absence(
+    tmp_path, roster_mode
+):
+    if roster_mode:
+        metadata = _metadata(tmp_path, ROSTER_SCHEMA)
+        roster = load_roster(ROSTER_INPUTS, metadata)
+        primary = Source(
+            "p",
+            "primary",
+            _table(
+                tmp_path / "p.csv",
+                ROSTER_HEADER,
+                [[t["state"], t["ahj"], "", "", "", t["geo_id"], "", "", ""] for t in TARGETS],
+            ),
+            None,
+        )
+        ref = Source(
+            "r",
+            "reference",
+            _table(
+                tmp_path / "r.csv",
+                [
+                    "State",
+                    "AHJ Name",
+                    "Online Permitting",
+                    "Permit Fee",
+                    "Online Permitting__assessed",
+                ],
+                [
+                    ["AZ", "Maricopa County", "unknown", "NA", "false"],
+                    ["AZ", "Pima County", "", "", "true"],
+                ],
+            ),
+            None,
+        )
+        clusters, _, _ = _align(
+            metadata, [primary, ref], roster=roster, quote_field=None, fields=["online", "fee"]
+        )
+        cells = [c.rows["r"][0] for c in clusters if "r" in c.rows]
+        first, second = cells
+        assert not first["online"].assessed and first["fee"].assessed
+        assert second["online"].assessed and not second["fee"].assessed
+    else:
+        metadata = _metadata(tmp_path)
+        primary = _rows_table(tmp_path, "p", [_rule("a", "b")])
+        ref = _rows_table(
+            tmp_path,
+            "r",
+            [{**_rule("a", "b", "unknown", "NA"), "value__assessed": "false"}],
+            header=[*HEADER, "value__assessed"],
+            role="reference",
+        )
+        clusters, _, _ = _align(metadata, [primary, ref], fields=["value", "units", "summary"])
+        cells = clusters[0].rows["r"][0]
+        assert not cells["value"].assessed
+        assert cells["units"].assessed and cells["units"].value is None
+        assert not cells["summary"].assessed
+
+
+def test_invalid_assessment_mask_fails_before_scoring(tmp_path):
+    metadata = _metadata(tmp_path)
+    primary = _rows_table(tmp_path, "p", [_rule("a", "b")])
+    ref = _rows_table(
+        tmp_path,
+        "r",
+        [{**_rule("a", "b", "1"), "value__assessed": "maybe"}],
+        header=[*HEADER, "value__assessed"],
+        role="reference",
+    )
+    with pytest.raises(ValueError, match=r"value__assessed.*true or false"):
+        _align(metadata, [primary, ref], fields=["value"])
+
+
 # ── Columns ────────────────────────────────────────────────────────────────
 
 

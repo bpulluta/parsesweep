@@ -325,7 +325,7 @@ def test_incomplete_shared_partition_publishes_additively(
 
 
 def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path):
-    from discovery_helpers import FakeResponse
+    from discovery_helpers import FakeResponse, review_evidence
 
     from psweep.discovery.document_reviewer import DocumentReviewer
 
@@ -347,13 +347,14 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
     monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda self: object())
     contexts = []
 
-    def grade(self, path, *, target_context="", source_url=""):
+    def grade(self, path, *, target_context="", source_url="", cache_key=""):
         contexts.append((path, target_context))
         return {
             "is_primary": True,
             "relevance": 0.9,
             "doc_kind": "public comment",
             "reason": "fixture",
+            "evidence": review_evidence("fixture public comment"),
         }
 
     monkeypatch.setattr(DocumentReviewer, "_grade", grade)
@@ -388,8 +389,8 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
     }
     for path, context in contexts:
         state = "CO" if "/CO-" in path else "PA"
-        assert f"state={state}" in context
-        assert "fips" not in context  # passthrough fields never reach grading
+        assert json.loads(context)["identity"]["state"] == state
+        assert "fips" not in context  # unconfigured passthrough fields never reach grading
     assert result.curated_count == 2
 
 

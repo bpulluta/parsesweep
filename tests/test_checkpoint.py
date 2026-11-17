@@ -8,10 +8,12 @@ discovery runs.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
+from psweep.discovery import publication
 from psweep.discovery.engine import DiscoveryEngine
 from psweep.discovery.targets import identify_target
 from psweep.discovery.publication import (
@@ -20,6 +22,157 @@ from psweep.discovery.publication import (
     effective_discovery_fingerprint,
     load_prior_outcomes,
 )
+
+
+def _count_checkpoint_hash_work(monkeypatch):
+    """Count actual digest calls and bytes, without replacing file hashing."""
+    original = publication.hashlib.sha256
+    work = {"calls": 0, "bytes": 0}
+
+    class CountingDigest:
+        def __init__(self):
+            work["calls"] += 1
+            self.digest = original()
+
+        def update(self, chunk):
+            work["bytes"] += len(chunk)
+            self.digest.update(chunk)
+
+        def hexdigest(self):
+            return self.digest.hexdigest()
+
+    monkeypatch.setattr(publication.hashlib, "sha256", CountingDigest)
+    return work
+
+
+class TestCheckpointHashScale:
+    @pytest.mark.parametrize("owners", [20, 1000, 10000])
+    def test_shared_artifacts_hash_once_per_load(self, tmp_path, monkeypatch, owners):
+        common = _evidence(tmp_path, "common")
+        entries = {}
+        expected_bytes = sum(Path(raw).stat().st_size for raw in common["artifacts"])
+        expected_bytes += sum(Path(raw).stat().st_size for raw in common["curated_paths"])
+        for owner in range(owners):
+            document = tmp_path / f"owner-{owner}.pdf"
+            document.write_bytes(f"record-{owner}".encode())
+            expected_bytes += document.stat().st_size
+            entries[str(owner)] = {
+                **common,
+                "curated_paths": {
+                    **common["curated_paths"],
+                    str(document): artifact_sha256(document),
+                },
+            }
+        checkpoint = tmp_path / "checkpoint.json"
+        checkpoint.write_text(json.dumps({"version": 2, "entries": entries}))
+        work = _count_checkpoint_hash_work(monkeypatch)
+
+        assert len(publication.load_checkpoint(checkpoint)) == owners
+        assert work == {"calls": owners + 3, "bytes": expected_bytes}
+
+    @pytest.mark.parametrize("wrong_first", [True, False])
+    def test_digest_memo_is_not_expected_hash_validity(self, tmp_path, monkeypatch, wrong_first):
+        entry = _evidence(tmp_path, "common")
+        work = _count_checkpoint_hash_work(monkeypatch)
+        manifest = next(iter(entry["artifacts"]))
+        wrong = {**entry, "artifacts": {**entry["artifacts"], manifest: "0" * 64}}
+        entries = (
+            {"wrong": wrong, "right": entry} if wrong_first else {"right": entry, "wrong": wrong}
+        )
+        checkpoint = tmp_path / "checkpoint.json"
+        checkpoint.write_text(json.dumps({"version": 2, "entries": entries}))
+
+        assert set(publication.load_checkpoint(checkpoint)) == {"right"}
+        assert work["calls"] == 3
+
+    def test_digest_memo_does_not_survive_load(self, tmp_path, monkeypatch):
+        entry = _evidence(tmp_path, "common")
+        checkpoint = tmp_path / "checkpoint.json"
+        checkpoint.write_text(json.dumps({"version": 2, "entries": {"owner": entry}}))
+        work = _count_checkpoint_hash_work(monkeypatch)
+
+        assert publication.load_checkpoint(checkpoint)
+        assert publication.load_checkpoint(checkpoint)
+        assert work["calls"] == 6
+        Path(next(iter(entry["curated_paths"]))).write_bytes(b"edited")
+        assert publication.load_checkpoint(checkpoint) == {}
+        assert work["calls"] == 9
+
+    @pytest.mark.parametrize(
+        "change", ["size", "mtime_ns", "ctime_ns", "inode", "symlink", "missing"]
+    )
+    def test_changed_shared_artifact_is_not_reused(self, tmp_path, monkeypatch, change):
+        entry = _evidence(tmp_path, "common")
+        document = Path(next(iter(entry["curated_paths"])))
+        before = document.stat()
+        original = publication.checkpoint_artifacts_valid
+        checks = 0
+
+        def validate_and_change(current, **kwargs):
+            nonlocal checks
+            valid = original(current, **kwargs)
+            checks += 1
+            if checks == 1:
+                if change == "inode":
+                    replacement = tmp_path / "replacement.pdf"
+                    replacement.write_bytes(b"edited")
+                    replacement.replace(document)
+                    assert document.stat().st_ino != before.st_ino
+                elif change in {"symlink", "missing"}:
+                    document.unlink()
+                    if change == "symlink":
+                        replacement = tmp_path / "replacement.pdf"
+                        replacement.write_bytes(b"report")
+                        document.symlink_to(replacement)
+                else:
+                    document.write_bytes(b"longer edit" if change == "size" else b"edited")
+                    if change == "ctime_ns":
+                        os.utime(document, ns=(before.st_atime_ns, before.st_mtime_ns))
+                        assert document.stat().st_size == before.st_size
+                        assert document.stat().st_mtime_ns == before.st_mtime_ns
+                        assert document.stat().st_ctime_ns != before.st_ctime_ns
+                    elif change == "mtime_ns":
+                        os.utime(document, ns=(before.st_atime_ns, before.st_mtime_ns + 1))
+                        assert document.stat().st_size == before.st_size
+                        assert document.stat().st_mtime_ns != before.st_mtime_ns
+                    else:
+                        assert document.stat().st_size != before.st_size
+            return valid
+
+        monkeypatch.setattr(publication, "checkpoint_artifacts_valid", validate_and_change)
+        checkpoint = tmp_path / "checkpoint.json"
+        checkpoint.write_text(
+            json.dumps({"version": 2, "entries": {"before": entry, "after": entry}})
+        )
+
+        assert set(publication.load_checkpoint(checkpoint)) == {"before"}
+
+    def test_mutation_during_digest_fails_closed(self, tmp_path, monkeypatch):
+        entry = _evidence(tmp_path, "common")
+        document = Path(next(iter(entry["curated_paths"])))
+        original = publication.artifact_sha256
+
+        def digest_then_change(path):
+            digest = original(path)
+            if path == document:
+                before = path.stat()
+                path.write_bytes(b"edited")
+                os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+                assert path.stat().st_size == before.st_size
+                assert path.stat().st_mtime_ns == before.st_mtime_ns
+                assert path.stat().st_ctime_ns != before.st_ctime_ns
+            return digest
+
+        monkeypatch.setattr(publication, "artifact_sha256", digest_then_change)
+        assert not publication.checkpoint_artifacts_valid(entry)
+
+    def test_standalone_validation_shares_digest_across_evidence(self, tmp_path, monkeypatch):
+        entry = _evidence(tmp_path, "common")
+        entry["curated_paths"].update(entry["artifacts"])
+        work = _count_checkpoint_hash_work(monkeypatch)
+
+        assert publication.checkpoint_artifacts_valid(entry)
+        assert work["calls"] == 3
 
 
 def _evidence(tmp_path: Path, name: str) -> dict:
@@ -229,6 +382,31 @@ class TestEffectiveFingerprint:
         assert effective_discovery_fingerprint({field: None}) != effective_discovery_fingerprint(
             {field: value}
         )
+
+    def test_models_do_not_invalidate_discovery_without_review(self):
+        first = {"models": {"primary": "extract-a", "secondary": "locate-a"}}
+        second = {"models": {"primary": "extract-b", "secondary": "locate-b"}}
+        assert effective_discovery_fingerprint(first) == effective_discovery_fingerprint(second)
+
+    def test_review_fingerprints_only_its_resolved_model(self):
+        first = {
+            "document_review": {"document_description": "records", "model": "secondary"},
+            "models": {"primary": "extract-a", "secondary": "review-a"},
+        }
+        assert effective_discovery_fingerprint(first) == effective_discovery_fingerprint(
+            {**first, "models": {"primary": "extract-b", "secondary": "review-a"}}
+        )
+        assert effective_discovery_fingerprint(first) != effective_discovery_fingerprint(
+            {**first, "models": {"primary": "extract-a", "secondary": "review-b"}}
+        )
+
+    def test_escalation_model_alias_invalidates_discovery(self):
+        first = {
+            "document_review": {"model": "secondary", "escalate_model": "primary"},
+            "models": {"secondary": "cheap", "primary": "strong-a"},
+        }
+        second = {**first, "models": {"secondary": "cheap", "primary": "strong-b"}}
+        assert effective_discovery_fingerprint(first) != effective_discovery_fingerprint(second)
 
     @pytest.mark.parametrize("value", [object(), float("nan"), float("inf"), {1: "invalid-key"}])
     def test_invalid_effective_configuration_is_not_stringified(self, value):

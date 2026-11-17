@@ -106,6 +106,7 @@ discovery:
 | `cache` | `false` | Cache results on disk; a hit makes no live call. |
 | `cache_ttl_minutes` | `0` | Cache expiry; `0` never expires. |
 | `params` | — | Extra SerpApi parameters sent verbatim (`{engine: bing}`, `{tbm: nws}`); `q`, `num`, `api_key` are reserved. |
+| `fallback_queries` | absent/off | One additional set of target templates, only for targets below `document_review.keep_top` distinct automatically qualified sources. Requires `document_review.document_description`. |
 
 For Google, `params: {udm: web}` (the "Web" tab) is recommended: without it
 Google often ignores quoted names and `site:`. `site:`/`filetype:` are hints,
@@ -139,6 +140,8 @@ query variants of a configured page (its pagination), which belong to that page.
 | `runtime.timeout_seconds` | engine default | Request timeout, and the stall limit (time without data) for file downloads. |
 | `runtime.max_concurrent_downloads` | `2` | Parallel downloads. |
 | `runtime.min_request_interval_ms` | `0` | Minimum delay between outbound requests. |
+| `runtime.max_review_calls` | unbounded | Physical review LLM attempts per target per run, including escalation, transport retries, malformed-grade reattempts and comparative deduplication. Cache reuse consumes none. |
+| `runtime.max_search_calls` | unbounded | Physical live search attempts across the run, including retries and fallback/recovery searches. Cache reuse consumes none. |
 | `retry_policy.max_attempts` | `3` | Total attempts per request. |
 | `retry_policy.initial_backoff_seconds` | `1.0` | Attempt N waits `initial · 2^(N−2)` … |
 | `retry_policy.max_backoff_seconds` | `8.0` | … capped here. |
@@ -237,24 +240,137 @@ Optional, paid LLM curation; it runs only when `document_description` is set.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `document_description` | — | What a correct document is; may use `{field}` target templates. |
+| `document_description` | — | What a correct document is; rendered separately per target with required `{field}` and optional `{field?}` templates. Missing required/malformed tokens fail preflight. |
+| `context_fields` | identity only | Extra roster metadata columns supplied as scope hints (e.g. organization, address). Names must exist; blank hint values are omitted. Does not change `partition_by` or target IDs. |
 | `model` | [default model](#environment-variables) | `models:` alias or model name. |
+| `escalate_model` | absent/off | One stronger semantic grading decision for grade-2 ambiguity or failed/malformed initial grading, subject to actual-attempt budgets. |
 | `keep_top` | `1` | Primary documents kept per target. |
+| `coverage` | absent/off | Domain-defined label → evidence-description map. Descriptions support target templates. Verified labels guide complementary source selection and trigger fallback for missing coverage. Labels use letters/digits/`_`/`-`, starting with a letter. |
 | `max_chars` | `12000` | Text sent per document. |
 | `keywords` | classifier keywords | Terms used to pick the excerpt sent for review. |
 | `deduplicate_redundant` | `true` | Drop redundant copies before keeping the top ones. |
 | `deduplication.key_fields` | — | Fields that identify redundant copies (e.g. `[path_basename, review_doc_kind]`). |
 
-The reviewer grades each document 0–4 against an anchored rubric. In
+The reviewer grades each document 0–4 against an anchored rubric. Grades3–4
+must satisfy every mandatory requirement in `document_description`; 'partial'
+means missing optional detail, not missing required evidence. The reason quotes
+the deciding source content or identifies what is absent. In
 `review.csv`, `relevance` = grade / 4 and `llm_is_primary` = grade ≥ 3;
-selection keeps the top `keep_top` non-redundant primaries per target, ranked by
-relevance. Grades are cached by content and grading inputs in
+selection keeps at most `keep_top` non-redundant primaries per target. Without
+coverage, grades and reproducible provenance break ties. With coverage, newly
+covered verified labels take priority, then grade; supported publication dates
+break ties only for matching scope/claim-kind and compatible date precision.
+Grades are cached by content and grading inputs in
 `discovered/.review_cache/` and reused across runs. Recordings are graded on
 their transcript: a run's copy inherits the curated copy's transcript (matched
 by SHA-256) before review. A recording not yet transcribed (first run) is kept
 without review and transcribed at extraction. Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
 `psweep curate --config …` to republish the curated selection; the next
 `psweep extract` withdraws the records of documents it dropped.
+
+### Automatic qualification and bounded recovery
+
+Review receives structured target identity plus configured context fields as
+untrusted hints, never proof of a source fact. Templates change the description
+per target without changing the data contract. Source text must establish the
+specific entity/scope. Grades0–1 reject; grades3–4 qualify; grade2 can escalate
+when `escalate_model` is configured. Exhausted provider routes are not repeatedly
+hammered during that run: eligible escalation is used or work remains pending.
+Successful initial grades are reused when a failed escalation resumes.
+Document/request-specific rejections do not disable unrelated requests on that
+route. Comparative deduplication can also use the configured escalation route
+after an exhausted initial-route failure, with both attempts budgeted and metered.
+
+With `search.fallback_queries`, discovery runs at most one extra stage for
+weak targets below `document_review.keep_top` distinct qualified sources or
+missing configured coverage labels, including targets with zero downloads.
+It does not infer field-level gaps from
+schema field names. Pending search/download/review failures must finish first;
+provider outages do not launch search loops. Combined initial/fallback sources
+are deduplicated by exact content/final URL, globally top-N selected and subject
+to host diversity. Configured target URLs explicitly bypass relevance review
+and are not counted as automatically verified evidence.
+
+```yaml
+discovery:
+  queries: ['"{name}" "{area?}" technical specification']
+  search:
+    cache: true
+    fallback_queries: ['"{name}" "{area?}" manufacturer installation record']
+  document_review:
+    document_description: "Direct specification evidence for {name} at {address?}; not a sibling asset."
+    context_fields: [organization, address]
+    model: secondary
+    escalate_model: primary
+    keep_top: 3
+    coverage:
+      specification: "An explicit capacity and unit for {name}."
+      applicability: "A direct statement of which variant/site the specification covers."
+  selection:
+    max_per_target: 8
+    max_per_host_per_target: 2
+  runtime:
+    max_review_calls: 12
+    max_search_calls: 200
+```
+
+Limits above are examples, not a recommendation for every domain. Review-call
+limits apply per target per run; search limits apply across the run. Both count
+physical requests/retries, including failures with unknown pricing, and cache
+hits are free. Guard exhaustion sends no request and leaves resumable pending
+work. These bound attempts, not dollars when provider pricing/usage is unknown.
+
+Adaptive search persists query results even when ordinary `search.cache` is
+disabled (reported in notes) so interrupted stages can resume without repaying
+valid queries. Configured TTL remains honored; expired responses may need a
+new request. Completed unchanged targets still skip work. Low source coverage
+after exhausting fallback is reported separately from an interrupted failure.
+Adaptive dry runs/config checks make no paid calls. Without fallback,
+discovery dry-run search semantics remain unchanged.
+
+### Grounded review evidence and bounded selection
+
+The existing grading call returns `review_evidence`: identity/content quotations,
+quoted scope and claim-kind descriptions, optional quoted source-publication date
+and precision, and quoted configured coverage labels. Accepted grades3–4 require
+identity/content and scope/claim evidence that occurs in an actual sampled segment.
+Quotes cannot bridge disconnected sample windows or borrow target metadata.
+Invalid/fabricated evidence follows the existing failed-review/escalation path;
+old grade contracts are invalidated by prompt/schema identity. This verifies text
+occurrence, not entailment, factual truth or document-wide completeness.
+
+Source dates are calendar-valid ISO values with day/month/year precision, tied
+to quoted text; unknown dates remain unknown. Download timestamps never substitute
+for publication dates. Direct/reported statements and scope stay source-specific
+hints in the extraction record and reconciliation input; they are not automatically
+promoted to achieved facts or a domain-independent authority ranking.
+
+Comparative dedup uses verified source evidence and requires references for keep/drop
+decisions. Complementary labels, differing scopes/history, conflicting claims or
+unsupported/cyclic decisions cannot silently erase a source. Structural keys group
+comparisons but differing content is not dropped on key equality alone. Exact-byte
+and URL mirrors remain cheap to deduplicate.
+
+Finite `runtime.max_files` allocates new ordinary fetch opportunities round-robin
+across owners, retaining their ranking. Configured/reused outcomes stay free;
+unbounded file acquisition retains its existing order. Fallback queries likewise
+run by query slot across weak targets before the next slot, preventing early targets
+from consuming every remaining request. Partial budgets/HTTP/provider failures
+remain pending; exhausted missing coverage is distinct and reported in compact
+target summaries. One source can cover multiple labels; labels do not bypass
+mandatory qualification or automatically exceed `keep_top`/host limits.
+
+Checkpoint verification memoizes actual hashes only within a load by file identity
+and stat fingerprint, so shared artifacts are hashed once rather than once per owner.
+It rejects symlinks, missing/changed files and changes during hashing; there is no
+persisted stat-only trust across runs. Disk review caches avoid retaining duplicate
+successful decisions in long-lived memory; direct no-cache reviewer use can still
+retain decision/failure memos for its instance lifetime.
+
+No manually verified per-location URLs/aliases are required. Domain-specific
+source preferences, scope and query wording stay in YAML; schema fields and
+validity rules remain the extraction data contract. Qualification grades and
+quote presence do not independently establish truth or an accuracy threshold.
 
 ### `policy` and `retention`
 
@@ -317,6 +433,20 @@ CSV rows win; leave both pages empty to force the full document. `pages.range`
 (or `--pages 27,68-73`) selects pages for a single file: comma-separated pages
 and inclusive ranges.
 
+Targeting normally runs within each bounded extraction worker, so a slow
+locator doesn't hold up every other document. A fresh run with existing output
+performs bounded targeting preflight before deleting old records. Its `model`
+is independent of `extraction.model`; when omitted it inherits that model.
+Target-scoped selections retain subject identity/header context. The subject
+comes from the last configured `partition_by` field (the roster's name field),
+not from parsing a display label or guessing metadata fields. Discovery labels
+and metadata remain untrusted scope hints, never factual evidence. Cache
+identities include the configured identity, subject hints and locator behavior
+version. HTML/HTM targeting uses readable
+section text against `trigger_chars`, not raw markup size, so scripts/styles
+and navigation do not turn a short article into a paid locator call. Locator
+failures fall back to full-document extraction, subject to `max_context`.
+
 `auto_locate` shows the locator model the opening lines of every page and asks
 for the pages of the described section. It then reads those pages in full and
 adds the parts they refer to elsewhere in the document, such as "charges
@@ -331,7 +461,9 @@ be located, the full document is extracted. If a reference pass fails, the
 pages found so far are used and the document is located again on the next run.
 With `save_discovered`, `extracted/discovered_page_ranges.csv` (the `pages.csv`
 columns, one row per range) lists the pages behind every current record, reused
-records included.
+records included. Non-PDF selections are saved under `extracted/.sections/` as
+each document finishes; completed section text is then released from memory,
+whether saving is enabled or not.
 
 ### LLM calls
 
@@ -369,7 +501,9 @@ each file is transcribed once.
 ## Compilation
 
 Compilation merges `outputs/<domain>/extracted/` into
-`outputs/<domain>/compiled/<domain>.csv` / `.xlsx` and makes no LLM calls.
+`outputs/<domain>/compiled/<domain>.csv` / `.xlsx`. By default it makes no LLM
+calls; optional roster reconciliation below uses paid calls only for disputed
+or schema-inconsistent answers.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -406,6 +540,71 @@ agreeing sources, `medium`, `low` on conflict, `none`) and `evidence`
 Excel batches above 1,048,575 rows or with cells over 32,767 characters fail
 before export; use CSV for large outputs.
 
+### Optional evidence reconciliation
+
+`compilation.reconciliation` is opt-in and requires roster mode. It selects
+existing source observations, rather than generating replacement facts. Keep
+fields, descriptions and ordinary JSON Schema constraints in the schema; put
+resolution behavior only in YAML:
+
+```yaml
+compilation:
+  reconciliation:
+    enabled: true
+    model: primary
+    source_date_field: source_provenance.document_date
+    field_groups:
+      - [amount, unit]
+      - [status, status_description]
+    instructions: >-
+      Prefer statements about the queried asset over related assets. Distinguish
+      achieved history from superseded plans and abstain where scope is unclear.
+```
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `false` | Enable atomic, evidence-preserving roster reconciliation. |
+| `model` | extraction model | Existing `models:` alias or concrete model. |
+| `source_date_field` | absent/unknown | Exact root-relative payload path to the source's publication/update date, optionally a `{value, quote}` field. Invalid or absent dates remain unknown; extraction time is never used as publication time. |
+| `field_groups` | singleton item fields | Disjoint lists of exact main-item field names selected together from one original item. Identity fields cannot be grouped. Structured/evidence values are already indivisible. |
+| `instructions` | generic evidence rules | Domain-authored interpretation guidance, not new fields or generated facts. |
+| `max_context` | `100000` | Character budget for full prompt, competing observations, schema and response contract. Oversized targets remain unresolved; competitors are not silently truncated. |
+
+Agreeing schema-valid answers need no model call. Disputed units or an invalid
+assembled item trigger one logical request per target (transient provider
+retries still apply). The model returns supplied observation IDs or abstains;
+IDs, atomic selections and assembled item constraints are validated before
+export. A structurally invalid decision gets at most one schema-guided repair
+request using the same evidence and budget; valid abstentions are not retried.
+Failure diagnostics name fields/constraints without echoing provider content.
+Both requests and provider retries are included in metered accounting.
+Unresolved claims are `NA`, not an inconsistent majority-vote fallback.
+Nonnullable requirements that prevent abstention remain explicit failures.
+A partial result exits 3; no usable answers with failures exits 1. Dry runs and
+config checks make no calls or cache writes and report pending targets.
+
+Per-field `evidence` retains value/quote/URL/conflict and adds source date,
+observation ID and resolution state. `_reconciliation` contains the reason,
+unresolved units and a `decisions/<hash>.json` alternatives reference relative
+to `outputs/<domain>/.reconciliation/`. These sidecars retain original competing
+observations without growing spreadsheet cells past Excel limits. Confidence
+is support bookkeeping, not certified truth or automatic model confidence.
+
+Verified content-addressed decisions and durable attempt receipts live in
+`.reconciliation/`; identity includes the observations, schema, instructions,
+groups, resolved model/routing and algorithm version. Cached choices are
+revalidated and reused without credentials or new spending; cached abstentions
+remain visibly unresolved. Provider/budget/invalid-answer failures are not
+reused as authoritative decisions. `compile --fresh` replaces exported tables,
+not verified decisions. Actual calls, retries, unknown-price calls and failures
+are included in accounting, even when a later export fails.
+
+This does not automatically discover missing sources, turn publication recency
+into source authority, distinguish phases absent from the contract, or detect
+semantic contradictions expressed only in prose when all supplied values agree.
+Group related facts and describe scope/phase distinctions in the existing
+schema and YAML instructions; rows mode intentionally rejects this option.
+
 ## Validation
 
 `validate` scores the primary table (from `extraction.model`) against
@@ -420,6 +619,40 @@ contender models and human reference sheets. `run` adds it when a
 | `fields` | Scored subset (default: every scorable field). |
 | `min_accuracy` | Gate in (0, 1]: exit 1 when the primary falls below it against any reference. Needs `references`. |
 | `key_fields`, `quote_field` | Rows mode (no roster) only: row identity (required there) and each row's verbatim quote. |
+
+### Precision, coverage and reference labels
+
+Validation reports populated-answer precision (`correct_populated /
+assessed_populated`), answer coverage (`populated_answers / answer_opportunities`)
+and reference-supported recall alongside existing assessed-cell accuracy.
+Unknown labels do not reward abstentions. In reference CSVs:
+
+- A populated cell is assessed by default; explicit `NA` labels known absence.
+- An empty cell is unlabelled, unless optional `<compiled title>__assessed=true`
+  explicitly labels absence.
+- `<compiled title>__assessed=false` excludes any value as unknown/unassessed;
+  no domain-specific magic unknown word is reserved. Nonblank masks must be
+  `true` or `false`.
+
+`min_accuracy` remains an assessed all-cell accuracy gate, not populated-answer
+precision. Model agreement is labelled separately and is not ground truth.
+Counts include missing/no-answer targets and expose unassessed populated claims,
+reference contradictions and evidence conflicts. Exact-target source precision
+still needs a separate sampled source audit; reviewer labels alone cannot certify it.
+
+Per-field Wilson intervals are provided in roster mode (one cell per target).
+Pooled cell intervals are null because fields/rows from one target are correlated.
+Target-level summaries provide answer/no-answer/partially assessed counts and
+an all-answered correctness interval over fully assessed answered targets.
+Those denominators must be read with coverage; blanks cannot establish an 85%
+precision claim. Processing time and billed extraction cost per target are
+amortized record-only means, not complete discovery spend or target wall time.
+
+For a defensible rollout, freeze a representative random/stratified holdout
+without manually seeded references, separate it from tuning cases, and label
+source-supported answers. Report status/milestone results and coverage separately,
+with denominators and uncertainty. Architecture or provider/model choice is not
+proof of greater-than-85% performance.
 
 At least one of `models` or `references` is required. Cells where every
 contender agrees are not judged; the judge sees only disagreements, checking
@@ -470,7 +703,15 @@ each target and shared source separately, keyed by the effective config
 fingerprint and SHA-256 evidence of its files. Adding a target fetches only
 that target; changing a target's `urls` or rendered queries re-runs it.
 
-- A **complete** item makes no requests on the next run.
+- A **complete** item makes no requests on the next run. Fully reused runs write
+  an audit snapshot, not another `documents/` or `curated/` copy.
+- Extraction/page-locator model changes do not invalidate discovery. Only the
+  resolved model used by configured `document_review` affects its fingerprint.
+- When acquisition settings or a target's inputs change, discovery re-evaluates
+  that work but reuses matching URL/owner downloads from verified local bytes;
+  it fetches only new, missing or changed documents. Classification and review
+  are re-applied under the current settings. Use `--fresh` to fetch remote
+  changes at already-downloaded URLs, including changed redirect destinations.
 - An item left **incomplete** — transient failure, unfinished crawl or
   search, `max_pages` or `max_files` reached — publishes what it has
   additively, and the next run re-fetches the listing, reuses every earlier

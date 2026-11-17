@@ -15,7 +15,7 @@ from psweep.discovery.connectors.serpapi_seeker import SerpApiSeeker
 from psweep.outcomes import EXIT_EMPTY
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 
-from discovery_helpers import FakeResponse
+from discovery_helpers import FakeResponse, review_evidence
 
 
 BASE_URL = "https://agency.gov"
@@ -70,7 +70,12 @@ def screening_workflow(tmp_path, monkeypatch):
     monkeypatch.setattr("psweep.discovery.network.request_get", downloads)
     review = Mock(
         return_value={
-            "data": {"grade": 4, "doc_kind": "source", "reason": "Relevant source evidence"},
+            "data": {
+                "grade": 4,
+                "doc_kind": "source",
+                "reason": "Relevant source evidence",
+                "evidence": review_evidence("Public notice is required before work begins."),
+            },
             "cost": 0.0,
             "input_tokens": 10,
             "output_tokens": 5,

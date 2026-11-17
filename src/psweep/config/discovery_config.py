@@ -194,8 +194,11 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
         "timeout_seconds": _Key(_int(1), "timeout_seconds"),
         "max_concurrent_downloads": _Key(_int(1), "max_concurrent_downloads"),
         "min_request_interval_ms": _Key(_int(0), "min_request_interval_ms"),
+        "max_review_calls": _Key(_int(1), "max_review_calls"),
+        "max_search_calls": _Key(_int(1), "max_search_calls"),
     },
     "search": {
+        "fallback_queries": _Key(_strings, "fallback_queries"),
         "max_results": _Key(_int(1), "seeker_max_results"),
         "cache": _Key(_bool, "seeker_cache"),
         "cache_ttl_minutes": _Key(_number, "seeker_cache_ttl_minutes"),
@@ -238,6 +241,9 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
         _block(
             {
                 "document_description": _Key(_string),
+                "context_fields": _Key(_strings),
+                "coverage": _Key(_string_map),
+                "escalate_model": _Key(_string),
                 "model": _Key(_string),
                 "keep_top": _Key(_int(1)),
                 "max_chars": _Key(_int(1)),
@@ -273,6 +279,53 @@ def _check_review_capacity(fields: dict[str, tuple[Any, str]]) -> None:
         )
 
 
+def _check_adaptive_review(fields: dict[str, tuple[Any, str]]) -> None:
+    """Adaptive queries require qualification; validate scope/template inputs before calls."""
+    from psweep.discovery.targets import iter_targets, render_target_template
+    from psweep.discovery.review_policy import iter_review_scopes, validate_review_policy
+
+    review = fields.get("document_review", ({},))[0] or {}
+    fallback = fields.get("fallback_queries", ([],))[0]
+    if fallback and not review.get("document_description"):
+        raise RuntimeConfigError(
+            "discovery.search.fallback_queries requires document_review.document_description"
+        )
+    context = review.get("context_fields") or []
+    coverage = review.get("coverage") or {}
+    if coverage and not review.get("document_description"):
+        raise RuntimeConfigError("document_review.coverage requires document_description")
+    try:
+        validate_review_policy(context, coverage)
+    except ValueError as exc:
+        raise RuntimeConfigError(str(exc)) from exc
+    templates = [*fallback, *coverage.values()]
+    if review.get("document_description"):
+        templates.append(review["document_description"])
+    # Validate token syntax even when no target row exists.
+    for template in templates:
+        try:
+            render_target_template(template, {})
+        except ValueError as exc:
+            if "Malformed" in str(exc):
+                raise RuntimeConfigError(str(exc)) from exc
+    spec = fields.get("targets", (None,))[0]
+    if spec is None:
+        if context:
+            raise RuntimeConfigError("Review context_fields requires discovery.targets")
+        return
+    try:
+        for _ in iter_review_scopes(
+            review.get("document_description", ""),
+            context,
+            coverage,
+            iter_targets(spec),
+            additional_templates=fallback,
+        ):
+            pass
+    except ValueError as exc:
+        raise RuntimeConfigError(str(exc)) from exc
+
+
 def discovery_key_paths(
     schema: dict[str, Any] = DISCOVERY_SCHEMA, loc: str = "discovery"
 ) -> dict[str, str]:
@@ -300,6 +353,7 @@ def resolve_discovery_section(section: Any, config_path: str | None) -> dict[str
             partition_by = fields.get("partition_by", (None,))[0]
             spec = resolve_targets_spec(fields["targets"][0], config_dir, partition_by)
             fields["targets"] = (spec, "config.discovery.targets")
+        _check_adaptive_review(fields)
     except (RuntimeConfigError, TargetSpecError) as exc:
         prefix = f"{config_path}: " if config_path else ""
         raise RuntimeConfigError(f"{prefix}{exc}") from exc

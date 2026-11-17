@@ -44,6 +44,8 @@ def test_workspace_derives_every_stage_dir_from_domain():
     assert ws.extracted == Path("outputs/demo/extracted")
     assert ws.validated == Path("outputs/demo/validated")
     assert ws.compiled == Path("outputs/demo/compiled")
+    assert ws.reconciliation_cache == Path("outputs/demo/.reconciliation")
+    assert not ws.reconciliation_cache.is_relative_to(ws.compiled)
 
 
 @pytest.mark.parametrize("domain", ["", ".", "..", "a/b", "a\\b", "/abs"])

@@ -198,7 +198,7 @@ def test_no_review_screening_does_not_consume_top_n(tmp_path, monkeypatch):
         return records, notes
 
     monkeypatch.setattr(DocumentReviewer, "review", review)
-    records, _, _ = DiscoveryEngine._run_document_review(
+    records, _, _ = DiscoveryEngine()._run_document_review(
         [marked, clean], {"document_description": "records", "keep_top": 1}, [], tmp_path
     )
     assert seen == [clean]

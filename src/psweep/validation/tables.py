@@ -14,7 +14,7 @@ from itertools import chain, combinations, takewhile
 from pathlib import Path
 
 from psweep.compilation.roster import NA
-from psweep.extraction.roster import normalize
+from psweep.utils.evidence import normalize
 from psweep.utils.file_io import atomic_json, atomic_write
 from psweep.utils.spreadsheet import csv_literal
 from psweep.validation.align import Cluster, Columns, Source
@@ -31,7 +31,23 @@ CATEGORIES = ("both_na", "agree", "changed", "new", "missing")
 CELL_COUNTERS = (*CATEGORIES, "split", "unscored", "tp", "fp", "fn", "tp_j", "fp_j", "fn_j")
 ACCURACY_COUNTERS = ("cells", "correct", "correct_j", "missed_no_docs", "missed_extraction")
 ROW_COUNTERS = ("row_tp", "row_fp", "row_fn", "row_split")
-MODEL_COUNTERS = ("rows", "filled", "judged", "supported")
+MODEL_COUNTERS = (
+    "rows",
+    "filled",
+    "judged",
+    "supported",
+    "answer_opportunities",
+    "populated_answers",
+    "abstentions",
+    "conflicts",
+)
+REFERENCE_COUNTERS = (
+    "assessed_populated",
+    "correct_populated",
+    "reference_populated",
+    "unassessed_populated",
+    "contradictions",
+)
 SUMMARY_COLUMNS = (
     "label",
     "model",
@@ -41,6 +57,21 @@ SUMMARY_COLUMNS = (
     "coverage",
     "accuracy",
     "accuracy_j",
+    "metric_kind",
+    "answer_coverage",
+    "answer_opportunities",
+    "populated_answers",
+    "abstentions",
+    "conflicts",
+    "populated_answer_precision",
+    "assessed_populated",
+    "correct_populated",
+    "unassessed_populated",
+    "reference_supported_recall",
+    "reference_populated",
+    "contradictions",
+    "ci95",
+    "targets",
     "row_precision",
     "row_recall",
     "row_f1",
@@ -55,8 +86,19 @@ SUMMARY_COLUMNS = (
     "docs_failed",
     "cost_usd",
     "cost_per_document",
+    "cost_per_target",
+    "target_denominator",
+    "provider_failure_records",
 )
-QUALITY_COLUMNS = ("quote_fidelity", "docs_failed", "cost_usd", "cost_per_document")
+QUALITY_COLUMNS = (
+    "quote_fidelity",
+    "docs_failed",
+    "cost_usd",
+    "cost_per_document",
+    "cost_per_target",
+    "target_denominator",
+    "provider_failure_records",
+)
 _BATCH = 10_000
 
 # (category, state) -> (priority vs a contender, vs a reference); §3f review priority table.
@@ -170,11 +212,17 @@ def validate_tables(
     staging.execute("DROP TABLE IF EXISTS cells")
     staging.execute(
         "CREATE TABLE clusters (sort TEXT NOT NULL, match TEXT NOT NULL, key TEXT NOT NULL, "
-        "in_scope TEXT NOT NULL, data TEXT NOT NULL, items TEXT NOT NULL)"
+        "scope TEXT NOT NULL, in_scope TEXT NOT NULL, data TEXT NOT NULL, items TEXT NOT NULL)"
     )
     staging.execute(
         "CREATE TABLE cells (priority INTEGER NOT NULL, cluster INTEGER NOT NULL, "
         "col INTEGER NOT NULL, line TEXT NOT NULL)"
+    )
+    staging.execute("DROP TABLE IF EXISTS target_metrics")
+    staging.execute(
+        "CREATE TABLE target_metrics (label TEXT, base TEXT, unit TEXT, populated INTEGER, "
+        "assessed INTEGER, unassessed INTEGER, correct INTEGER, missing INTEGER, "
+        "no_source INTEGER, ambiguous INTEGER, PRIMARY KEY (label, base, unit))"
     )
     items = tally.stage(clusters, staging)
     if judge_fn is None:
@@ -246,6 +294,7 @@ class _Tally:
             "column",
             "status",
             *self.labels,
+            *(f"{r}__assessed" for r in self.refs),
             *(f"{c}_{part}" for c in self.contenders for part in ("quote", "url")),
             f"{self.primary}_conflict",
             "miss",
@@ -262,19 +311,22 @@ class _Tally:
         self.review, self.high = Counter(), Counter()
         self.rows_missed, self.no_docs, self.no_docs_keys = 0, 0, []
         self.out_scopes: set[tuple] = set()
+        self.targets: dict[tuple[str, str], dict] = {}
 
     # -- pass 1 -------------------------------------------------------------
     def stage(self, clusters: Iterable[Cluster], staging: sqlite3.Connection) -> Iterator[Item]:
         batch = []
         for cluster in clusters:
             if cluster.match == "out_of_scope":
-                if not self.roster:
-                    self.out_scopes.add(tuple(cluster.scope))
-                continue
+                if self.roster:
+                    continue  # reference outside the roster is not a target
+                self.out_scopes.add(tuple(cluster.scope))
             data = {
                 label: [
                     [
-                        None if (c := row.get(f)) is None else [c.value, c.quote, c.url, c.conflict]
+                        None
+                        if (c := row.get(f)) is None
+                        else [c.value, c.quote, c.url, c.conflict, c.assessed]
                         for f in self.focus
                     ]
                     for row in cluster.rows[label]
@@ -291,7 +343,9 @@ class _Tally:
             if cluster.match != "ambiguous" and self.judge_model is not None:
                 for i, field in enumerate(self.focus):
                     holders = {
-                        label: rows[0][i] for label, rows in data.items() if rows[0][i] is not None
+                        label: rows[0][i]
+                        for label, rows in data.items()
+                        if rows[0][i] is not None and rows[0][i][4]
                     }
                     item = self._item(field, holders)
                     if item:
@@ -305,15 +359,16 @@ class _Tally:
                     sort,
                     cluster.match,
                     json.dumps(list(cluster.key), ensure_ascii=False),
+                    json.dumps(list(cluster.scope), ensure_ascii=False),
                     json.dumps(sorted(cluster.in_scope)),
                     encoded,
                     json.dumps(keys),
                 )
             )
             if len(batch) >= _BATCH:
-                staging.executemany("INSERT INTO clusters VALUES (?, ?, ?, ?, ?, ?)", batch)
+                staging.executemany("INSERT INTO clusters VALUES (?, ?, ?, ?, ?, ?, ?)", batch)
                 batch = []
-        staging.executemany("INSERT INTO clusters VALUES (?, ?, ?, ?, ?, ?)", batch)
+        staging.executemany("INSERT INTO clusters VALUES (?, ?, ?, ?, ?, ?, ?)", batch)
 
     def _item(self, field: str, holders: dict[str, list]) -> Item | None:
         """One item when the cell is disputed, or partial with a quoted valued holder."""
@@ -330,10 +385,22 @@ class _Tally:
     def score(self, staging: sqlite3.Connection) -> None:
         staging.execute("CREATE INDEX clusters_sort ON clusters (sort)")
         cursor = staging.execute(
-            "SELECT match, key, in_scope, data, items FROM clusters ORDER BY sort"
+            "SELECT match, key, scope, in_scope, data, items FROM clusters ORDER BY sort"
         )
         batch = []
-        for rank, (match, key, in_scope, data, items) in enumerate(cursor):
+        for rank, (match, key, scope, in_scope, data, items) in enumerate(cursor):
+            decoded, identity = json.loads(data), tuple(json.loads(key))
+            self._target_metrics(staging, match, identity, tuple(json.loads(scope)), decoded)
+            if match == "out_of_scope":
+                # Include no-source scopes in new metrics without changing legacy gates.
+                for x in self.contenders:
+                    for r in self.refs:
+                        ref = decoded.get(r, [[None] * len(self.titles)])[0]
+                        for title, entry in zip(self.titles, ref, strict=True):
+                            self.cells[x, title, r]["reference_populated"] += bool(
+                                entry and entry[4] and _class(entry[0]) is not None
+                            )
+                continue
             lines = self._cluster(
                 match,
                 tuple(json.loads(key)),
@@ -350,7 +417,104 @@ class _Tally:
                 batch = []
         staging.executemany("INSERT INTO cells VALUES (?, ?, ?, ?)", batch)
         staging.execute("CREATE INDEX cells_order ON cells (priority, cluster, col)")
+        self._summarize_targets(staging)
         staging.commit()
+
+    def _target_metrics(self, staging, match, key, scope, data) -> None:
+        """One roster target or rows-mode scope is one uncertainty unit, not one cell.
+
+        Keep per-unit state on disk; missing contender rows still create opportunities.
+        Ambiguous alignment is counted but cannot establish correctness.
+        """
+        unit = json.dumps(key if self.roster or not scope else scope, ensure_ascii=False)
+        no_source = int(self.roster and tuple(map(normalize, key)) not in self.covered)
+        batch = []
+        for x in self.contenders:
+            rows = data.get(x, ())
+            for i, title in enumerate(self.titles):
+                entries = [row[i] for row in rows if row[i] is not None]
+                populated = sum(_class(entry[0]) is not None for entry in entries)
+                c = self.model[x, title]
+                c["answer_opportunities"] += max(1, len(rows))
+                c["populated_answers"] += populated
+                c["abstentions"] += max(1, len(rows)) - populated
+                c["conflicts"] += sum(bool(entry[3]) for entry in entries)
+            for r in self.refs or [""]:
+                count = Counter()
+                for i in range(len(self.titles)):
+                    ref = data.get(r, [[None] * len(self.titles)])[0][i]
+                    assessed = bool(ref is not None and ref[4])
+                    count["assessed"] += assessed
+                    for row in rows:
+                        entry = row[i]
+                        value = _class(entry[0]) if entry else None
+                        if value is not None:
+                            count["populated"] += 1
+                            count["unassessed"] += not assessed
+                            count["correct"] += (
+                                assessed and value == _class(ref[0]) and match != "ambiguous"
+                            )
+                batch.append(
+                    (
+                        x,
+                        r,
+                        unit,
+                        count["populated"],
+                        count["assessed"],
+                        count["unassessed"],
+                        count["correct"],
+                        int(not rows),
+                        no_source,
+                        int(match == "ambiguous"),
+                    )
+                )
+        staging.executemany(
+            "INSERT INTO target_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(label, base, unit) DO UPDATE SET "
+            "populated=populated+excluded.populated, assessed=assessed+excluded.assessed, "
+            "unassessed=unassessed+excluded.unassessed, correct=correct+excluded.correct, "
+            "missing=MAX(missing, excluded.missing), no_source=MAX(no_source, excluded.no_source), "
+            "ambiguous=MAX(ambiguous, excluded.ambiguous)",
+            batch,
+        )
+
+    def _summarize_targets(self, staging) -> None:
+        for (
+            x,
+            r,
+            n,
+            answered,
+            assessed,
+            full,
+            correct,
+            missing,
+            no_source,
+            ambiguous,
+        ) in staging.execute(
+            "SELECT label, base, COUNT(*), SUM(populated>0), SUM(assessed>0), "
+            "SUM(populated>0 AND unassessed=0 AND ambiguous=0), "
+            "SUM(populated>0 AND unassessed=0 AND ambiguous=0 AND correct=populated), "
+            "SUM(missing), SUM(no_source), SUM(ambiguous) FROM target_metrics GROUP BY label, base"
+        ):
+            self.targets[x, r] = {
+                "unit": "target" if self.roster else "scope_or_key",
+                "targets": n,
+                "answered_targets": answered,
+                "no_answer_targets": n - answered,
+                "assessed_targets": assessed if r else None,
+                "fully_assessed_answered_targets": full if r else None,
+                "partially_assessed_answered_targets": answered - full if r else None,
+                "all_answered_correct_targets": correct if r else None,
+                "all_answered_correctness": _rate(correct, full) if r else None,
+                "missing_row_targets": missing,
+                "no_source_targets": no_source if self.roster else None,
+                "ambiguous_targets": ambiguous,
+                "answer_coverage": _rate(answered, n),
+                "ci95": {
+                    "answer_coverage": wilson(answered, n),
+                    "all_answered_correctness": wilson(correct, full) if r else None,
+                },
+            }
 
     def lines(self, staging: sqlite3.Connection) -> Iterator[list]:
         for (line,) in staging.execute("SELECT line FROM cells ORDER BY priority, cluster, col"):
@@ -378,7 +542,7 @@ class _Tally:
         ref_valued = False
         for i, title in enumerate(self.titles):
             held = {label: data[label][0][i] for label in present if data[label][0][i] is not None}
-            cls = {label: _class(entry[0]) for label, entry in held.items()}
+            cls = {label: _class(entry[0]) if entry[4] else None for label, entry in held.items()}
             ref_valued |= any(cls.get(r) for r in self.refs)
             verdict = self.verdicts.get(items[i]) if items[i] else None
             v = None
@@ -434,9 +598,21 @@ class _Tally:
 
     def _score_cell(self, title, data, held, cls, v, miss) -> None:
         for x in self.contenders:
+            for r in self.refs:
+                c = self.cells[x, title, r]
+                if r in held and held[r][4]:
+                    mine, theirs = cls.get(x), cls[r]
+                    c["assessed_populated"] += mine is not None
+                    c["correct_populated"] += mine is not None and mine == theirs
+                    c["reference_populated"] += theirs is not None
+                    c["contradictions"] += (
+                        mine is not None and theirs is not None and mine != theirs
+                    )
+                else:
+                    c["unassessed_populated"] += cls.get(x) is not None
             if x not in held:
                 for r in self.refs:  # a reference row X lacks: every scored cell is wrong
-                    if r in held and x not in data:
+                    if r in held and held[r][4] and x not in data:
                         c = self.cells[x, title, r]
                         c["cells"] += 1
                         c["missed_extraction"] += cls[r] is not None
@@ -447,7 +623,7 @@ class _Tally:
             for r in self.refs:
                 if r in data:
                     c = self.cells[x, title, r]
-                    if r not in held:
+                    if r not in held or not held[r][4]:
                         c["unscored"] += 1
                         continue
                     cat = category(cls[x], cls[r])
@@ -468,7 +644,7 @@ class _Tally:
 
     def _agreement(self, title, held, cls, v) -> None:
         for a, b in combinations(self.labels, 2):
-            if a in held and b in held:
+            if a in held and b in held and held[a][4] and held[b][4]:
                 c = self.agree[f"{a}|{b}", title]
                 if cls[a] and cls[b]:
                     c["both_valued"] += 1
@@ -495,7 +671,7 @@ class _Tally:
         p, mine = self.primary, cls.get(self.primary)
         best = None
         for s in held:
-            if s == p:
+            if s == p or not held[s][4]:
                 continue
             cat = category(mine, cls[s])
             rank = pair_priority(
@@ -529,6 +705,7 @@ class _Tally:
             title,
             status(cls, self.contenders),
             *((NA if held[s][0] is None else held[s][0]) if s in held else "" for s in self.labels),
+            *(str(bool(held[r][4])).lower() if r in held else "" for r in self.refs),
             *(held[c][k] or "" if c in held else "" for c in self.contenders for k in (1, 2)),
             "true" if held[self.primary][3] else "",
             miss if mine is None and ref_valued else "",
@@ -583,6 +760,7 @@ class _Tally:
             ALL,
             state,
             *(compact(data[s], 0) if s in data else "" for s in self.labels),
+            *("" for _ in self.refs),
             *(compact(data[c], k) if c in data else "" for c in self.contenders for k in (1, 2)),
             "",
             miss,
@@ -599,8 +777,28 @@ class _Tally:
         models = {}
         for x in self.contenders:
             per = {t: {b: self._metrics(x, (t,), b) for b in bases} for t in self.titles}
-            overall = {b: self._metrics(x, self.titles, b) for b in bases}
-            models[x] = {"columns": per, "overall": overall, "quality": quality.get(x, {})}
+            overall = {b: self._metrics(x, self.titles, b, pooled=True) for b in bases}
+            measured = dict(quality.get(x, {}))
+            target_count = self.targets.get((x, (self.refs or [""])[0]), {}).get("targets", 0)
+            if self.roster:
+                cost, seconds = measured.get("cost_usd"), measured.get("seconds_per_document")
+                measured.update(
+                    cost_per_target=cost / target_count
+                    if cost is not None and target_count
+                    else None,
+                    seconds_per_target=(
+                        seconds * measured.get("documents_called", 0) / target_count
+                        if seconds is not None and target_count
+                        else None
+                    ),
+                    target_denominator=target_count,
+                )
+            models[x] = {
+                "columns": per,
+                "overall": overall,
+                "quality": measured,
+                "targets": {r: self.targets.get((x, r), {}) for r in self.refs or [""]},
+            }
         agreement = {"overall": {}, "columns": {t: {} for t in self.titles}}
         for a, b in combinations(self.labels, 2):
             pair = f"{a}|{b}"
@@ -622,6 +820,45 @@ class _Tally:
             }
         )
         summary = {
+            "metric_semantics": {
+                "reference_blank": "unlabelled",
+                "reference_absence": f"explicit {NA} or blank with <title>__assessed=true",
+                "reference_unknown": "<title>__assessed=false (no reserved domain value)",
+                "accuracy": (
+                    "correct assessed cells / assessed cells; "
+                    "min_accuracy remains all-cell accuracy"
+                ),
+                "populated_answer_precision": (
+                    "correct populated claims / assessed populated claims; "
+                    "exact reference match, not judge support"
+                ),
+                "answer_coverage": (
+                    "populated cells / all aligned contender-or-reference opportunities, "
+                    "including missing rows"
+                ),
+                "reference_supported_recall": (
+                    "correct populated claims / populated assessed reference cells"
+                ),
+                "intervals": (
+                    "95% Wilson; field intervals only for roster mode (one cell per target); "
+                    "pooled dependent-cell intervals omitted; "
+                    "target intervals use roster target or rows-mode scope/key"
+                ),
+                "all_answered_correctness": (
+                    "targets with every populated claim correct / answered targets with every "
+                    "populated claim assessed; excludes no-answer, partially assessed and "
+                    "ambiguous targets"
+                ),
+                "evidence": (
+                    "conflicts and quote fidelity are diagnostics, not reference accuracy "
+                    "or exact-target source audit"
+                ),
+                "target_cost_latency": (
+                    "record-billed cost and summed called-document processing seconds divided "
+                    "by all roster targets; amortized means, not per-target wall time or "
+                    "complete discovery/reconciliation spend"
+                ),
+            },
             "columns": {
                 "scored": list(self.columns.scored),
                 "focus": list(self.focus),
@@ -670,7 +907,7 @@ class _Tally:
             }
         return summary
 
-    def _metrics(self, x: str, titles: Sequence[str], base: str) -> dict:
+    def _metrics(self, x: str, titles: Sequence[str], base: str, *, pooled: bool = False) -> dict:
         c = Counter()
         for t in titles:
             c.update(self.model[x, t])
@@ -682,14 +919,23 @@ class _Tally:
                 c.update(self.rows[x, base])
                 names += ROW_COUNTERS
         if base in self.refs:
-            names += ACCURACY_COUNTERS
+            names += (*ACCURACY_COUNTERS, *REFERENCE_COUNTERS)
         m = {n: c[n] for n in names}
+        m["metric_kind"] = (
+            "reference_accuracy" if base in self.refs else "model_agreement" if base else "coverage"
+        )
+        m["answer_coverage"] = _rate(c["populated_answers"], c["answer_opportunities"])
         m["compared"] = sum(c[k] for k in CATEGORIES) if base else 0
         m["coverage"] = _rate(c["filled"], c["rows"])
         m["support_rate"] = _rate(c["supported"], c["judged"])
+        ci = {
+            "answer_coverage": wilson(c["populated_answers"], c["answer_opportunities"])
+            if self.roster and not pooled
+            else None,
+        }
         if not base:
+            m["ci95"] = ci
             return m
-        ci = {}
         for s in ("", "_j"):
             tp, fp, fn = c[f"tp{s}"], c[f"fp{s}"], c[f"fn{s}"]
             m[f"precision{s}"], m[f"recall{s}"] = _rate(tp, tp + fp), _rate(tp, tp + fn)
@@ -699,6 +945,15 @@ class _Tally:
                 key = "correct_j" if s else "correct"
                 m[f"accuracy{s}"] = _rate(c[key], c["cells"])
                 ci[f"accuracy{s}"] = wilson(c[key], c["cells"])
+        if base in self.refs:
+            independent = self.roster and not pooled
+            for metric, numerator, denominator in (
+                ("populated_answer_precision", c["correct_populated"], c["assessed_populated"]),
+                ("reference_supported_recall", c["correct_populated"], c["reference_populated"]),
+                ("answer_coverage", c["populated_answers"], c["answer_opportunities"]),
+            ):
+                m[metric] = _rate(numerator, denominator)
+                ci[metric] = wilson(numerator, denominator) if independent else None
         if not self.roster:
             tp, fp, fn = c["row_tp"], c["row_fp"], c["row_fn"]
             m.update(
@@ -706,7 +961,7 @@ class _Tally:
                 row_recall=_rate(tp, tp + fn),
                 row_f1=_rate(2 * tp, 2 * tp + fp + fn),
             )
-        m["ci95"] = ci
+        m["ci95"] = ci if self.roster and not pooled else dict.fromkeys(ci)
         return m
 
 
@@ -759,8 +1014,14 @@ def _summary_rows(summary: dict, sources: Sequence[Source]) -> Iterator[list]:
                     "base": base,
                     **m,
                     **{k: extra.get(k) for k in QUALITY_COLUMNS},
+                    "targets": model["targets"].get(base) if column == ALL else None,
                 }
-                yield [row.get(k) for k in SUMMARY_COLUMNS]
+                yield [
+                    json.dumps(row[k], sort_keys=True)
+                    if isinstance(row.get(k), dict)
+                    else row.get(k)
+                    for k in SUMMARY_COLUMNS
+                ]
 
 
 def leaderboard(summary: dict, title: str) -> list[str]:
@@ -802,7 +1063,8 @@ def leaderboard(summary: dict, title: str) -> list[str]:
     head.append("focus " + ", ".join(titles))
     columns = [
         "model",
-        *(f"{r} acc±" for r in refs),
+        *(column for r in refs for column in (f"{r} acc", f"{r} populated P", f"{r} recall")),
+        "coverage",
         *(["consensus F1"] * (CONSENSUS in bases)),
         *(["support"] * judged),
         "quotes",
@@ -813,9 +1075,19 @@ def leaderboard(summary: dict, title: str) -> list[str]:
         overall, quality = models[label]["overall"], models[label]["quality"]
         row = [label]
         for r in refs:
-            ci = overall[r]["ci95"]["accuracy_j"]
-            half = f" ±{(ci[1] - ci[0]) / 2:.2f}" if ci else ""
-            row.append(fmt(overall[r]["accuracy_j"]) + half)
+            m = overall[r]
+            row += [
+                fmt(m["accuracy_j"]),
+                (
+                    f"{fmt(m['populated_answer_precision'])} "
+                    f"({m['correct_populated']}/{m['assessed_populated']})"
+                ),
+                (
+                    f"{fmt(m['reference_supported_recall'])} "
+                    f"({m['correct_populated']}/{m['reference_populated']})"
+                ),
+            ]
+        row.append(fmt(overall[bases[0]]["answer_coverage"]))
         if CONSENSUS in bases:
             row.append(fmt(overall[CONSENSUS]["f1_j"]))
         if judged:
@@ -830,6 +1102,19 @@ def leaderboard(summary: dict, title: str) -> list[str]:
             for row in table
         ),
     ]
+    for label in labels:
+        for r in refs:
+            target = models[label]["targets"][r]
+            interval = target["ci95"]["all_answered_correctness"]
+            band = f" [{interval[0]:.2f}, {interval[1]:.2f}]" if interval else ""
+            lines.append(
+                f"  {label} vs {r}: all-answered target correctness "
+                f"{fmt(target['all_answered_correctness'])}{band} "
+                f"({target['all_answered_correct_targets']}/"
+                f"{target['fully_assessed_answered_targets']}); "
+                f"{target['no_answer_targets']} no-answer, "
+                f"{target['partially_assessed_answered_targets']} partial/unassessed"
+            )
     per_field = {t: {label: score(models[label]["columns"][t]) for label in labels} for t in titles}
     if not inputs.get("fields"):
         weakest = [t for t in titles if per_field[t][labels[0]] is not None]

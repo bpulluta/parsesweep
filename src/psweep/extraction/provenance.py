@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +92,7 @@ class SourceContext:
     target_id: str | None
     target_label: str | None
     target_metadata: dict[str, Any]
+    review_evidence: dict[str, Any] = field(default_factory=dict)
 
 
 def _source_context_entry(row: dict[str, str]) -> SourceContext:
@@ -104,7 +105,12 @@ def _source_context_entry(row: dict[str, str]) -> SourceContext:
             parsed = None
         if isinstance(parsed, dict):
             meta = {key: value for key, value in parsed.items() if key not in TARGET_INPUT_FIELDS}
+    try:
+        evidence = json.loads(row.get("review_evidence") or "{}")
+    except (ValueError, TypeError):
+        evidence = {}
     return SourceContext(
+        review_evidence=evidence if isinstance(evidence, dict) else {},
         url=(row.get("final_url") or row.get("url") or "").strip() or None,
         scope=row.get("source_scope") or None,
         target_id=row.get("target_id") or None,
@@ -204,6 +210,7 @@ def prepend_source_context(text: str, info: SourceContext | None) -> str:
         (info.scope, "DISCOVERY_SOURCE_SCOPE"),
         (info.target_label, "DISCOVERY_TARGET_LABEL"),
         (info.target_metadata, "DISCOVERY_TARGET_METADATA"),
+        (info.review_evidence, "DISCOVERY_REVIEW_EVIDENCE"),
     ):
         if value:
             encoded = json.dumps(

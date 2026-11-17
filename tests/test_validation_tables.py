@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from psweep.extraction.roster import normalize
+from psweep.utils.evidence import normalize
 from psweep.validation.align import Cell, Cluster, Columns, Source
 from psweep.validation.judge import Item, Verdict, class_key
 from psweep.validation.tables import (
@@ -141,6 +141,207 @@ def run(
 
 def roster_covered(*keys) -> frozenset:
     return frozenset(tuple(normalize(p) for p in k) for k in keys)
+
+
+# -- reference quality metrics ------------------------------------------------
+
+
+def test_populated_precision_coverage_and_partial_labels(tmp_path):
+    sources = [source("primary", "primary"), source("ref", "reference")]
+    unknown = Cell("unknown", None, None, False, assessed=False)
+    unlabelled = Cell(None, None, None, False, assessed=False)
+    clusters = [
+        cluster(
+            ("a",),
+            {"primary": {"x": "1", "y": "9"}, "ref": {"x": "1", "y": unknown}},
+            in_scope=("ref",),
+        ),
+        cluster(
+            ("b",),
+            {"primary": {"x": "2", "y": None}, "ref": {"x": "3", "y": None}},
+            in_scope=("ref",),
+        ),
+        cluster(
+            ("c",),
+            {"primary": {"x": None, "y": None}, "ref": {"x": "4", "y": unlabelled}},
+            in_scope=("ref",),
+        ),
+        cluster(("d",), {"primary": {"x": "5", "y": None}}),
+    ]
+    summary, _, out = run(
+        tmp_path,
+        clusters,
+        sources,
+        make_columns("x", "y"),
+        covered=roster_covered(("a",), ("b",), ("d",)),
+        min_accuracy=0.5,
+    )
+    model = summary["models"]["primary"]
+    metrics = model["overall"]["ref"]
+    assert (
+        metrics["assessed_populated"],
+        metrics["correct_populated"],
+        metrics["reference_populated"],
+    ) == (2, 1, 3)
+    assert metrics["populated_answer_precision"] == 0.5
+    assert metrics["answer_coverage"] == 0.5
+    assert metrics["reference_supported_recall"] == 0.3333
+    assert (metrics["cells"], metrics["correct"], metrics["accuracy"]) == (4, 2, 0.5)
+    assert summary["gate"]["passed"]  # assessed all-cell accuracy, not populated precision
+    assert (metrics["unassessed_populated"], metrics["contradictions"], metrics["abstentions"]) == (
+        2,
+        1,
+        4,
+    )
+    assert metrics["ci95"]["populated_answer_precision"] is None
+    field = model["columns"]["X"]["ref"]
+    assert field["ci95"]["populated_answer_precision"] == wilson(1, 2)
+    target = model["targets"]["ref"]
+    assert (
+        target["targets"],
+        target["answered_targets"],
+        target["no_answer_targets"],
+        target["no_source_targets"],
+    ) == (4, 3, 1, 1)
+    assert (target["fully_assessed_answered_targets"], target["all_answered_correct_targets"]) == (
+        1,
+        0,
+    )
+    assert target["ci95"]["all_answered_correctness"] == wilson(0, 1)
+    assert "assessed_populated" in (out / "summary.csv").read_text().splitlines()[0]
+    assert summary["metric_semantics"]["reference_blank"] == "unlabelled"
+
+
+def test_cost_latency_amortized_over_all_roster_targets_and_conflicts(tmp_path):
+    sources = [source("primary", "primary"), source("ref", "reference")]
+    clusters = [
+        cluster(
+            ("a",),
+            {"primary": {"x": Cell("yes", None, None, True)}, "ref": {"x": "yes"}},
+            in_scope=("ref",),
+        ),
+        cluster(("b",), {"primary": {"x": None}, "ref": {"x": "yes"}}, in_scope=("ref",)),
+    ]
+    summary, _, _ = run(
+        tmp_path,
+        clusters,
+        sources,
+        make_columns("x"),
+        quality={"primary": {"cost_usd": 0.12, "seconds_per_document": 3, "documents_called": 2}},
+    )
+    model = summary["models"]["primary"]
+    assert model["quality"]["cost_per_target"] == pytest.approx(0.06)
+    assert model["quality"]["seconds_per_target"] == 3
+    assert model["quality"]["target_denominator"] == 2
+    assert model["overall"]["ref"]["conflicts"] == 1
+
+
+def test_missing_rows_reduce_coverage_and_reference_recall(tmp_path):
+    sources = [source("primary", "primary"), source("ref", "reference")]
+    clusters = [
+        cluster(("a",), {"primary": {"x": "1"}, "ref": {"x": "1"}}, in_scope=("ref",)),
+        cluster(("b",), {"ref": {"x": "2"}}, in_scope=("ref",)),
+    ]
+    summary, _, _ = run(tmp_path, clusters, sources, make_columns("x"), covered=None)
+    model = summary["models"]["primary"]
+    metrics = model["overall"]["ref"]
+    assert (
+        metrics["answer_opportunities"],
+        metrics["populated_answers"],
+        metrics["abstentions"],
+    ) == (2, 1, 1)
+    assert (
+        metrics["answer_coverage"],
+        metrics["reference_supported_recall"],
+        metrics["accuracy"],
+    ) == (0.5, 0.5, 0.5)
+    assert model["targets"]["ref"]["missing_row_targets"] == 1
+    assert model["targets"]["ref"]["no_answer_targets"] == 1
+
+
+def test_unknown_reference_does_not_reward_abstention_or_become_truth(tmp_path):
+    sources = [source("primary", "primary"), source("ref", "reference")]
+    clusters = [
+        cluster(
+            ("a",),
+            {
+                "primary": {"x": None},
+                "ref": {"x": Cell("unknown", None, None, False, assessed=False)},
+            },
+            in_scope=("ref",),
+        )
+    ]
+    summary, _, _ = run(tmp_path, clusters, sources, make_columns("x"), min_accuracy=0.5)
+    metrics = summary["models"]["primary"]["overall"]["ref"]
+    assert metrics["accuracy"] is None and metrics["cells"] == 0
+    assert metrics["populated_answer_precision"] is None
+    assert metrics["reference_supported_recall"] is None
+    assert not summary["gate"]["passed"]
+
+
+def test_entire_no_source_scope_remains_in_new_denominators(tmp_path):
+    sources = [source("primary", "primary"), source("ref", "reference")]
+    clusters = [
+        cluster(
+            ("a", "1"),
+            {"primary": {"x": "yes"}, "ref": {"x": "yes"}},
+            scope=("a",),
+            in_scope=("ref",),
+        ),
+        cluster(
+            ("b", "1"), {"ref": {"x": "yes"}}, scope=("b",), match="out_of_scope", in_scope=("ref",)
+        ),
+    ]
+    summary, _, _ = run(tmp_path, clusters, sources, make_columns("x"), covered=None)
+    model = summary["models"]["primary"]
+    metrics = model["overall"]["ref"]
+    assert metrics["answer_coverage"] == 0.5
+    assert metrics["reference_supported_recall"] == 0.5
+    assert metrics["accuracy"] == 1.0  # legacy scope exclusion unchanged
+    assert model["targets"]["ref"]["targets"] == 2
+    assert model["targets"]["ref"]["missing_row_targets"] == 1
+
+
+def test_target_interval_does_not_treat_dependent_cells_as_targets(tmp_path):
+    sources = [source("primary", "primary"), source("a"), source("b"), source("ref", "reference")]
+    fields = tuple(f"f{i}" for i in range(12))
+    clusters = [
+        cluster(
+            (str(i),),
+            {
+                **{label: dict.fromkeys(fields, "yes") for label in ("primary", "a", "b")},
+                "ref": dict.fromkeys(fields, "yes" if i == 0 else "no"),
+            },
+            in_scope=("ref",),
+        )
+        for i in range(2)
+    ]
+    summary, _, _ = run(tmp_path, clusters, sources, make_columns(*fields))
+    model = summary["models"]["primary"]
+    assert model["overall"]["ref"]["populated_answer_precision"] == 0.5
+    target = model["targets"]["ref"]
+    assert target["ci95"]["all_answered_correctness"] == wilson(1, 2)
+    assert target["ci95"]["all_answered_correctness"] != wilson(12, 24)
+    assert model["overall"]["consensus"]["metric_kind"] == "model_agreement"
+    assert "populated_answer_precision" not in model["overall"]["consensus"]
+
+
+def test_rows_in_one_scope_share_target_denominator(tmp_path):
+    sources = [source("primary", "primary"), source("ref", "reference")]
+    clusters = [
+        cluster(
+            ("group", str(i)),
+            {"primary": {"x": "yes"}, "ref": {"x": "yes" if i == 0 else "no"}},
+            scope=("group",),
+            in_scope=("ref",),
+        )
+        for i in range(2)
+    ]
+    summary, _, _ = run(tmp_path, clusters, sources, make_columns("x"), covered=None)
+    model = summary["models"]["primary"]
+    assert model["targets"]["ref"]["targets"] == 1
+    assert model["targets"]["ref"]["all_answered_correctness"] == 0
+    assert model["columns"]["X"]["ref"]["ci95"]["populated_answer_precision"] is None
 
 
 # -- primitives ---------------------------------------------------------------
@@ -396,7 +597,7 @@ def test_s1_against_reference(tmp_path):
     p = summary["models"]["primary"]["overall"]["ahj"]
     assert (p["filled"], p["tp"], p["fp"], p["fn"], p["both_na"]) == (6, 5, 1, 19, 2)
     assert (p["coverage"], p["accuracy"], p["accuracy_j"]) == (0.2222, 0.2593, 0.2593)
-    assert p["ci95"]["accuracy"] == pytest.approx([0.132, 0.447], abs=1e-3)
+    assert p["ci95"]["accuracy"] is None  # pooled cells within targets are dependent
     assert (p["precision"], p["recall"], p["f1"]) == (0.8333, 0.2083, 0.3333)
     assert (p["correct"], p["cells"], p["missed_extraction"]) == (7, 27, 19)
     rows = list(csv.reader((out / "summary.csv").open(encoding="utf-8")))
@@ -816,8 +1017,11 @@ def test_accuracy_sample_interval(tmp_path):
     summary, _, _ = run(tmp_path, clusters, sources, make_columns("x", "y", "z"))
     overall = summary["models"]["primary"]["overall"]["blind_3"]
     assert overall["accuracy"] == 0.8889
-    assert overall["ci95"]["accuracy"] == pytest.approx([0.565, 0.980], abs=1e-3)
-    assert "0.89 ±0.21" in leaderboard(summary, "s")[2]
+    assert overall["ci95"]["accuracy"] is None
+    field = summary["models"]["primary"]["columns"]["X"]["blind_3"]
+    assert field["ci95"]["accuracy"] == wilson(3, 3)
+    assert "0.89" in leaderboard(summary, "s")[2]
+    assert "±" not in leaderboard(summary, "s")[2]
 
 
 def test_outputs_deterministic_under_random_cluster_order(tmp_path):

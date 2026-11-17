@@ -86,7 +86,7 @@ class DiscoveryCandidate:
     source: str
     score: CandidateScore
     reasons: list[str] = field(default_factory=list)
-    status: str | None = None
+    acceptance_status: str | None = None
     mime_type: str | None = None
     extension: str | None = None
     canonical_url: str | None = None
@@ -107,14 +107,14 @@ class DiscoveryCandidate:
         -------
         dict[str, Any]
             Flat representation suitable for writing to the discovery manifest.
-            ``status`` falls back to ``score.acceptance_class()`` when not
+            ``acceptance_status`` falls back to ``score.acceptance_class()`` when not
             explicitly set.
         """
-        effective_status = self.status or self.score.acceptance_class()
+        effective_status = self.acceptance_status or self.score.acceptance_class()
         return {
             "url": self.url,
             "source": self.source,
-            "status": effective_status,
+            "acceptance_status": effective_status,
             "score": self.score.to_dict(),
             "reasons": self.reasons,
             "mime_type": self.mime_type,

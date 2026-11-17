@@ -37,6 +37,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/config-reference.md`.
 
 ### Fixed
+- Large runs no longer retain completed section text or failed-review traceback
+  graphs. Review hashes each uncached source once; reconciliation reuses bounded
+  worker clients while retaining per-target attempt receipts.
+- Locator subject anchoring uses configured identity rather than comma-parsing
+  display labels or guessing from metadata; names containing commas stay intact.
+- Source-review qualifications now include sampled-segment verified identity/content,
+  scope, claim-kind and optional publication evidence. Conservative comparison keeps
+  complementary/conflicting observations; optional YAML coverage guides selection.
+- Capped new downloads and fallback queries distribute work fairly across owners;
+  checkpoint loads hash stable shared artifacts once per load without cross-run trust.
+- Source-review grades3–4 require mandatory domain-described evidence even for
+  partial matches; deciding source content must be cited rather than inferred.
+- Aggregate search accounting includes fallback attempts, not initial queries alone.
+- Invalid reconciliation selections receive at most one schema-guided repair;
+  diagnostics identify required fields/constraints and all calls remain metered.
+  Valid abstentions are not retried and unsupported claims are never generated.
+- Locators retain target identity/header context rather than selecting unrelated
+  sections by keyword density alone. Subject/version-aware caches invalidate
+  old selections; targeting runs inside bounded extraction document workers.
+- HTML section targeting checks readable content against `trigger_chars` after
+  removing markup, scripts/styles and navigation, avoiding unnecessary locator
+  calls for short articles on large web pages.
+- Discovery resumes verified downloads from completed targets when acquisition
+  settings change, fetching only new/missing/changed files unless `--fresh` is
+  passed. Extraction-only model aliases no longer invalidate discovery; its
+  fingerprint includes only the resolved discovery-review model.
 - `filelock` is overridden to 4.2.x (CVE-2026-112909, CVE-2026-112910);
   LiteLLM's `<4` cap only affects its proxy CLI. The dependency audit is clean.
 - `selection.require_any` matches source URLs, titles and snippets, so opaque
@@ -91,6 +117,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reprs. In roster mode an empty list or object is `NA`, like a null.
 
 ### Added
+- Automatic discovery qualification with per-target review description/context,
+  optional stronger-model escalation, one weak-target fallback-query stage and
+  physical search/review attempt budgets. Cache/checkpoint resume retains
+  successful work; domain meanings stay in YAML and verified URLs are optional.
+- Validation populated-answer precision, coverage, reference-supported recall
+  and target-level summaries. Reference blanks are unlabelled; explicit NA or
+  `<title>__assessed=true` labels absence. Pooled dependent-cell intervals are
+  not reported as independent observations; `min_accuracy` remains assessed accuracy.
+- Optional roster `compilation.reconciliation` keeps YAML-defined field groups
+  atomic and selects existing source observations for contested/schema-invalid
+  targets. Selection-only replies, abstention, bounded requests, dated evidence,
+  content-addressed decisions and durable attempt receipts preserve provenance
+  and costs. Compilation remains model-free by default and during dry runs.
 - Page targeting follows references. After locating the section, the locator
   reads the selected pages and adds the parts they refer to elsewhere in the
   document (e.g. "charges specified in Tariff Sheet 75"), then the parts those

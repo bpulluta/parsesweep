@@ -16,7 +16,8 @@ from click.testing import CliRunner
 
 from psweep.cli.app import cli
 from psweep.discovery.targets import identify_target
-from psweep.extraction.roster import Roster, normalize
+from psweep.extraction.roster import Roster
+from psweep.utils.evidence import normalize
 from psweep.utils.file_io import publication_lock
 from psweep.validation import covered_keys
 
@@ -154,14 +155,15 @@ def test_s1_primary_against_human_sheet(solartrace, fake):
     data = summary("solartrace")
     overall = data["models"]["primary"]["overall"]["ahj_requirements"]
     assert (overall["coverage"], overall["accuracy"], overall["correct"]) == (0.2222, 0.2593, 7)
-    assert overall["ci95"]["accuracy"] == [0.1317, 0.4468]
+    assert overall["ci95"]["accuracy"] is None  # cells within targets are dependent
     assert (overall["precision"], overall["recall"], overall["f1"]) == (0.8333, 0.2083, 0.3333)
     assert (overall["filled"], overall["tp"], overall["fp"], overall["fn"]) == (6, 5, 1, 19)
     # The sheet has 6 data rows; 3 are in the roster.
     assert data["rows"]["out_of_scope"] == {"ahj_requirements": 3}
     assert data["diagnosis"]["no_docs"]["count"] == 0
     assert "gate" not in data and "Gate:" not in output
-    assert "primary  0.26 ±0.16" in output and "Next: extraction" in output
+    assert "primary  0.26" in output and "Next: extraction" in output
+    assert "±" not in output and "all-answered target correctness" in output
     assert not Path("outputs/solartrace/validated/.staging").exists()
 
 
@@ -363,6 +365,7 @@ def outputs(domain: str = "bench") -> dict[str, object]:
     data["summary.json"] = {k: v for k, v in summary(domain).items() if k not in {"run", "judge"}}
     for model in data["summary.json"]["models"].values():
         model["quality"].pop("seconds_per_document")
+        model["quality"].pop("seconds_per_target")
     return data
 
 
@@ -526,7 +529,7 @@ def test_s7_converge_to_min_accuracy(fake):
     assert "Next: extraction — Y 0 missed / 1 wrong · discovery — 1 targets" in output
     data = summary("bench")
     ex = metrics(data, "primary", "ex")
-    assert (ex["correct"], ex["compared"], ex["ci95"]["accuracy"]) == (8, 12, [0.3906, 0.8619])
+    assert (ex["correct"], ex["compared"], ex["ci95"]["accuracy"]) == (8, 12, None)
     assert data["gate"]["passed"] is False
     assert data["diagnosis"]["columns"]["Y"]["wrong"] == 1
     no_docs = [c for c in read_csv("outputs/bench/validated/cells.csv") if c["miss"] == "no_docs"]
@@ -546,7 +549,7 @@ def test_s7_converge_to_min_accuracy(fake):
     assert len(fake.extraction_calls("m-p")) == 4
     data = summary("bench")
     ex = metrics(data, "primary", "ex")
-    assert (ex["correct"], ex["compared"], ex["ci95"]["accuracy"]) == (12, 12, [0.7575, 1.0])
+    assert (ex["correct"], ex["compared"], ex["ci95"]["accuracy"]) == (12, 12, None)
     assert data["gate"]["passed"] is True
 
 
@@ -583,9 +586,9 @@ def test_s8_sample_fill_score(fake):
     data = summary("bench")
     scored = metrics(data, "primary", "blind_3")
     assert (scored["correct"], scored["compared"]) == (8, 9)
-    assert (scored["accuracy"], scored["ci95"]["accuracy"]) == (0.8889, [0.565, 0.9801])
+    assert (scored["accuracy"], scored["ci95"]["accuracy"]) == (0.8889, None)
     assert data["rows"]["out_of_scope"]["blind_3"] == 0
-    assert "0.89 ±0.21" in output
+    assert "0.89" in output and "±" not in output
 
 
 # ── S5: rows domain, geothermal-like ──

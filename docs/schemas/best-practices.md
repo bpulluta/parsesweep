@@ -304,6 +304,15 @@ are exactly `value` and `quote`:
 
 `config/example/schema.json` has one evidence field next to plain fields.
 
+Keep the evidence object's outer members exactly `value` and `quote`. A
+structured `value` can hold an indivisible observation (such as amount/unit),
+or keep existing scalar columns and group their fields using optional YAML
+[`compilation.reconciliation.field_groups`](../config-reference.md#optional-evidence-reconciliation).
+Resolution policy belongs in YAML, not a schema metadata block. Machine-checkable
+relationships belong in ordinary JSON Schema constraints; descriptions alone
+cannot guarantee a composed answer is internally consistent. Scope identities
+must distinguish phases/assets when those require separate output rows.
+
 ## Temporal Metadata Best Practices
 
 **Why it matters:** Most documents have a critical time dimension - when they were enacted, when they're effective, when they expire. Without temporal metadata, you can't determine if data is current, track changes over time, or perform temporal analysis.
