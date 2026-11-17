@@ -214,7 +214,6 @@ class GarbageCollector:
         Returns (runs_deleted, bytes_deleted).
         Raises ValueError if reachability has changed since report generation.
         """
-        import contextlib
         import shutil
 
         # Re-verify reachability hasn't changed
@@ -233,11 +232,10 @@ class GarbageCollector:
 
         for run_path in report.orphaned_runs:
             try:
-                # Calculate actual size before deletion
-                for file_path in run_path.rglob("*"):
-                    if file_path.is_file():
-                        with contextlib.suppress(OSError):
-                            bytes_deleted += file_path.stat().st_size
+                # Calculate actual size before deletion, hardlink-deduped so
+                # this matches the report's own reclaimable_bytes accounting.
+                run_files = [p for p in run_path.rglob("*") if p.is_file()]
+                bytes_deleted += self._size_with_hardlink_dedup(self._build_inode_map(run_files))
 
                 shutil.rmtree(run_path, ignore_errors=False)
                 runs_deleted += 1
