@@ -42,7 +42,7 @@ from .adaptive_search import (
 from .attempt_budget import AttemptBudget, AttemptBudgetExceeded
 from .candidate_selector import CandidateSelector
 from .concurrency import bounded_results
-from psweep.utils.file_io import atomic_write
+from psweep.utils.file_io import atomic_write, atomic_json
 from psweep.workspace import Workspace
 from .connectors import DiggerInput, resolve_digger_connector
 from .targets import TARGET_INPUT_FIELDS, identify_target, target_identity
@@ -4513,6 +4513,12 @@ class DiscoveryEngine:
         """Finalize retention, checkpoint evidence, and latest."""
         if request.dry_run:
             return
+        run_metadata_path = paths.manifest_path.parent / ".run-metadata.json"
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            metadata = json.loads(run_metadata_path.read_text())
+            metadata["status"] = result.status
+            metadata["completed_at"] = datetime.now(UTC).isoformat()
+            atomic_json(run_metadata_path, metadata)
         should_apply_retention = not all_reused and request.retention_documents != "all"
         if should_apply_retention:
             # Incomplete owners resume from these files; keep them.
@@ -4740,6 +4746,16 @@ class DiscoveryEngine:
         candidates_after_crawl = len(candidates)
 
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        run_metadata_path = manifest_path.parent / ".run-metadata.json"
+        run_metadata = {
+            "run_id": run_id,
+            "started_at": started_at.isoformat(),
+            "domain": request.domain,
+            "target_count": len(request.targets or []),
+            "status": "in_progress",
+        }
+        atomic_json(run_metadata_path, run_metadata)
 
         download_records: list[dict[str, object]] = []
         incomplete_keys, blocked_parts = self._initial_completion_blocks(

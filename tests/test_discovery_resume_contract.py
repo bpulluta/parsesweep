@@ -247,7 +247,7 @@ def test_fully_reused_run_creates_no_documents_dir(monkeypatch, tmp_path):
     run_dir = result.documents_dir.parent
     assert result.manifest_path.is_file()
     assert not result.documents_dir.exists()
-    assert sorted(p.name for p in run_dir.iterdir()) == ["outcomes"]
+    assert sorted(p.name for p in run_dir.iterdir()) == [".run-metadata.json", "outcomes"]
 
 
 def test_failed_final_publication_preserves_fixed_local_outputs(monkeypatch, tmp_path):
