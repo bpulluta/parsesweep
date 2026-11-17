@@ -319,6 +319,8 @@ class _RequestRateLimiter:
 class DiscoveryEngine:
     """Coordinate discovery and publish verified artifacts."""
 
+    _target_idx_local = threading.local()
+
     def __init__(self) -> None:
         self._policy_evaluator = DiscoveryPolicyEvaluator()
         self._rate_limiter = None
@@ -515,6 +517,15 @@ class DiscoveryEngine:
             target_exclude=request.selection_target_exclude or None,
         )
 
+    def _before_seeker_request(self) -> None:
+        """Pre-request callback that respects pre-reserved budget allocations.
+
+        Uses thread-local target_idx to enforce roster-order fairness under
+        concurrent dispatch.
+        """
+        target_idx = getattr(self._target_idx_local, "value", None)
+        self._attempt_budget.reserve_search(target_idx=target_idx)
+
     def _build_seeker(self, request: DiscoveryRequest):
         """Construct a SerpApiSeeker from request settings.
 
@@ -535,7 +546,7 @@ class DiscoveryEngine:
                 float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
             ),
             cache_refresh=request.fresh and not request.dry_run,
-            before_request=self._attempt_budget.reserve_search,
+            before_request=self._before_seeker_request,
         )
 
     @staticmethod
@@ -549,6 +560,35 @@ class DiscoveryEngine:
                 if slot < len(item.queries):
                     yield idx, dataclass_replace(item, queries=[item.queries[slot]], context=None)
 
+    def _reserve_seeker_budget_in_roster_order(self, seeker_jobs):
+        """Pre-reserve search budget for targets in roster order.
+
+        When max_search_calls is set, this ensures the first N targets
+        (in original roster order) always get to run their queries,
+        regardless of concurrent scheduling. Without this, concurrent
+        dispatch makes it a race: whichever target's thread hits
+        reserve_search() first "wins" the budget slot.
+        """
+        if self._attempt_budget.max_search_calls is None:
+            return
+
+        # Count total queries per target across all seeker_jobs entries
+        # (when query_slot=True, same target appears multiple times with different queries)
+        queries_per_target = {}
+        for idx, si in seeker_jobs:
+            queries_per_target.setdefault(idx, 0)
+            queries_per_target[idx] += len(si.queries)
+
+        # Count total queries to pre-reserve for all targets
+        total_queries = sum(queries_per_target.values())
+
+        # Pre-reserve in roster order
+        for idx in sorted(queries_per_target.keys()):
+            try:
+                self._attempt_budget.pre_reserve_target_searches(idx, queries_per_target[idx])
+            except AttemptBudgetExceeded:
+                return
+
     def _discover_target_candidates(self, seeker, idx: int, seeker_input):
         """Execute discovery for a single target. Returns (idx, discovered, error_records, error_type).
 
@@ -561,6 +601,7 @@ class DiscoveryEngine:
         discovered = []
         error_type = None
         try:
+            self._target_idx_local.value = idx
             discovered = seeker.discover(seeker_input)
         except SerpApiSearchTimeout as exc:
             discovered = exc.candidates
@@ -701,6 +742,11 @@ class DiscoveryEngine:
             max_concurrent = max(1, int(request.max_concurrent_downloads or DEFAULT_MAX_CONCURRENT_DOWNLOADS))
             seeker_jobs = list(self._seeker_jobs(seeker_inputs, query_slot=query_slot))
             seeker_jobs = [(idx, si) for idx, si in seeker_jobs if si.queries]
+
+            # Pre-reserve search slots in roster order to ensure first N targets always
+            # get priority, regardless of concurrent scheduling. This preserves the
+            # pre-Step-11b guarantee that "first N targets in roster order get the budget."
+            self._reserve_seeker_budget_in_roster_order(seeker_jobs)
 
             discovery_results = bounded_results(
                 lambda job: self._discover_target_candidates(seeker, job[0], job[1]),

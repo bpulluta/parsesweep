@@ -20,6 +20,7 @@ class AttemptBudget:
         self.max_search_calls = max_search_calls
         self._reviews: Counter[str] = Counter()
         self._searches = 0
+        self._pre_reserved_per_target: dict[int, int] = {}  # target_idx -> pre-reserved count
         self._lock = Lock()
 
     def reserve_review(self, target_key: str) -> None:
@@ -32,9 +33,39 @@ class AttemptBudget:
                 raise AttemptBudgetExceeded("Review attempt budget exhausted for target")
             self._reviews[target_key] += 1
 
-    def reserve_search(self) -> None:
-        """Reserve one live search, including transient retries."""
+    def pre_reserve_target_searches(self, target_idx: int, count: int) -> None:
+        """Pre-allocate search slots for a target in roster order.
+
+        This ensures targets are processed in roster order even under concurrent dispatch,
+        by marking which targets get budget priority. Does NOT increment _searches yet;
+        that happens during actual execution via reserve_search().
+
+        If a target is pre-reserved multiple times (e.g., multiple seeker phases),
+        accumulate the counts rather than overwriting.
+        """
         with self._lock:
+            if self.max_search_calls is not None:
+                total_reserved = sum(self._pre_reserved_per_target.values()) + count
+                if self._searches + total_reserved > self.max_search_calls:
+                    raise AttemptBudgetExceeded("Search attempt budget exhausted for run")
+            self._pre_reserved_per_target[target_idx] = self._pre_reserved_per_target.get(target_idx, 0) + count
+
+    def reserve_search(self, target_idx: int | None = None) -> None:
+        """Reserve one live search, including transient retries.
+
+        If target_idx is provided and has pre-reserved slots, consume one pre-reserved slot.
+        Otherwise, check and consume from the global budget.
+        """
+        with self._lock:
+            if target_idx is not None and target_idx in self._pre_reserved_per_target:
+                if self._pre_reserved_per_target[target_idx] > 0:
+                    self._pre_reserved_per_target[target_idx] -= 1
+                    self._searches += 1
+                    # Still need to check global max even for pre-reserved slots
+                    if self.max_search_calls is not None and self._searches > self.max_search_calls:
+                        raise AttemptBudgetExceeded("Search attempt budget exhausted for run")
+                    return
+
             if self.max_search_calls is not None and self._searches >= self.max_search_calls:
                 raise AttemptBudgetExceeded("Search attempt budget exhausted for run")
             self._searches += 1
