@@ -106,6 +106,10 @@ Module Contents
    pages failed with a retryable error or the page/file budget cut off a link
    it would have kept or followed.
 
+   When max_files is None (unbounded), URL fetches are parallelized via bounded_results
+   to accelerate network I/O. When max_files is set (bounded), fetches remain sequential
+   to preserve deterministic output at the budget boundary.
+
 
 .. py:function:: matches_include_patterns(url: str, link_text: str, digger_input: psweep.discovery.connectors.base.DiggerInput) -> bool
 

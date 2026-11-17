@@ -259,6 +259,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../document_reviewer/index.html">psweep.discovery.document_reviewer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../eligibility/index.html">psweep.discovery.eligibility</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">psweep.discovery.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../garbage_collector/index.html">psweep.discovery.garbage_collector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../models/index.html">psweep.discovery.models</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../network/index.html">psweep.discovery.network</a></li>
@@ -474,6 +475,9 @@ a link reachable from several sources is attributed to each; a page shared
 by several sources is fetched once. A source is incomplete when one of its
 pages failed with a retryable error or the page/file budget cut off a link
 it would have kept or followed.</p>
+<p>When max_files is None (unbounded), URL fetches are parallelized via bounded_results
+to accelerate network I/O. When max_files is set (bounded), fetches remain sequential
+to preserve deterministic output at the budget boundary.</p>
 </dd></dl>
 
 <dl class="py function">

@@ -257,6 +257,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/document_reviewer/index.html">psweep.discovery.document_reviewer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/eligibility/index.html">psweep.discovery.eligibility</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/garbage_collector/index.html">psweep.discovery.garbage_collector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/network/index.html">psweep.discovery.network</a></li>
@@ -361,6 +362,13 @@
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li>
+    --apply
+
+        <ul>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-apply">psweep-gc command line option</a>
+</li>
+        </ul></li>
+        <li>
     --config
 
         <ul>
@@ -408,6 +416,13 @@
           <li><a href="commands/index.html#cmdoption-psweep-discover-domain">psweep-discover command line option</a>
 </li>
           <li><a href="commands/index.html#cmdoption-psweep-init-domain-schema-domain">psweep-init-domain-schema command line option</a>
+</li>
+        </ul></li>
+        <li>
+    --domain-dir
+
+        <ul>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-domain-dir">psweep-gc command line option</a>
 </li>
         </ul></li>
         <li>
@@ -556,6 +571,8 @@
           <li><a href="commands/index.html#cmdoption-psweep-discover-q">psweep-discover command line option</a>
 </li>
           <li><a href="commands/index.html#cmdoption-psweep-extract-q">psweep-extract command line option</a>
+</li>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-q">psweep-gc command line option</a>
 </li>
           <li><a href="commands/index.html#cmdoption-psweep-run-q">psweep-run command line option</a>
 </li>
@@ -708,6 +725,8 @@
     --yes
 
         <ul>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-y">psweep-gc command line option</a>
+</li>
           <li><a href="commands/index.html#cmdoption-psweep-run-y">psweep-run command line option</a>
 </li>
         </ul></li>
@@ -740,6 +759,8 @@
           <li><a href="commands/index.html#cmdoption-psweep-discover-q">psweep-discover command line option</a>
 </li>
           <li><a href="commands/index.html#cmdoption-psweep-extract-q">psweep-extract command line option</a>
+</li>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-q">psweep-gc command line option</a>
 </li>
           <li><a href="commands/index.html#cmdoption-psweep-run-q">psweep-run command line option</a>
 </li>
@@ -788,6 +809,8 @@
     -y
 
         <ul>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-y">psweep-gc command line option</a>
+</li>
           <li><a href="commands/index.html#cmdoption-psweep-run-y">psweep-run command line option</a>
 </li>
         </ul></li>
@@ -1063,6 +1086,8 @@
 </li>
         <li><a href="autoapi/psweep/workspace/index.html#psweep.workspace.default_schema_path">default_schema_path() (in module psweep.workspace)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#psweep.discovery.garbage_collector.GarbageCollector.delete_orphaned_runs">delete_orphaned_runs() (psweep.discovery.garbage_collector.GarbageCollector method)</a>
+</li>
         <li><a href="autoapi/psweep/extraction/llm_factory/index.html#psweep.extraction.llm_factory.detect_provider">detect_provider() (in module psweep.extraction.llm_factory)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/connectors/base/index.html#psweep.discovery.connectors.base.DiggerArtifact">DiggerArtifact (class in psweep.discovery.connectors.base)</a>
@@ -1091,10 +1116,10 @@
 </li>
         <li><a href="autoapi/psweep/discovery/request_inputs/index.html#psweep.discovery.request_inputs.discovery_request_fields">discovery_request_fields() (in module psweep.discovery.request_inputs)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/models/index.html#psweep.discovery.models.discovery_status">discovery_status() (in module psweep.discovery.models)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/psweep/discovery/models/index.html#psweep.discovery.models.DiscoveryCandidate">DiscoveryCandidate (class in psweep.discovery.models)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/engine/index.html#psweep.discovery.engine.DiscoveryEngine">DiscoveryEngine (class in psweep.discovery.engine)</a>
@@ -1133,6 +1158,13 @@
 
         <ul>
           <li><a href="commands/index.html#cmdoption-psweep-estimate-arg-DOCUMENTS_PATH">psweep-estimate command line option</a>
+</li>
+        </ul></li>
+        <li>
+    DOMAIN
+
+        <ul>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-arg-DOMAIN">psweep-gc command line option</a>
 </li>
         </ul></li>
         <li><a href="autoapi/psweep/workspace/index.html#psweep.workspace.domain_schemas">domain_schemas() (in module psweep.workspace)</a>
@@ -1260,6 +1292,10 @@
   <h2>G</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#psweep.discovery.garbage_collector.GarbageCollector">GarbageCollector (class in psweep.discovery.garbage_collector)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#psweep.discovery.garbage_collector.GarbageReport">GarbageReport (class in psweep.discovery.garbage_collector)</a>
+</li>
         <li><a href="autoapi/psweep/utils/schema_metadata/index.html#psweep.utils.schema_metadata.SchemaMetadata.get_auto_width">get_auto_width() (psweep.utils.schema_metadata.SchemaMetadata method)</a>
 </li>
         <li><a href="autoapi/psweep/utils/schema_metadata/index.html#psweep.utils.schema_metadata.SchemaMetadata.get_center_align_columns">get_center_align_columns() (psweep.utils.schema_metadata.SchemaMetadata method)</a>
@@ -1286,10 +1322,10 @@
 </li>
         <li><a href="autoapi/psweep/utils/schema_metadata/index.html#psweep.utils.schema_metadata.SchemaMetadata.get_deduplication_fuzzy_fields">get_deduplication_fuzzy_fields() (psweep.utils.schema_metadata.SchemaMetadata method)</a>
 </li>
-        <li><a href="autoapi/psweep/utils/schema_metadata/index.html#psweep.utils.schema_metadata.SchemaMetadata.get_deduplication_ignore_fields">get_deduplication_ignore_fields() (psweep.utils.schema_metadata.SchemaMetadata method)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/psweep/utils/schema_metadata/index.html#psweep.utils.schema_metadata.SchemaMetadata.get_deduplication_ignore_fields">get_deduplication_ignore_fields() (psweep.utils.schema_metadata.SchemaMetadata method)</a>
+</li>
         <li><a href="autoapi/psweep/utils/schema_metadata/index.html#psweep.utils.schema_metadata.SchemaMetadata.get_deduplication_key_fields">get_deduplication_key_fields() (psweep.utils.schema_metadata.SchemaMetadata method)</a>
 </li>
         <li><a href="autoapi/psweep/utils/schema_metadata/index.html#psweep.utils.schema_metadata.SchemaMetadata.get_deduplication_partition_fields">get_deduplication_partition_fields() (psweep.utils.schema_metadata.SchemaMetadata method)</a>
@@ -1574,6 +1610,8 @@
 </li>
           <li><a href="autoapi/psweep/discovery/engine/index.html#module-psweep.discovery.engine">psweep.discovery.engine</a>
 </li>
+          <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#module-psweep.discovery.garbage_collector">psweep.discovery.garbage_collector</a>
+</li>
           <li><a href="autoapi/psweep/discovery/link_prioritizer/index.html#module-psweep.discovery.link_prioritizer">psweep.discovery.link_prioritizer</a>
 </li>
           <li><a href="autoapi/psweep/discovery/models/index.html#module-psweep.discovery.models">psweep.discovery.models</a>
@@ -1753,6 +1791,8 @@
         <li><a href="autoapi/psweep/compilation/reconciliation/index.html#psweep.compilation.reconciliation.policy_contract">policy_contract() (in module psweep.compilation.reconciliation)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/policies/index.html#psweep.discovery.policies.PolicyCheckResult">PolicyCheckResult (class in psweep.discovery.policies)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/attempt_budget/index.html#psweep.discovery.attempt_budget.AttemptBudget.pre_reserve_target_searches">pre_reserve_target_searches() (psweep.discovery.attempt_budget.AttemptBudget method)</a>
 </li>
         <li><a href="autoapi/psweep/compilation/publication/index.html#psweep.compilation.publication.prepare_export">prepare_export() (in module psweep.compilation.publication)</a>
 </li>
@@ -1962,6 +2002,25 @@
 </li>
         </ul></li>
         <li>
+    psweep-gc command line option
+
+        <ul>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-apply">--apply</a>
+</li>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-domain-dir">--domain-dir</a>
+</li>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-q">--quiet</a>
+</li>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-y">--yes</a>
+</li>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-q">-q</a>
+</li>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-y">-y</a>
+</li>
+          <li><a href="commands/index.html#cmdoption-psweep-gc-arg-DOMAIN">DOMAIN</a>
+</li>
+        </ul></li>
+        <li>
     psweep-init-domain-schema command line option
 
         <ul>
@@ -2098,6 +2157,8 @@
           <li><a href="autoapi/psweep/compilation/excel_formatter/index.html#module-psweep.compilation.excel_formatter">module</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     psweep.compilation.input_provenance
 
@@ -2112,8 +2173,6 @@
           <li><a href="autoapi/psweep/compilation/publication/index.html#module-psweep.compilation.publication">module</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     psweep.compilation.reconciliation
 
@@ -2273,6 +2332,13 @@
 
         <ul>
           <li><a href="autoapi/psweep/discovery/engine/index.html#module-psweep.discovery.engine">module</a>
+</li>
+        </ul></li>
+        <li>
+    psweep.discovery.garbage_collector
+
+        <ul>
+          <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#module-psweep.discovery.garbage_collector">module</a>
 </li>
         </ul></li>
         <li>
@@ -2677,6 +2743,8 @@
 </li>
         <li><a href="autoapi/psweep/discovery/network/index.html#psweep.discovery.network.RateLimiter">RateLimiter (class in psweep.discovery.network)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#psweep.discovery.garbage_collector.ReachabilityReport">ReachabilityReport (class in psweep.discovery.garbage_collector)</a>
+</li>
         <li><a href="autoapi/psweep/compilation/input_provenance/index.html#psweep.compilation.input_provenance.read_compile_record">read_compile_record() (in module psweep.compilation.input_provenance)</a>
 </li>
         <li><a href="autoapi/psweep/extraction/document_utils/index.html#psweep.extraction.document_utils.read_text_cache">read_text_cache() (in module psweep.extraction.document_utils)</a>
@@ -2705,6 +2773,8 @@
 </li>
         <li><a href="autoapi/psweep/discovery/targets/index.html#psweep.discovery.targets.render_target_template">render_target_template() (in module psweep.discovery.targets)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#psweep.discovery.garbage_collector.GarbageCollector.report">report() (psweep.discovery.garbage_collector.GarbageCollector method)</a>
+</li>
         <li><a href="autoapi/psweep/discovery/transport/index.html#psweep.discovery.transport.request_get">request_get() (in module psweep.discovery.transport)</a>
 </li>
         <li><a href="autoapi/psweep/discovery/code_host_adapters/index.html#psweep.discovery.code_host_adapters.CodeHostAdapter.request_headers">request_headers() (psweep.discovery.code_host_adapters.CodeHostAdapter method)</a>
@@ -2723,10 +2793,10 @@
 </li>
         <li><a href="autoapi/psweep/config/runtime_config_loader/index.html#psweep.config.runtime_config_loader.resolve_command_config">resolve_command_config() (in module psweep.config.runtime_config_loader)</a>
 </li>
-        <li><a href="autoapi/psweep/config/runtime_config_loader/index.html#psweep.config.runtime_config_loader.resolve_compilation_metadata">resolve_compilation_metadata() (in module psweep.config.runtime_config_loader)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/psweep/config/runtime_config_loader/index.html#psweep.config.runtime_config_loader.resolve_compilation_metadata">resolve_compilation_metadata() (in module psweep.config.runtime_config_loader)</a>
+</li>
         <li><a href="autoapi/psweep/discovery/connectors/digger/index.html#psweep.discovery.connectors.digger.resolve_digger_connector">resolve_digger_connector() (in module psweep.discovery.connectors.digger)</a>
 </li>
         <li><a href="autoapi/psweep/config/discovery_config/index.html#psweep.config.discovery_config.resolve_discovery_section">resolve_discovery_section() (in module psweep.config.discovery_config)</a>
@@ -2803,6 +2873,10 @@
 </li>
         <li><a href="autoapi/psweep/extraction/roster/index.html#psweep.extraction.roster.scan_candidates">scan_candidates() (in module psweep.extraction.roster)</a>
 </li>
+        <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#psweep.discovery.garbage_collector.GarbageCollector.scan_checkpoint_reachability">scan_checkpoint_reachability() (psweep.discovery.garbage_collector.GarbageCollector method)</a>
+</li>
+        <li><a href="autoapi/psweep/discovery/garbage_collector/index.html#psweep.discovery.garbage_collector.GarbageCollector.scan_disk_runs">scan_disk_runs() (psweep.discovery.garbage_collector.GarbageCollector method)</a>
+</li>
         <li>
     SCHEMA_PATH
 
@@ -2832,10 +2906,10 @@
 </li>
         <li><a href="autoapi/psweep/discovery/network/index.html#psweep.discovery.network.send_get">send_get() (in module psweep.discovery.network)</a>
 </li>
-        <li><a href="autoapi/psweep/workspace/index.html#psweep.workspace.Workspace.serpapi_cache">serpapi_cache (psweep.workspace.Workspace property)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/psweep/workspace/index.html#psweep.workspace.Workspace.serpapi_cache">serpapi_cache (psweep.workspace.Workspace property)</a>
+</li>
         <li><a href="autoapi/psweep/discovery/connectors/serpapi_seeker/index.html#psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout">SerpApiSearchTimeout</a>
 </li>
         <li><a href="autoapi/psweep/discovery/connectors/serpapi_seeker/index.html#psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker">SerpApiSeeker (class in psweep.discovery.connectors.serpapi_seeker)</a>

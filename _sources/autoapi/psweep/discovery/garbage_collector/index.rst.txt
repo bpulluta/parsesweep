@@ -1,0 +1,87 @@
+psweep.discovery.garbage_collector
+==================================
+
+.. py:module:: psweep.discovery.garbage_collector
+
+.. autoapi-nested-parse::
+
+   Garbage collection for discovery backlog: safe removal of orphaned run data.
+
+   A run folder becomes orphaned when its contents are never referenced by any
+   checkpoint entry (completed or incomplete). This happens when runs are
+   interrupted before completion, or when targets are removed from the roster.
+
+   The GarbageCollector implements safe, reachability-based cleanup:
+   1. Scan checkpoint for all reachable files (both completed and incomplete)
+   2. Scan disk for all existing run folders
+   3. Identify orphaned folders (not referenced by any checkpoint entry)
+   4. Report with accurate size accounting (hardlink-aware) and verification
+   5. Optionally delete with explicit user confirmation
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.garbage_collector.GarbageCollector
+   psweep.discovery.garbage_collector.GarbageReport
+   psweep.discovery.garbage_collector.ReachabilityReport
+
+
+Module Contents
+---------------
+
+.. py:class:: GarbageCollector(domain_dir: pathlib.Path)
+
+   Safe garbage collection for orphaned discovery run folders.
+
+
+   .. py:method:: delete_orphaned_runs(report: GarbageReport) -> tuple[int, int]
+
+      Delete orphaned run folders. Must re-verify reachability first.
+
+      Returns (runs_deleted, bytes_deleted).
+      Raises ValueError if reachability has changed since report generation.
+
+
+
+   .. py:method:: report() -> GarbageReport
+
+      Generate a garbage collection report identifying orphaned runs.
+
+      Returns a report with:
+      - Orphaned runs (not referenced by any checkpoint entry)
+      - File and byte counts (with hardlink-aware deduplication)
+      - Verification info for user review before deletion
+
+
+
+   .. py:method:: scan_checkpoint_reachability() -> ReachabilityReport
+
+      Scan checkpoint.json for all file paths that are currently reachable.
+
+      Returns paths referenced by both completed and incomplete entries,
+      including artifacts, curated_paths, and incomplete outcomes.
+
+
+
+   .. py:method:: scan_disk_runs() -> dict[str, pathlib.Path]
+
+      Scan disk for all run folders under discovered/runs/.
+
+      Returns mapping of run_id -> run_path.
+
+
+
+.. py:class:: GarbageReport
+
+   Results of garbage collection scan.
+
+
+.. py:class:: ReachabilityReport
+
+   Results of checkpoint scanning for reachable files.
+
+

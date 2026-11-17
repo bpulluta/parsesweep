@@ -259,6 +259,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/document_reviewer/index.html">psweep.discovery.document_reviewer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/eligibility/index.html">psweep.discovery.eligibility</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/garbage_collector/index.html">psweep.discovery.garbage_collector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/network/index.html">psweep.discovery.network</a></li>
@@ -909,6 +910,57 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 <p>Supported file types: .csv, .doc, .docx, .flac, .htm, .html, .json, .m4a, .mp3, .ogg, .pdf, .txt, .wav, .xlsx</p>
 </section>
 </section>
+<section id="psweep-gc">
+<h3>gc<a class="headerlink" href="#psweep-gc" title="Link to this heading">¶</a></h3>
+<p>Scan for and optionally delete orphaned discovery run folders.</p>
+<p>Orphaned runs are those that were interrupted before completion or whose
+targets were removed from the roster. This command is safe: it only
+deletes runs that are not referenced by any checkpoint entry.</p>
+<dl class="simple">
+<dt>Usage (dry-run, no changes):</dt><dd><p>psweep gc utility_rate_tariffs</p>
+</dd>
+<dt>Usage (delete after review):</dt><dd><p>psweep gc utility_rate_tariffs –apply –yes</p>
+</dd>
+</dl>
+<p>Without –apply, this command only reports what would be deleted.
+With –apply, it deletes orphaned runs and reports the cleanup.</p>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>DOMAIN
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-gc-domain-dir">
+<span class="sig-name descname"><span class="pre">--domain-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain_dir&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-gc-domain-dir" title="Link to this definition">¶</a></dt>
+<dd><p>Path to domain output directory (usually outputs/&lt;domain&gt;)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-gc-apply">
+<span class="sig-name descname"><span class="pre">--apply</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-gc-apply" title="Link to this definition">¶</a></dt>
+<dd><p>Delete orphaned runs. Must be explicitly confirmed.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-gc-y">
+<span id="cmdoption-psweep-gc-yes"></span><span class="sig-name descname"><span class="pre">-y</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--yes</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-gc-y" title="Link to this definition">¶</a></dt>
+<dd><p>Skip confirmation prompt when –apply is set.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-gc-q">
+<span id="cmdoption-psweep-gc-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-gc-q" title="Link to this definition">¶</a></dt>
+<dd><p>Minimal output.</p>
+</dd></dl>
+
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-gc-arg-DOMAIN">
+<span class="sig-name descname"><span class="pre">DOMAIN</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-gc-arg-DOMAIN" title="Link to this definition">¶</a></dt>
+<dd><p>Required argument</p>
+</dd></dl>
+
+</section>
 <section id="psweep-init">
 <h3>init<a class="headerlink" href="#psweep-init" title="Link to this heading">¶</a></h3>
 <p>Interactive project setup wizard.</p>
@@ -1256,6 +1308,7 @@ psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes
 <li><a class="reference internal" href="#id2">Examples</a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#psweep-gc">gc</a></li>
 <li><a class="reference internal" href="#psweep-init">init</a></li>
 <li><a class="reference internal" href="#psweep-init-domain-schema">init-domain-schema</a></li>
 <li><a class="reference internal" href="#psweep-preview">preview</a></li>

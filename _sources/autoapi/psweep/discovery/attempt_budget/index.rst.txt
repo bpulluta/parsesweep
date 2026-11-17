@@ -25,15 +25,35 @@ Module Contents
    Limit physical search attempts per run and review attempts per target/run.
 
 
+   .. py:method:: pre_reserve_target_searches(target_idx: int, count: int) -> None
+
+      Pre-allocate ``count`` search slots for one job, in dispatch order.
+
+      Call once per seeker job, strictly in the order jobs will be dispatched
+      (roster order, or slot-major order for a query-slot pass), so budget
+      keeps going to earlier jobs even once dispatch itself becomes
+      concurrent. ``target_idx`` may repeat across calls (once per slot); its
+      allocation accumulates. The admission check is against a running total
+      committed across every call ever made on this budget -- that total is
+      never decremented, since every real search reserve_search() later
+      counts was first admitted here and must not be charged twice.
+
+
+
    .. py:method:: reserve_review(target_key: str) -> None
 
       Reserve one grading, escalation, deduplication or retry request.
 
 
 
-   .. py:method:: reserve_search() -> None
+   .. py:method:: reserve_search(target_idx: int | None = None) -> None
 
       Reserve one live search, including transient retries.
+
+      Cache hits never call this. When ``target_idx`` is given and a budget
+      is set, the unit is drawn strictly from that target's own allocation
+      (see ``pre_reserve_target_searches``), so concurrent dispatch across
+      targets can never race for the same budget unit.
 
 
 
