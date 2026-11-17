@@ -16,7 +16,7 @@ from pathlib import Path
 
 from psweep.utils.file_io import artifact_sha256
 
-INSPECTOR_VERSION = "1"
+INSPECTOR_VERSION = "2"
 _EVIDENCE_LIMIT = 50
 _TEXT_LIMIT = 200
 _HEADER_CHAR_LIMIT = 100
@@ -330,7 +330,10 @@ def inspect_pdf(path: Path, *, draft_patterns: list[str] | None = None) -> dict:
             if not document.is_pdf:
                 _limitation(result, "not_pdf")
                 return result
-            if document.needs_pass or (document.metadata or {}).get("encryption"):
+            # Owner-password-only PDFs open without a password and are inspected;
+            # a crypt method MuPDF cannot apply would leave the content unreadable.
+            encryption = (document.metadata or {}).get("encryption")
+            if document.needs_pass or (encryption and not encryption.endswith((" AES", " RC4"))):
                 _limitation(result, "encrypted_pdf")
                 return result
             if document.is_repaired:

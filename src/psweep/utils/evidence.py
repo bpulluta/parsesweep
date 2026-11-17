@@ -39,14 +39,19 @@ def _in_order(parts: list[str], haystack: str) -> bool:
     return True
 
 
-def quote_present(quote: Any, source_text: str) -> bool:
-    """Match on normalized word boundaries; ellipsis fragments must occur in order."""
+def quote_present(quote: Any, source_text: str, *, elide: bool = True) -> bool:
+    """Match on normalized word boundaries; ellipsis fragments must occur in order.
+
+    With ``elide=False`` an ellipsis is literal punctuation (e.g. table-of-contents
+    dot leaders), so the whole quote must occur contiguously.
+    """
     if quote is None:
         return False
-    parts = [part for part in map(normalize, _ELLIPSIS.split(str(quote))) if part]
+    fragments = _ELLIPSIS.split(str(quote)) if elide else [str(quote)]
+    parts = [part for part in map(normalize, fragments) if part]
     return bool(parts) and any(_in_order(parts, haystack) for haystack in _haystacks(source_text))
 
 
-def quote_in_segments(quote: Any, segments: Iterable[str]) -> bool:
+def quote_in_segments(quote: Any, segments: Iterable[str], *, elide: bool = True) -> bool:
     """Match within one real sampled segment; never bridge disconnected windows."""
-    return any(quote_present(quote, segment) for segment in segments)
+    return any(quote_present(quote, segment, elide=elide) for segment in segments)

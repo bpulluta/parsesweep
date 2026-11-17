@@ -17,6 +17,14 @@ def test_invalid_coverage_contract_rejected(coverage):
         validate_review_policy([], coverage)
 
 
+@pytest.mark.parametrize(
+    ("prefer_newest", "coverage"), [("no", None), (1, {}), (True, {"history": "facts"})]
+)
+def test_invalid_prefer_newest_rejected(prefer_newest, coverage):
+    with pytest.raises(ValueError, match="prefer_newest"):
+        validate_review_policy([], coverage, prefer_newest=prefer_newest)
+
+
 def test_scope_binding_streams_and_does_not_mutate_templates():
     coverage = {"history": "History for {asset} at {location?}"}
     targets = iter([{"asset": "A", "location": None}, {"asset": "B", "location": "Bay 2"}])

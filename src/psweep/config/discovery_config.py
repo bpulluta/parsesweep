@@ -249,6 +249,7 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
                 "max_chars": _Key(_int(1)),
                 "keywords": _Key(_strings),
                 "deduplicate_redundant": _Key(_bool),
+                "prefer_newest": _Key(_bool),
                 "deduplication": {"key_fields": _Key(_strings)},
             }
         ),
@@ -292,10 +293,11 @@ def _check_adaptive_review(fields: dict[str, tuple[Any, str]]) -> None:
         )
     context = review.get("context_fields") or []
     coverage = review.get("coverage") or {}
-    if coverage and not review.get("document_description"):
-        raise RuntimeConfigError("document_review.coverage requires document_description")
+    for key in ("coverage", "prefer_newest"):
+        if review.get(key) and not review.get("document_description"):
+            raise RuntimeConfigError(f"document_review.{key} requires document_description")
     try:
-        validate_review_policy(context, coverage)
+        validate_review_policy(context, coverage, prefer_newest=review.get("prefer_newest", False))
     except ValueError as exc:
         raise RuntimeConfigError(str(exc)) from exc
     templates = [*fallback, *coverage.values()]

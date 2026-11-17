@@ -765,7 +765,7 @@ def test_grounded_contract_retains_qualified_source_context(tmp_path, monkeypatc
     assert record["review_initial_grade"]["evidence"] == evidence
 
 
-@pytest.mark.parametrize("quote", ["fabricated evidence", "source ... evidence", "", None])
+@pytest.mark.parametrize("quote", ["fabricated evidence", "source ... source", "", None])
 def test_invalid_primary_evidence_is_pending_without_success_cache(tmp_path, monkeypatch, quote):
     monkeypatch.setattr(
         document_utils, "extract_text_from_document", lambda _p: "source evidence " * 100
@@ -790,6 +790,162 @@ def test_invalid_primary_evidence_is_pending_without_success_cache(tmp_path, mon
     reviewer.review([record], [])
     assert record["review_failed"] and not record["review_selected"]
     assert not list((tmp_path / "cache").glob("*.json"))
+
+
+_TOC = "1. Territory to Which the Rate Schedule Applies ........ 12\nNONRESIDENTIAL ........ 100"
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "Territory to Which the Rate Schedule Applies ........ 12",
+        "territory to which the rate schedule applies … 12",
+        "NONRESIDENTIAL ........ 100",
+    ],
+)
+def test_literal_dot_leader_quote_is_grounded(quote):
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._verify_evidence({**_equal_grade(1.0), "evidence": _evidence(quote)}, [_TOC])
+
+
+@pytest.mark.parametrize(
+    "quote",
+    ["Territory to Which ... 12", "RESIDENTIAL ........ 10", "Applies ........ 12 ... 100"],
+)
+def test_elided_or_partial_word_quote_is_not_grounded(quote):
+    reviewer = DocumentReviewer(document_description="records")
+    with pytest.raises(document_reviewer.ReviewError, match="evidence"):
+        reviewer._verify_evidence({**_equal_grade(1.0), "evidence": _evidence(quote)}, [_TOC])
+
+
+def test_punctuation_only_structured_quote_is_not_grounded():
+    reviewer = DocumentReviewer(document_description="records")
+    evidence = _evidence("NONRESIDENTIAL ........ 100")
+    evidence["scope"]["quote"] = "........"
+    with pytest.raises(document_reviewer.ReviewError, match="evidence"):
+        reviewer._verify_evidence({**_equal_grade(1.0), "evidence": evidence}, [_TOC])
+
+
+def _dated(name: str, value: str | None, precision: str = "day", relevance: float = 0.75):
+    source_date = value and {"value": value, "precision": precision, "quote": "effective"}
+    return {
+        "path": name,
+        "url": f"https://example.com/{name}",
+        "review_relevance": relevance,
+        "review_evidence": {"coverage": {}, "source_date": source_date},
+    }
+
+
+@pytest.mark.parametrize(
+    ("records", "expected"),
+    [
+        # A provably older edition loses even with a higher grade.
+        ([_dated("a.pdf", "2008-01-11", relevance=1.0), _dated("z.pdf", "2026-03-01")], "z.pdf"),
+        # A year can mean any day in it, so it overlaps a later day and grade decides.
+        ([_dated("a.pdf", "2026", "year", 1.0), _dated("z.pdf", "2026-09-01")], "a.pdf"),
+        # The same month overlaps; a later month is provably newer.
+        ([_dated("a.pdf", "2026-03", "month", 1.0), _dated("z.pdf", "2026-03-15")], "a.pdf"),
+        ([_dated("a.pdf", "2026-02", "month", 1.0), _dated("z.pdf", "2026-03-01")], "z.pdf"),
+        # Undated editions are never dropped; grade then provenance decide.
+        ([_dated("a.pdf", None, relevance=1.0), _dated("z.pdf", "2026-03-01")], "a.pdf"),
+        ([_dated("z.pdf", None), _dated("a.pdf", "2008-01-11")], "a.pdf"),
+    ],
+)
+def test_prefer_newest_drops_only_provably_older_editions(records, expected):
+    reviewer = DocumentReviewer(document_description="records", prefer_newest=True)
+    assert reviewer._next_complement(records, set())["path"] == expected
+
+
+def test_default_selection_ignores_dates_so_other_domains_are_unchanged():
+    reviewer = DocumentReviewer(document_description="records")
+    old, new = _dated("a-2008.pdf", "2008-01-11"), _dated("z-2026.pdf", "2026-03-01")
+    assert reviewer._next_complement([new, old], set()) is old
+
+
+def _edition_review(tmp_path, *, prefer_newest: bool, keep: int):
+    """Old grade-4 and new grade-3 editions with distinct bytes and a valid dedup reply."""
+    records = [_record(tmp_path, name, "T") for name in ("old.pdf", "new.pdf")]
+    Path(records[1]["path"]).write_text("new edition bytes", encoding="utf-8")
+    reviewer = DocumentReviewer(
+        document_description="records", keep_top=1, prefer_newest=prefer_newest
+    )
+    grades = {"old.pdf": _equal_grade(1.0), "new.pdf": _equal_grade(0.75)}
+    _stub_grades(reviewer, grades)
+    for name, value in (("old.pdf", "2008-01-11"), ("new.pdf", "2026-03-01")):
+        grades[name]["evidence"]["source_date"] = {
+            "value": value,
+            "precision": "day",
+            "quote": "dummy",
+        }
+
+    class Client(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            refs = [{"index": i, "field": "content_quote", "quote": "dummy"} for i in (0, 1)]
+            group = {
+                "keep_index": keep,
+                "redundant_indices": [1 - keep],
+                "reason": "same schedule",
+                "evidence_refs": refs,
+            }
+            return {"data": {"redundancy_groups": [group]}}
+
+    reviewer._client = Client()
+    reviewer._ensure_client = lambda: reviewer._client
+    _, notes = reviewer.review(records, [])
+    return {Path(r["path"]).name: r for r in records}, notes
+
+
+@pytest.mark.parametrize("keep", [0, 1])
+def test_prefer_newest_keeps_newest_edition_through_comparative_dedup(tmp_path, keep):
+    records, _ = _edition_review(tmp_path, prefer_newest=True, keep=keep)
+    assert records["new.pdf"]["review_selected"]
+    assert records["old.pdf"]["review_redundant"] and not records["old.pdf"]["review_selected"]
+
+
+def test_default_dedup_keeper_is_unchanged(tmp_path):
+    records, _ = _edition_review(tmp_path, prefer_newest=False, keep=0)
+    assert records["old.pdf"]["review_selected"] and records["new.pdf"]["review_redundant"]
+
+
+def test_prefer_newest_notes_undated_candidates_only_when_contested(tmp_path):
+    reviewer = DocumentReviewer(
+        document_description="records", keep_top=1, deduplicate_redundant=False, prefer_newest=True
+    )
+    records = [_record(tmp_path, name, "T") for name in ("undated.pdf", "dated.pdf")]
+    grades = {name: _equal_grade(0.75) for name in ("undated.pdf", "dated.pdf")}
+    _stub_grades(reviewer, grades)
+    grades["dated.pdf"]["evidence"]["source_date"] = {
+        "value": "2026-01-01",
+        "precision": "day",
+        "quote": "dummy",
+    }
+    _, notes = reviewer.review(records, [])
+    assert sum(record["review_selected"] for record in records) == 1
+    assert any("could not date 1" in note and "undated.pdf" in note for note in notes)
+    reviewer._keep_top = 2
+    _, notes = reviewer.review(records, [])
+    assert not any("could not date" in note for note in notes)
+
+
+def test_edition_date_wording_is_opt_in_for_prompt_and_cache(tmp_path):
+    path = _record(tmp_path, "one.pdf", "T")["path"]
+    default = DocumentReviewer(document_description="records")
+    newest = DocumentReviewer(document_description="records", prefer_newest=True)
+    assert default._review_prompt is document_reviewer._REVIEW_PROMPT
+    assert "quote: publication-date support" in default._review_prompt
+    assert "publication or effective date" in newest._review_prompt
+    assert "publication or effective date" not in default._review_prompt
+    assert default._cache_key(path) != newest._cache_key(path)
+    assert default._cache_key(path) == DocumentReviewer(document_description="records")._cache_key(
+        path
+    )
+
+
+def test_prefer_newest_rejects_coverage_and_non_booleans():
+    with pytest.raises(ValueError, match="prefer_newest"):
+        DocumentReviewer(document_description="records", prefer_newest="yes")
+    with pytest.raises(ValueError, match="prefer_newest"):
+        DocumentReviewer(document_description="records", prefer_newest=True, coverage={"a": "b"})
 
 
 def test_sample_join_cannot_ground_a_source_quote():
