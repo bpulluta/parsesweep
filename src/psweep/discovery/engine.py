@@ -16,6 +16,7 @@ from dataclasses import replace as dataclass_replace
 from datetime import datetime, UTC
 from io import StringIO
 from itertools import chain
+from operator import itemgetter
 from pathlib import Path
 from collections.abc import Callable
 from urllib.parse import unquote, urlparse
@@ -329,6 +330,7 @@ class DiscoveryEngine:
         self._reviewer = None
         self._fallback_pending: set[str] = set()
         self._acquisition_pending: dict[str, set[str]] = defaultdict(set)
+        self._seeker_target_idx_local = threading.local()
 
     @staticmethod
     def _emit_progress(request: DiscoveryRequest, message: str) -> None:
@@ -535,8 +537,20 @@ class DiscoveryEngine:
                 float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
             ),
             cache_refresh=request.fresh and not request.dry_run,
-            before_request=self._attempt_budget.reserve_search,
+            before_request=self._before_seeker_request,
         )
+
+    def _before_seeker_request(self) -> None:
+        """Reserve one live search for whichever target the calling worker is on.
+
+        Bound once as the seeker's ``before_request`` callback (never reassigned,
+        so concurrent workers never race over a shared mutable callback). The
+        calling target's index comes from thread-local storage set in
+        ``_discover_target_candidates``: each worker thread runs exactly one job
+        at a time, so this is race-free without any per-call object mutation.
+        """
+        target_idx = getattr(self._seeker_target_idx_local, "value", None)
+        self._attempt_budget.reserve_search(target_idx=target_idx)
 
     @staticmethod
     def _seeker_jobs(inputs, *, query_slot: bool):
@@ -548,6 +562,68 @@ class DiscoveryEngine:
             for idx, item in enumerate(inputs):
                 if slot < len(item.queries):
                     yield idx, dataclass_replace(item, queries=[item.queries[slot]], context=None)
+
+    def _reserve_seeker_budget_in_roster_order(self, seeker_jobs) -> None:
+        """Pre-allocate each job's share of the search budget before dispatch.
+
+        Reserves one budget unit per job (``len(si.queries)`` units for a job
+        carrying more than one query) strictly in ``seeker_jobs`` order -- the same
+        order jobs are dispatched in, which is roster order for a plain pass and
+        slot-major (every target's first query, then every target's second, ...)
+        for a query-slot pass. Once one job would overflow the remaining budget,
+        it and every job after it are left unreserved, so budget keeps going to
+        earlier-roster/earlier-slot jobs even once dispatch is concurrent.
+
+        Jobs are still dispatched regardless of reservation -- a cache hit costs
+        no budget and needs none -- but an unreserved job's real search attempt
+        will fail with ``AttemptBudgetExceeded`` (see ``_before_seeker_request``).
+        A no-op when there is no budget limit.
+        """
+        if self._attempt_budget.max_search_calls is None:
+            return
+        for idx, si in seeker_jobs:
+            try:
+                self._attempt_budget.pre_reserve_target_searches(idx, len(si.queries))
+            except AttemptBudgetExceeded:
+                break
+
+    def _discover_target_candidates(self, seeker, idx: int, seeker_input):
+        """Execute discovery for a single target.
+
+        Returns (idx, discovered, error_records, error_type).
+        error_type is "timeout", "budget", "provider", or None.
+        Errors are returned as error_records (list of dicts) for parallelization.
+        """
+        from .connectors.serpapi_seeker import SerpApiSearchTimeout
+
+        error_records = []
+        discovered = []
+        error_type = None
+        try:
+            self._seeker_target_idx_local.value = idx
+            discovered = seeker.discover(seeker_input)
+        except SerpApiSearchTimeout as exc:
+            discovered = exc.candidates
+            error_type = "timeout"
+            error_records.extend(
+                build_error_record(
+                    TimeoutError(message),
+                    stage="discovery.seeker_discover",
+                    provider="serpapi",
+                )
+                for message in exc.query_errors
+            )
+        except AttemptBudgetExceeded as exc:
+            error_type = "budget"
+            error_records.append(
+                build_error_record(exc, stage="discovery.seeker_discover", provider="serpapi")
+            )
+        except Exception as exc:  # noqa: BLE001 - provider isolation
+            error_type = "provider"
+            error_records.append(
+                build_error_record(exc, stage="discovery.seeker_discover", provider="serpapi")
+            )
+        return idx, discovered, error_records, error_type
 
     @staticmethod
     def _seeker_candidate(raw, target, request):
@@ -615,10 +691,7 @@ class DiscoveryEngine:
         incomplete_targets: set[int] = set()
 
         try:
-            from .connectors.serpapi_seeker import (
-                SerpApiSearchTimeout,
-                resolve_search_queries,
-            )
+            from .connectors.serpapi_seeker import resolve_search_queries
 
             seeker = self._build_seeker(request)
 
@@ -660,47 +733,66 @@ class DiscoveryEngine:
             seen = [{} for _ in seeker_inputs]
             slots = [0 for _ in seeker_inputs]
             total_discovered = 0
-            for idx, seeker_input in self._seeker_jobs(seeker_inputs, query_slot=query_slot):
-                if not seeker_input.queries:
-                    continue
+
+            # Parallelize discovery calls; post-processing remains serial
+            max_concurrent = max(
+                1, int(request.max_concurrent_downloads or DEFAULT_MAX_CONCURRENT_DOWNLOADS)
+            )
+            seeker_jobs = list(self._seeker_jobs(seeker_inputs, query_slot=query_slot))
+            seeker_jobs = [(idx, si) for idx, si in seeker_jobs if si.queries]
+
+            # Pre-reserve search slots in roster/slot order to ensure earlier jobs always
+            # get priority, regardless of concurrent scheduling. This preserves the
+            # pre-Step-11b guarantee that "first N targets in roster order get the budget."
+            # Every job still dispatches -- a cache hit costs no budget -- but a job
+            # left unreserved will fail with AttemptBudgetExceeded on any real search
+            # attempt (see _before_seeker_request), surfacing as the usual "budget"
+            # outcome below.
+            self._reserve_seeker_budget_in_roster_order(seeker_jobs)
+
+            # bounded_results yields in *completion* order, but the consumption
+            # loop below keeps per-target state (seen[idx], slots[idx], ...)
+            # that is only correct when visited in submission order -- e.g. two
+            # query-slot jobs for the same target must be consumed in slot
+            # order, not whichever one's thread happens to finish first. Tag
+            # each job with its position so the actual discovery calls can
+            # still run concurrently, while the results are put back in
+            # submission order before anything reads them.
+            positioned_jobs = list(enumerate(seeker_jobs))
+
+            def _discover_positioned(job):
+                position, (job_idx, seeker_input) = job
+                return position, self._discover_target_candidates(seeker, job_idx, seeker_input)
+
+            positioned_results = bounded_results(
+                _discover_positioned,
+                positioned_jobs,
+                workers=max_concurrent,
+            )
+            discovery_results = (
+                result for _position, result in sorted(positioned_results, key=itemgetter(0))
+            )
+
+            for idx, discovered, error_records, error_type in discovery_results:
                 target = seeker_targets[idx]
                 target_label = self._target_label(target, idx + 1, request.partition_by)
                 self._emit_progress(
                     request,
-                    f"seeker {idx + 1}/{total_inputs}: searching {target_label} "
-                    f"| queries={len(seeker_input.queries)}",
+                    f"seeker {idx + 1}/{total_inputs}: searching {target_label}",
                 )
-                try:
-                    discovered = seeker.discover(seeker_input)
-                except SerpApiSearchTimeout as exc:
-                    discovered = exc.candidates
+                if error_records:
                     incomplete_targets.add(idx)
-                    target_selection_metrics[idx]["pending_reason"] = "provider"
-                    errors.extend(
-                        build_error_record(
-                            TimeoutError(f"{target_label}: {message}"),
-                            stage="discovery.seeker_discover",
-                            provider="serpapi",
+                    if error_type == "timeout":
+                        target_selection_metrics[idx]["pending_reason"] = "provider"
+                        notes.append(
+                            f"Partial search for {target_label}: "
+                            f"{len(error_records)} query timeout(s); retained "
+                            f"{len(discovered)} candidate(s)."
                         )
-                        for message in exc.query_errors
-                    )
-                    notes.append(
-                        f"Partial search for {target_label}: "
-                        f"{len(exc.query_errors)} query timeout(s); retained "
-                        f"{len(discovered)} candidate(s)."
-                    )
-                except Exception as exc:  # noqa: BLE001 - provider isolation
-                    discovered = []
-                    incomplete_targets.add(idx)
-                    target_selection_metrics[idx]["pending_reason"] = (
-                        "budget" if isinstance(exc, AttemptBudgetExceeded) else "provider"
-                    )
-                    errors.append(
-                        build_error_record(
-                            exc, stage="discovery.seeker_discover", provider="serpapi"
-                        )
-                    )
-                    notes.append(f"Search failed for {target_label}; target remains retryable.")
+                    else:
+                        target_selection_metrics[idx]["pending_reason"] = error_type or "provider"
+                        notes.append(f"Search failed for {target_label}; target remains retryable.")
+                    errors.extend(error_records)
                 group = list(selected_by_target[idx])
                 metric = target_selection_metrics[idx]
                 for rank, raw in enumerate(discovered):
@@ -3278,13 +3370,12 @@ class DiscoveryEngine:
         if not shell_urls:
             return download_records, notes
 
-        # Use the HTTP digger with browser to crawl from each shell URL. A
-        # single connector instance is reused across every shell target so the
-        # browser session (when the digger escalates) is shared, not rebuilt.
+        # Use the HTTP digger with browser to crawl from each shell URL.
+        # For each target, discover() will escalate to a browser if needed.
         from .connectors.base import DiggerInput
-        from .connectors.digger import HttpDiggerConnector
+        from .connectors import resolve_digger_connector
 
-        digger = HttpDiggerConnector()
+        digger = resolve_digger_connector("http")
         crawled = 0
         for _target_key, url, shell in shell_urls:
             di = DiggerInput(

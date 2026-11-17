@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
 from itertools import zip_longest
 from typing import Any
@@ -76,6 +77,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         self.retry_max_backoff_seconds = max(0.0, float(retry_max_backoff_seconds))
         self.min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
         self._last_request_monotonic = 0.0
+        self._rate_limit_lock = threading.Lock()
         # Live outbound attempts, including retries and failed/time-out requests.
         # Cache hits are free; actual provider billing for failures is unknown.
         self.queries_run: int = 0
@@ -97,13 +99,14 @@ class SerpApiSeeker(BaseSeekerConnector):
         if self.min_request_interval_seconds <= 0:
             return
 
-        now = time.monotonic()
-        elapsed = now - self._last_request_monotonic
-        remaining = self.min_request_interval_seconds - elapsed
-        if remaining > 0:
-            time.sleep(remaining)
+        with self._rate_limit_lock:
             now = time.monotonic()
-        self._last_request_monotonic = now
+            elapsed = now - self._last_request_monotonic
+            remaining = self.min_request_interval_seconds - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+                now = time.monotonic()
+            self._last_request_monotonic = now
 
     @staticmethod
     def _is_transient_search_error(exc: Exception) -> bool:

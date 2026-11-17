@@ -540,10 +540,15 @@ def test_fallback_budget_visits_first_query_for_every_owner_before_second(harnes
         max_search_calls=6,
     )
     first = DiscoveryEngine().run(req)
-    assert queries == ["initial A", "initial B", "initial C", "first A", "first B", "first C"]
+    # Each phase's 3 owners dispatch concurrently, so completion order within a
+    # phase (which determines append order into this shared list) isn't
+    # guaranteed -- only that every owner's query for that phase ran, and that
+    # the whole phase completes before the next one starts.
+    assert sorted(queries[:3]) == ["initial A", "initial B", "initial C"]
+    assert sorted(queries[3:6]) == ["first A", "first B", "first C"]
     assert payload(first)["stage_summaries"]["fallback"]["pending_targets"] == 3
     second = DiscoveryEngine().run(req)
-    assert queries[-3:] == ["second A", "second B", "second C"]
+    assert sorted(queries[-3:]) == ["second A", "second B", "second C"]
     assert len(queries) == len(set(queries)) == 9
     assert payload(second)["stage_summaries"]["fallback"]["pending_targets"] == 0
 
