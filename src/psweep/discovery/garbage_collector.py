@@ -15,7 +15,6 @@ The GarbageCollector implements safe, reachability-based cleanup:
 from __future__ import annotations
 
 import json
-import os
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -95,12 +94,10 @@ class GarbageCollector:
                     referenced_run_ids.add(run_id)
 
                 # Artifacts (manifest/index files)
-                for artifact_path_str in entry.get("artifacts", {}):
-                    reachable.add(Path(artifact_path_str))
+                reachable.update(Path(p) for p in entry.get("artifacts", {}))
 
                 # Curated documents (consolidated from runs/)
-                for curated_path_str in entry.get("curated_paths", {}):
-                    reachable.add(Path(curated_path_str))
+                reachable.update(Path(p) for p in entry.get("curated_paths", {}))
 
             # Incomplete entries: check outcomes (which have paths for incomplete fetches)
             else:
@@ -157,29 +154,17 @@ class GarbageCollector:
 
         return dict(inode_map)
 
-    def _size_with_hardlink_dedup(
-        self, paths: list[Path], inode_map: dict[tuple[int, int], list[Path]]
-    ) -> int:
+    def _size_with_hardlink_dedup(self, inode_map: dict[tuple[int, int], list[Path]]) -> int:
         """Calculate total size, counting each hardlink only once.
 
         For each hardlink group, count the size of only the first path;
         hardlinks to the same inode don't add extra size.
         """
         total_bytes = 0
-        seen_inodes = set()
 
-        for path in paths:
-            if not path.exists():
-                continue
-
+        for group in inode_map.values():
             try:
-                stat = path.stat()
-                inode_key = (stat.st_dev, stat.st_ino)
-
-                # Count this inode only once
-                if inode_key not in seen_inodes:
-                    total_bytes += stat.st_size
-                    seen_inodes.add(inode_key)
+                total_bytes += group[0].stat().st_size
             except OSError:
                 continue
 
@@ -206,15 +191,13 @@ class GarbageCollector:
         # Collect all files in orphaned runs
         orphaned_files = []
         for run_path in orphaned_runs:
-            for file_path in sorted(run_path.rglob("*")):
-                if file_path.is_file():
-                    orphaned_files.append(file_path)
+            orphaned_files.extend(p for p in sorted(run_path.rglob("*")) if p.is_file())
 
         # Build inode map for hardlink detection
         inode_map = self._build_inode_map(orphaned_files)
 
         # Calculate reclaimable size with hardlink deduplication
-        reclaimable_bytes = self._size_with_hardlink_dedup(orphaned_files, inode_map)
+        reclaimable_bytes = self._size_with_hardlink_dedup(inode_map)
 
         return GarbageReport(
             orphaned_runs=orphaned_runs,
@@ -231,14 +214,14 @@ class GarbageCollector:
         Returns (runs_deleted, bytes_deleted).
         Raises ValueError if reachability has changed since report generation.
         """
+        import contextlib
         import shutil
 
         # Re-verify reachability hasn't changed
         current_reachability = self.scan_checkpoint_reachability()
         if (
             current_reachability.reachable_paths != report.reachability.reachable_paths
-            or current_reachability.referenced_run_ids
-            != report.reachability.referenced_run_ids
+            or current_reachability.referenced_run_ids != report.reachability.referenced_run_ids
         ):
             raise ValueError(
                 "Reachability has changed since report generation. "
@@ -253,10 +236,8 @@ class GarbageCollector:
                 # Calculate actual size before deletion
                 for file_path in run_path.rglob("*"):
                     if file_path.is_file():
-                        try:
+                        with contextlib.suppress(OSError):
                             bytes_deleted += file_path.stat().st_size
-                        except OSError:
-                            pass
 
                 shutil.rmtree(run_path, ignore_errors=False)
                 runs_deleted += 1

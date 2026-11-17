@@ -241,7 +241,11 @@ def crawl(
         # Flush batch when depth changes (advancing to new BFS level).
         if max_files is None and depth != current_depth:
             if batch_to_fetch:
-                for u, result in zip(batch_to_fetch, bounded_results(_fetch_and_record, batch_to_fetch, workers=2)):
+                for u, result in zip(
+                    batch_to_fetch,
+                    bounded_results(_fetch_and_record, batch_to_fetch, workers=2),
+                    strict=True,
+                ):
                     fetched[u] = result
                     pages_fetched += 1
                 batch_to_fetch = []
@@ -265,7 +269,11 @@ def crawl(
 
         # Ensure URL is fetched before accessing its links.
         if url not in fetched and batch_to_fetch:
-            for u, result in zip(batch_to_fetch, bounded_results(_fetch_and_record, batch_to_fetch, workers=2)):
+            for u, result in zip(
+                batch_to_fetch,
+                bounded_results(_fetch_and_record, batch_to_fetch, workers=2),
+                strict=True,
+            ):
                 fetched[u] = result
                 pages_fetched += 1
             batch_to_fetch = []
@@ -298,7 +306,11 @@ def crawl(
 
     # Flush any remaining batch.
     if max_files is None and batch_to_fetch:
-        for u, result in zip(batch_to_fetch, bounded_results(_fetch_and_record, batch_to_fetch, workers=2)):
+        for u, result in zip(
+            batch_to_fetch,
+            bounded_results(_fetch_and_record, batch_to_fetch, workers=2),
+            strict=True,
+        ):
             fetched[u] = result
             pages_fetched += 1
 

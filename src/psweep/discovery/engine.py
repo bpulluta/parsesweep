@@ -588,8 +588,9 @@ class DiscoveryEngine:
                 break
 
     def _discover_target_candidates(self, seeker, idx: int, seeker_input):
-        """Execute discovery for a single target. Returns (idx, discovered, error_records, error_type).
+        """Execute discovery for a single target.
 
+        Returns (idx, discovered, error_records, error_type).
         error_type is "timeout", "budget", "provider", or None.
         Errors are returned as error_records (list of dicts) for parallelization.
         """
@@ -690,10 +691,7 @@ class DiscoveryEngine:
         incomplete_targets: set[int] = set()
 
         try:
-            from .connectors.serpapi_seeker import (
-                SerpApiSearchTimeout,
-                resolve_search_queries,
-            )
+            from .connectors.serpapi_seeker import resolve_search_queries
 
             seeker = self._build_seeker(request)
 
@@ -737,7 +735,9 @@ class DiscoveryEngine:
             total_discovered = 0
 
             # Parallelize discovery calls; post-processing remains serial
-            max_concurrent = max(1, int(request.max_concurrent_downloads or DEFAULT_MAX_CONCURRENT_DOWNLOADS))
+            max_concurrent = max(
+                1, int(request.max_concurrent_downloads or DEFAULT_MAX_CONCURRENT_DOWNLOADS)
+            )
             seeker_jobs = list(self._seeker_jobs(seeker_inputs, query_slot=query_slot))
             seeker_jobs = [(idx, si) for idx, si in seeker_jobs if si.queries]
 

@@ -195,9 +195,11 @@ def _publication_lock_with_retry(
                 initial_backoff_seconds=initial_backoff_seconds,
                 max_backoff_seconds=max_backoff_seconds,
             )
-            jitter = random.uniform(0, backoff * 0.1)
+            jitter = random.uniform(0, backoff * 0.1)  # noqa: S311 - backoff jitter, not crypto
             time.sleep(backoff + jitter)
-    raise PublicationError(f"Publication lock contention after {max_attempts} attempts: {last_error}") from last_error
+    raise PublicationError(
+        f"Publication lock contention after {max_attempts} attempts: {last_error}"
+    ) from last_error
 
 
 @contextlib.contextmanager

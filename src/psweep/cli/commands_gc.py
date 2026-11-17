@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import click
 
-from psweep.cli.ui import console, print_info, print_success, print_warning
+from psweep.cli.ui import console, print_success
 from psweep.discovery.garbage_collector import GarbageCollector
 from psweep.workspace import Workspace
 
@@ -139,10 +138,8 @@ def _print_report(report, domain: str, quiet: bool) -> None:
     console.print()
 
     # Summary
-    console.print(f"Checkpoint status:")
-    console.print(
-        f"  • Reachable run folders: {len(report.reachability.referenced_run_ids)}"
-    )
+    console.print("Checkpoint status:")
+    console.print(f"  • Reachable run folders: {len(report.reachability.referenced_run_ids)}")
     console.print(
         f"  • Checkpoint entries: {report.reachability.total_referenced_entries} "
         f"({len(report.reachability.completed_owners)} completed, "
@@ -176,8 +173,7 @@ def _print_report(report, domain: str, quiet: bool) -> None:
     if any(len(inodes) > 1 for inodes in report.inode_map.values()):
         hardlink_count = sum(len(inodes) - 1 for inodes in report.inode_map.values())
         console.print(
-            f"[dim]Note: {hardlink_count} hardlinks detected; "
-            "size counts each unique file once[/]"
+            f"[dim]Note: {hardlink_count} hardlinks detected; size counts each unique file once[/]"
         )
         console.print()
 
