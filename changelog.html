@@ -406,6 +406,15 @@ starter covering all four stages, and every key is documented once in
 <section id="fixed">
 <h3>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>Review evidence quotes may contain literal dot leaders (<code class="docutils literal notranslate"><span class="pre">Applies</span> <span class="pre">........</span> <span class="pre">12</span></code>);
+they must still occur contiguously on whole words, and quotes with no words are
+rejected.</p></li>
+<li><p>A fenced JSON reply followed by prose, or missing its closing fence, now parses,
+including string values that contain backticks.</p></li>
+<li><p>PDF screening inspects PDFs that are encrypted with only an owner password
+instead of holding them; PDFs that need a password, or that MuPDF cannot
+decrypt, are still held. The inspector version is now 2, so screening-enabled
+domains re-screen their PDFs once.</p></li>
 <li><p>Large runs no longer retain completed section text or failed-review traceback
 graphs. Review hashes each uncached source once; reconciliation reuses bounded
 worker clients while retaining per-target attempt receipts.</p></li>
@@ -488,6 +497,11 @@ reprs. In roster mode an empty list or object is <code class="docutils literal n
 <section id="added">
 <h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">discovery.document_review.prefer_newest</span></code> (opt-in, default <code class="docutils literal notranslate"><span class="pre">false</span></code>) for domains
+where only the latest edition counts: grading asks for the effective date too,
+provably older dated editions are never selected, undated ones are kept and
+reported, and deduplication keeps the newest copy. It is rejected with <code class="docutils literal notranslate"><span class="pre">coverage</span></code>
+or without <code class="docutils literal notranslate"><span class="pre">document_description</span></code>. Other domains keep their prompts and grade caches.</p></li>
 <li><p>Automatic discovery qualification with per-target review description/context,
 optional stronger-model escalation, one weak-target fallback-query stage and
 physical search/review attempt budgets. Cache/checkpoint resume retains

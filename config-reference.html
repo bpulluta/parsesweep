@@ -850,8 +850,11 @@ and do not cause a hold on their own; colored text alone is not a revision signa
 It also reuses <code class="docutils literal notranslate"><span class="pre">selection.draft_patterns</span></code> (when <code class="docutils literal notranslate"><span class="pre">selection.exclude_draft</span></code> is true)
 against title/subject/keywords metadata and full-line short headers, not arbitrary
 body sentences. There is no built-in draft vocabulary. Scanned/image-heavy,
-encrypted, corrupt, or otherwise incompletely inspected PDFs are held in <code class="docutils literal notranslate"><span class="pre">hold</span></code>
-mode, without OCR/vision calls. Text is never edited to remove crossed-out clauses.</p>
+password-protected (cannot be opened without a password), undecryptable, corrupt,
+or otherwise incompletely inspected PDFs are held in <code class="docutils literal notranslate"><span class="pre">hold</span></code> mode, without
+OCR/vision calls. PDFs that carry only owner (permission) restrictions open without
+a password and are inspected normally. Text is never edited to remove crossed-out
+clauses.</p>
 <p>The manifest’s <code class="docutils literal notranslate"><span class="pre">document_eligibility</span></code> contains versioned, content-hashed evidence,
 page coverage and limitations. <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">download_index.csv</span></code> summarize
 eligibility and effective <code class="docutils literal notranslate"><span class="pre">curated_selected</span></code>. A hold is not a download/provider
@@ -902,23 +905,27 @@ leave screening off in domains that need proposals and change histories.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
 <td><p>Primary documents kept per target.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">coverage</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">prefer_newest</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>For domains where only the latest edition is valid (e.g. tariffs). Grading also asks for the effective date, and among qualified primaries (grade 3-4) a document whose quoted date provably precedes another’s is never chosen (a year or month spans the whole period). Undated documents are kept and ranked by grade, then provenance; a run note lists them. Each extra <code class="docutils literal notranslate"><span class="pre">keep_top</span></code> slot takes the next-newest edition, and comparative deduplication keeps the newest of proven-redundant copies. Requires <code class="docutils literal notranslate"><span class="pre">document_description</span></code>; rejected with <code class="docutils literal notranslate"><span class="pre">coverage</span></code>. Enabling it changes the grading prompt, so that domain’s documents are graded again once.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">coverage</span></code></p></td>
 <td><p>absent/off</p></td>
 <td><p>Domain-defined label → evidence-description map. Descriptions support target templates. Verified labels guide complementary source selection and trigger fallback for missing coverage. Labels use letters/digits/<code class="docutils literal notranslate"><span class="pre">_</span></code>/<code class="docutils literal notranslate"><span class="pre">-</span></code>, starting with a letter.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_chars</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_chars</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">12000</span></code></p></td>
 <td><p>Text sent per document.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">keywords</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">keywords</span></code></p></td>
 <td><p>classifier keywords</p></td>
 <td><p>Terms used to pick the excerpt sent for review.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">deduplicate_redundant</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">deduplicate_redundant</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Drop redundant copies before keeping the top ones.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">deduplication.key_fields</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">deduplication.key_fields</span></code></p></td>
 <td><p>—</p></td>
 <td><p>Fields that identify redundant copies (e.g. <code class="docutils literal notranslate"><span class="pre">[path_basename,</span> <span class="pre">review_doc_kind]</span></code>).</p></td>
 </tr>
@@ -931,7 +938,8 @@ means missing optional detail, not missing required evidence. The reason quotes
 the deciding source content or identifies what is absent. In
 <code class="docutils literal notranslate"><span class="pre">review.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">relevance</span></code> = grade / 4 and <code class="docutils literal notranslate"><span class="pre">llm_is_primary</span></code> = grade ≥ 3;
 selection keeps at most <code class="docutils literal notranslate"><span class="pre">keep_top</span></code> non-redundant primaries per target. Without
-coverage, grades and reproducible provenance break ties. With coverage, newly
+coverage, grades then reproducible provenance break ties (with <code class="docutils literal notranslate"><span class="pre">prefer_newest</span></code>,
+provably older dated editions are excluded first). With coverage, newly
 covered verified labels take priority, then grade; supported publication dates
 break ties only for matching scope/claim-kind and compatible date precision.
 Grades are cached by content and grading inputs in
@@ -1005,6 +1013,9 @@ quoted scope and claim-kind descriptions, optional quoted source-publication dat
 and precision, and quoted configured coverage labels. Accepted grades3–4 require
 identity/content and scope/claim evidence that occurs in an actual sampled segment.
 Quotes cannot bridge disconnected sample windows or borrow target metadata.
+Matching ignores case, punctuation and spacing on whole words, as in extraction,
+but review quotes must be contiguous: an ellipsis is literal punctuation (such as
+a table-of-contents dot leader), never an elision.
 Invalid/fabricated evidence follows the existing failed-review/escalation path;
 old grade contracts are invalidated by prompt/schema identity. This verifies text
 occurrence, not entailment, factual truth or document-wide completeness.</p>

@@ -32,8 +32,8 @@ Module Contents
    Render domain-authored review requirements against one untrusted target row.
 
 
-.. py:function:: validate_review_policy(context_fields: list[str] | None, coverage: dict[str, str] | None) -> None
+.. py:function:: validate_review_policy(context_fields: list[str] | None, coverage: dict[str, str] | None, *, prefer_newest: object = False) -> None
 
-   Check metadata hints and coverage labels without provider setup or target mutation.
+   Check metadata hints, coverage labels and selection mode before provider setup.
 
 

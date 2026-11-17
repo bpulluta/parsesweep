@@ -27,13 +27,16 @@ Module Contents
    NFKD, remove marks/soft hyphens, join line hyphenation, normalize punctuation.
 
 
-.. py:function:: quote_in_segments(quote: Any, segments: collections.abc.Iterable[str]) -> bool
+.. py:function:: quote_in_segments(quote: Any, segments: collections.abc.Iterable[str], *, elide: bool = True) -> bool
 
    Match within one real sampled segment; never bridge disconnected windows.
 
 
-.. py:function:: quote_present(quote: Any, source_text: str) -> bool
+.. py:function:: quote_present(quote: Any, source_text: str, *, elide: bool = True) -> bool
 
    Match on normalized word boundaries; ellipsis fragments must occur in order.
+
+   With ``elide=False`` an ellipsis is literal punctuation (e.g. table-of-contents
+   dot leaders), so the whole quote must occur contiguously.
 
 
