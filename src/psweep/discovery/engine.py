@@ -3351,13 +3351,12 @@ class DiscoveryEngine:
         if not shell_urls:
             return download_records, notes
 
-        # Use the HTTP digger with browser to crawl from each shell URL. A
-        # single connector instance is reused across every shell target so the
-        # browser session (when the digger escalates) is shared, not rebuilt.
+        # Use the HTTP digger with browser to crawl from each shell URL.
+        # For each target, discover() will escalate to a browser if needed.
         from .connectors.base import DiggerInput
-        from .connectors.digger import HttpDiggerConnector
+        from .connectors import resolve_digger_connector
 
-        digger = HttpDiggerConnector()
+        digger = resolve_digger_connector("http")
         crawled = 0
         for _target_key, url, shell in shell_urls:
             di = DiggerInput(

@@ -324,6 +324,9 @@ def test_js_shell_retry_targets_only_code_host_entries(monkeypatch, tmp_path):
             crawled.extend(digger_input.sources)
             return CrawlResult(artifacts=[])
 
+        def supports_provider(self, provider: str) -> bool:
+            return provider == "http"
+
     monkeypatch.setattr(digger_mod, "HttpDiggerConnector", _Digger)
     DiscoveryEngine()._retry_js_shells_with_digger(
         request=_base_request(
