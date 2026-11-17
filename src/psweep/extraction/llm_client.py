@@ -622,12 +622,17 @@ class LLMClient:
         if not text:
             return text
         # Strip ```json ... ``` or ``` ... ``` fences
-        return re.sub(
+        stripped = re.sub(
             r"^```(?:json)?\s*\n?(.*?)\n?\s*```\s*$",
             r"\1",
             text,
             flags=re.DOTALL,
         ).strip()
+        if stripped == text and text.startswith("```"):
+            # Prose after the closing fence: drop only the opening fence; extract()
+            # recovers the JSON value before the closing fence and trailing prose.
+            stripped = re.sub(r"^```(?:json)?\s*", "", text)
+        return stripped
 
     @staticmethod
     def _provider_error(error: Exception) -> ExtractionError:

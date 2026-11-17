@@ -171,6 +171,18 @@ _REVIEW_PROMPT = (
     "CONFIGURED COVERAGE (untrusted descriptions): {coverage_labels}\n\n"
     "EXCERPT:\n{sample}"
 )
+# prefer_newest ranks editions, so its grades also capture effective dates. Only
+# opted-in domains get this wording, leaving every other prompt and cache key as is.
+_PUBLICATION_DATE_SUPPORT = "quote: publication-date support"
+_EDITION_DATE_SUPPORT = "quote: support for the publication or effective date"
+_EDITION_REVIEW_PROMPT = _REVIEW_PROMPT.replace(_PUBLICATION_DATE_SUPPORT, _EDITION_DATE_SUPPORT)
+# Precision -> (value pattern, first-day suffix, last-day bound). Bounds are only
+# compared as ISO strings, so "-31" safely caps every month.
+_DATE_PRECISIONS = {
+    "year": (r"\d{4}", "-01-01", "-12-31"),
+    "month": (r"\d{4}-\d{2}", "-01", "-31"),
+    "day": (r"\d{4}-\d{2}-\d{2}", "", ""),
+}
 
 _QUALIFIED_QUOTE_SCHEMA = {
     "type": ["object", "null"],
@@ -314,16 +326,19 @@ class DocumentReviewer:
         identity_fields: list[str] | None = None,
         context_fields: list[str] | None = None,
         escalate_model: str | None = None,
+        prefer_newest: bool = False,
         attempt_budget: Any = None,
         max_per_host_per_target: int = 0,
         coverage: dict[str, str] | None = None,
     ) -> None:
-        validate_review_policy(context_fields, coverage)
+        validate_review_policy(context_fields, coverage, prefer_newest=prefer_newest)
         self._coverage = dict(coverage or {})
         self._description = document_description
         self._identity_fields = identity_fields
         self._context_fields = context_fields or []
         self._escalate_model = escalate_model
+        self._prefer_newest = prefer_newest
+        self._review_prompt = _EDITION_REVIEW_PROMPT if prefer_newest else _REVIEW_PROMPT
         self._attempt_budget = attempt_budget
         if type(max_per_host_per_target) is not int or max_per_host_per_target < 0:
             raise ValueError("max_per_host_per_target must be a nonnegative integer")
@@ -642,12 +657,7 @@ class DocumentReviewer:
         if source_date is not None:
             if not source_date["quote"].strip():
                 return False
-            formats = {
-                "year": (r"\d{4}", "-01-01"),
-                "month": (r"\d{4}-\d{2}", "-01"),
-                "day": (r"\d{4}-\d{2}-\d{2}", ""),
-            }
-            pattern, suffix = formats[source_date["precision"]]
+            pattern, suffix, _ = _DATE_PRECISIONS[source_date["precision"]]
             if not re.fullmatch(pattern, source_date["value"]):
                 return False
             try:
@@ -683,8 +693,9 @@ class DocumentReviewer:
         return quotes
 
     def _verify_evidence(self, grade: dict[str, Any], segments: list[str]) -> None:
+        # Review quotes are contiguous: an ellipsis is literal text, never an elision.
         if not self._valid_grade(grade) or any(
-            bool(re.search(r"…|\.{3}", quote)) or not quote_in_segments(quote, segments)
+            not quote_in_segments(quote, segments, elide=False)
             for quote in self._evidence_quotes(grade["evidence"]).values()
         ):
             raise ReviewError(
@@ -789,7 +800,7 @@ class DocumentReviewer:
         description = redact_urls_in_text(self._rendered_description(target_context))
         safe_context = redact_urls_in_text(target_context)
         source_url = redact_url(source_url) if source_url else ""
-        user_prompt = _REVIEW_PROMPT.format(
+        user_prompt = self._review_prompt.format(
             description=description,
             target_line=(
                 f"SEARCH TARGET: {safe_context}\n"
@@ -938,7 +949,7 @@ class DocumentReviewer:
                 "max_chars": self._max_chars,
                 "keywords": self._review_keywords,
                 "system": _REVIEW_SYSTEM,
-                "prompt": _REVIEW_PROMPT,
+                "prompt": self._review_prompt,
                 "schema": _REVIEW_SCHEMA,
                 "grade_scale": [_PRIMARY_GRADE, _TOP_GRADE],
                 "sampling": "head-keyword-body-tail-v3-segment-grounded",
@@ -1121,6 +1132,7 @@ class DocumentReviewer:
             raise ReviewError(message)
         redundant: set[int] = set()
         keepers: set[int] = set()
+        families: dict[int, set[int]] = {}
         count = len(primaries)
         for group in groups:
             if not isinstance(group, dict):
@@ -1174,10 +1186,22 @@ class DocumentReviewer:
                     )
             keepers.add(keep)
             redundant.update(to_drop)
+            families.setdefault(keep, {keep}).update(to_drop)
         if keepers & redundant:
             raise ReviewError(
                 "invalid LLM dedup assessment: contradictory or cyclic keep/drop decisions"
             )
+        if self._prefer_newest:
+            # Drops are disjoint and keepers are never dropped, so each keeper's
+            # groups form one proven-equivalent family. Keep its latest-starting
+            # edition (ties: best rank) so dedup cannot hide the newest edition.
+            redundant = set()
+            for family in families.values():
+                keep = max(
+                    family,
+                    key=lambda i: ((self._date_bounds(primaries[i]) or ("",))[0], -i),
+                )
+                redundant.update(family - {keep})
         return redundant
 
     def _require_grade(self, grade: object) -> None:
@@ -1260,10 +1284,30 @@ class DocumentReviewer:
             workers=_REVIEW_WORKERS,
         )
 
+    @staticmethod
+    def _date_bounds(record: dict[str, Any]) -> tuple[str, str] | None:
+        """Earliest and latest ISO day the quoted source date can mean; None if undated."""
+        source_date = record["review_evidence"]["source_date"]
+        if not source_date:
+            return None
+        _, first, last = _DATE_PRECISIONS[source_date["precision"]]
+        return source_date["value"] + first, source_date["value"] + last
+
     def _next_complement(
         self, candidates: list[dict[str, Any]], covered: set[str]
     ) -> dict[str, Any]:
-        """Greedy new coverage; dates break grade ties only for compatible needs/scopes."""
+        """Greedy new coverage; with prefer_newest, provably older editions never win."""
+
+        if self._prefer_newest:
+            # Drop only dated editions that end before another one starts; undated
+            # candidates stay, and grade then provenance decide among the rest.
+            bounds = [self._date_bounds(record) for record in candidates]
+            latest = max((bound[0] for bound in bounds if bound), default="")
+            candidates = [
+                record
+                for record, bound in zip(candidates, bounds, strict=True)
+                if bound is None or bound[1] >= latest
+            ]
 
         def score(record):
             labels = record["review_evidence"]["coverage"]
@@ -1271,7 +1315,6 @@ class DocumentReviewer:
 
         best_score = max(map(score, candidates))
         tied = [record for record in candidates if score(record) == best_score]
-        # No coverage opt-in preserves the existing grade/provenance ranking.
         if self._coverage:
             scopes = {
                 (
@@ -1428,6 +1471,14 @@ class DocumentReviewer:
             ]
             for record in ranked:
                 record[FIELD_REVIEW_SELECTED] = False
+            undated = [r for r in candidates if self._date_bounds(r) is None]
+            if self._prefer_newest and undated and len(candidates) > self._keep_top:
+                names = ", ".join(sorted(Path(str(r.get("path") or "")).name for r in undated))
+                notes.append(
+                    f"Document review ({target_key}): prefer_newest could not date "
+                    f"{len(undated)} qualified candidate(s), so grade decided their rank: "
+                    f"{names}."
+                )
             for _ in range(self._keep_top):
                 eligible = [
                     record

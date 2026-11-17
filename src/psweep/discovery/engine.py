@@ -4068,6 +4068,7 @@ class DiscoveryEngine:
             context_fields=review_cfg.get("context_fields"),
             coverage=review_cfg.get("coverage"),
             escalate_model=review_cfg.get("escalate_model"),
+            prefer_newest=review_cfg.get("prefer_newest", False),
             attempt_budget=attempt_budget,
             max_per_host_per_target=max_per_host_per_target,
         )

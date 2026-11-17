@@ -279,6 +279,23 @@ class TestResponseContentHandling:
         out = self._run(json.dumps({"items": [1, 2]}))
         assert out["data"] == {"items": [1, 2]}
 
+    @pytest.mark.parametrize(
+        "content",
+        [
+            '```json\n{"redundancy_groups": []}\n```\n\nNo group is proven redundant.',
+            '```json\r\n{"redundancy_groups": []}\r\n```\r\nDone.',
+            '```\n{"redundancy_groups": []}\n``` Done.',
+            '```json\n{"redundancy_groups": []}',
+        ],
+    )
+    def test_fenced_json_with_trailing_prose_or_no_closing_fence_parses(self, content):
+        assert self._run(content)["data"] == {"redundancy_groups": []}
+
+    def test_backticks_inside_a_fenced_json_string_survive_trailing_prose(self):
+        value = {"quote": "see ```code``` here"}
+        out = self._run(f"```json\n{json.dumps(value)}\n```\nExplanation follows.")
+        assert out["data"] == value
+
     def test_valid_json_with_surrounding_whitespace_succeeds(self):
         # Content with leading/trailing whitespace must still parse correctly.
         out = self._run("  " + json.dumps({"items": []}) + "\n")

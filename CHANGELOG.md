@@ -37,6 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/config-reference.md`.
 
 ### Fixed
+- Review evidence quotes may contain literal dot leaders (`Applies ........ 12`);
+  they must still occur contiguously on whole words, and quotes with no words are
+  rejected.
+- A fenced JSON reply followed by prose, or missing its closing fence, now parses,
+  including string values that contain backticks.
+- PDF screening inspects PDFs that are encrypted with only an owner password
+  instead of holding them; PDFs that need a password, or that MuPDF cannot
+  decrypt, are still held. The inspector version is now 2, so screening-enabled
+  domains re-screen their PDFs once.
 - Large runs no longer retain completed section text or failed-review traceback
   graphs. Review hashes each uncached source once; reconciliation reuses bounded
   worker clients while retaining per-target attempt receipts.
@@ -117,6 +126,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reprs. In roster mode an empty list or object is `NA`, like a null.
 
 ### Added
+- `discovery.document_review.prefer_newest` (opt-in, default `false`) for domains
+  where only the latest edition counts: grading asks for the effective date too,
+  provably older dated editions are never selected, undated ones are kept and
+  reported, and deduplication keeps the newest copy. It is rejected with `coverage`
+  or without `document_description`. Other domains keep their prompts and grade caches.
 - Automatic discovery qualification with per-target review description/context,
   optional stronger-model escalation, one weak-target fallback-query stage and
   physical search/review attempt budgets. Cache/checkpoint resume retains

@@ -10,9 +10,16 @@ from .targets import TARGET_INPUT_FIELDS, render_target_template
 
 
 def validate_review_policy(
-    context_fields: list[str] | None, coverage: dict[str, str] | None
+    context_fields: list[str] | None,
+    coverage: dict[str, str] | None,
+    *,
+    prefer_newest: object = False,
 ) -> None:
-    """Check metadata hints and coverage labels without provider setup or target mutation."""
+    """Check metadata hints, coverage labels and selection mode before provider setup."""
+    if type(prefer_newest) is not bool:
+        raise ValueError("prefer_newest must be a boolean")
+    if prefer_newest and coverage:
+        raise ValueError("prefer_newest cannot be combined with coverage")
     context_fields = [] if context_fields is None else context_fields
     if (
         not isinstance(context_fields, list)
