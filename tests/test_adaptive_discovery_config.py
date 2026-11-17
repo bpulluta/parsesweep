@@ -82,6 +82,15 @@ def test_new_fields_propagate_to_request(tmp_path):
                 "coverage": {"history": "{missing}"},
             },
         },
+        {"document_review": {"prefer_newest": True}},
+        {"document_review": {"document_description": "facts", "prefer_newest": "yes"}},
+        {
+            "document_review": {
+                "document_description": "facts",
+                "prefer_newest": True,
+                "coverage": {"history": "facts"},
+            },
+        },
     ],
 )
 def test_invalid_adaptive_policy_fails_preflight(tmp_path, discovery):

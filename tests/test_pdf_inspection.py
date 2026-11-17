@@ -341,14 +341,45 @@ def test_highlight_does_not_hide_flattened_strike_on_same_text(tmp_path):
     assert {item["strength"] for item in result["evidence"]} == {"strong", "weak"}
 
 
-def test_owner_only_encryption_is_unknown(tmp_path):
+@pytest.mark.parametrize("permissions", [-1, 0])
+@pytest.mark.parametrize(
+    ("mark", "state", "kinds"),
+    [
+        (None, "no_findings", set()),
+        ("strikeout", "flagged", {"strikeout_annotation"}),
+        ("stroke", "flagged", {"text_crossing_stroke"}),
+    ],
+)
+def test_owner_only_encryption_is_inspected(tmp_path, permissions, mark, state, kinds):
     document = pymupdf.open()
-    _text_page(document)
-    path = _save(document, tmp_path, encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw="owner-test")
+    page, rect = _text_page(document)
+    if mark == "strikeout":
+        page.add_strikeout_annot(rect)
+    elif mark == "stroke":
+        _crossing(page, rect)
+    path = _save(
+        document,
+        tmp_path,
+        encryption=pymupdf.PDF_ENCRYPT_AES_256,
+        owner_pw="owner-test",
+        permissions=permissions,
+    )
+    result = inspect_pdf(path)
+    assert result["state"] == state
+    assert result["inspected_pages"] == 1
+    assert {item["kind"] for item in result["evidence"]} == kinds
+    assert "encrypted_pdf" not in result["limitations"]
+
+
+def test_owner_only_pdf_with_unsupported_crypt_method_stays_unknown(tmp_path):
+    document = pymupdf.open()
+    page, rect = _text_page(document)
+    _crossing(page, rect)
+    path = _save(document, tmp_path, encryption=pymupdf.PDF_ENCRYPT_AES_128, owner_pw="owner-test")
+    path.write_bytes(path.read_bytes().replace(b"/CFM/AESV2", b"/CFM/ZZZZZ", 1))
     result = inspect_pdf(path)
     assert result["state"] == "unknown"
-    assert result["inspected_pages"] == 0
-    assert "encrypted_pdf" in result["limitations"]
+    assert result["limitations"] == ["encrypted_pdf"]
 
 
 def test_unreadable_page_does_not_prevent_inspection_of_later_pages(tmp_path, monkeypatch):

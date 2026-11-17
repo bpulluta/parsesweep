@@ -211,8 +211,11 @@ and do not cause a hold on their own; colored text alone is not a revision signa
 It also reuses `selection.draft_patterns` (when `selection.exclude_draft` is true)
 against title/subject/keywords metadata and full-line short headers, not arbitrary
 body sentences. There is no built-in draft vocabulary. Scanned/image-heavy,
-encrypted, corrupt, or otherwise incompletely inspected PDFs are held in `hold`
-mode, without OCR/vision calls. Text is never edited to remove crossed-out clauses.
+password-protected (cannot be opened without a password), undecryptable, corrupt,
+or otherwise incompletely inspected PDFs are held in `hold` mode, without
+OCR/vision calls. PDFs that carry only owner (permission) restrictions open without
+a password and are inspected normally. Text is never edited to remove crossed-out
+clauses.
 
 The manifest's `document_eligibility` contains versioned, content-hashed evidence,
 page coverage and limitations. `review.csv` and `download_index.csv` summarize
@@ -245,6 +248,7 @@ Optional, paid LLM curation; it runs only when `document_description` is set.
 | `model` | [default model](#environment-variables) | `models:` alias or model name. |
 | `escalate_model` | absent/off | One stronger semantic grading decision for grade-2 ambiguity or failed/malformed initial grading, subject to actual-attempt budgets. |
 | `keep_top` | `1` | Primary documents kept per target. |
+| `prefer_newest` | `false` | For domains where only the latest edition is valid (e.g. tariffs). Grading also asks for the effective date, and among qualified primaries (grade 3-4) a document whose quoted date provably precedes another's is never chosen (a year or month spans the whole period). Undated documents are kept and ranked by grade, then provenance; a run note lists them. Each extra `keep_top` slot takes the next-newest edition, and comparative deduplication keeps the newest of proven-redundant copies. Requires `document_description`; rejected with `coverage`. Enabling it changes the grading prompt, so that domain's documents are graded again once. |
 | `coverage` | absent/off | Domain-defined label → evidence-description map. Descriptions support target templates. Verified labels guide complementary source selection and trigger fallback for missing coverage. Labels use letters/digits/`_`/`-`, starting with a letter. |
 | `max_chars` | `12000` | Text sent per document. |
 | `keywords` | classifier keywords | Terms used to pick the excerpt sent for review. |
@@ -257,7 +261,8 @@ means missing optional detail, not missing required evidence. The reason quotes
 the deciding source content or identifies what is absent. In
 `review.csv`, `relevance` = grade / 4 and `llm_is_primary` = grade ≥ 3;
 selection keeps at most `keep_top` non-redundant primaries per target. Without
-coverage, grades and reproducible provenance break ties. With coverage, newly
+coverage, grades then reproducible provenance break ties (with `prefer_newest`,
+provably older dated editions are excluded first). With coverage, newly
 covered verified labels take priority, then grade; supported publication dates
 break ties only for matching scope/claim-kind and compatible date precision.
 Grades are cached by content and grading inputs in
@@ -335,6 +340,9 @@ quoted scope and claim-kind descriptions, optional quoted source-publication dat
 and precision, and quoted configured coverage labels. Accepted grades3–4 require
 identity/content and scope/claim evidence that occurs in an actual sampled segment.
 Quotes cannot bridge disconnected sample windows or borrow target metadata.
+Matching ignores case, punctuation and spacing on whole words, as in extraction,
+but review quotes must be contiguous: an ellipsis is literal punctuation (such as
+a table-of-contents dot leader), never an elision.
 Invalid/fabricated evidence follows the existing failed-review/escalation path;
 old grade contracts are invalidated by prompt/schema identity. This verifies text
 occurrence, not entailment, factual truth or document-wide completeness.
