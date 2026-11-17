@@ -16,6 +16,7 @@ from dataclasses import replace as dataclass_replace
 from datetime import datetime, UTC
 from io import StringIO
 from itertools import chain
+from operator import itemgetter
 from pathlib import Path
 from collections.abc import Callable
 from urllib.parse import unquote, urlparse
@@ -758,13 +759,18 @@ class DiscoveryEngine:
             # still run concurrently, while the results are put back in
             # submission order before anything reads them.
             positioned_jobs = list(enumerate(seeker_jobs))
+
+            def _discover_positioned(job):
+                position, (job_idx, seeker_input) = job
+                return position, self._discover_target_candidates(seeker, job_idx, seeker_input)
+
             positioned_results = bounded_results(
-                lambda job: (job[0], self._discover_target_candidates(seeker, job[1][0], job[1][1])),
+                _discover_positioned,
                 positioned_jobs,
                 workers=max_concurrent,
             )
             discovery_results = (
-                result for _position, result in sorted(positioned_results, key=lambda item: item[0])
+                result for _position, result in sorted(positioned_results, key=itemgetter(0))
             )
 
             for idx, discovered, error_records, error_type in discovery_results:
