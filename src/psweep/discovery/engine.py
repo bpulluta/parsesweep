@@ -527,9 +527,7 @@ class DiscoveryEngine:
             retry_max_attempts=request.retry_max_attempts,
             retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
             retry_max_backoff_seconds=request.retry_max_backoff_seconds,
-            min_request_interval_seconds=max(
-                0.0, float(request.min_request_interval_ms) / 1000.0
-            ),
+            min_request_interval_seconds=max(0.0, float(request.min_request_interval_ms) / 1000.0),
             cache_dir=DiscoveryEngine._resolve_seeker_cache_dir(request),
             timeout_seconds=request.timeout_seconds or 45,
             cache_ttl_seconds=max(
@@ -1834,9 +1832,7 @@ class DiscoveryEngine:
         # For each target group, determine if it has viable (non-rejected) discovered candidates.
         has_viable_by_target: dict[str, bool] = {}
         for key, group in groups.items():
-            has_viable_by_target[key] = any(
-                c.score.acceptance_class() != "rejected" for c in group
-            )
+            has_viable_by_target[key] = any(c.score.acceptance_class() != "rejected" for c in group)
 
         filtered: list[DiscoveryCandidate] = []
         rejected_skipped = 0
