@@ -549,6 +549,42 @@ class DiscoveryEngine:
                 if slot < len(item.queries):
                     yield idx, dataclass_replace(item, queries=[item.queries[slot]], context=None)
 
+    def _discover_target_candidates(self, seeker, idx: int, seeker_input):
+        """Execute discovery for a single target. Returns (idx, discovered, error_records, error_type).
+
+        error_type is "timeout", "budget", "provider", or None.
+        Errors are returned as error_records (list of dicts) for parallelization.
+        """
+        from .connectors.serpapi_seeker import SerpApiSearchTimeout
+
+        error_records = []
+        discovered = []
+        error_type = None
+        try:
+            discovered = seeker.discover(seeker_input)
+        except SerpApiSearchTimeout as exc:
+            discovered = exc.candidates
+            error_type = "timeout"
+            error_records.extend(
+                build_error_record(
+                    TimeoutError(message),
+                    stage="discovery.seeker_discover",
+                    provider="serpapi",
+                )
+                for message in exc.query_errors
+            )
+        except AttemptBudgetExceeded as exc:
+            error_type = "budget"
+            error_records.append(
+                build_error_record(exc, stage="discovery.seeker_discover", provider="serpapi")
+            )
+        except Exception as exc:  # noqa: BLE001 - provider isolation
+            error_type = "provider"
+            error_records.append(
+                build_error_record(exc, stage="discovery.seeker_discover", provider="serpapi")
+            )
+        return idx, discovered, error_records, error_type
+
     @staticmethod
     def _seeker_candidate(raw, target, request):
         url = decode_discovery_url(str(raw.get("url") or ""))
@@ -660,47 +696,38 @@ class DiscoveryEngine:
             seen = [{} for _ in seeker_inputs]
             slots = [0 for _ in seeker_inputs]
             total_discovered = 0
-            for idx, seeker_input in self._seeker_jobs(seeker_inputs, query_slot=query_slot):
-                if not seeker_input.queries:
-                    continue
+
+            # Parallelize discovery calls; post-processing remains serial
+            max_concurrent = max(1, int(request.max_concurrent_downloads or DEFAULT_MAX_CONCURRENT_DOWNLOADS))
+            seeker_jobs = list(self._seeker_jobs(seeker_inputs, query_slot=query_slot))
+            seeker_jobs = [(idx, si) for idx, si in seeker_jobs if si.queries]
+
+            discovery_results = bounded_results(
+                lambda job: self._discover_target_candidates(seeker, job[0], job[1]),
+                seeker_jobs,
+                workers=max_concurrent,
+            )
+
+            for idx, discovered, error_records, error_type in discovery_results:
                 target = seeker_targets[idx]
                 target_label = self._target_label(target, idx + 1, request.partition_by)
                 self._emit_progress(
                     request,
-                    f"seeker {idx + 1}/{total_inputs}: searching {target_label} "
-                    f"| queries={len(seeker_input.queries)}",
+                    f"seeker {idx + 1}/{total_inputs}: searching {target_label}",
                 )
-                try:
-                    discovered = seeker.discover(seeker_input)
-                except SerpApiSearchTimeout as exc:
-                    discovered = exc.candidates
+                if error_records:
                     incomplete_targets.add(idx)
-                    target_selection_metrics[idx]["pending_reason"] = "provider"
-                    errors.extend(
-                        build_error_record(
-                            TimeoutError(f"{target_label}: {message}"),
-                            stage="discovery.seeker_discover",
-                            provider="serpapi",
+                    if error_type == "timeout":
+                        target_selection_metrics[idx]["pending_reason"] = "provider"
+                        notes.append(
+                            f"Partial search for {target_label}: "
+                            f"{len(error_records)} query timeout(s); retained "
+                            f"{len(discovered)} candidate(s)."
                         )
-                        for message in exc.query_errors
-                    )
-                    notes.append(
-                        f"Partial search for {target_label}: "
-                        f"{len(exc.query_errors)} query timeout(s); retained "
-                        f"{len(discovered)} candidate(s)."
-                    )
-                except Exception as exc:  # noqa: BLE001 - provider isolation
-                    discovered = []
-                    incomplete_targets.add(idx)
-                    target_selection_metrics[idx]["pending_reason"] = (
-                        "budget" if isinstance(exc, AttemptBudgetExceeded) else "provider"
-                    )
-                    errors.append(
-                        build_error_record(
-                            exc, stage="discovery.seeker_discover", provider="serpapi"
-                        )
-                    )
-                    notes.append(f"Search failed for {target_label}; target remains retryable.")
+                    else:
+                        target_selection_metrics[idx]["pending_reason"] = error_type or "provider"
+                        notes.append(f"Search failed for {target_label}; target remains retryable.")
+                    errors.extend(error_records)
                 group = list(selected_by_target[idx])
                 metric = target_selection_metrics[idx]
                 for rank, raw in enumerate(discovered):
