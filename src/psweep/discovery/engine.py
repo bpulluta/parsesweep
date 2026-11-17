@@ -552,14 +552,15 @@ class DiscoveryEngine:
     def _reserve_seeker_budget_in_roster_order(self, seeker_jobs):
         """Pre-reserve search budget for targets in roster order.
 
-        When max_search_calls is set, this ensures the first N targets
-        (in original roster order) always get to run their queries,
-        regardless of concurrent scheduling. Without this, concurrent
-        dispatch makes it a race: whichever target's thread hits
-        reserve_search() first "wins" the budget slot.
+        When max_search_calls is set, allocate budget slots to the first N targets
+        (in original roster order) that fit within the budget. Only targets that
+        successfully get pre-reserved should be dispatched.
+
+        Returns: set of target indices that got budget pre-reserved (empty if no budget limit).
         """
+        reserved_targets = set()
         if self._attempt_budget.max_search_calls is None:
-            return
+            return reserved_targets
 
         # Count total queries per target across all seeker_jobs entries
         # (when query_slot=True, same target appears multiple times with different queries)
@@ -568,15 +569,15 @@ class DiscoveryEngine:
             queries_per_target.setdefault(idx, 0)
             queries_per_target[idx] += len(si.queries)
 
-        # Count total queries to pre-reserve for all targets
-        total_queries = sum(queries_per_target.values())
-
-        # Pre-reserve in roster order
+        # Pre-reserve in roster order; stop when budget exhausted
         for idx in sorted(queries_per_target.keys()):
             try:
                 self._attempt_budget.pre_reserve_target_searches(idx, queries_per_target[idx])
+                reserved_targets.add(idx)
             except AttemptBudgetExceeded:
-                return
+                break
+
+        return reserved_targets
 
     def _discover_target_candidates(self, seeker, idx: int, seeker_input):
         """Execute discovery for a single target. Returns (idx, discovered, error_records, error_type).
@@ -590,9 +591,6 @@ class DiscoveryEngine:
         discovered = []
         error_type = None
         try:
-            # Set a target-aware callback that respects pre-reserved budget allocations.
-            # This closure captures idx so each target's queries are attributed correctly.
-            seeker.before_request = lambda: self._attempt_budget.reserve_search(target_idx=idx)
             discovered = seeker.discover(seeker_input)
         except SerpApiSearchTimeout as exc:
             discovered = exc.candidates
@@ -737,11 +735,17 @@ class DiscoveryEngine:
             # Pre-reserve search slots in roster order to ensure first N targets always
             # get priority, regardless of concurrent scheduling. This preserves the
             # pre-Step-11b guarantee that "first N targets in roster order get the budget."
-            self._reserve_seeker_budget_in_roster_order(seeker_jobs)
+            reserved_targets = self._reserve_seeker_budget_in_roster_order(seeker_jobs)
+
+            # Only dispatch targets that have budget pre-reserved (or if no budget limit)
+            if reserved_targets or self._attempt_budget.max_search_calls is None:
+                jobs_to_dispatch = [(idx, si) for idx, si in seeker_jobs if idx in reserved_targets or self._attempt_budget.max_search_calls is None]
+            else:
+                jobs_to_dispatch = []
 
             discovery_results = bounded_results(
                 lambda job: self._discover_target_candidates(seeker, job[0], job[1]),
-                seeker_jobs,
+                jobs_to_dispatch,
                 workers=max_concurrent,
             )
 
