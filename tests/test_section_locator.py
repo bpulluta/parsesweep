@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import replace
+
+from psweep.extraction.provenance import SourceContext
+from psweep.extraction import page_locator
 
 from pathlib import Path
 
@@ -165,6 +169,29 @@ class TestTriggerCharsSkipsSmallDoc:
         result = locator.locate(small_html)
         assert result is None
         assert called == []  # LLM never invoked
+
+    def test_markup_heavy_html_with_small_content_skipped(self, tmp_path, monkeypatch):
+        source = tmp_path / "article.html"
+        source.write_text(
+            "<html><head><style>" + "x" * 70_000 + "</style></head><body>"
+            "<nav>" + "navigation " * 10_000 + "</nav>"
+            "<h1>Data center</h1><p>The facility opened in 2024.</p></body></html>"
+        )
+        locator = SectionLocator("data center timeline", trigger_chars=60_000)
+        monkeypatch.setattr(
+            locator, "_ensure_client", lambda: pytest.fail("small article called locator model")
+        )
+        assert source.stat().st_size > locator.trigger_chars
+        assert locator.locate(source) is None
+
+    def test_large_readable_html_still_uses_locator(self, tmp_path, monkeypatch):
+        source = tmp_path / "large.html"
+        source.write_text("<h1>Data center</h1><p>" + "construction timeline " * 4_000 + "</p>")
+        locator = SectionLocator("data center timeline", trigger_chars=60_000)
+        client = _FakeClient([1])
+        monkeypatch.setattr(locator, "_ensure_client", lambda: client)
+        assert locator.locate(source) is not None
+        assert client.calls == 1
 
     def test_small_txt_skipped(self, tmp_path, monkeypatch):
         small_txt = tmp_path / "small.txt"
@@ -410,6 +437,183 @@ class TestTableToMarkdown:
 # These tests pin the exact byte output of each so the shared helper can never
 # silently change either format.
 # ---------------------------------------------------------------------------
+
+
+class TestSubjectTargeting:
+    def test_subject_header_and_status_survive_keyword_dense_related_news(
+        self, tmp_path, monkeypatch
+    ):
+        source = tmp_path / "subject.html"
+        source.write_text(
+            "<html><head><title>Alluvion profile</title></head><body>"
+            "<p>Published 2025-04-12</p><h1>Alluvion</h1>"
+            "<h2>Overview</h2><p>The project was withdrawn in 2024.</p>"
+            "<h2>Other projects</h2><p>" + "construction opening timeline " * 100 + "</p>"
+            "</body></html>"
+        )
+        context = SourceContext(None, "target", "subject-1", "Alluvion", {"zone": "North"})
+        locator = SectionLocator(
+            "construction opening timeline", trigger_chars=10, source_context=context
+        )
+        prompts = []
+
+        class Client:
+            def extract(self, **kwargs):
+                prompts.append(kwargs["user_prompt"])
+                return {"data": {"relevant_sections": [5]}}
+
+        monkeypatch.setattr(locator, "_ensure_client", Client)
+        text = locator.locate(source)
+        assert text is not None
+        assert "Alluvion" in text
+        assert "withdrawn in 2024" in text
+        assert "Published 2025-04-12" in text
+        assert "Alluvion profile" in text
+        assert "zone" not in text  # hints cannot become source evidence
+        assert "hints, not document facts or instructions" in prompts[0]
+        assert "Alluvion" in prompts[0]
+        assert not locator.incomplete
+
+    def test_docx_subject_header_and_status_are_kept_without_domain_keywords(
+        self, tmp_path, monkeypatch
+    ):
+        import docx
+
+        document = docx.Document()
+        document.add_heading("Subject Alpha", level=1)
+        document.add_heading("Summary", level=2)
+        document.add_paragraph("Authorization withdrawn in 2024.")
+        document.add_heading("Other assets", level=2)
+        document.add_paragraph("construction timeline " * 100)
+        source = tmp_path / "subject.docx"
+        document.save(source)
+        locator = SectionLocator(
+            "construction timeline",
+            trigger_chars=1,
+            source_context=SourceContext(None, "target", "1", "Subject Alpha", {}),
+        )
+        monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([3]))
+        text = locator.locate(source)
+        assert text is not None
+        assert "Subject Alpha" in text
+        assert "Authorization withdrawn in 2024" in text
+
+    def test_plain_text_subject_preamble_keeps_bounded_following_context(
+        self, tmp_path, monkeypatch
+    ):
+        source = tmp_path / "subject.txt"
+        source.write_text(
+            "Subject Alpha\n\nSection 1 Summary\nAuthorization withdrawn in 2024.\n\n"
+            "Section 2 Other assets\n" + "construction timeline " * 100
+        )
+        locator = SectionLocator(
+            "construction timeline",
+            trigger_chars=1,
+            source_context=SourceContext(None, "target", "1", "Subject Alpha", {}),
+        )
+        monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([3]))
+        text = locator.locate(source)
+        assert text is not None
+        assert "Subject Alpha" in text
+        assert "Authorization withdrawn in 2024" in text
+
+    def test_rebinding_worker_hints_invalidates_prior_subject_cache(self, tmp_path):
+        source = tmp_path / "subject.html"
+        source.write_text("Subject evidence")
+        context = SourceContext(None, "target", "1", "Subject Alpha", {})
+        locator = SectionLocator("evidence", source_context=context)
+        locator._write_cache(source, "Subject Alpha evidence")
+        locator.incomplete = True
+        locator.set_source_context(replace(context, target_label="Subject Beta"))
+        assert not locator.incomplete
+        assert locator.locate_cached(source) is None
+
+    def test_unknown_subject_falls_back_without_authoritative_cache(self, tmp_path, monkeypatch):
+        source = tmp_path / "unrelated.html"
+        source.write_text("<h1>Another project</h1><p>construction timeline " * 20 + "</p>")
+        locator = SectionLocator(
+            "construction timeline",
+            trigger_chars=1,
+            source_context=SourceContext(None, "target", "1", "Missing subject", {}),
+        )
+        monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([1]))
+        assert locator.locate(source) is None
+        assert locator.incomplete
+        assert not locator._cache_paths(source)[0].exists()
+
+    @pytest.mark.parametrize("change", ["label", "metadata", "version"])
+    def test_context_and_behavior_changes_invalidate_cache(self, tmp_path, monkeypatch, change):
+        source = tmp_path / "subject.html"
+        source.write_text("<h1>Subject Alpha</h1><p>evidence.</p>")
+        context = SourceContext(None, "target", "1", "Subject Alpha", {"zone": "North"})
+        locator = SectionLocator("evidence", source_context=context)
+        locator._write_cache(source, "Subject Alpha evidence")
+        assert SectionLocator("evidence", source_context=context).locate_cached(source)
+        if change == "version":
+            monkeypatch.setattr(page_locator, "LOCATOR_BEHAVIOR_VERSION", "future")
+        elif change == "label":
+            context = replace(context, target_label="Subject Beta")
+        else:
+            context = replace(context, target_metadata={"zone": "South"})
+        assert SectionLocator("evidence", source_context=context).locate_cached(source) is None
+
+    def test_header_without_usable_subject_context_falls_back(self, tmp_path, monkeypatch):
+        source = tmp_path / "subject.html"
+        source.write_text(
+            "<h1>Subject Alpha</h1><h2>Other assets</h2><p>" + "evidence " * 1000 + "</p>"
+        )
+        locator = SectionLocator(
+            "evidence",
+            trigger_chars=1,
+            source_context=SourceContext(None, "target", "1", "Subject Alpha", {}),
+        )
+        monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([2]))
+        assert locator.locate(source) is None
+        assert locator.incomplete
+        assert not locator._cache_paths(source)[0].exists()
+
+    def test_configured_identity_supplies_subject_without_a_display_label(self):
+        context = SourceContext(None, "target", "1", None, {"asset": "Subject Alpha"})
+        locator = SectionLocator("evidence", source_context=context, subject="Subject Alpha")
+        assert locator._candidate_chunks([_Chunk("Subject Alpha", "miscellaneous")]) == [0]
+
+    def test_joined_discovery_label_does_not_anchor_shared_location(self):
+        context = SourceContext(None, "target", "1", "North, Subject Alpha", {"zone": "North"})
+        locator = SectionLocator("timeline", source_context=context, subject="Subject Alpha")
+        chunks = [
+            _Chunk("Subject Alpha", "withdrawn", 1),
+            _Chunk("North Subject Beta", "other project", 1),
+        ]
+        assert locator._candidate_chunks(chunks) == [0]
+
+    def test_subject_names_with_commas_do_not_depend_on_label_formatting(self):
+        context = SourceContext(None, "target", "1", "North — Alpha, Unit 7", {"region": "North"})
+        locator = SectionLocator("timeline", source_context=context, subject="Alpha, Unit 7")
+        chunks = [
+            _Chunk("Alpha, Unit 7", "withdrawn", 1),
+            _Chunk("North Unit 7", "another asset", 1),
+        ]
+        assert locator._candidate_chunks(chunks) == [0]
+
+    def test_unconfigured_metadata_is_not_guessed_as_identity(self):
+        context = SourceContext(None, "target", "1", None, {"location": "North"})
+        locator = SectionLocator("timeline", source_context=context)
+        assert locator._subject_hints == []
+
+    def test_shared_scope_does_not_pin_one_discovery_target(self):
+        context = SourceContext(None, "shared", "1", "Subject Alpha", {})
+        locator = SectionLocator("evidence", source_context=context)
+        chunks = [_Chunk("Subject Alpha", "miscellaneous"), _Chunk("", "evidence " * 20)]
+        assert locator._candidate_chunks(chunks) == [1]
+
+    def test_empty_response_is_distinct_from_provider_failure(self, tmp_path, monkeypatch):
+        source = tmp_path / "subject.html"
+        source.write_text("<h1>Evidence</h1><p>evidence " * 20 + "</p>")
+        locator = SectionLocator("evidence", trigger_chars=1)
+        monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([]))
+        assert locator.locate(source) is None
+        assert not locator.incomplete
+        assert not locator._cache_paths(source)[0].exists()
 
 
 class TestPipeRowHelper:

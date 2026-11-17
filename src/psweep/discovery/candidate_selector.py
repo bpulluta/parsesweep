@@ -471,14 +471,14 @@ class CandidateSelector:
             if not template:
                 continue
 
-            rendered = template
-            for placeholder in re.findall(r"\{([a-zA-Z0-9_]+)\}", template):
-                replacement = target_context.get(placeholder, "")
-                rendered = rendered.replace("{" + placeholder + "}", replacement)
+            from .targets import render_target_template
 
-            cleaned = re.sub(r"\s+", " ", rendered).strip()
-            if cleaned and "{" not in cleaned and "}" not in cleaned:
-                terms.append(cleaned)
+            try:
+                rendered = render_target_template(template, target_context)
+            except ValueError:
+                continue
+            if rendered:
+                terms.append(rendered.lower())
 
         return terms
 

@@ -944,8 +944,42 @@ def artifact_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def checkpoint_artifacts_valid(entry: Mapping[str, object]) -> bool:
-    """Validate hashed artifact evidence for a completed target."""
+_ArtifactDigestKey = tuple[Path, int, int, int, int, int]
+
+
+def _checkpoint_artifact_key(path: Path) -> _ArtifactDigestKey:
+    """Identify current bytes without accepting a symlink, even on a memo hit."""
+    if path.is_symlink():
+        msg = f"Checkpoint artifact is a symlink: {path}"
+        raise PublicationError(msg)
+    metadata = path.stat(follow_symlinks=False)
+    return (
+        path.absolute(),
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _checkpoint_artifact_digest(path: Path, memo: dict[_ArtifactDigestKey, str]) -> str:
+    """Reuse actual digests only within one validation pass and stable file identity."""
+    before = _checkpoint_artifact_key(path)
+    if before in memo:
+        return memo[before]
+    digest = artifact_sha256(path)
+    if _checkpoint_artifact_key(path) != before:
+        msg = f"Checkpoint artifact changed while hashing: {path}"
+        raise PublicationError(msg)
+    memo[before] = digest
+    return digest
+
+
+def checkpoint_artifacts_valid(
+    entry: Mapping[str, object], *, _digest_memo: dict[_ArtifactDigestKey, str] | None = None
+) -> bool:
+    """Validate hashed evidence, optionally sharing a load-local digest memo."""
     artifacts, curated = entry.get("artifacts"), entry.get("curated_paths")
     if (
         not isinstance(artifacts, dict)
@@ -953,6 +987,7 @@ def checkpoint_artifacts_valid(entry: Mapping[str, object]) -> bool:
         or not isinstance(curated, dict)
     ):
         return False
+    memo = {} if _digest_memo is None else _digest_memo
     for evidence in (artifacts, curated):
         for raw, expected in evidence.items():
             if (
@@ -963,7 +998,7 @@ def checkpoint_artifacts_valid(entry: Mapping[str, object]) -> bool:
             ):
                 return False
             try:
-                if artifact_sha256(Path(raw)) != expected:
+                if _checkpoint_artifact_digest(Path(raw), memo) != expected:
                     return False
             except (OSError, ValueError):
                 return False
@@ -1011,31 +1046,41 @@ def load_checkpoint(
         entries = _checkpoint_data(path)
     except PublicationError:
         return {}
+    digest_memo: dict[_ArtifactDigestKey, str] = {}
     return {
         key: entry
         for key, entry in entries.items()
         if not entry.get("incomplete")
         and (fingerprint is None or entry.get("fingerprint") == fingerprint)
-        and (not validate_artifacts or checkpoint_artifacts_valid(entry))
+        and (not validate_artifacts or checkpoint_artifacts_valid(entry, _digest_memo=digest_memo))
     }
 
 
-def load_prior_outcomes(path: Path, *, fingerprint: str) -> dict[str, dict[str, dict[str, object]]]:
-    """Final child outcomes saved for incomplete targets and sources.
+def load_prior_outcomes(
+    path: Path, *, fingerprint: str, owner_keys: set[str] | None = None
+) -> dict[str, dict[str, dict[str, object]]]:
+    """Verified downloads and unfinished owners' final child outcomes.
 
-    Returns ``{owner key: {url: outcome}}``. A download carries its file
-    path and SHA-256, which the caller verifies before reuse, so it holds
-    under any settings; other final outcomes (terminal failures, skips)
-    hold only for the same ``fingerprint``.
+    Returns ``{owner key: {url: outcome}}``. Completed owners recover downloads
+    from their immutable, hashed snapshot when re-evaluation is needed.
+    Downloads hold across settings changes while their bytes match. Incomplete
+    owners also retain terminal failures and skips for the same fingerprint.
     """
     try:
         entries = _checkpoint_data(path)
     except PublicationError:
         return {}
     prior: dict[str, dict[str, dict[str, object]]] = {}
+    snapshots: dict[str, dict[str, list[dict]]] = {}
     for key, entry in entries.items():
-        outcomes = entry.get("outcomes")
-        if not entry.get("incomplete") or not isinstance(outcomes, dict):
+        if owner_keys is not None and key not in owner_keys:
+            continue
+        outcomes = (
+            entry.get("outcomes")
+            if entry.get("incomplete")
+            else _completed_outcomes(path, key, entry, snapshots)
+        )
+        if not isinstance(outcomes, dict):
             continue
         same = entry.get("fingerprint") == fingerprint
         kept = {
@@ -1051,6 +1096,62 @@ def load_prior_outcomes(path: Path, *, fingerprint: str) -> dict[str, dict[str, 
         if kept:
             prior[key] = kept
     return prior
+
+
+def _completed_outcomes(
+    checkpoint: Path,
+    key: str,
+    entry: Mapping[str, object],
+    snapshots: dict[str, dict[str, list[dict]]],
+) -> dict[str, dict[str, object]]:
+    """Read each verified snapshot once, indexed by owner, using curated bytes first."""
+    artifacts = entry.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return {}
+    for raw, digest in artifacts.items():
+        if not isinstance(raw, str) or Path(raw).suffix != ".json":
+            continue
+        if raw not in snapshots:
+            snapshots[raw] = {}
+            try:
+                if artifact_sha256(Path(raw)) != digest:
+                    continue
+                snapshot = json.loads(Path(raw).read_text(encoding="utf-8"))
+                for record in snapshot.get("downloads", []):
+                    if isinstance(record, dict):
+                        owner = owner_key(record.get("target_id"), record.get("source_url"))
+                        if owner:
+                            snapshots[raw].setdefault(owner, []).append(record)
+            except (OSError, ValueError, AttributeError, TypeError):
+                continue
+        outcomes = {}
+        for record in snapshots[raw].get(key, []):
+            url = record.get("url")
+            if not isinstance(url, str):
+                continue
+            if record.get("status") == "downloaded":
+                relative = Path(str(record.get("relative_path") or ""))
+                if relative.is_absolute() or ".." in relative.parts:
+                    continue
+                curated = checkpoint.parent / "curated" / relative
+                expected = record.get("content_hash")
+                # Curated bytes may have been changed deliberately. Never hide that
+                # by falling back to an intact run copy; repair from the source instead.
+                source = curated if curated.exists() else Path(str(record.get("path") or ""))
+                try:
+                    if artifact_sha256(source) != expected:
+                        continue
+                except (OSError, ValueError):
+                    continue
+                outcomes[url] = {
+                    "status": "downloaded",
+                    "final_url": record.get("final_url") or url,
+                    "mime_type": record.get("mime_type"),
+                    "path": str(source.resolve()),
+                    "sha256": expected,
+                }
+        return outcomes
+    return {}
 
 
 def _download_evidence(outcome: Mapping[str, object]) -> bool:
@@ -1141,6 +1242,16 @@ def effective_discovery_fingerprint(request: object) -> str:
         kind = type(value).__name__
         msg = f"Invalid effective discovery configuration value: {kind}"
         raise PublicationError(msg)
+
+    # Only the resolved discovery-review model affects acquisition. Extraction
+    # and page-locator aliases must not invalidate completed targets.
+    models = values.pop("models", None) or {}
+    review = values.get("document_review")
+    if isinstance(review, Mapping):
+        values["document_review"] = {
+            key: models.get(value, value) if key in {"model", "escalate_model"} else value
+            for key, value in review.items()
+        }
 
     classifier = values.get("document_classifier") or {}
     if classifier.get("pdf_screening", "off") != "off":

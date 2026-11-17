@@ -27,6 +27,7 @@ from psweep.compilation.input_provenance import (
     list_compile_record_files,
 )
 from psweep.config import RuntimeConfigError
+from psweep.outcomes import exit_code
 from psweep.utils.file_io import artifact_sha256
 from psweep.workspace import Workspace
 from psweep.compilation.accounting import (
@@ -353,6 +354,7 @@ def compile(  # noqa: A001 - public CLI command name
             view.warnings(input_provenance_warnings)
         sys.exit(2)
 
+    build_fingerprint = None
     try:
         quiet = emit_json_report or view.is_quiet
         if not quiet:
@@ -362,6 +364,7 @@ def compile(  # noqa: A001 - public CLI command name
             df, schema_info = compiler.compile_from_directory(
                 input_dir,
                 apply_deduplication=not dry_run,
+                allow_model=not dry_run,
             )
 
         if input_provenance_warnings and not emit_json_report:
@@ -408,6 +411,15 @@ def compile(  # noqa: A001 - public CLI command name
                     "main_array_key": schema_info["main_array_key"],
                     "rows": len(df),
                     **compiler.roster_stats,
+                    **(
+                        {
+                            "status": "dry_run",
+                            "reconciliation": compiler.reconciliation_stats,
+                            "costs": compiler.reconciliation_costs,
+                        }
+                        if compiler.reconciliation_stats
+                        else {}
+                    ),
                     "warnings": input_provenance_warnings,
                     "provenance_policy": provenance_policy,
                     "would_fail_on_provenance": would_fail_on_provenance,
@@ -415,6 +427,11 @@ def compile(  # noqa: A001 - public CLI command name
                 click.echo(json.dumps(roster_report, indent=2, sort_keys=True))
             else:
                 print_info(f"Dry run: {len(df)} roster row(s); no files written.")
+                if compiler.reconciliation_stats.get("pending"):
+                    print_info(
+                        f"Reconciliation pending: {compiler.reconciliation_stats['pending']} "
+                        "target(s); no model calls or cache writes."
+                    )
             return
 
         if dry_run:
@@ -551,6 +568,7 @@ def compile(  # noqa: A001 - public CLI command name
 
         if not get_verbosity().is_quiet:
             summary_stats = {
+                "Status": compiler.status,
                 "Schema Type": schema_info["type"],
                 "Records": str(len(df)),
                 "Columns": str(output_column_count),
@@ -561,6 +579,20 @@ def compile(  # noqa: A001 - public CLI command name
             for key, value in (compiler.roster_stats or {}).items():
                 summary_stats[key.replace("_", " ").title()] = str(value)
 
+            for key, value in compiler.reconciliation_stats.items():
+                summary_stats[f"Reconciliation {key.replace('_', ' ').title()}"] = str(value)
+            if compiler.reconciliation_costs.get("llm_calls"):
+                summary_stats["Reconciliation LLM Calls"] = str(
+                    compiler.reconciliation_costs["llm_calls"]
+                )
+                summary_stats["Reconciliation Cost (USD)"] = str(
+                    compiler.reconciliation_costs["total_cost_usd"]
+                )
+            if compiler.reconciliation_stats.get("unresolved"):
+                view.warning(
+                    f"{compiler.reconciliation_stats['unresolved']} unresolved target(s); "
+                    "unresolved evidence is exported as NA."
+                )
             view.summary(summary_stats, title="Compilation Summary")
             view.outputs(
                 {
@@ -589,6 +621,9 @@ def compile(  # noqa: A001 - public CLI command name
             started_at=compile_started_at,
             build_fingerprint=build_fingerprint,
             table_sha256=artifact_sha256(csv_table) if csv_table.is_file() else None,
+            status=compiler.status,
+            costs=compiler.reconciliation_costs or None,
+            reconciliation=compiler.reconciliation_stats or None,
         )
 
         acct_path = output_dir / "run_accounting.json"
@@ -611,8 +646,33 @@ def compile(  # noqa: A001 - public CLI command name
         if get_verbosity().is_quiet:
             for emitted_path in emitted_paths:
                 console.print(str(emitted_path.absolute()))
+            if compiler.status != "success":
+                click.echo(
+                    f"Compilation {compiler.status}: "
+                    f"{compiler.reconciliation_stats.get('unresolved', 0)} unresolved target(s)",
+                    err=True,
+                )
+        sys.exit(exit_code(compiler.status))
 
     except Exception as exc:  # noqa: BLE001 - CLI boundary: report any failure, then exit non-zero
+        if not dry_run:
+            try:
+                write_compilation_run_manifest(
+                    output_dir=output_dir,
+                    schema_id=str(matched_schema),
+                    mode=compiler.mode,
+                    stats={},
+                    started_at=compile_started_at,
+                    build_fingerprint=build_fingerprint,
+                    table_sha256=None,
+                    status="failed",
+                    costs=compiler.reconciliation_costs,
+                    reconciliation=compiler.reconciliation_stats,
+                )
+            except (OSError, ValueError) as manifest_exc:
+                logging.getLogger(__name__).warning(
+                    "Failed compilation manifest could not be written: %s", manifest_exc
+                )
         view.error("Compilation failed", str(exc))
         if view.verbosity is Verbosity.DEBUG:
             import traceback

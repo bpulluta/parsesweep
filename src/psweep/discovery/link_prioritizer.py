@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from .models import DiscoveryCandidate, CandidateScore
+from .urls import matches_domain_pattern
 
 
 # ---------------------------------------------------------------------------
@@ -111,13 +112,9 @@ def domain_score_patterns(
 def host_matches_domain_pattern(host: str, pattern: str) -> bool:
     """Match a host against a normalized ``domain_scores`` pattern.
 
-    Leading-dot patterns match hostname suffixes; host patterns match the host
-    itself or any of its subdomains.
+    Delegates to the shared matcher in urls.py.
     """
-    host = host.lower().rstrip(".")
-    if pattern.startswith("."):
-        return host.endswith(pattern)
-    return host == pattern or host.endswith("." + pattern)
+    return matches_domain_pattern(host, pattern)
 
 
 # ---------------------------------------------------------------------------

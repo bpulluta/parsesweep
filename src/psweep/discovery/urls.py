@@ -66,13 +66,26 @@ def matches_url_exclusion(url: str, patterns: list[re.Pattern]) -> bool:
     return any(pattern.search(value) for pattern in patterns for value in (raw, decoded))
 
 
+def matches_domain_pattern(host: str, pattern: str) -> bool:
+    """Match a host against a domain pattern.
+
+    Leading-dot patterns match hostname suffixes; patterns without a leading dot
+    match the host itself or any of its subdomains.
+    """
+    host = host.lower().rstrip(".")
+    pattern = pattern.strip().lower()
+    if pattern.startswith("."):
+        return host.endswith(pattern)
+    return host == pattern or host.endswith("." + pattern)
+
+
 def matches_allowed_domain(url: str, allowed_domains: list[str] | None) -> bool:
     """Match an exact hostname or subdomain, never an arbitrary substring."""
     if not allowed_domains:
         return True
     host = url_host(decode_discovery_url(url))
     return any(
-        host == domain.strip().lower() or host.endswith("." + domain.strip().lower())
+        matches_domain_pattern(host, domain)
         for domain in allowed_domains
         if domain and domain.strip()
     )

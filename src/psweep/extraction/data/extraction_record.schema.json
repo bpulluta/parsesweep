@@ -87,6 +87,10 @@
           "type": ["string", "null"],
           "description": "Discovery target id for target-scope documents."
         },
+        "review_evidence": {
+          "type": "object",
+          "description": "Source-quoted discovery review hints; not independently certified facts."
+        },
         "mime_type": {
           "type": ["string", "null"]
         },

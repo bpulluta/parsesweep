@@ -10,15 +10,14 @@ from typing import Any
 from urllib.parse import urlencode, urlsplit
 
 from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
+from psweep.discovery.targets import render_target_template
 from psweep.discovery.urls import canonical_url
 from psweep.utils.file_io import atomic_json
 from psweep.utils.retry import compute_backoff, is_transient_error
+from psweep.exceptions import AttemptBudgetExceeded
 from .base import BaseSeekerConnector, SeekerInput
 from psweep.discovery.network import send_get
 from psweep.security import resolve_tls_verification
-
-
-_TEMPLATE_TOKEN = re.compile(r"\{([a-zA-Z0-9_]+)(\?)?\}")
 
 
 class SerpApiSearchTimeout(RuntimeError):  # noqa: N818 - public exception name
@@ -55,6 +54,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         cache_ttl_seconds: float = 0.0,
         cache_refresh: bool = False,
         timeout_seconds: float = 45,
+        before_request=None,
     ):
         """
         Initialize SerpApi seeker connector.
@@ -90,6 +90,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         # for subsequent tuning runs.
         self.cache_refresh = bool(cache_refresh)
         self.timeout_seconds = timeout_seconds
+        self.before_request = before_request
         self._ensure_prepared()
 
     def _respect_rate_limit(self) -> None:
@@ -119,6 +120,8 @@ class SerpApiSeeker(BaseSeekerConnector):
         last_exc: BaseException | None = None
 
         for attempt in range(1, self.retry_max_attempts + 1):
+            if self.before_request is not None:
+                self.before_request()
             try:
                 self._respect_rate_limit()
                 self.queries_run += 1
@@ -177,6 +180,8 @@ class SerpApiSeeker(BaseSeekerConnector):
                 self._validate_response(results)
                 if not cache_hit:
                     self._cache_put(params, results)
+            except AttemptBudgetExceeded:
+                raise
             except Exception as exc:
                 sanitized_message = self._sanitize_error_message(str(exc))
                 if _is_search_timeout(exc):
@@ -463,24 +468,9 @@ def resolve_search_queries(seeker_input: SeekerInput) -> list[str]:
     rendered: dict[str, None] = {}
     for template in seeker_input.queries:
         try:
-            query = render_query_template(template, context)
+            query = render_target_template(template, context)
         except ValueError:
             continue
         if query:
             rendered[query] = None
     return list(rendered)
-
-
-def render_query_template(template: str, context: dict[str, Any]) -> str:
-    """Render ``{field}`` (required) and ``{field?}`` (optional) tokens."""
-
-    def replace_token(match: re.Match[str]) -> str:
-        value = context.get(match.group(1))
-        if value is None or not str(value).strip():
-            if match.group(2):
-                return ""
-            raise ValueError(f"Missing required template token: {match.group(1)}")
-        return str(value).strip()
-
-    rendered = _TEMPLATE_TOKEN.sub(replace_token, template)
-    return re.sub(r"\s+", " ", rendered).strip()

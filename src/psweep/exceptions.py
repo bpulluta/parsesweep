@@ -14,6 +14,12 @@ Examples
 from __future__ import annotations
 
 
+class AttemptBudgetExceeded(RuntimeError):  # noqa: N818 - public budget outcome name
+    """No request was sent; pending work can resume under a new run budget."""
+
+    retryable = True
+
+
 class ParseSweepError(Exception):
     """Base exception for all ParseSweep errors."""
 

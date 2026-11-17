@@ -64,6 +64,60 @@ def _resolve(candidates: list[dict[str, Any]]) -> tuple[dict, str, list[dict], l
     return {"conflict": True}, "low", chosen, list(dict.fromkeys(c["url"] for c in chosen))
 
 
+def roster_attributes(metadata, roster: Roster) -> tuple[list[str], set[str]]:
+    """Derive output attributes and evidence fields once from the schema contract."""
+    main = metadata.get_main_data_array()
+    attributes = [
+        field
+        for field in metadata.schema["properties"][main]["items"].get("properties", {})
+        if field not in roster.fields
+    ]
+    evidence = {
+        path[2]
+        for path in evidence_paths(metadata.schema)
+        if len(path) == 3 and path[:2] == (main, "*")
+    }
+    return attributes, evidence
+
+
+def roster_extras(target: dict, roster: Roster, attributes: Iterable[str]) -> dict[str, str]:
+    """Validate and project roster passthrough without overwriting schema/output columns."""
+    extra = {
+        key: NA if value is None else str(value)
+        for key, value in target.items()
+        if key not in roster.fields and key not in TARGET_INPUT_FIELDS
+    }
+    clash = sorted(set(extra).intersection(attributes) | set(extra).intersection(METADATA_COLUMNS))
+    if clash:
+        raise ValueError(
+            f"Roster column(s) {clash} collide with schema fields or "
+            f"{', '.join(METADATA_COLUMNS)}; rename them in discovery.targets"
+        )
+    return extra
+
+
+def roster_row(
+    row: dict, extras: dict, sources: Iterable[str], confidence: str, evidence: dict
+) -> dict:
+    """Assemble the shared roster output envelope around resolver-specific evidence."""
+    return {
+        **row,
+        **extras,
+        "sources": "; ".join(dict.fromkeys(url for url in sources if url)) or NA,
+        "confidence": confidence,
+        "evidence": json.dumps(evidence, ensure_ascii=False, separators=(",", ":")),
+    }
+
+
+def roster_frame(rows: list[dict], roster: Roster, attributes: list[str]) -> pd.DataFrame:
+    """Project both roster resolvers to one deterministic output-column contract."""
+    reserved = set(roster.fields) | set(attributes) | set(METADATA_COLUMNS)
+    extras = list(dict.fromkeys(key for row in rows for key in row if key not in reserved))
+    return pd.DataFrame(
+        rows, columns=[*roster.fields, *attributes, *extras, *METADATA_COLUMNS]
+    ).fillna(NA)
+
+
 def compile_roster(
     records: Iterable[dict[str, Any]],
     metadata,
@@ -72,13 +126,7 @@ def compile_roster(
 ) -> tuple[pd.DataFrame, dict[str, int]]:
     """Return the roster-shaped frame (field-name columns) and accounting stats."""
     main = metadata.get_main_data_array()
-    item_fields = list(metadata.schema["properties"][main]["items"].get("properties", {}))
-    attributes = [field for field in item_fields if field not in roster.fields]
-    evidence = {
-        path[2]
-        for path in evidence_paths(metadata.schema)
-        if len(path) == 3 and path[:2] == (main, "*")
-    }
+    attributes, evidence = roster_attributes(metadata, roster)
     by_key = {roster.key(identity): target_id for target_id, identity in roster.targets.items()}
 
     cells: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -104,23 +152,11 @@ def compile_roster(
                         {"value": value, "quote": quote, "url": url, "scope": scope}
                     )
 
-    rows, passthrough = [], {}
+    rows = []
     conflicts = with_evidence = 0
-    reserved = set(item_fields) | set(METADATA_COLUMNS)
     for target in iter_targets(targets_spec):
         target_id = identify_target(target, roster.fields)
-        extra = {
-            key: NA if value is None else str(value)
-            for key, value in target.items()
-            if key not in roster.fields and key not in TARGET_INPUT_FIELDS
-        }
-        clash = sorted(set(extra) & reserved)
-        if clash:
-            raise ValueError(
-                f"Roster column(s) {clash} collide with schema fields or "
-                f"{', '.join(METADATA_COLUMNS)}; rename them in discovery.targets"
-            )
-        passthrough.update(dict.fromkeys(extra))
+        extra = roster_extras(target, roster, attributes)
         row = {field: target[field] for field in roster.fields}
         sources, cell_evidence, confidence = [], {}, "high"
         for field in attributes:
@@ -143,17 +179,10 @@ def compile_roster(
             confidence = min(confidence, level, key=_CONFIDENCE_RANK.__getitem__)
         with_evidence += bool(cell_evidence)
         rows.append(
-            {
-                **row,
-                **extra,
-                "sources": "; ".join(dict.fromkeys(url for url in sources if url)) or NA,
-                "confidence": confidence if cell_evidence else "none",
-                "evidence": json.dumps(cell_evidence, ensure_ascii=False, separators=(",", ":")),
-            }
+            roster_row(row, extra, sources, confidence if cell_evidence else "none", cell_evidence)
         )
 
-    columns = [*roster.fields, *attributes, *passthrough, *METADATA_COLUMNS]
-    frame = pd.DataFrame(rows, columns=columns).fillna(NA)
+    frame = roster_frame(rows, roster, attributes)
     stats = {
         "roster_targets": len(rows),
         "targets_with_evidence": with_evidence,

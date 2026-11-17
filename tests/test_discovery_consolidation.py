@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from discovery_helpers import FakeResponse, make_candidate
+from discovery_helpers import FakeResponse, MeteredReviewClient, make_candidate, review_evidence
 
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 from psweep.discovery.targets import identify_target
@@ -247,7 +247,13 @@ def test_grade_cache_includes_all_effective_inputs(tmp_path, change):
         "models": {"review": "gpt-fixture-a"},
         "cache_dir": tmp_path / ".review_cache",
     }
-    grade = {"is_primary": True, "relevance": 0.9, "doc_kind": "comment", "reason": "raw grade"}
+    grade = {
+        "is_primary": True,
+        "relevance": 0.9,
+        "doc_kind": "comment",
+        "reason": "raw grade",
+        "evidence": review_evidence("synthetic content"),
+    }
     first = DocumentReviewer(**config)
     first._ensure_client = object
     first._grade = lambda *args, **kwargs: grade
@@ -275,16 +281,16 @@ def test_llm_urls_hide_credentials_but_retain_document_identifiers(monkeypatch, 
     path = tmp_path / "comment.pdf"
     path.write_text("synthetic")
     url = "https://user:password@agency.gov/view?id=42&X-Amz-Signature=secret&token=credential#access_token=fragment"
-    client = SimpleNamespace(
-        extract=Mock(
-            return_value={
-                "data": {
-                    "doc_kind": "comment",
-                    "reason": "raw",
-                    "grade": 4,
-                }
+    client = MeteredReviewClient()
+    client.respond = Mock(
+        return_value={
+            "data": {
+                "doc_kind": "comment",
+                "reason": "raw",
+                "grade": 4,
+                "evidence": review_evidence("comment"),
             }
-        )
+        }
     )
     reviewer = DocumentReviewer(
         document_description="comments", cache_dir=tmp_path / ".review_cache"
@@ -297,7 +303,7 @@ def test_llm_urls_hide_credentials_but_retain_document_identifiers(monkeypatch, 
         "target_metadata": {"label": "alpha", "source": url},
     }
     reviewer.review([record], [])
-    prompt = client.extract.call_args.kwargs["user_prompt"]
+    prompt = client.respond.call_args.kwargs["user_prompt"]
     assert "id=42" in prompt
     for secret in ("user:password", "secret", "credential", "fragment"):
         assert secret not in prompt
@@ -344,6 +350,7 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
             "relevance": 0.9,
             "doc_kind": "synthetic",
             "reason": "raw grade",
+            "evidence": review_evidence("synthetic records"),
         },
     )
     request = _request(
@@ -528,7 +535,9 @@ def test_snapshot_write_failure_preserves_prior_checkpoint(monkeypatch, tmp_path
 
 
 @pytest.mark.parametrize("failure", ["unavailable", "unreadable", "stale_grade"])
-def test_review_failure_does_not_curate_every_download_or_reuse_stale_grade(tmp_path, failure):
+def test_review_failure_does_not_curate_every_download_or_reuse_stale_grade(
+    tmp_path, failure, monkeypatch
+):
     path = tmp_path / "record.pdf"
     path.write_text("fixture")
     record = {"path": str(path), "status": "downloaded", "relative_path": "record.pdf"}
@@ -536,6 +545,10 @@ def test_review_failure_does_not_curate_every_download_or_reuse_stale_grade(tmp_
         record.update(review_relevance=0.9, review_is_primary=True, review_selected=True)
     reviewer = DocumentReviewer(document_description="synthetic")
     if failure == "unavailable":
+        monkeypatch.setattr(
+            "psweep.extraction.document_utils.extract_text_from_document",
+            lambda _path: "readable document evidence " * 100,
+        )
         reviewer._ensure_client = Mock(side_effect=ValueError("no credentials"))
     else:
         reviewer._ensure_client = object
@@ -561,8 +574,10 @@ def test_cached_raw_grade_is_independent_of_pdf_dedup_selection(tmp_path):
     reviewer = DocumentReviewer(
         document_description="records", keep_top=2, cache_dir=tmp_path / ".review_cache"
     )
+    reviewer._document_text = lambda _path: "fixture records " * 100
     reviewer._ensure_client = object
     reviewer._grade = lambda path, **kwargs: {
+        "evidence": review_evidence("fixture records"),
         "is_primary": True,
         "relevance": 0.9 if path.endswith("one.pdf") else 0.8,
         "doc_kind": "record",
@@ -736,13 +751,14 @@ def test_configured_urls_are_always_kept_while_crawled_children_are_filtered(
             return FakeResponse(url=url, content_type="text/html", text=pages[url])
         return FakeResponse(url=url, chunks=[b"%PDF\n" + url.encode()])
 
-    def grade(self, path, target_context="", source_url=""):
+    def grade(self, path, target_context="", source_url="", *, cache_key=""):
         relevance = 0.9 if source_url.endswith("best.pdf") else 0.2
         return {
             "is_primary": relevance > 0.5,
             "relevance": relevance,
             "doc_kind": "synthetic",
             "reason": "fixture",
+            "evidence": review_evidence("synthetic source"),
         }
 
     monkeypatch.setattr("psweep.discovery.network.request_get", fetch)

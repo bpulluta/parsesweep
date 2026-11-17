@@ -11,9 +11,29 @@ discovery:
   partition_by: [state, name]         # curated/by_state/<s>/by_name/<n>/
   selection:
     max_per_target: 2
+  # Optional automatic qualification; domain requirements stay in this YAML.
+  # document_review:
+  #   document_description: "Installation manual for {name} in {state}."
+  #   model: secondary
+  #   escalate_model: primary
+  #   keep_top: 2
+  #   coverage:
+  #     installation: "Explicit installation instructions for {name}."
+  #     specification: "Applicable technical specifications for {name}."
+  # search:
+  #   cache: true
+  #   fallback_queries: ['"{name}" {state} manufacturer installation manual']
+  # runtime:
+  #   max_review_calls: 8              # physical attempts per target/run
+  #   max_search_calls: 100            # physical attempts across this run
 extraction:
   model: primary
 compilation:
+  # Optional roster conflict resolver: docs/config-reference.md
+  # reconciliation:
+  #   enabled: true
+  #   model: primary
+  #   field_groups: [[amount, unit]]    # exact fields from your schema
   output:
     default_format: csv               # csv | excel | both
 validation:

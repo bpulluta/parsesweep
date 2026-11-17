@@ -430,3 +430,29 @@ def test_checkpoint_persisted_once_after_curation(tmp_path, monkeypatch):
     assert set(data["entries"].keys()) == {"alpha", "beta", "gamma"}
     for entry in data["entries"].values():
         assert entry["download_count"] == 1
+
+
+def test_matches_domain_pattern_with_leading_dot():
+    """Verify leading-dot patterns match hostname suffixes correctly."""
+    from psweep.discovery.urls import matches_domain_pattern
+
+    # Leading-dot patterns match any host ending with the pattern
+    assert matches_domain_pattern("example.gov", ".gov")
+    assert matches_domain_pattern("foo.bar.gov", ".gov")
+    assert matches_domain_pattern("gov", ".gov") is False
+
+    # Non-leading-dot patterns match exact host or any subdomain
+    assert matches_domain_pattern("example.gov", "gov")
+    assert matches_domain_pattern("example.com", "example.com")
+    assert matches_domain_pattern("sub.example.com", "example.com")
+    assert matches_domain_pattern("other.com", "example.com") is False
+    # But not a bare match without subdomain relation
+    assert matches_domain_pattern("gov.example", "gov") is False
+
+    # Case insensitivity
+    assert matches_domain_pattern("EXAMPLE.GOV", ".gov")
+    assert matches_domain_pattern("EXAMPLE.COM", "example.com")
+
+    # Trailing dot handling (normalized away)
+    assert matches_domain_pattern("example.gov.", ".gov")
+    assert matches_domain_pattern("example.com.", "example.com")

@@ -356,7 +356,7 @@ class TestTopKAndLineage:
             title="Sensor PDF",
             snippet="Download the sensor document",
             target_metadata={"asset": "sensor"},
-            status="validated",
+            acceptance_status="validated",
             mime_type="application/pdf",
             extension=".pdf",
             canonical_url="https://example.com/canonical.pdf",
@@ -369,7 +369,7 @@ class TestTopKAndLineage:
         assert result.snippet == candidate.snippet
         assert result.target_metadata == candidate.target_metadata
         assert result.source == candidate.source
-        assert result.status == candidate.status
+        assert result.acceptance_status == candidate.acceptance_status
         assert result.mime_type == candidate.mime_type
         assert result.extension == candidate.extension
         assert result.canonical_url == candidate.canonical_url

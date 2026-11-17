@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from difflib import get_close_matches
 from itertools import islice, product
@@ -30,6 +31,28 @@ _DATASET_DIMENSION = {"name", "dataset", "column"}
 
 class TargetSpecError(ValueError):
     """Raised when a target spec or target row is invalid."""
+
+
+_TEMPLATE_TOKEN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(\?)?\}")
+
+
+def render_target_template(template: str, target: Mapping[str, Any]) -> str:
+    """Render required/optional target fields without interpreting inserted text."""
+    if not isinstance(template, str):
+        raise TypeError("Target template must be a string")
+    if "{" in _TEMPLATE_TOKEN.sub("", template) or "}" in _TEMPLATE_TOKEN.sub("", template):
+        raise ValueError("Malformed target template placeholder")
+
+    def replace(match):
+        field, optional = match.groups()
+        value = target.get(field)
+        if value is None or not str(value).strip():
+            if optional:
+                return ""
+            raise ValueError(f"Missing required template token: {field}")
+        return str(value).strip()
+
+    return re.sub(r"\s+", " ", _TEMPLATE_TOKEN.sub(replace, template)).strip()
 
 
 def target_identity(
