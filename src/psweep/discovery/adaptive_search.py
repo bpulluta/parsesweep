@@ -76,6 +76,26 @@ def covered_labels(records: Iterable[Mapping]) -> set[str]:
     return labels
 
 
+def target_has_sufficient_evidence(
+    records: Iterable[Mapping],
+    *,
+    keep_top: int,
+    coverage: Mapping[str, str] | None = None,
+) -> bool:
+    """Check if a target has met its sufficiency requirements.
+
+    A target is considered sufficient when:
+    - It has collected at least `keep_top` accepted documents, AND
+    - If coverage is specified, all required labels have been covered.
+    """
+    records_list = list(records)
+    if distinct_accepted_count(records_list) < keep_top:
+        return False
+    if coverage and set(coverage) - covered_labels(records_list):
+        return False
+    return True
+
+
 def eligible_targets(
     targets: Iterable[dict[str, object]],
     records: Iterable[dict[str, object]],
@@ -95,9 +115,7 @@ def eligible_targets(
         outcomes = by_target[key]
         if key in incomplete_keys or any(is_retryable(record) for record in outcomes):
             continue
-        if distinct_accepted_count(outcomes) < keep_top or (
-            coverage and set(coverage) - covered_labels(outcomes)
-        ):
+        if not target_has_sufficient_evidence(outcomes, keep_top=keep_top, coverage=coverage):
             eligible.append(target)
     return eligible
 

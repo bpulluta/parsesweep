@@ -37,6 +37,7 @@ from .adaptive_search import (
     distinct_accepted_count,
     eligible_targets,
     source_unique_records,
+    target_has_sufficient_evidence,
 )
 from .attempt_budget import AttemptBudget, AttemptBudgetExceeded
 from .candidate_selector import CandidateSelector
@@ -514,6 +515,31 @@ class DiscoveryEngine:
             target_exclude=request.selection_target_exclude or None,
         )
 
+    def _build_seeker(self, request: DiscoveryRequest):
+        """Construct a SerpApiSeeker from request settings.
+
+        Shared by seeker-stage discovery and retry paths so the
+        two never drift apart.
+        """
+        from .connectors.serpapi_seeker import SerpApiSeeker
+
+        return SerpApiSeeker(
+            retry_max_attempts=request.retry_max_attempts,
+            retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
+            retry_max_backoff_seconds=request.retry_max_backoff_seconds,
+            min_request_interval_seconds=max(
+                0.0, float(request.min_request_interval_ms) / 1000.0
+            ),
+            cache_dir=DiscoveryEngine._resolve_seeker_cache_dir(request),
+            timeout_seconds=request.timeout_seconds or 45,
+            cache_ttl_seconds=max(
+                0.0,
+                float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
+            ),
+            cache_refresh=request.fresh and not request.dry_run,
+            before_request=self._attempt_budget.reserve_search,
+        )
+
     @staticmethod
     def _seeker_jobs(inputs, *, query_slot: bool):
         """Keep initial target order; fallback visits every owner by query slot."""
@@ -593,27 +619,10 @@ class DiscoveryEngine:
         try:
             from .connectors.serpapi_seeker import (
                 SerpApiSearchTimeout,
-                SerpApiSeeker,
+                resolve_search_queries,
             )
 
-            seeker_cache_dir = DiscoveryEngine._resolve_seeker_cache_dir(request)
-            seeker = SerpApiSeeker(
-                retry_max_attempts=request.retry_max_attempts,
-                retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
-                retry_max_backoff_seconds=request.retry_max_backoff_seconds,
-                min_request_interval_seconds=max(
-                    0.0, float(request.min_request_interval_ms) / 1000.0
-                ),
-                cache_dir=seeker_cache_dir,
-                timeout_seconds=request.timeout_seconds or 45,
-                cache_ttl_seconds=max(
-                    0.0,
-                    float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
-                ),
-                cache_refresh=request.fresh and not request.dry_run,
-                before_request=self._attempt_budget.reserve_search,
-            )
-            from .connectors.serpapi_seeker import resolve_search_queries
+            seeker = self._build_seeker(request)
 
             seeker_targets = request.targets or [None]
             seeker_inputs = []
@@ -1813,7 +1822,21 @@ class DiscoveryEngine:
             return [], []
 
         discovered = [c for c in candidates if c.source != CONFIGURED_SOURCE]
-        has_viable_discovered = any(c.score.acceptance_class() != "rejected" for c in discovered)
+
+        # Group discovered by target identity; compute viability per target, not globally.
+        # This ensures one target's strong candidate doesn't silence another target's safety net.
+        groups: dict[str, list[DiscoveryCandidate]] = {}
+        for candidate in discovered:
+            context = candidate.target_metadata or {}
+            key = json.dumps(context, sort_keys=True, default=str)
+            groups.setdefault(key, []).append(candidate)
+
+        # For each target group, determine if it has viable (non-rejected) discovered candidates.
+        has_viable_by_target: dict[str, bool] = {}
+        for key, group in groups.items():
+            has_viable_by_target[key] = any(
+                c.score.acceptance_class() != "rejected" for c in group
+            )
 
         filtered: list[DiscoveryCandidate] = []
         rejected_skipped = 0
@@ -1822,7 +1845,11 @@ class DiscoveryEngine:
                 filtered.append(candidate)
                 continue
 
-            if has_viable_discovered and candidate.score.acceptance_class() == "rejected":
+            context = candidate.target_metadata or {}
+            key = json.dumps(context, sort_keys=True, default=str)
+            has_viable_for_this_target = has_viable_by_target.get(key, False)
+
+            if has_viable_for_this_target and candidate.score.acceptance_class() == "rejected":
                 rejected_skipped += 1
                 continue
             filtered.append(candidate)
@@ -1834,7 +1861,7 @@ class DiscoveryEngine:
                 f"{rejected_skipped} rejected discovered candidate(s); "
                 "accepted/review discovered candidates were available."
             )
-        elif discovered and not has_viable_discovered:
+        elif discovered and not any(has_viable_by_target.values()):
             notes.append(
                 "All discovered candidates scored as rejected; preserving them "
                 "to avoid recall loss in strict domains."
@@ -2220,7 +2247,6 @@ class DiscoveryEngine:
             "mime_type",
             "bytes",
             "relative_path",
-            "path",
             "review_selected",
             "review_is_primary",
             "review_relevance",
@@ -2254,7 +2280,6 @@ class DiscoveryEngine:
                         "mime_type": record.get("mime_type"),
                         "bytes": record.get("bytes"),
                         "relative_path": record.get("relative_path"),
-                        "path": record.get("path"),
                         "review_selected": record.get("review_selected"),
                         "review_is_primary": record.get("review_is_primary"),
                         "review_relevance": record.get("review_relevance"),
@@ -2309,7 +2334,6 @@ class DiscoveryEngine:
             "human_notes",
             "llm_reason",
             "relative_path",
-            "path",
         ]
         rows = [
             r
@@ -2349,7 +2373,6 @@ class DiscoveryEngine:
                         "human_notes": record.get("human_notes") or "",
                         "llm_reason": record.get("review_reason"),
                         "relative_path": rel,
-                        "path": record.get("path"),
                     }
                 )
         if render_only:
@@ -2449,7 +2472,8 @@ class DiscoveryEngine:
                     (p for p in curated_dir.rglob("*") if p.is_file()),
                     reverse=True,
                 ):
-                    _remove_file(file_path)
+                    if file_path.resolve() not in protected:
+                        _remove_file(file_path)
                 shutil.rmtree(curated_dir, ignore_errors=True)
             return files_removed, bytes_removed
 
@@ -3230,13 +3254,16 @@ class DiscoveryEngine:
         if not code_hosting_domains:
             return download_records, notes
 
-        # Find targets with 0 curated AND JS-shell downloads from code-hosting domains
+        # Find targets with insufficient curated docs AND JS-shell downloads from code-hosting domains
         by_target = self._group_records_by_target(download_records)
+        doc_review = request.document_review or {}
+        keep_top = int(doc_review.get("keep_top", 1))
+        coverage = doc_review.get("coverage")
 
         shell_urls: list[tuple[str, str, dict[str, object]]] = []
         for target_key, records in by_target.items():
-            if any(r.get("review_selected") for r in records):
-                continue  # target already has curated docs
+            if target_has_sufficient_evidence(records, keep_top=keep_top, coverage=coverage):
+                continue  # target already has sufficient curated docs
 
             for rec in records:
                 if not rec.get("browser_escalated") and rec.get("status") in {
@@ -3412,13 +3439,15 @@ class DiscoveryEngine:
         if not keywords:
             return download_records, notes
 
-        # Group records by target, find targets with 0 curated
+        # Group records by target, find targets with insufficient evidence
         by_target = self._group_records_by_target(download_records)
+        doc_review = request.document_review or {}
+        keep_top = int(doc_review.get("keep_top", 1))
+        coverage = doc_review.get("coverage")
 
         failed_targets: list[tuple[str, str, dict[str, object]]] = []
         for target_key, records in by_target.items():
-            has_curated = any(r.get("review_selected") for r in records)
-            if has_curated:
+            if target_has_sufficient_evidence(records, keep_top=keep_top, coverage=coverage):
                 continue
 
             # Find code-hosting URLs for this target
@@ -3447,23 +3476,8 @@ class DiscoveryEngine:
         keyword_or = " OR ".join(f'"{k}"' for k in keywords[:3])
 
         from .connectors.base import SeekerInput
-        from .connectors.serpapi_seeker import SerpApiSeeker
 
-        seeker = SerpApiSeeker(
-            retry_max_attempts=request.retry_max_attempts,
-            retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
-            retry_max_backoff_seconds=request.retry_max_backoff_seconds,
-            min_request_interval_seconds=max(0.0, float(request.min_request_interval_ms) / 1000.0),
-            cache_dir=DiscoveryEngine._resolve_seeker_cache_dir(request),
-            timeout_seconds=request.timeout_seconds or 45,
-            cache_ttl_seconds=max(
-                0.0,
-                float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0),
-            )
-            * 60.0,
-            cache_refresh=request.fresh and not request.dry_run,
-            before_request=self._attempt_budget.reserve_search,
-        )
+        seeker = self._build_seeker(request)
 
         retry_candidates = []
         for target_key, site_prefix, origin in failed_targets:
@@ -4499,7 +4513,8 @@ class DiscoveryEngine:
         """Finalize retention, checkpoint evidence, and latest."""
         if request.dry_run:
             return
-        if not all_reused and request.retention_documents != "all":
+        should_apply_retention = not all_reused and request.retention_documents != "all"
+        if should_apply_retention:
             # Incomplete owners resume from these files; keep them.
             unfinished = {
                 Path(str(record["path"]))
@@ -4525,7 +4540,7 @@ class DiscoveryEngine:
             fingerprint=fingerprint,
             prior_outcomes=prior_outcomes,
         )
-        if not all_reused and request.retention_documents != "all":
+        if should_apply_retention:
             # After the checkpoint points at this run's copies.
             self._remove_superseded_run_files(
                 paths=paths, download_records=download_records, prior=prior_outcomes
