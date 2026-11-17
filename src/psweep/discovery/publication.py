@@ -14,7 +14,9 @@ import io
 import json
 import math
 import os
+import random
 import shutil
+import time
 import uuid
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path, PurePosixPath
@@ -27,7 +29,7 @@ from psweep.extraction.document_utils import (
 )
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
-from psweep.utils.retry import is_retryable
+from psweep.utils.retry import is_retryable, compute_backoff
 from .eligibility import eligibility_held, screening_identity
 
 TOKEN_HEX_LENGTH = 32
@@ -166,6 +168,41 @@ def _remove(path: Path) -> None:
 
 
 @contextlib.contextmanager
+def _publication_lock_with_retry(
+    lock_path: Path,
+    max_attempts: int = 5,
+    initial_backoff_seconds: float = 0.1,
+    max_backoff_seconds: float = 5.0,
+) -> Iterator[None]:
+    """Acquire publication lock with bounded retry and jittered backoff.
+
+    Retries on lock contention instead of failing immediately, allowing
+    concurrent finalize operations to serialize naturally.
+    """
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with publication_lock(lock_path):
+                yield
+                return
+        except PublicationLockError as exc:
+            last_error = exc
+            if attempt >= max_attempts:
+                break
+            # Exponential backoff with jitter
+            backoff = compute_backoff(
+                attempt,
+                initial_backoff_seconds=initial_backoff_seconds,
+                max_backoff_seconds=max_backoff_seconds,
+            )
+            jitter = random.uniform(0, backoff * 0.1)  # noqa: S311 - backoff jitter, not crypto
+            time.sleep(backoff + jitter)
+    raise PublicationError(
+        f"Publication lock contention after {max_attempts} attempts: {last_error}"
+    ) from last_error
+
+
+@contextlib.contextmanager
 def discovery_publication(domain_dir: Path) -> Iterator[None]:
     """Reject an active writer; kernel locks release automatically on
     process death.
@@ -176,12 +213,9 @@ def discovery_publication(domain_dir: Path) -> Iterator[None]:
     """
     root = Path(domain_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    try:
-        with publication_lock(root / ".discovery-publication.lock"):
-            _recover(root)
-            yield
-    except PublicationLockError as exc:
-        raise PublicationError(str(exc)) from exc
+    with _publication_lock_with_retry(root / ".discovery-publication.lock"):
+        _recover(root)
+        yield
 
 
 def _journal_path(root: Path) -> Path:

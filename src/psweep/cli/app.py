@@ -12,6 +12,7 @@ from psweep.cli.commands_compile import compile as compile_command
 from psweep.cli.commands_curate import curate
 from psweep.cli.commands_discover import discover
 from psweep.cli.commands_extract import extract
+from psweep.cli.commands_gc import gc
 from psweep.cli.commands_validate import validate
 from psweep.discovery.request_inputs import discovery_request_fields
 from psweep.discovery.targets import iter_targets
@@ -333,6 +334,7 @@ def _register_commands() -> None:
         validate,
         discover,
         curate,
+        gc,
         init,
         init_domain_schema_cmd,
         preview,
