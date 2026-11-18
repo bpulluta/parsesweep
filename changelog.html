@@ -402,6 +402,20 @@ every reader of the domain agrees; <code class="docutils literal notranslate"><s
 Without the option nothing changes. No cache or regrade impact.</p></li>
 </ul>
 </section>
+<section id="fixed-search-budget-a-target-s-query-slots-run-in-order">
+<h3>Fixed (search budget: a target’s query slots run in order)<a class="headerlink" href="#fixed-search-budget-a-target-s-query-slots-run-in-order" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Under <code class="docutils literal notranslate"><span class="pre">runtime.max_search_calls</span></code>, a fallback pass dispatched every query-slot job
+concurrently, but a target’s jobs share one pre-reserved allocation. A slow
+“first query” job could lose its unit to the same target’s “second query”, so
+which query ran depended on thread timing (intermittent
+<code class="docutils literal notranslate"><span class="pre">test_fallback_budget_visits_first_query_for_every_owner_before_second</span></code>).
+Each target’s jobs now run back to back in slot order while targets still run
+concurrently, so a tight budget deterministically visits every owner’s first
+query before any second query.</p></li>
+<li><p>Cache impact: none. No regrade, no re-extraction, no new config keys.</p></li>
+</ul>
+</section>
 <section id="fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">
 <h3>Fixed (discovery publication: final decisions apply in incomplete partitions)<a class="headerlink" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1139,6 +1153,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
 <li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>
 <li><a class="reference internal" href="#added-one-domain-workspace-override-on-every-config-driven-stage">Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)</a></li>
+<li><a class="reference internal" href="#fixed-search-budget-a-target-s-query-slots-run-in-order">Fixed (search budget: a target’s query slots run in order)</a></li>
 <li><a class="reference internal" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">Fixed (discovery publication: final decisions apply in incomplete partitions)</a></li>
 <li><a class="reference internal" href="#changed-document-review-diagnosable-grounding-failures">Changed (document review: diagnosable grounding failures)</a></li>
 <li><a class="reference internal" href="#changed-document-review-one-bounded-grounding-repair">Changed (document review: one bounded grounding repair)</a></li>
