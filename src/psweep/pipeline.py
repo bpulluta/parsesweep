@@ -51,7 +51,7 @@ from psweep.discovery.request_inputs import discovery_request_fields
 from psweep.discovery.concurrency import bounded_results
 from jsonschema import ValidationError
 
-from psweep.exceptions import APIKeyError, PipelineError
+from psweep.exceptions import APIKeyError, PipelineError, TargetingSafetyError
 from psweep.outcomes import EXIT_PARTIAL, exit_code
 from psweep import extraction as extraction_api
 from psweep.extraction import document_utils, transcription, page_locator
@@ -366,7 +366,43 @@ def _withdrawn_records(plan: dict) -> list[Path]:
     return withdrawn
 
 
-def _reusable_record(path: Path, fingerprint: str, evidence: dict, validator):
+_TARGETABLE_SUFFIXES = frozenset({".pdf", ".html", ".htm", ".doc", ".docx", ".txt"})
+NO_USABLE_SCOPE = "targeting_no_usable_scope"
+CONTEXT_BUDGET_EXCEEDED = "targeting_context_budget_exceeded"
+
+
+def _auto_targeted(inputs, doc, ranges, candidates, roster_errors, anchors) -> bool:
+    """True when automatic targeting governs ``doc`` and its input must fail closed.
+
+    ``ranges`` is the ORIGINAL manual mapping: membership, even with a ``None``
+    (blank/full) value, is an explicit user choice that targeting must not replace.
+    """
+    return bool(
+        (inputs.get("page_targeting") or {}).get("enabled")
+        and doc.suffix.lower() in _TARGETABLE_SUFFIXES
+        and doc not in ranges
+        and doc not in candidates
+        and doc not in roster_errors
+        and anchors.get(doc) != set()
+    )
+
+
+def _plan_targeted(plan: dict, doc: Path) -> bool:
+    if not (plan["inputs"].get("page_targeting") or {}).get("enabled"):
+        return False
+    return _auto_targeted(
+        plan["inputs"],
+        doc,
+        plan["ranges"],
+        plan["candidates"],
+        plan["roster_errors"],
+        plan["anchors"],
+    )
+
+
+def _reusable_record(
+    path: Path, fingerprint: str, evidence: dict, validator, *, protected: bool = False
+):
     """Require digest evidence and valid record/payload contracts."""
     try:
         matching = [
@@ -387,7 +423,12 @@ def _reusable_record(path: Path, fingerprint: str, evidence: dict, validator):
             return None
         record_validator().validate(record)
         validator.validate(record["payload"])
-        if record.get("processing_metrics", {}).get("coverage", {}).get("parser_partial"):
+        coverage = record.get("processing_metrics", {}).get("coverage", {})
+        if coverage.get("parser_partial"):
+            return None
+        if protected and (
+            coverage.get("context_truncated") or coverage.get("targeting_incomplete")
+        ):
             return None
     except (
         OSError,
@@ -499,6 +540,7 @@ def _extraction_fingerprints(
             "source": str(doc),
             "source_sha256": artifact_sha256(doc),
             "manual_pages": ranges.get(doc),
+            "manual_mapped": doc in ranges,
             "context": asdict(info) if info else None,
             "candidates": (candidate_hash(roster, anchors[doc]) if doc in anchors else None),
         }
@@ -646,7 +688,13 @@ def _prepare_extraction(
     for doc in documents:
         if doc in roster_errors:
             continue
-        record = _reusable_record(plan["outputs"][doc], fingerprints[doc], evidence, validator)
+        record = _reusable_record(
+            plan["outputs"][doc],
+            fingerprints[doc],
+            evidence,
+            validator,
+            protected=_auto_targeted(inputs, doc, ranges, candidates, roster_errors, anchors),
+        )
         if record is not None:
             reused[doc] = record
     pending = [doc for doc in documents if doc not in reused]
@@ -703,6 +751,75 @@ def _document_text(doc_path, page_ranges, section_text, corrections, transcriber
         message = "Document parser returned no source text"
         raise ValueError(message)
     return text, effective, scope
+
+
+def _prepared_input(doc_path, plan, page_ranges, section_text):
+    """Return text, the exact final prompt, and scope; hold unsafe automatic input.
+
+    Protected documents never reach the primary request unbounded or oversized:
+    the final string is measured after every source hint and candidate prefix.
+    """
+    inputs = plan["inputs"]
+    protected = _plan_targeted(plan, doc_path)
+    scoped = bool(page_ranges) or section_text is not None
+    name = doc_path.name
+    if protected and not scoped and doc_path in plan.get("targeting_incomplete", ()):
+        message = f"Automatic targeting did not produce a usable scope for {name}"
+        raise TargetingSafetyError(message, code=NO_USABLE_SCOPE, document=name)
+    text, effective, parser_scope = _document_text(
+        doc_path,
+        page_ranges,
+        section_text,
+        inputs.get("ocr_corrections"),
+        plan.get("transcriber"),
+    )
+    prompt = prepend_source_context(text, source_context(doc_path, plan["context"]))
+    if anchors := plan["anchors"].get(doc_path):
+        prompt = candidates_block(plan["roster"], anchors) + prompt
+    if protected:
+        trigger = (inputs.get("page_targeting") or {}).get(
+            "trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS
+        )
+        if not scoped and len(text) > trigger:
+            message = (
+                f"{name} has {len(text)} readable characters (pages.auto_locate.trigger_chars "
+                f"{trigger}) but targeting selected nothing"
+            )
+            raise TargetingSafetyError(message, code=NO_USABLE_SCOPE, document=name)
+        limit = inputs.get("max_context", DEFAULT_MAX_CONTEXT)
+        if len(prompt) > limit:
+            message = (
+                f"Prepared extraction input for {name} is {len(prompt)} characters; "
+                f"extraction.max_context is {limit}"
+            )
+            raise TargetingSafetyError(message, code=CONTEXT_BUDGET_EXCEEDED, document=name)
+    return text, prompt, effective, parser_scope
+
+
+def _failed_outcome(doc_path, exc, plan, result=None) -> dict:
+    """Canonical failed-document outcome shared by extraction and preflight."""
+    usage = getattr(exc, "usage", None) or {}
+    blocked = isinstance(exc, TargetingSafetyError)
+    outcome = {
+        "file": doc_path.name,
+        "success": False,
+        "error": str(exc),
+        "errors": [
+            build_error_record(
+                exc,
+                stage="extract",
+                document_path=str(doc_path),
+                model=plan["llm"]["model"],
+                provider=plan["llm"]["provider"],
+            )
+        ],
+        "cost": 0 if blocked else getattr(result, "cost", usage.get("cost")),
+        "input_tokens": getattr(result, "input_tokens", usage.get("input_tokens")),
+        "output_tokens": getattr(result, "output_tokens", usage.get("output_tokens")),
+    }
+    if blocked:
+        outcome["targeting_blocked"] = True
+    return outcome
 
 
 def _roster_plan(documents, root, context, roster, inputs, transcriber=None):
@@ -789,9 +906,20 @@ def _roster_extract(extractor, schema, array, roster, candidates, budget, info):
 
 
 def _extract_one_document(
-    doc_path: Path, plan: dict, *, extractor, run_id, page_ranges=None, section_text=None
+    doc_path: Path,
+    plan: dict,
+    *,
+    extractor,
+    run_id,
+    page_ranges=None,
+    section_text=None,
+    prepare=None,
 ) -> dict:
-    """Extract and persist one record without UI or batch decisions."""
+    """Extract and persist one record without UI or batch decisions.
+
+    ``prepare(doc)`` resolves ``(page_ranges, section_text)`` inside the document
+    boundary, so a targeting failure is this document's failure.
+    """
     result = None
     llm, inputs = plan["llm"], plan["inputs"]
     model, provider = llm["model"], llm["provider"]
@@ -801,6 +929,8 @@ def _extract_one_document(
     info = source_context(doc_path, plan["context"])
     anchors = plan["anchors"].get(doc_path)
     try:
+        if prepare is not None:
+            page_ranges, section_text = prepare(doc_path)
         if doc_path in plan["roster_errors"]:
             raise ValueError(plan["roster_errors"][doc_path])
         if anchors == set():
@@ -823,16 +953,9 @@ def _extract_one_document(
                 info,
             )
         else:
-            text, effective_ranges, parser_scope = _document_text(
-                doc_path,
-                page_ranges,
-                section_text,
-                inputs.get("ocr_corrections"),
-                plan.get("transcriber"),
+            text, prompt, effective_ranges, parser_scope = _prepared_input(
+                doc_path, plan, page_ranges, section_text
             )
-            prompt = prepend_source_context(text, info)
-            if anchors:
-                prompt = candidates_block(roster, anchors) + prompt
             result = extractor.extract(prompt, plan["schema"])
             record_extraction_scope(
                 result,
@@ -840,6 +963,7 @@ def _extract_one_document(
                 omitted_page_ranges=plan.get("targeting_omitted", {}).get(doc_path),
                 section_filtered=section_text is not None,
                 parser_scope=parser_scope,
+                targeting_incomplete=doc_path in plan.get("targeting_incomplete", ()),
             )
             if anchors:
                 result.off_candidate_items = _keep_roster_items(result.data, array, roster, anchors)
@@ -882,24 +1006,7 @@ def _extract_one_document(
             doc_path,
             exc_info=True,
         )
-        usage = getattr(exc, "usage", None) or {}
-        return {
-            "file": doc_path.name,
-            "success": False,
-            "error": str(exc),
-            "errors": [
-                build_error_record(
-                    exc,
-                    stage="extract",
-                    document_path=str(doc_path),
-                    model=model,
-                    provider=provider,
-                )
-            ],
-            "cost": getattr(result, "cost", usage.get("cost")),
-            "input_tokens": getattr(result, "input_tokens", usage.get("input_tokens")),
-            "output_tokens": getattr(result, "output_tokens", usage.get("output_tokens")),
-        }
+        return _failed_outcome(doc_path, exc, plan, result)
 
 
 def _target_extraction_inputs(plan: dict):
@@ -913,21 +1020,9 @@ def _target_extraction_inputs(plan: dict):
     prepared = set()
 
     def target(doc):
-        if (
-            not targeting.get("enabled")
-            or doc in prepared
-            or doc in plan["candidates"]
-            or doc in plan["roster_errors"]
-            or plan["anchors"].get(doc) == set()
-        ):
+        if doc in prepared or not _plan_targeted(plan, doc):
             return
-        ext = doc.suffix.lower()
-        if ext == ".pdf" and doc not in ranges:
-            locator_type = PageLocator
-        elif ext in {".html", ".htm", ".doc", ".docx", ".txt"}:
-            locator_type = SectionLocator
-        else:
-            return
+        locator_type = PageLocator if doc.suffix.lower() == ".pdf" else SectionLocator
         if not hasattr(worker, "locators"):
             worker.locators = {}
         if locator_type not in worker.locators:
@@ -977,9 +1072,9 @@ def _target_extraction_inputs(plan: dict):
                 plan["targeting_incomplete"].add(doc)
                 logger.warning(
                     "Targeting incomplete; %s (record will not be reused)",
-                    "using full-document extraction"
+                    "no usable selection, document held"
                     if selection is None
-                    else "using a partial page selection",
+                    else "using a partial selection",
                 )
         prepared.add(doc)
 
@@ -993,8 +1088,11 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
     llm = plan["llm"]
     successes = [result for result in results if result["success"]]
     failed = [result for result in results if not result["success"]]
+    blocked = sum(bool(result.get("targeting_blocked")) for result in failed)
     status = (
-        "partial_failure"
+        "failed"
+        if blocked
+        else "partial_failure"
         if failed and successes
         else "failed"
         if failed
@@ -1010,7 +1108,9 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
         measured = dict(main_usage)
     else:
         measured = {
-            "calls": len(pending),
+            "calls": sum(
+                not (result.get("skipped") or result.get("targeting_blocked")) for result in results
+            ),
             "cost": sum(result.get("cost") or 0 for result in results),
             "input_tokens": sum(result.get("input_tokens") or 0 for result in results),
             "output_tokens": sum(result.get("output_tokens") or 0 for result in results),
@@ -1044,7 +1144,7 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
             "total_output_tokens": measured["output_tokens"],
             "llm_calls": measured["calls"],
             "unknown_cost_calls": measured["unknown_cost_calls"],
-            "documents_billed": len(pending),
+            "documents_billed": len(pending) - blocked,
             "models": sorted(spent),
         },
     )
@@ -1108,10 +1208,43 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     workers = inputs.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
     ranges, sections, locator_clients, target = _target_extraction_inputs(plan)
     if plan["fresh"] and output.exists() and plan["documents"]:
-        # Preserve prior output if a needed locator lacks credentials. Normal
-        # runs target inside extraction workers instead of a preparation barrier.
-        for _ in bounded_results(target, pending, workers=workers):
-            pass
+        # Preserve prior output if a needed locator lacks credentials or any
+        # protected input is unsafe. Normal runs target inside extraction workers
+        # instead of a preparation barrier; only compact scopes survive preflight.
+        def preflight(doc):
+            target(doc)
+            if _plan_targeted(plan, doc):
+                try:
+                    _prepared_input(doc, plan, ranges.get(doc), sections.get(doc))
+                except TargetingSafetyError as exc:
+                    return doc, exc
+            return doc, None
+
+        order = {doc: index for index, doc in enumerate(pending)}
+        held = sorted(
+            (
+                (doc, exc)
+                for doc, exc in bounded_results(preflight, pending, workers=workers)
+                if exc is not None
+            ),
+            key=lambda item: order[item[0]],
+        )
+        if held:
+            blocked = []
+            for doc, exc in held:
+                if on_progress:
+                    on_progress(doc, None)
+                blocked.append(_failed_outcome(doc, exc, plan))
+                if on_progress:
+                    on_progress(doc, blocked[-1])
+            return _complete_extraction(
+                {**plan, "pending": [doc for doc, _ in held], "withdrawn": []},
+                blocked,
+                extractor,
+                locator_clients,
+                run_id,
+                started,
+            )
         shutil.rmtree(output)
     results = []
     for doc, record in plan["reused"].items():
@@ -1127,16 +1260,12 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
             }
         )
 
-    def extract(doc):
+    def scope(doc):
         target(doc)
-        return _extract_one_document(
-            doc,
-            plan,
-            extractor=extractor,
-            run_id=run_id,
-            page_ranges=ranges.get(doc),
-            section_text=sections.get(doc),
-        )
+        return ranges.get(doc), sections.get(doc)
+
+    def extract(doc):
+        return _extract_one_document(doc, plan, extractor=extractor, run_id=run_id, prepare=scope)
 
     queue, running = enumerate(pending), {}
     outcomes = [None] * len(pending)
@@ -1179,7 +1308,12 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
             if "selected_page_ranges"
             in (coverage := record.get("processing_metrics", {}).get("coverage", {}))
         }
-        used.update(ranges)
+        held = {
+            doc
+            for doc, outcome in zip(pending, outcomes, strict=True)
+            if outcome.get("targeting_blocked")
+        }
+        used.update({doc: found for doc, found in ranges.items() if doc not in held})
         buffer = io.StringIO(newline="")
         writer = csv.writer(buffer)
         writer.writerow(["file_path", "start_page", "end_page"])

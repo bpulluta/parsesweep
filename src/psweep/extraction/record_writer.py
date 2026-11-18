@@ -73,6 +73,7 @@ def record_extraction_scope(
     omitted_page_ranges: PageRanges | None = None,
     section_filtered: bool = False,
     parser_scope: dict | None = None,
+    targeting_incomplete: bool = False,
 ) -> None:
     """Retain selected-input limitations in the canonical result."""
     coverage = dict(getattr(result, "coverage", None) or {})
@@ -88,6 +89,12 @@ def record_extraction_scope(
         warnings.append(
             "Page targeting left out relevant pages "
             f"{format_page_ranges(omitted_page_ranges)} to stay within max_selected_pages."
+        )
+    if targeting_incomplete:
+        coverage["targeting_incomplete"] = True
+        warnings.append(
+            "Page targeting could not confirm every cross-reference; the selection is a "
+            "known partial and may omit needed pages."
         )
     if section_filtered:
         coverage["section_filtered"] = True

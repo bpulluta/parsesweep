@@ -75,6 +75,17 @@ class ExtractionError(ParseSweepError):
         self.document = document
 
 
+class TargetingSafetyError(ExtractionError):
+    """Raised when automatic targeting leaves no safe input for the primary request.
+
+    ``code`` is a stable machine-readable reason; it never carries document text.
+    """
+
+    def __init__(self, message: str, *, code: str, document: str | None = None) -> None:
+        super().__init__(message, document=document)
+        self.code = code
+
+
 class CompilationError(ParseSweepError):
     """Raised when JSON→Excel/CSV compilation fails."""
 

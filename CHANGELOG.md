@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (extraction targeting safety)
+- A running header naming the target no longer makes every page mandatory:
+  only its earliest page is kept, body and wrapped identity pages stay. A
+  176-page tariff with the utility name in every header could never be targeted
+  under a 60-page cap and fell back to the whole document, truncated.
+- Automatic targeting fails closed. A governed document with no usable
+  selection, readable text over `trigger_chars` and no selection, or a final
+  input (source hints and candidate context included) over `max_context` is held
+  before the extraction request (`targeting_no_usable_scope`,
+  `targeting_context_budget_exceeded`, category `targeting`) instead of sending
+  the whole document or a silently sliced prefix. A hold ends the extract stage
+  `failed` (exit 1), so `run` does not compile historical records. A
+  document with no readable native PDF text is now held too (use a blank CSV
+  row to force OCR of the full document).
+- `--fresh` runs these checks before deleting output and keeps previous records
+  when a document is held; blocked documents report no primary calls or tokens.
+- The final selected reference frontier is read even when the page cap is full,
+  so its dependencies are reported as omitted (one extra locator call per
+  locate); a later smaller reference range can reclaim pages from an omitted
+  larger one.
+- A page-range answer with any malformed member is rejected whole rather than
+  using the valid remainder. A reference-pass failure keeps the established pages,
+  records `coverage.targeting_incomplete` and is never reused.
+- A CSV row that is blank (full document) is now distinct from no row in the
+  record fingerprint and skips targeting for HTML/DOC/DOCX/TXT as it did for PDF.
+- Cache impact: `LOCATOR_BEHAVIOR_VERSION` is bumped, which invalidates every
+  `.pages/`/`.sections/` selection and every extraction-record fingerprint in
+  runs with `pages.auto_locate` enabled (including small, CSV-mapped and
+  unsupported files), so the next run re-locates and re-extracts those
+  documents (paid). Domains without targeting keep their fingerprints.
+
 ### Changed (breaking config)
 - Discovery `selection` target rules are renamed:
   `target_identity_require_any_templates` → `target_require_any`,

@@ -15,13 +15,15 @@ Strategy (cheap first, LLM second):
    one-line outline of every page, and ask which other parts they refer to
    hold information the section needs (e.g. "charges are specified in
    Sheet 75"). Repeat for the pages that adds until nothing new is referenced
-   or ``max_selected_pages`` is spent; relevant parts that do not fit are
+   or ``max_selected_pages`` is spent (the final selected frontier is still
+   read, so its dependencies are reported); relevant parts that do not fit are
    reported as omitted.
 
 Results are cached in a ``.pages/<stem>.json`` sidecar, verified against
 source SHA-256 and resolved model/effective settings. Cached selections are
 checked against the page count and budget without parsing. ``locate`` returns
-``None`` on failure so the caller can fall back to full-document extraction.
+``None`` when no selection is established; ``incomplete`` tells the caller
+whether that was a failure or a valid absence.
 """
 
 from __future__ import annotations
@@ -52,7 +54,7 @@ from .provenance import SourceContext, prepend_source_context
 logger = logging.getLogger(__name__)
 
 PAGE_CACHE_DIRNAME = ".pages"
-LOCATOR_BEHAVIOR_VERSION = "subject-aware-v2"
+LOCATOR_BEHAVIOR_VERSION = "subject-aware-v3"
 
 # Single source of truth for the ``pages.auto_locate`` defaults, shared by the
 # CLI resolver and PageLocator so ``--help``/docs and runtime never drift.
@@ -184,11 +186,16 @@ class _BaseLocator:
             value.strip() for value in (info.target_label, self._subject) if value and value.strip()
         ]
 
+    def _normalized_hints(self) -> set[str]:
+        from psweep.utils.evidence import normalize
+
+        return {f" {phrase} " for value in self._subject_hints if (phrase := normalize(value))}
+
     def _subject_indices(self, texts) -> list[int]:
         """Match identity phrases using the roster's existing text normalization."""
         from psweep.utils.evidence import normalize
 
-        hints = {f" {phrase} " for value in self._subject_hints if (phrase := normalize(value))}
+        hints = self._normalized_hints()
         if not hints:
             return []
         indices = []
@@ -371,14 +378,51 @@ class PageLocator(_BaseLocator):
             }
         )
 
+    def _mandatory_indices(self, pages: list[str]) -> list[int]:
+        """Identity pages that must stay selected, counting a repeated margin once.
+
+        A running header or footer naming the subject recurs on most pages. Only
+        its earliest page is mandatory; body (non-margin) occurrences, including
+        names wrapped across lines, still make their own page mandatory.
+        """
+        from psweep.utils.evidence import normalize
+
+        hints = self._normalized_hints()
+        if not hints:
+            return []
+        lines = [[normalize(line) for line in page.splitlines() if line.strip()] for page in pages]
+        recurring = {}  # boundary offset (0 first line, -1 last line) -> identity patterns
+        for edge in (0, -1):
+            counts = Counter(page[edge] for page in lines if page)
+            recurring[edge] = {
+                pattern
+                for pattern, count in counts.items()
+                if count > max(1, len(pages) / 2) and any(hint in f" {pattern} " for hint in hints)
+            }
+        mandatory, represented = set(), set()
+        for index, page in enumerate(lines):
+            body = list(page)
+            for edge in (0, -1):
+                if not page or page[edge] not in recurring[edge]:
+                    continue
+                if (edge, page[edge]) not in represented:
+                    represented.add((edge, page[edge]))
+                    mandatory.add(index)
+                if body:
+                    body.pop(edge)
+            if any(hint in f" {' '.join(body)} " for hint in hints):
+                mandatory.add(index)
+        return sorted(mandatory)
+
     # -- LLM calls ---------------------------------------------------------
 
     def _ask_ranges(
         self, page_total: int, *, system: str, user_prompt: str
     ) -> list[tuple[int, int]] | None:
-        """Return the valid ranges an answer names, clamped to the document.
+        """Return the ranges an answer names, clamped to the document.
 
-        ``None`` means the call failed or the answer had no ranges list.
+        An empty list is a valid "none". ``None`` means the call failed or any
+        member was malformed, so no subset of the answer is authoritative.
         """
         try:
             result = self._ensure_client().extract(
@@ -400,14 +444,14 @@ class PageLocator(_BaseLocator):
             return None
         valid = []
         for rng in ranges:
-            if not isinstance(rng, dict):
-                continue
-            start, end = rng.get("start"), rng.get("end")
-            if type(start) is int and type(end) is int and start <= end:
-                start, end = max(1, start), min(page_total, end)
-                if start <= end:
-                    valid.append((start, end))
-        return valid if valid or not ranges else None
+            bounds = (rng.get("start"), rng.get("end")) if isinstance(rng, dict) else (None, None)
+            if any(type(bound) is not int for bound in bounds) or bounds[0] > bounds[1]:
+                return None
+            start, end = max(1, bounds[0]), min(page_total, bounds[1])
+            if start > end:
+                return None
+            valid.append((start, end))
+        return valid
 
     def _confirm_with_llm(self, pages: list[str], candidates: list[int]) -> list[int] | None:
         """Ask which candidate pages hold the section; return them in page order."""
@@ -448,18 +492,20 @@ class PageLocator(_BaseLocator):
         )
 
     def _follow_references(
-        self, pages: list[str], chosen: list[int], requested: set[int]
+        self, pages: list[str], chosen: list[int], omitted: set[int]
     ) -> tuple[list[int], list[int]]:
-        """Add the parts selected pages refer to until none are new or the budget is spent.
+        """Add the parts selected pages refer to until none are new.
 
-        Each pass reads the pages the previous pass added. Referenced parts are
-        taken whole in the model's priority order; parts that do not fit the
-        budget are returned as omitted. A failed pass marks the result incomplete.
+        Each pass reads the pages the previous pass added, including a final
+        frontier that fills the budget, so its dependencies are reported.
+        Referenced parts are taken whole in the model's priority order; parts
+        whose unselected pages do not fit are omitted, and omitted pages are
+        never read. A failed pass marks the result incomplete.
         """
         outline = self._outline(pages)
-        chosen_set, omitted = set(chosen), set()
+        chosen_set, omitted = set(chosen), set(omitted)
         frontier = chosen
-        while frontier and len(chosen_set) < self._max_pages:
+        while frontier:
             frontier_text = "\n\n".join(f"[page {n}]\n{pages[n - 1]}" for n in frontier)
             user_prompt = self._scope_prompt(
                 f"TARGET SECTION: {self._description}\n\n"
@@ -478,10 +524,12 @@ class PageLocator(_BaseLocator):
                 break
             added = []
             for start, end in ranges:
-                part = [n for n in range(start, end + 1) if n not in requested]
-                requested.update(part)
+                part = [n for n in range(start, end + 1) if n not in chosen_set]
+                if not part:
+                    continue
                 if len(chosen_set) + len(part) <= self._max_pages:
                     chosen_set.update(part)
+                    omitted.difference_update(part)
                     added.extend(part)
                 else:
                     omitted.update(part)
@@ -559,13 +607,17 @@ class PageLocator(_BaseLocator):
             from .pdf_utils import extract_pages_text
 
             pages = extract_pages_text(pdf_path)
-            if sum(map(len, pages)) <= self.trigger_chars:
-                return None
-        if not pages:
+            loaded = True
+        else:
+            loaded = False
+        # Unreadable native text is unknown, not a harmless small document.
+        if not any(page.strip() for page in pages):
             self.incomplete = True
             return None
+        if loaded and sum(map(len, pages)) <= self.trigger_chars:
+            return None
 
-        subject = [index + 1 for index in self._subject_indices(pages)]
+        subject = [index + 1 for index in self._mandatory_indices(pages)]
         if self._subject_hints and not subject:
             logger.debug("Page targeting: subject not anchored for %s", pdf_path.name)
             self.incomplete = True
@@ -582,19 +634,16 @@ class PageLocator(_BaseLocator):
             return None
 
         # Identity pages cannot be crowded out by a keyword-dense unrelated
-        # answer. If they cannot fit, a full-document fallback is safer than
-        # certifying an excerpt with missing subject context.
+        # answer. If they cannot fit, hold rather than certify an excerpt with
+        # missing subject context.
         if len(subject) > self._max_pages:
             self.incomplete = True
             return None
         priority = [*subject, *(number for number in primary if number not in subject)]
         chosen, omitted = self._follow_references(
-            pages, priority[: self._max_pages], requested=set(priority)
+            pages, priority[: self._max_pages], set(priority[self._max_pages :])
         )
-        selection = PageSelection(
-            ranges_from_pages(chosen),
-            ranges_from_pages([*priority[self._max_pages :], *omitted]),
-        )
+        selection = PageSelection(ranges_from_pages(chosen), ranges_from_pages(omitted))
         if not self.incomplete:
             self._write_cache(pdf_path, selection, page_count=len(pages))
         return selection

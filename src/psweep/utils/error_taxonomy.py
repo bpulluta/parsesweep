@@ -10,6 +10,7 @@ from psweep.exceptions import (
     ExtractionError,
     SchemaMetadataError,
     SchemaValidationError,
+    TargetingSafetyError,
 )
 from psweep.utils.retry import CONNECTION_ERRORS, http_status, is_transient_error
 
@@ -28,7 +29,10 @@ def build_error_record(
     category = "internal"
     code = "unexpected_processing_error"
 
-    if (
+    if isinstance(exc, TargetingSafetyError):
+        category = "targeting"
+        code = exc.code
+    elif (
         "context_window_exceeded" in lowered_message
         or "context_length_exceeded" in lowered_message
         or "maximum context length" in lowered_message
