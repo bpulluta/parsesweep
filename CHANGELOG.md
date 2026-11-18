@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `curate` and `gc` keep their positional domain argument (the same key).
   Without the option nothing changes. No cache or regrade impact.
 
+### Fixed (search budget: a target's query slots run in order)
+- Under `runtime.max_search_calls`, a fallback pass dispatched every query-slot job
+  concurrently, but a target's jobs share one pre-reserved allocation. A slow
+  "first query" job could lose its unit to the same target's "second query", so
+  which query ran depended on thread timing (intermittent
+  `test_fallback_budget_visits_first_query_for_every_owner_before_second`).
+  Each target's jobs now run back to back in slot order while targets still run
+  concurrently, so a tight budget deterministically visits every owner's first
+  query before any second query.
+- Cache impact: none. No regrade, no re-extraction, no new config keys.
+
 ### Fixed (discovery publication: final decisions apply in incomplete partitions)
 - A shared partition left incomplete by one retryable failure used to publish
   additively and ignore every other decision, so the consolidated `curated/`

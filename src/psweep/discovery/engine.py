@@ -760,14 +760,30 @@ class DiscoveryEngine:
             # submission order before anything reads them.
             positioned_jobs = list(enumerate(seeker_jobs))
 
-            def _discover_positioned(job):
-                position, (job_idx, seeker_input) = job
-                return position, self._discover_target_candidates(seeker, job_idx, seeker_input)
+            # Jobs of one target (one per query slot in a fallback pass) share
+            # that target's pre-reserved budget, so they must reach it in slot
+            # order: run each target's jobs back to back on one worker. Targets
+            # still run concurrently, and groups are ordered by their first job,
+            # so budget admission stays deterministic however threads schedule.
+            jobs_by_target: dict[int, list] = {}
+            for position, (job_idx, seeker_input) in positioned_jobs:
+                jobs_by_target.setdefault(job_idx, []).append((position, seeker_input))
 
-            positioned_results = bounded_results(
-                _discover_positioned,
-                positioned_jobs,
-                workers=max_concurrent,
+            def _discover_target_jobs(group):
+                job_idx, jobs = group
+                return [
+                    (position, self._discover_target_candidates(seeker, job_idx, seeker_input))
+                    for position, seeker_input in jobs
+                ]
+
+            positioned_results = (
+                result
+                for group_results in bounded_results(
+                    _discover_target_jobs,
+                    list(jobs_by_target.items()),
+                    workers=max_concurrent,
+                )
+                for result in group_results
             )
             discovery_results = (
                 result for _position, result in sorted(positioned_results, key=itemgetter(0))

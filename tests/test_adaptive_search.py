@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -551,6 +552,31 @@ def test_fallback_budget_visits_first_query_for_every_owner_before_second(harnes
     assert sorted(queries[-3:]) == ["second A", "second B", "second C"]
     assert len(queries) == len(set(queries)) == 9
     assert payload(second)["stage_summaries"]["fallback"]["pending_targets"] == 0
+
+
+def test_fallback_budget_never_lets_second_query_take_first_querys_unit(harness, monkeypatch):
+    """A slow first-query job must not lose its budget unit to the same owner's second query."""
+    responses, queries, _fetched, _grades, _decisions, _failures = harness
+    for label in "ABC":
+        for name in ("initial", "first", "second"):
+            responses[f"{name} {label}"] = []
+    discover = SerpApiSeeker.discover
+
+    def slow_first_c(self, seeker_input):
+        if seeker_input.queries == ["first C"]:
+            time.sleep(0.3)  # every other job reaches the budget before this one
+        return discover(self, seeker_input)
+
+    monkeypatch.setattr(SerpApiSeeker, "discover", slow_first_c)
+    req = request(
+        targets=[{"label": label} for label in "ABC"],
+        fallback_queries=["first {label}", "second {label}"],  # noqa: RUF027
+        max_search_calls=6,
+        max_concurrent_downloads=4,
+    )
+    DiscoveryEngine().run(req)
+    assert sorted(queries[3:]) == ["first A", "first B", "first C"]
+    assert "second C" not in queries
 
 
 def test_exhausted_missing_coverage_is_completed_not_budget_pending(harness, monkeypatch):
