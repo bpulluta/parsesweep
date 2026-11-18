@@ -414,7 +414,7 @@ positionally) and writes one JSON record per document to
 | `max_context` | `600000` | Characters sent per call. A hard limit on the final prepared input on every path (automatic targeting, CSV/`pages.range` scope, or no targeting), source hints and candidate context included (characters, not tokens). Longer input is held, never cut to a prefix. |
 | `max_concurrent` | `4` | Documents extracted in parallel (also concurrent transcription chunks). |
 | `timeout_seconds` | `120` (`LLM_TIMEOUT`) | Per-request LLM timeout. |
-| `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR text only. |
+| `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR-derived pages only; native text layers are never corrected. |
 | `pages` | — | Page selection for large documents (below). |
 
 ### Page selection
@@ -810,7 +810,7 @@ Supported inputs (discovery downloads exactly these; extraction reads them):
 
 | Kind | Extensions | Read as |
 |------|-----------|---------|
-| Documents | `.pdf` `.doc` `.docx` `.txt` | Text, with OCR for scanned PDFs |
+| Documents | `.pdf` `.doc` `.docx` `.txt` | Text; PDFs are judged page by page (below) |
 | Web pages | `.html` `.htm` | Main text |
 | Data | `.csv` `.xlsx` `.json` | One `Header: value \| …` line per record (CSV, each sheet, JSON record arrays such as Socrata/ArcGIS/GeoJSON/CKAN); other JSON as indented text |
 | Audio | `.mp3` `.m4a` `.wav` `.ogg` `.flac` | Transcript ([Audio](#audio)) |
@@ -879,6 +879,21 @@ reports a primary with records to withdraw as stale. `extract --fresh` resets
 the output after a successful preflight. `compile --fresh` clears stale
 compiled files; `validate --fresh` clears `validated/`. `run --fresh` passes
 `--fresh` to every stage.
+
+**PDF page representation.** Each selected page is judged on its own, never by
+a document total. A page with a text layer is `native`. A page mostly covered
+by raster images (at least half its area) with under 500 characters of text,
+or with no text and visible images or drawings, is OCR-ed locally and marked
+`ocr`. A page with nothing to read is `blank` (OCR is never attempted and it
+counts as covered); decorative images such as logos do not change that. A
+raster page that OCR cannot read (or when OCR is unavailable) is `unreadable`.
+Only `native`, `ocr` and `blank` pages count as `extracted_pages`, so an
+unreadable selected page makes the record's coverage `parser_partial` with a
+warning instead of being certified as extracted. The per-page status is in the
+extraction metadata under `pages` and keeps the original page numbers; the
+page locator's index OCRs raster pages too, so scans can be targeted.
+`ocr_corrections` apply only to OCR pages. `pdf_inspection` and discovery
+screening are unchanged and stay native-only.
 
 **Caches.** OCR text and transcripts: `.text/<filename>.txt` + `.meta.json`
 beside the document, verified by size, mtime and SHA-256 and carried to a

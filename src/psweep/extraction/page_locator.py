@@ -647,7 +647,7 @@ class PageLocator(_BaseLocator):
 
         from .pdf_utils import extract_pages_text
 
-        pages = extract_pages_text(pdf_path)
+        pages = extract_pages_text(pdf_path, ocr=True)
         # Unreadable native text is unknown, not a harmless small document.
         if not any(page.strip() for page in pages):
             self.incomplete = True

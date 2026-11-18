@@ -265,9 +265,9 @@ def test_effective_product_stays_frozen_with_raw_ocr_corrections(tmp_path, metho
 
     document = tmp_path / ("doc.mp3" if method.startswith("transcript:") else "doc.txt")
     document.write_bytes(b"source A")
-    write_text_cache(document, "A evidcnce", method=method)
+    write_text_cache(document, "A evidcnce", method=method, ocr_spans=[(0, 10)])
     with capture_source(document) as source:
-        write_text_cache(document, "B evidence", method=method)
+        write_text_cache(document, "B evidence", method=method, ocr_spans=[(0, 10)])
         text = extract_text_from_document(
             document,
             source=source,

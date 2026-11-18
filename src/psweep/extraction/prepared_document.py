@@ -41,6 +41,7 @@ class CapturedText:
     sha256: str
     page_count: int | None
     ocr_raw: bool | None
+    ocr_spans: tuple[tuple[int, int], ...] = ()
 
     @property
     def identity(self) -> dict:
@@ -136,6 +137,7 @@ def capture_source(
                 identity["text_sha256"],
                 identity["page_count"],
                 identity["ocr_raw"],
+                tuple((start, end) for start, end in metadata.get("ocr_spans") or ()),
             )
         actual = product.identity if product else None
         # A derived cache may safely appear during this run. An authoritative

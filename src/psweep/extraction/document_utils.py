@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from psweep.utils.file_io import artifact_sha256, staged_file
 from psweep.utils.page_range import PageRanges
-from .pdf_utils import _cleanup_ocr_errors
+from .pdf_utils import apply_ocr_corrections
 from .transcription import AUDIO_EXTENSIONS, transcript
 
 if TYPE_CHECKING:
@@ -40,6 +40,21 @@ def text_cache_paths(file_path: Path) -> tuple[Path, Path]:
     )
 
 
+def _valid_spans(spans, meta: dict) -> bool:
+    """Check OCR page offsets are ordered, disjoint and inside the cached text."""
+    if not isinstance(spans, list):
+        return False
+    previous = 0
+    for span in spans:
+        if not (isinstance(span, list) and len(span) == 2 and all(type(v) is int for v in span)):
+            return False
+        start, end = span
+        if not previous <= start <= end <= int(meta.get("chars", -1)):
+            return False
+        previous = end
+    return True
+
+
 def read_text_cache(
     file_path: Path, *, return_meta: bool = False, source_sha256: str | None = None
 ):
@@ -53,9 +68,11 @@ def read_text_cache(
     txt_path, meta_path = text_cache_paths(file_path)
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        # Older OCR entries may contain domain-specific corrections.
-        # They cannot safely be consumed as raw OCR under current rules.
-        if meta.get("method") == "ocr" and meta.get("ocr_raw") is not True:
+        # Older OCR entries may contain domain-specific corrections or lack
+        # per-page OCR offsets; neither can be consumed under current rules.
+        if meta.get("method") == "ocr" and (
+            meta.get("ocr_raw") is not True or not _valid_spans(meta.get("ocr_spans"), meta)
+        ):
             return None
         if source_sha256 is not None:
             if meta.get("source_sha256") != source_sha256:
@@ -86,13 +103,16 @@ def write_text_cache(
     *,
     page_count: int | None = None,
     source: CapturedSource | None = None,
+    ocr_spans: list | None = None,
 ) -> None:
     """Write the cache via flushed temporary files, metadata last.
 
     A ``source`` capture supplies the identity of the bytes the text came
     from; without one the live path is read.
 
-    OCR callers supply raw text, never corrected text. Discovery also
+    OCR callers supply raw text, never corrected text, plus ``ocr_spans``: the
+    offsets of OCR-derived pages in it (native pages are never corrected).
+    Discovery also
     caches browser/API products under their own ``method``. Cheap native
     document parsing remains uncached.
     Each file is atomically replaced, not the pair as a transaction.
@@ -117,6 +137,11 @@ def write_text_cache(
                 "method": method,
                 "ocr_raw": method == "ocr",
                 "page_count": page_count,
+                **(
+                    {"ocr_spans": [list(span) for span in ocr_spans or []]}
+                    if method == "ocr"
+                    else {}
+                ),
             },
             indent=2,
         ).encode("utf-8")
@@ -365,7 +390,12 @@ def extract_text_from_document(
     # partial slice never poisons the full-text cache other stages depend on.
     if page_ranges is None:
         cached = (
-            ((source.cached_text.text, source.cached_text.identity) if source.cached_text else None)
+            (
+                source.cached_text.text,
+                {**source.cached_text.identity, "ocr_spans": source.cached_text.ocr_spans},
+            )
+            if source is not None and source.cached_text
+            else None
             if source is not None
             else read_text_cache(file_path, return_meta=True)
         )
@@ -373,7 +403,7 @@ def extract_text_from_document(
             text, cache_meta = cached
             used_ocr = cache_meta.get("method") == "ocr"
             if used_ocr:
-                text = _cleanup_ocr_errors(text, ocr_corrections)
+                text = apply_ocr_corrections(text, cache_meta["ocr_spans"], ocr_corrections)
             page_count = cache_meta.get("page_count")
             pages = list(range(1, page_count + 1)) if page_count else []
             meta = {
@@ -404,15 +434,21 @@ def extract_text_from_document(
         )
 
     if meta.get("used_ocr"):
-        raw_text = meta.get("raw_ocr_text", text)
+        raw_text = meta["raw_text"]
         meta["raw_text_sha256"] = hashlib.sha256(raw_text.encode()).hexdigest()
         page_count = meta.get("page_count")
         pages = meta.get("extracted_pages")
         # Skipped OCR pages must not produce a whole-document cache.
         complete = pages is None or (page_count is not None and len(pages) == page_count)
         if page_ranges is None and raw_text and complete:
-            write_text_cache(file_path, raw_text, page_count=page_count, source=source)
-        text = _cleanup_ocr_errors(raw_text, ocr_corrections)
+            write_text_cache(
+                file_path,
+                raw_text,
+                page_count=page_count,
+                source=source,
+                ocr_spans=meta["ocr_spans"],
+            )
+        text = apply_ocr_corrections(raw_text, meta["ocr_spans"], ocr_corrections)
     return (text, meta) if return_meta else text
 
 

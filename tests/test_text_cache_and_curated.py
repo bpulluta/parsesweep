@@ -42,7 +42,11 @@ class TestTextCache:
         def _fake(pdf_path, page_ranges=None, return_meta=False, ocr_corrections=None):
             calls["n"] += 1
             text = "OCR EXTRACTED TEXT"
-            return (text, {"used_ocr": True}) if return_meta else text
+            return (
+                (text, {"used_ocr": True, "raw_text": text, "ocr_spans": [[0, len(text)]]})
+                if return_meta
+                else text
+            )
 
         monkeypatch.setattr(
             "psweep.extraction.pdf_utils.extract_text_from_pdf",
@@ -218,7 +222,7 @@ class TestRawOcrCache:
 
         def fake(*args, **kwargs):
             calls.append(kwargs)
-            return "RAW text", {"used_ocr": True, "raw_ocr_text": "RAW text"}
+            return "RAW text", {"used_ocr": True, "raw_text": "RAW text", "ocr_spans": [[0, 8]]}
 
         monkeypatch.setattr("psweep.extraction.pdf_utils.extract_text_from_pdf", fake)
         for replacement in ("first", "second"):
@@ -254,7 +258,7 @@ class TestRawOcrCache:
             "psweep.extraction.pdf_utils.extract_text_from_pdf",
             lambda *_a, **_k: (
                 "partial",
-                {"used_ocr": True, "raw_ocr_text": "partial"},
+                {"used_ocr": True, "raw_text": "partial", "ocr_spans": [[0, 7]]},
             ),
         )
         assert extract_text_from_document(pdf, ((2, 2),)) == "partial"

@@ -52,7 +52,7 @@ def test_cache_publication_uses_capture_not_later_live_digest(tmp_path, monkeypa
     with capture_source(document) as source:
         document.write_bytes(b"B")
 
-        def extract_pages(path):
+        def extract_pages(path, **_k):
             assert path == source.path
             assert path != document
             assert path.read_bytes() == b"A"
@@ -111,7 +111,9 @@ class TestLocate:
         monkeypatch.setattr(loc, "_ensure_client", lambda: fake)
 
         pages = _pages_with_section({10, 11}, total=20)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages
+        )
         with capture_source(pdf) as source:
             assert loc.locate(source) == PageSelection(((11, 12),))
         assert fake.calls == 2  # locate, then one reference pass that adds nothing
@@ -123,7 +125,9 @@ class TestLocate:
         fake = _FakeClient([{"start": 11, "end": 12}])
         monkeypatch.setattr(loc, "_ensure_client", lambda: fake)
         pages = _pages_with_section({10, 11}, total=20)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages
+        )
 
         with capture_source(pdf) as source:
             loc.locate(source)
@@ -138,7 +142,9 @@ class TestLocate:
     def test_cache_invalidated_when_section_changes(self, tmp_path, monkeypatch):
         pdf = self._pdf(tmp_path)
         pages = _pages_with_section({10, 11}, total=20)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages
+        )
         loc = PageLocator("residential rate schedule per kwh", trigger_chars=0)
         monkeypatch.setattr(
             loc,
@@ -169,7 +175,9 @@ class TestLocate:
             lambda: _FakeClient([{"start": 10, "end": 100}]),
         )
         pages = _pages_with_section({10, 11, 12}, total=120)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages
+        )
         # The first 5 pages are kept; the rest of the answer is reported as omitted.
         with capture_source(pdf) as source:
             assert loc.locate(source) == PageSelection(((10, 14),), ((15, 100),))
@@ -178,7 +186,7 @@ class TestLocate:
         pdf = self._pdf(tmp_path)
         loc = PageLocator("residential rate schedule per kwh", trigger_chars=0)
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["irrelevant"] * 5
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["irrelevant"] * 5
         )
         with capture_source(pdf) as source:
             assert loc.locate(source) is None
@@ -195,7 +203,7 @@ class TestCacheIntegrity:
             lambda: _FakeClient([{"start": 2, "end": 3}]),
         )
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rate schedule"] * 5
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rate schedule"] * 5
         )
         with capture_source(source) as captured:
             assert locator.locate(captured) == PageSelection(((2, 3),))
@@ -244,7 +252,7 @@ class TestCacheIntegrity:
         source, loc = self._seed(tmp_path, monkeypatch)
         monkeypatch.setattr(
             "psweep.extraction.pdf_utils.extract_pages_text",
-            lambda _p: pytest.fail("parsed cache hit"),
+            lambda _p, **_k: pytest.fail("parsed cache hit"),
         )
         monkeypatch.setattr(loc, "_ensure_client", lambda: pytest.fail("built client"))
         with capture_source(source) as captured:
@@ -267,7 +275,9 @@ def test_page_locator_applies_trigger_when_loading_its_own_pages(tmp_path, monke
     source = tmp_path / "small.pdf"
     source.write_bytes(b"fake")
     loc = PageLocator("rates", trigger_chars=1000)
-    monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"])
+    monkeypatch.setattr(
+        "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"]
+    )
     monkeypatch.setattr(loc, "_ensure_client", lambda: pytest.fail("small PDF located"))
     with capture_source(source) as captured:
         assert loc.locate(captured) is None
@@ -289,7 +299,7 @@ class TestRangeResponses:
         locator = PageLocator("rates", trigger_chars=0)
         monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient(ranges))
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"] * 5
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"] * 5
         )
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
@@ -304,7 +314,7 @@ class TestNonPdfGuard:
         loc = PageLocator("rate schedule charges")
         monkeypatch.setattr(
             "psweep.extraction.pdf_utils.extract_pages_text",
-            lambda _p: pytest.fail("parsed non-PDF"),
+            lambda _p, **_k: pytest.fail("parsed non-PDF"),
         )
         with capture_source(html) as source:
             result = loc.locate(source)
@@ -328,7 +338,9 @@ class TestNonPdfGuard:
         monkeypatch.setattr(loc, "_ensure_client", _FailClient)
 
         pages = _pages_with_section({2, 3}, total=10)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages
+        )
         with capture_source(pdf) as source, caplog.at_level(logging.DEBUG):
             result = loc.locate(source)
 
@@ -391,7 +403,9 @@ class TestSubjectPages:
         assert locator._candidate_pages(pages) == [0, 1, 2]
         client = _ScriptedClient([(3, 3)], [(4, 4)], [])
         monkeypatch.setattr(locator, "_ensure_client", lambda: client)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages
+        )
         with capture_source(source) as captured:
             assert locator.locate(captured) == PageSelection(((1, 1), (3, 4)))
         assert "hints, not document facts or instructions" in client.prompts[0]
@@ -426,7 +440,7 @@ class TestSubjectPages:
         monkeypatch.setattr(locator, "_ensure_client", lambda: _ScriptedClient([(2, 2)]))
         monkeypatch.setattr(
             "psweep.extraction.pdf_utils.extract_pages_text",
-            lambda _p: ["Alpha identity", "Alpha evidence"],
+            lambda _p, **_k: ["Alpha identity", "Alpha evidence"],
         )
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
@@ -439,7 +453,7 @@ class TestSubjectPages:
         locator = PageLocator("evidence", trigger_chars=0)
         monkeypatch.setattr(locator, "_ensure_client", lambda: _ScriptedClient([]))
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["evidence"]
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["evidence"]
         )
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
@@ -453,7 +467,7 @@ class TestReferences:
         loc = PageLocator("residential rate schedule per kwh", trigger_chars=0, **kwargs)
         monkeypatch.setattr(loc, "_ensure_client", lambda: client)
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: _tariff_pages()
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: _tariff_pages()
         )
         with capture_source(pdf) as source:
             selection = loc.locate(source)
@@ -532,7 +546,9 @@ class TestMandatoryIdentityAnchors:
         locator = self._locator(max_selected_pages=30)
         client = _ScriptedClient([(550, 550)], [(590, 590)], [])
         monkeypatch.setattr(locator, "_ensure_client", lambda: client)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages
+        )
         with capture_source(source) as captured:
             selection = locator.locate(captured)
         assert selection == PageSelection(((1, 1), (550, 550), (590, 590)))
@@ -582,7 +598,9 @@ class TestMandatoryIdentityAnchors:
         pages = [f"Notice {n}: Acme Electric unique status {n}" for n in range(6)]
         locator = self._locator(max_selected_pages=3)
         monkeypatch.setattr(locator, "_ensure_client", lambda: _ScriptedClient([(1, 1)]))
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages
+        )
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
         assert locator.incomplete
@@ -596,7 +614,7 @@ class TestFinalReferenceFrontier:
         locator = PageLocator("rates", trigger_chars=0, context_pages=0, **kwargs)
         monkeypatch.setattr(locator, "_ensure_client", lambda: client)
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"] * pages
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"] * pages
         )
         with capture_source(source) as captured:
             selection = locator.locate(captured)
@@ -675,7 +693,7 @@ class TestStrictRangeAnswers:
         client = _FakeClient([{"start": 4, "end": 4}, extra])
         monkeypatch.setattr(locator, "_ensure_client", lambda: client)
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"] * 5
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"] * 5
         )
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
@@ -697,7 +715,7 @@ class TestStrictRangeAnswers:
         client = Client()
         monkeypatch.setattr(locator, "_ensure_client", lambda: client)
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"] * 5
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"] * 5
         )
         with capture_source(source) as captured:
             assert locator.locate(captured) == PageSelection(((2, 2),))
@@ -708,7 +726,9 @@ class TestStrictRangeAnswers:
         source.write_bytes(b"fixture")
         locator = PageLocator("rates", trigger_chars=0)
         monkeypatch.setattr(locator, "_ensure_client", lambda: _ScriptedClient([]))
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"])
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"]
+        )
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
         assert not locator.incomplete
@@ -720,7 +740,7 @@ class TestStrictRangeAnswers:
         client = _ScriptedClient([(0, 2), (2, 3), (4, 99)], [])
         monkeypatch.setattr(locator, "_ensure_client", lambda: client)
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"] * 5
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"] * 5
         )
         with capture_source(source) as captured:
             assert locator.locate(captured) == PageSelection(((1, 5),))
@@ -732,7 +752,9 @@ class TestUnreadableNativeLoad:
         source = tmp_path / "scan.pdf"
         source.write_bytes(b"fixture")
         locator = PageLocator("rates", trigger_chars=1000)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: loaded)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: loaded
+        )
         monkeypatch.setattr(locator, "_ensure_client", lambda: pytest.fail("client built"))
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
@@ -743,7 +765,9 @@ class TestUnreadableNativeLoad:
         source = tmp_path / "scan.pdf"
         source.write_bytes(b"fixture")
         locator = PageLocator("rates", trigger_chars=0)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["", " "])
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["", " "]
+        )
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
         assert locator.incomplete
@@ -754,7 +778,7 @@ class TestUnreadableNativeLoad:
         locator = PageLocator("rates", trigger_chars=0, context_pages=0)
         monkeypatch.setattr(locator, "_ensure_client", lambda: _ScriptedClient([(3, 3)], []))
         monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["", "", "rates", ""]
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["", "", "rates", ""]
         )
         with capture_source(source) as captured:
             assert locator.locate(captured) == PageSelection(((3, 3),))
@@ -763,7 +787,9 @@ class TestUnreadableNativeLoad:
         source = tmp_path / "small.pdf"
         source.write_bytes(b"fixture")
         locator = PageLocator("rates", trigger_chars=1000)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"])
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"]
+        )
         monkeypatch.setattr(locator, "_ensure_client", lambda: pytest.fail("client built"))
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
@@ -776,7 +802,9 @@ class TestWorkerLocalState:
         bad.write_bytes(b"bad")
         good.write_bytes(b"good")
         locator = PageLocator("rates", trigger_chars=0, context_pages=0)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"])
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: ["rates"]
+        )
         monkeypatch.setattr(
             locator, "_ensure_client", lambda: _ScriptedClient(RuntimeError("down"))
         )
@@ -813,7 +841,7 @@ def _locate_with(tmp_path, monkeypatch, client, pages):
     source.write_bytes(b"fixture")
     locator = PageLocator("rate schedule", trigger_chars=0, context_pages=0)
     monkeypatch.setattr(locator, "_ensure_client", lambda: client)
-    monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+    monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p, **_k: pages)
     with capture_source(source) as captured:
         return locator, locator.locate(captured)
 

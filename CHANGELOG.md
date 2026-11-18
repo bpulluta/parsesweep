@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (per-page PDF representation)
+- PDF text extraction decides native text versus OCR per page instead of from
+  an aggregate 500-character total, so a raster rate table can no longer be
+  hidden behind a readable cover page. Each selected page is recorded as
+  `native`, `ocr`, `blank` or `unreadable` with its original page number
+  (`pages` in the extraction metadata). Blank pages are covered and never
+  OCR-ed; a raster page OCR cannot read is `unreadable` and no longer counted
+  in `extracted_pages`, so the record reports `parser_partial` with a warning.
+  Mixed documents are parsed and cached together; `ocr_corrections` now touch
+  OCR pages only, not native pages of the same document.
+- The page locator's index OCRs raster pages, so scanned documents can be
+  targeted instead of being held as unreadable.
+- Cache/cost impact: OCR text caches written before this change lack per-page
+  offsets and are treated as misses, so scanned PDFs are OCR-ed once more
+  (local Tesseract, no LLM cost). Existing extraction records are not
+  invalidated by this step alone: for a mixed PDF the new text differs but the
+  source bytes do not, so such records are reused until the Step 9 fingerprint
+  change (re-extract them with `--fresh` to pick up the OCR-ed pages). No
+  discovery regrade; `pdf_inspection` is unchanged.
+
 ### Changed (scope budgeting, explicit locator)
 - Targeting now triggers at `min(trigger_chars, max_context)`: a document too
   large for `max_context` is targeted even when under `trigger_chars` (it was

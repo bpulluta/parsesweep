@@ -318,7 +318,7 @@ def test_uncached_pdfs_are_read_natively_never_ocr(tmp_path, monkeypatch):
         document.close()
     ocr = []
     monkeypatch.setattr(
-        "psweep.extraction.pdf_utils._extract_with_ocr", lambda *a, **kw: ocr.append(a) or ("", {})
+        "psweep.extraction.pdf_utils._ocr_page", lambda *a, **kw: ocr.append(a) or ""
     )
     extracted = tmp_path / "extracted"
     rule = {"feature": "f", "value": "500", "units": None, "source_verbatim": "500 feet"}

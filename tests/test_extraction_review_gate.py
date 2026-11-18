@@ -879,6 +879,8 @@ def test_derived_raw_ocr_cache_does_not_invalidate_reuse(reviewed_inputs, monkey
     def parse(*_args, **_kwargs):
         return "raw OCR evidence", {
             "used_ocr": True,
+            "raw_text": "raw OCR evidence",
+            "ocr_spans": [[0, 16]],
             "page_count": 1,
             "extracted_pages": [1],
             "selected_pages": [1],
@@ -888,7 +890,9 @@ def test_derived_raw_ocr_cache_does_not_invalidate_reuse(reviewed_inputs, monkey
     if fresh:
         _sentinel_output(inputs)
         _targeting(inputs, trigger_chars=1000)
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _: ["small"])
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text", lambda _, **_k: ["small"]
+        )
     assert _execute_extraction(_prepare_extraction(inputs, fresh=fresh)).exit_code == 0
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 1
