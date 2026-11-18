@@ -364,8 +364,10 @@ def extract_text_from_document(
     # whole-document extraction is cached — page selections bypass it so a
     # partial slice never poisons the full-text cache other stages depend on.
     if page_ranges is None:
-        cached = read_text_cache(
-            file_path, return_meta=True, source_sha256=source.sha256 if source else None
+        cached = (
+            ((source.cached_text.text, source.cached_text.identity) if source.cached_text else None)
+            if source is not None
+            else read_text_cache(file_path, return_meta=True)
         )
         if cached is not None:
             text, cache_meta = cached
@@ -380,6 +382,7 @@ def extract_text_from_document(
                 "page_ranges": ((1, page_count),) if page_count else None,
                 "selected_pages": pages,
                 "extracted_pages": pages,
+                "raw_text_sha256": cache_meta.get("text_sha256"),
             }
             logger.debug("Text cache hit for %s", file_path.name)
             return (text, meta) if return_meta else text
@@ -402,6 +405,7 @@ def extract_text_from_document(
 
     if meta.get("used_ocr"):
         raw_text = meta.get("raw_ocr_text", text)
+        meta["raw_text_sha256"] = hashlib.sha256(raw_text.encode()).hexdigest()
         page_count = meta.get("page_count")
         pages = meta.get("extracted_pages")
         # Skipped OCR pages must not produce a whole-document cache.

@@ -21,6 +21,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runtime/config contracts and extraction/review caches are unchanged; no
   re-extraction, re-screening, or paid regrading is triggered.
 
+### Fixed (extraction admission and outcomes)
+- Preserved historical records no longer enter a current compilation.
+  Extraction publishes an atomic `run_manifests/current_admission.json` with a
+  per-document disposition (`new`, `reused`, `failed`, `deferred`) and the exact
+  record digest for admitted records, scoped to the invocation (before `limit`)
+  and merged with prior qualification. Failed or deferred documents keep their
+  old bytes on disk but are not admitted; succeeded and verified-reused siblings
+  of a partial run are. Previously a changed document that failed re-extraction
+  compiled alongside new siblings with no warning. Extraction holds a per-output
+  single-writer lock.
+- Compilation, dry-run, `compiled_table_fresh`, provenance and the build
+  fingerprint share one selector (`select_compile_inputs`) that verifies and
+  reads the same admitted bytes; broken, missing or contradicted admission fails
+  closed. `analyze_compile_input_provenance` now takes the selection and the
+  orphan-record warning is replaced by exclusion. Standalone directories without
+  run evidence compile as `historical_unverified`. Compile manifests record
+  `outputs.admission`.
+- A compiled table with zero rows beside failed documents now has status
+  `failed`; valid all-empty results remain successful.
+- `run_accounting.json` is version 3.0.0: runs carry result and
+  processed/succeeded/failed/item counts, extraction `status` follows the latest
+  run (`completed`, `completed_with_errors`, `failed`, `unknown`), and a
+  `current` block reports admitted/failed/deferred documents and items.
+  `summary.documents_extracted` and `cost_per_document_usd` are replaced by
+  `documents_billed`, `cost_per_billed_document_usd`, and current
+  `documents_admitted`/`documents_failed`/`items_admitted`/
+  `cost_per_admitted_document_usd` (null when unknown). Billed attempts are no
+  longer presented as successful extractions.
+- Cache/cost impact: no re-extraction, regrade or model call. Existing extraction
+  directories must run `psweep extract` once to publish an admission before they
+  compile (records invalidated by the source-identity change above are
+  re-extracted then); compiled tables become stale once (fingerprint now includes
+  the admission qualification).
+
 ### Fixed (extraction source identity)
 - Extraction now consumes one verified version of each source. Preparation
   fingerprints the source digest; extraction stream-copies the document into a
@@ -32,11 +66,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   digest rather than a later hash of the live path. Previously a document
   prepared as A but read as B could publish a B-derived payload under A's
   fingerprint and be reused when the file returned to A. Roster scans use the
-  same verified version. `build_extraction_record` and `write_extraction_record`
-  now require `source_sha256`. Cache impact: none; fingerprints and records are
-  unchanged for sources that do not change during a run. Page/section locators
-  still read the live path and cache by live digest; their selection is checked
-  only through the consumed-version comparison.
+  same verified version, including empty no-match decisions. Capture now precedes
+  page/section targeting and freezes verified browser/API text, raw OCR, and
+  matching-model transcripts; all consumers use that version. Retained fresh
+  scopes are identity-checked again; stale-input failures preserve prior output.
+  Fresh cleanup removes stale products only after all fresh documents succeed;
+  an empty input inventory preserves previous outputs. Saved scopes exclude failed
+  reused documents. Transcript acceptance is shared across preparation/capture,
+  including cached-only audio; newly appearing derived text is checked against
+  the selected reuse proof. Page locators no longer accept unbound page text.
+  `build_extraction_record` and `write_extraction_record` require `source_sha256`.
+  The writer returns `(item_count, record_sha256)` for the exact serialized bytes
+  atomically published; manifests never rehash a later replacement as proof.
+  Rollout: `captured-input-v1` fingerprints and manifest consumption proofs reject
+  all pre-fix extraction records (later runs pay for re-extraction). Locator
+  behavior `captured-scope-v4` invalidates old page/section caches (paid re-location
+  only when needed), retaining original sidecar locations. Valid browser/API,
+  raw OCR, and matching-model transcript caches remain usable; creation of derived
+  caches does not invalidate the next run, but changed derived text does. Record
+  contract remains 2.0.0; no discovery review-cache change or discovery regrade.
 
 ### Fixed (extraction publication)
 - `write_extraction_record` now validates the finalized payload against the

@@ -24,7 +24,7 @@ from psweep.cli.ui import (
 from psweep.compilation.data_compiler import DataCompiler
 from psweep.compilation.input_provenance import (
     analyze_compile_input_provenance,
-    list_compile_record_files,
+    select_compile_inputs,
 )
 from psweep.config import RuntimeConfigError
 from psweep.outcomes import exit_code
@@ -285,9 +285,12 @@ def compile(  # noqa: A001 - public CLI command name
     base_name = Workspace(resolved_inputs["domain"]).compiled_name
 
     emit_json_report = dry_run and report_format.lower() == "json"
-    record_json_files = list_compile_record_files(input_dir)
-    if not record_json_files:
-        raise click.ClickException(f"No extraction records found in {input_dir}")
+    try:
+        selected = select_compile_inputs(input_dir)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if not selected.records:
+        raise click.ClickException(selected.empty_message(input_dir))
 
     if fail_on_suspicious != "none" and not dry_run:
         print_error(
@@ -297,7 +300,7 @@ def compile(  # noqa: A001 - public CLI command name
         sys.exit(1)
 
     try:
-        input_provenance_warnings = analyze_compile_input_provenance(input_dir)
+        input_provenance_warnings = analyze_compile_input_provenance(selected)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     would_fail_on_provenance = _should_fail_on_provenance(
@@ -358,11 +361,20 @@ def compile(  # noqa: A001 - public CLI command name
     try:
         quiet = emit_json_report or view.is_quiet
         if not quiet:
-            view.phase(f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}")
-        build_fingerprint = None if dry_run else compiler.fingerprint(input_dir)
+            view.phase(
+                f"Found {len(selected.records)} admitted extraction record(s) in {input_dir.name}"
+            )
+            if selected.excluded:
+                view.status(
+                    "info",
+                    f"Excluded {len(selected.excluded)} preserved record(s) not admitted "
+                    "by the latest extraction",
+                )
+        build_fingerprint = None if dry_run else compiler.fingerprint(input_dir, inputs=selected)
         with with_status("Loading extracted JSON files...", quiet=quiet):
             df, schema_info = compiler.compile_from_directory(
                 input_dir,
+                inputs=selected,
                 apply_deduplication=not dry_run,
                 allow_model=not dry_run,
             )
@@ -611,6 +623,7 @@ def compile(  # noqa: A001 - public CLI command name
             "columns": output_column_count,
             "duplicates_removed": compiler.duplicates_removed,
             "output_formats": output_formats,
+            "admission": selected.summary,
             **(compiler.roster_stats or {}),
         }
         write_compilation_run_manifest(

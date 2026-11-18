@@ -342,7 +342,10 @@ def test_locator_credentials_required_only_for_actual_calls(reviewed_inputs, mon
                 keywords=["evidence"],
                 trigger_chars=1000,
             )
-            locator._write_cache(source, PageSelection(((1, 1),)), 1)
+            from psweep.extraction.prepared_document import capture_source
+
+            with capture_source(source) as captured:
+                locator._write_cache(captured, PageSelection(((1, 1),)), 1)
     elif kind == "unsupported":
         (root / "doc.txt").rename(root / "doc.csv")
     outcome = _execute_extraction(_prepare_extraction(inputs))
@@ -556,6 +559,90 @@ def test_partitioned_outputs_are_stable_and_reused(reviewed_inputs):
     provider.assert_not_called()
 
 
+@pytest.mark.parametrize("kind", ["section", "page"])
+def test_locator_consumes_snapshot_during_live_a_b_a(reviewed_inputs, monkeypatch, kind):
+    """A locator and primary must use A even while the original path contains B."""
+    from psweep.extraction.prepared_document import CapturedSource
+
+    inputs, provider = reviewed_inputs
+    document = Path(inputs["path"]) / "doc.txt"
+    if kind == "page":
+        document = document.rename(document.with_suffix(".pdf"))
+        monkeypatch.setattr(
+            pipeline.document_utils,
+            "_extract_from_pdf",
+            lambda path, ranges: (path.read_text(), {"page_ranges": ranges}),
+        )
+    original = document.read_bytes()
+    _targeting(inputs, trigger_chars=1)
+    seen = []
+
+    def locate(self, source):
+        document.write_bytes(b"B evidence")
+        try:
+            assert isinstance(source, CapturedSource)
+            seen.append(source.path.read_bytes())
+            return PageSelection(((1, 1),)) if kind == "page" else source.path.read_text()
+        finally:
+            document.write_bytes(original)
+
+    monkeypatch.setattr(
+        PageLocator if kind == "page" else pipeline.SectionLocator, "locate", locate
+    )
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    assert seen == [original]
+    assert "B evidence" not in str(provider.call_args)
+
+
+def test_source_mismatch_precedes_locator_request(reviewed_inputs, monkeypatch):
+    inputs, provider = reviewed_inputs
+    _targeting(inputs, trigger_chars=1)
+    plan = _prepare_extraction(inputs)
+    (Path(inputs["path"]) / "doc.txt").write_text("changed")
+    locate = Mock(return_value="changed")
+    monkeypatch.setattr(pipeline.SectionLocator, "locate", locate)
+    assert _execute_extraction(plan).failed == 1
+    locate.assert_not_called()
+    provider.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["browser_render", "api", "ocr"])
+@pytest.mark.parametrize("change", ["replace", "missing"])
+def test_effective_product_mismatch_precedes_paid_use(reviewed_inputs, method, change):
+    from psweep.extraction.document_utils import text_cache_paths
+
+    inputs, provider = reviewed_inputs
+    document = Path(inputs["path"]) / "doc.txt"
+    write_text_cache(document, "A evidence", method=method)
+    plan = _prepare_extraction(inputs)
+    if change == "replace":
+        write_text_cache(document, "B evidence", method=method)
+    else:
+        text_cache_paths(document)[0].unlink()
+    outcome = _execute_extraction(plan)
+    assert outcome.failed == 1
+    assert outcome.errors[0]["errors"][0]["code"] == "source_changed"
+    provider.assert_not_called()
+
+
+def test_fresh_scope_change_at_consumption_preserves_prior_output(reviewed_inputs, monkeypatch):
+    inputs, provider = reviewed_inputs
+    output = _sentinel_output(inputs)
+    _targeting(inputs, trigger_chars=1000)
+    _sections(monkeypatch)
+    original = pipeline._extract_one_document
+
+    def consume(doc, *args, **kwargs):
+        doc.write_text("Changed after fresh preflight")
+        return original(doc, *args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_extract_one_document", consume)
+    assert _execute_extraction(_prepare_extraction(inputs, fresh=True)).failed == 1
+    assert (output / "doc.json").read_bytes() == b"prior record bytes"
+    assert (output / "other.json").read_bytes() == b"other prior bytes"
+    provider.assert_not_called()
+
+
 def test_replaced_authoritative_text_invalidates_reuse(reviewed_inputs):
     """Invalidate reuse when authoritative rendered text changes."""
 
@@ -566,6 +653,149 @@ def test_replaced_authoritative_text_invalidates_reuse(reviewed_inputs):
     write_text_cache(document, "Changed rendered source", method="browser_render")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 2
+
+
+def test_manifest_uses_digest_of_exact_published_record(reviewed_inputs, monkeypatch):
+    from psweep.utils.file_io import artifact_sha256
+
+    inputs, provider = reviewed_inputs
+    document = Path(inputs["path"]) / "doc.txt"
+    write_text_cache(document, "OCR A", method="ocr")
+    complete = pipeline._complete_extraction
+    published = []
+
+    def interleave(plan, *args, **kwargs):
+        path = plan["outputs"][document]
+        published.append(artifact_sha256(path))
+        record = json.loads(path.read_text())
+        record["payload"]["source"]["id"] = "OCR B"
+        path.write_text(json.dumps(record))
+        return complete(plan, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(pipeline, "_complete_extraction", interleave)
+        first = _execute_extraction(_prepare_extraction(inputs))
+    proof = next(iter(json.loads(first.manifest_path.read_text())["reuse"].values()))
+    assert proof["record_sha256"] == published[0]
+    provider.reset_mock()
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    provider.assert_called_once()
+
+
+def test_cached_audio_without_transcriber_tracks_effective_identity(reviewed_inputs):
+    inputs, provider = reviewed_inputs
+    document = (Path(inputs["path"]) / "doc.txt").rename(Path(inputs["path"]) / "doc.mp3")
+    write_text_cache(document, "TRANSCRIPT A", method="transcript:fixture:v1")
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    write_text_cache(document, "TRANSCRIPT B", method="transcript:fixture:v1")
+    provider.reset_mock()
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    provider.assert_called_once()
+    assert "TRANSCRIPT B" in str(provider.call_args)
+
+
+def test_new_derived_cache_cannot_requalify_planned_reuse(reviewed_inputs):
+    from psweep.extraction.document_utils import text_cache_paths
+
+    inputs, provider = reviewed_inputs
+    document = Path(inputs["path"]) / "doc.txt"
+    write_text_cache(document, "OCR A", method="ocr")
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    for path in text_cache_paths(document):
+        path.unlink()
+    plan = _prepare_extraction(inputs)
+    assert plan["reused"]
+    write_text_cache(document, "OCR B", method="ocr")
+    provider.reset_mock()
+    assert _execute_extraction(plan).failed == 1
+    provider.assert_not_called()
+
+
+def test_empty_fresh_run_preserves_prior_output(reviewed_inputs):
+    inputs, provider = reviewed_inputs
+    output = _sentinel_output(inputs)
+    (Path(inputs["path"]) / "doc.txt").unlink()
+    outcome = _execute_extraction(_prepare_extraction(inputs, fresh=True))
+    assert outcome.status == "empty"
+    assert (output / "doc.json").read_bytes() == b"prior record bytes"
+    assert (output / "other.json").read_bytes() == b"other prior bytes"
+    provider.assert_not_called()
+
+
+def test_saved_scope_excludes_failed_reused_source(reviewed_inputs):
+    inputs, provider = reviewed_inputs
+    inputs["page_targeting"] = {"save_discovered": True}
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    output = Path(inputs["output"])
+    _rewrite_record(
+        output,
+        lambda record: record["processing_metrics"]["coverage"].__setitem__(
+            "selected_page_ranges",
+            [[1, 1]],
+        ),
+    )
+    plan = _prepare_extraction(inputs)
+    assert plan["reused"]
+    (Path(inputs["path"]) / "doc.txt").write_text("changed")
+    provider.reset_mock()
+    assert _execute_extraction(plan).failed == 1
+    assert load_pages_csv(output / "discovered_page_ranges.csv") == {}
+    provider.assert_not_called()
+
+
+def test_unproven_pre_fix_consumption_is_not_reused(reviewed_inputs):
+    inputs, provider = reviewed_inputs
+    first = _execute_extraction(_prepare_extraction(inputs))
+    manifest = json.loads(first.manifest_path.read_text())
+    for proof in manifest["reuse"].values():
+        proof.pop("consumption_version")
+    first.manifest_path.write_text(json.dumps(manifest))
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    assert provider.call_count == 2
+
+
+@pytest.mark.parametrize("kind", ["source", "effective"])
+def test_prepared_reuse_is_verified_at_consumption(reviewed_inputs, kind):
+    inputs, provider = reviewed_inputs
+    document = Path(inputs["path"]) / "doc.txt"
+    write_text_cache(document, "A evidence", method="api")
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    provider.reset_mock()
+    plan = _prepare_extraction(inputs)
+    assert plan["reused"]
+    if kind == "source":
+        document.write_text("B source")
+    else:
+        write_text_cache(document, "B evidence", method="api")
+    assert _execute_extraction(plan).failed == 1
+    provider.assert_not_called()
+
+
+def test_changed_derived_cache_invalidates_verified_reuse(reviewed_inputs):
+    inputs, provider = reviewed_inputs
+    document = Path(inputs["path"]) / "doc.txt"
+    write_text_cache(document, "A evidence", method="ocr")
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    write_text_cache(document, "B evidence", method="ocr")
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    assert provider.call_count == 2
+
+
+@pytest.mark.parametrize("kind", ["source", "effective"])
+def test_fresh_identity_mismatch_preserves_all_prior_payloads(reviewed_inputs, kind):
+    inputs, provider = reviewed_inputs
+    output = _sentinel_output(inputs)
+    document = Path(inputs["path"]) / "doc.txt"
+    write_text_cache(document, "A evidence", method="api")
+    plan = _prepare_extraction(inputs, fresh=True)
+    if kind == "source":
+        document.write_text("B source")
+    else:
+        write_text_cache(document, "B evidence", method="api")
+    assert _execute_extraction(plan).failed == 1
+    assert (output / "doc.json").read_bytes() == b"prior record bytes"
+    assert (output / "other.json").read_bytes() == b"other prior bytes"
+    provider.assert_not_called()
 
 
 def test_reuse_manifests_do_not_copy_all_prior_proof(reviewed_inputs):
@@ -579,7 +809,7 @@ def test_reuse_manifests_do_not_copy_all_prior_proof(reviewed_inputs):
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     manifests = [
         json.loads(p.read_text(encoding="utf-8"))
-        for p in (Path(inputs["output"]) / "run_manifests").glob("*.json")
+        for p in (Path(inputs["output"]) / "run_manifests").glob("*.manifest.json")
     ]
     assert sum(len(m["reuse"]) for m in manifests) == 2
 
@@ -622,18 +852,28 @@ def test_reserved_record_partitions_fail_preflight(reviewed_inputs, reserved):
     provider.assert_not_called()
 
 
-def test_derived_raw_ocr_cache_does_not_invalidate_reuse(reviewed_inputs, monkeypatch):
+@pytest.mark.parametrize("fresh", [False, True])
+def test_derived_raw_ocr_cache_does_not_invalidate_reuse(reviewed_inputs, monkeypatch, fresh):
     """Reuse unchanged inputs after parsing populates derived OCR."""
 
     inputs, provider = reviewed_inputs
     document = Path(inputs["path"]) / "doc.txt"
+    document.rename(document.with_suffix(".pdf"))
 
     def parse(*_args, **_kwargs):
-        write_text_cache(document, "raw OCR evidence", method="ocr")
-        return "raw OCR evidence"
+        return "raw OCR evidence", {
+            "used_ocr": True,
+            "page_count": 1,
+            "extracted_pages": [1],
+            "selected_pages": [1],
+        }
 
-    monkeypatch.setattr("psweep.extraction.document_utils.extract_text_from_document", parse)
-    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    monkeypatch.setattr("psweep.extraction.document_utils._extract_from_pdf", parse)
+    if fresh:
+        _sentinel_output(inputs)
+        _targeting(inputs, trigger_chars=1000)
+        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _: ["small"])
+    assert _execute_extraction(_prepare_extraction(inputs, fresh=fresh)).exit_code == 0
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert provider.call_count == 1
 

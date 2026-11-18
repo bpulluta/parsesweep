@@ -28,7 +28,6 @@ import hashlib
 import json
 import logging
 import io
-import shutil
 import subprocess  # noqa: S404 - runs psweep stage subprocesses, no shell
 import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -47,15 +46,17 @@ from psweep.compilation.input_provenance import (
     analyze_compile_input_provenance,
     INTERNAL_RECORD_DIRS,
     list_compile_record_files,
+    select_compile_inputs,
 )
 from psweep.discovery.request_inputs import discovery_request_fields
 from psweep.discovery.concurrency import bounded_results
 from jsonschema import ValidationError
 
-from psweep.exceptions import APIKeyError, PipelineError, TargetingSafetyError
+from psweep.exceptions import APIKeyError, PipelineError, SourceChangedError, TargetingSafetyError
 from psweep.outcomes import EXIT_PARTIAL, exit_code
 from psweep import extraction as extraction_api
 from psweep.extraction import document_utils, transcription, page_locator
+from psweep.extraction.admission import ADMITTED_DISPOSITIONS, publish_admission
 from psweep.extraction.page_locator import (
     PageLocator,
     DEFAULT_PAGE_TRIGGER_CHARS,
@@ -68,7 +69,11 @@ from psweep.extraction.llm_factory import (
     DEFAULT_MAX_CONTEXT,
     resolve_llm_kwargs,
 )
-from psweep.extraction.prepared_document import capture_source
+from psweep.extraction.prepared_document import (
+    CONSUMPTION_VERSION,
+    capture_source,
+    effective_identity,
+)
 from psweep.extraction.provenance import (
     build_source_context_map,
     prepend_source_context,
@@ -96,7 +101,7 @@ from psweep.extraction.schema_utils import (
 )
 from psweep.extraction.text_processor import calculate_completeness
 from psweep.utils.error_taxonomy import build_error_record
-from psweep.utils.file_io import artifact_sha256, atomic_json, atomic_write
+from psweep.utils.file_io import artifact_sha256, atomic_json, atomic_write, publication_lock
 from psweep.utils.log_context import document_scope
 from psweep.utils.page_range import (
     format_page_ranges,
@@ -132,6 +137,7 @@ class ExtractionRunResult:
     manifest_path: Path | None = None
     records: list[dict] = field(default_factory=list)
     withdrawn: list[Path] = field(default_factory=list)
+    admitted: int = 0
 
     @property
     def exit_code(self) -> int:
@@ -403,7 +409,13 @@ def _plan_targeted(plan: dict, doc: Path) -> bool:
 
 
 def _reusable_record(
-    path: Path, fingerprint: str, evidence: dict, validator, *, protected: bool = False
+    path: Path,
+    fingerprint: str,
+    evidence: dict,
+    validator,
+    *,
+    protected: bool = False,
+    derived_text_sha256: str | None = None,
 ):
     """Require digest evidence and valid record/payload contracts."""
     try:
@@ -414,10 +426,24 @@ def _reusable_record(
         ]
         if not matching:
             return None
-        digest = artifact_sha256(path)
-        if not any(entry.get("record_sha256") == digest for entry in matching):
+        record_bytes = path.read_bytes()
+        digest = hashlib.sha256(record_bytes).hexdigest()
+        proof = next(
+            (
+                entry
+                for entry in matching
+                if entry.get("record_sha256") == digest
+                and entry.get("consumption_version") == CONSUMPTION_VERSION
+                and (
+                    derived_text_sha256 is None
+                    or entry.get("derived_text_sha256") == derived_text_sha256
+                )
+            ),
+            None,
+        )
+        if proof is None:
             return None
-        record = json.loads(path.read_text(encoding="utf-8"))
+        record = json.loads(record_bytes)
         if (
             record["contract_version"] != CONTRACT_VERSION
             or record["lineage"].get("input_fingerprint") != fingerprint
@@ -442,7 +468,7 @@ def _reusable_record(
     ):
         return None
     else:
-        return record
+        return record, proof
 
 
 def _manual_ranges(inputs: dict, documents: list[Path], root: Path) -> dict:
@@ -487,6 +513,8 @@ def _extraction_fingerprints(
     context,
     roster,
     anchors,
+    effective_inputs,
+    roster_text_digests,
     transcriber=None,
 ):
     """Bind reused records to effective behavior and the prepared source digests."""
@@ -503,6 +531,7 @@ def _extraction_fingerprints(
     }
     policy.update(
         {
+            "consumption_version": CONSUMPTION_VERSION,
             "model": llm["model"],
             "provider": llm["provider"],
             "endpoint": llm.get("base_url") or llm.get("azure_endpoint"),
@@ -530,14 +559,12 @@ def _extraction_fingerprints(
     fingerprints = {}
     for doc in documents:
         info = source_context(doc, context)
-        cached = document_utils.read_text_cache(doc, return_meta=True, source_sha256=digests[doc])
+        cached = effective_inputs[doc]
         audio = transcription.is_audio(doc)
         data = {
             **policy,
             "effective_text": (
-                {key: cached[1].get(key) for key in ("method", "text_sha256")}
-                if cached and cached[1].get("method") != "ocr" and not audio
-                else None
+                cached if cached and cached.get("method") != "ocr" and not audio else None
             ),
             "table_layout": document_utils.TABLE_TEXT_LAYOUT.get(doc.suffix.lower()),
             "source": str(doc),
@@ -547,6 +574,8 @@ def _extraction_fingerprints(
             "context": asdict(info) if info else None,
             "candidates": (candidate_hash(roster, anchors[doc]) if doc in anchors else None),
         }
+        if doc in anchors:
+            data["roster_text_sha256"] = roster_text_digests.get(doc)
         if audio:
             # A transcript derives from source bytes and this identity.
             data["transcription"] = getattr(transcriber, "identity", None)
@@ -663,10 +692,22 @@ def _prepare_extraction(
     context = build_source_context_map(Path(inputs["path"]).resolve())
     roster = load_roster(inputs, plan["metadata"])
     digests = {doc: artifact_sha256(doc) for doc in documents}
-    candidates, anchors, roster_errors = (
-        _roster_plan(documents, plan["root"], context, roster, inputs, digests, transcriber)
+    effective_inputs = {}
+    for doc in documents:
+        cached = document_utils.read_text_cache(doc, return_meta=True, source_sha256=digests[doc])
+        if (
+            cached
+            and transcription.is_audio(doc)
+            and not transcription.accepts_transcript(cached[1].get("method"), transcriber)
+        ):
+            cached = None
+        effective_inputs[doc] = effective_identity(cached[1]) if cached else None
+    candidates, anchors, roster_errors, roster_text_digests = (
+        _roster_plan(
+            documents, plan["root"], context, roster, inputs, digests, effective_inputs, transcriber
+        )
         if roster and not validate_only
-        else ({}, {}, {})
+        else ({}, {}, {}, {})
     )
     fingerprints = _extraction_fingerprints(
         inputs,
@@ -679,17 +720,20 @@ def _prepare_extraction(
         context,
         roster,
         anchors,
+        effective_inputs,
+        roster_text_digests,
         transcriber,
     )
     if fresh and not validate_only:
         for doc, selected in ranges.items():
             if selected is not None and doc.suffix.lower() == ".pdf":
-                validate_pdf_scope(doc, selected)
+                with capture_source(doc, expected=digests[doc]) as source:
+                    validate_pdf_scope(source.path, selected)
     evidence = (
         _reuse_evidence(plan["output"]) if not fresh and inputs.get("skip_existing", True) else {}
     )
     validator = build_schema_validator(plan["schema"])
-    reused = {}
+    reused, reuse_proofs = {}, {}
     for doc in documents:
         if doc in roster_errors:
             continue
@@ -699,9 +743,16 @@ def _prepare_extraction(
             evidence,
             validator,
             protected=_auto_targeted(inputs, doc, ranges, candidates, roster_errors, anchors),
+            derived_text_sha256=(
+                effective_inputs[doc]["text_sha256"]
+                if effective_inputs[doc]
+                and (effective_inputs[doc]["method"] == "ocr" or transcription.is_audio(doc))
+                and ranges.get(doc) is None
+                else None
+            ),
         )
         if record is not None:
-            reused[doc] = record
+            reused[doc], reuse_proofs[doc] = record
     pending = [doc for doc in documents if doc not in reused]
     if inputs.get("limit"):
         pending = pending[: inputs["limit"]]
@@ -709,6 +760,7 @@ def _prepare_extraction(
         **plan,
         "pending": pending,
         "reused": reused,
+        "reuse_proofs": reuse_proofs,
         "llm": llm,
         "transcriber": transcriber,
         "ranges": ranges,
@@ -730,6 +782,8 @@ def _prepare_extraction(
         ),
         "fingerprints": fingerprints,
         "source_digests": digests,
+        "effective_inputs": effective_inputs,
+        "roster_text_digests": roster_text_digests,
         "inputs": inputs,
         "fresh": fresh,
         "withdrawn": [] if fresh or validate_only else _withdrawn_records(plan),
@@ -755,7 +809,11 @@ def _document_text(doc_path, page_ranges, section_text, corrections, transcriber
         effective = scope.get("page_ranges") if page_ranges is not None else None
     else:
         text = document_utils.extract_text_from_document(
-            doc_path, page_ranges=page_ranges, transcriber=transcriber, source=source
+            doc_path,
+            page_ranges=page_ranges,
+            ocr_corrections=corrections,
+            transcriber=transcriber,
+            source=source,
         )
         effective = page_ranges
     if not text.strip():
@@ -834,12 +892,14 @@ def _failed_outcome(doc_path, exc, plan, result=None) -> dict:
     return outcome
 
 
-def _roster_plan(documents, root, context, roster, inputs, digests, transcriber=None):
+def _roster_plan(
+    documents, root, context, roster, inputs, digests, effective_inputs, transcriber=None
+):
     """Anchor every document to roster targets before any provider call.
 
     Shared documents are scanned from the version whose digest was fingerprinted.
     """
-    candidates, anchors, errors = {}, {}, {}
+    candidates, anchors, errors, text_digests = {}, {}, {}, {}
     for doc in documents:
         info = source_context(doc, context)
         if info is None:
@@ -850,18 +910,24 @@ def _roster_plan(documents, root, context, roster, inputs, digests, transcriber=
             )
         elif info.scope == "shared":
             try:
-                with capture_source(doc, expected=digests[doc]) as source:
+                with capture_source(
+                    doc,
+                    expected=digests[doc],
+                    expected_effective=effective_inputs[doc],
+                    transcriber=transcriber,
+                ) as source:
                     text = _document_text(
                         doc, None, None, inputs.get("ocr_corrections"), transcriber, source
                     )[0]
             except Exception as exc:  # noqa: BLE001 - isolate unreadable documents
                 errors[doc] = f"Roster candidate scan failed: {exc}"
                 continue
+            text_digests[doc] = hashlib.sha256(text.encode()).hexdigest()
             candidates[doc] = scan_candidates(text, roster)
             anchors[doc] = set().union(*(ids for _, ids in candidates[doc]))
         else:
             anchors[doc] = {info.target_id} & roster.targets.keys()
-    return candidates, anchors, errors
+    return candidates, anchors, errors, text_digests
 
 
 def _no_roster_match(array):
@@ -921,6 +987,27 @@ def _roster_extract(extractor, schema, array, roster, candidates, budget, info):
     )
 
 
+def _capture_input(doc, plan):
+    return capture_source(
+        doc,
+        expected=plan["source_digests"][doc],
+        expected_effective=plan["effective_inputs"][doc],
+        transcriber=plan.get("transcriber"),
+    )
+
+
+def _verified_roster_text(doc, plan, source):
+    text, _, scope = _document_text(
+        doc, None, None, plan["inputs"].get("ocr_corrections"), plan.get("transcriber"), source
+    )
+    if hashlib.sha256(text.encode()).hexdigest() != plan["roster_text_digests"][doc]:
+        raise SourceChangedError(
+            f"{doc.name} roster evidence changed after preparation; rerun extraction",
+            document=doc.name,
+        )
+    return text, scope
+
+
 def _extract_one_document(
     doc_path: Path,
     plan: dict,
@@ -937,6 +1024,7 @@ def _extract_one_document(
     boundary, so a targeting failure is this document's failure.
     """
     result = None
+    parser_scope = {}
     llm, inputs = plan["llm"], plan["inputs"]
     model, provider = llm["model"], llm["provider"]
     output_path = plan["outputs"][doc_path]
@@ -946,53 +1034,41 @@ def _extract_one_document(
     anchors = plan["anchors"].get(doc_path)
     stack = ExitStack()
     try:
+        source = stack.enter_context(_capture_input(doc_path, plan))
         if prepare is not None:
-            page_ranges, section_text = prepare(doc_path)
+            page_ranges, section_text = prepare(source)
         if doc_path in plan["roster_errors"]:
             raise ValueError(plan["roster_errors"][doc_path])
+        text = ""
+        if doc_path in plan["candidates"]:
+            text, parser_scope = _verified_roster_text(doc_path, plan, source)
         if anchors == set():
-            text, result = "", _no_roster_match(array)
-            source = None
+            result = _no_roster_match(array)
+        elif doc_path in plan["candidates"]:
+            result = _roster_extract(
+                extractor,
+                plan["schema"],
+                array,
+                roster,
+                plan["candidates"][doc_path],
+                inputs.get("max_context", DEFAULT_MAX_CONTEXT),
+                info,
+            )
         else:
-            # Consume one verified version: every read, quote check and the record
-            # digest below describe these bytes, never a later live-path reopen.
-            snapshot = capture_source(doc_path, expected=plan["source_digests"][doc_path])
-            source = stack.enter_context(snapshot)
-            if doc_path in plan["candidates"]:
-                text = _document_text(
-                    doc_path,
-                    None,
-                    None,
-                    inputs.get("ocr_corrections"),
-                    plan.get("transcriber"),
-                    source,
-                )[0]
-                result = _roster_extract(
-                    extractor,
-                    plan["schema"],
-                    array,
-                    roster,
-                    plan["candidates"][doc_path],
-                    inputs.get("max_context", DEFAULT_MAX_CONTEXT),
-                    info,
-                )
-            else:
-                text, prompt, effective_ranges, parser_scope = _prepared_input(
-                    doc_path, plan, page_ranges, section_text, source
-                )
-                result = extractor.extract(prompt, plan["schema"])
-                record_extraction_scope(
-                    result,
-                    page_ranges=effective_ranges,
-                    omitted_page_ranges=plan.get("targeting_omitted", {}).get(doc_path),
-                    section_filtered=section_text is not None,
-                    parser_scope=parser_scope,
-                    targeting_incomplete=doc_path in plan.get("targeting_incomplete", ()),
-                )
-                if anchors:
-                    result.off_candidate_items = _keep_roster_items(
-                        result.data, array, roster, anchors
-                    )
+            text, prompt, effective_ranges, parser_scope = _prepared_input(
+                doc_path, plan, page_ranges, section_text, source
+            )
+            result = extractor.extract(prompt, plan["schema"])
+            record_extraction_scope(
+                result,
+                page_ranges=effective_ranges,
+                omitted_page_ranges=plan.get("targeting_omitted", {}).get(doc_path),
+                section_filtered=section_text is not None,
+                parser_scope=parser_scope,
+                targeting_incomplete=doc_path in plan.get("targeting_incomplete", ()),
+            )
+            if anchors:
+                result.off_candidate_items = _keep_roster_items(result.data, array, roster, anchors)
         rejected = verify_quotes(
             result.data,
             text,
@@ -1002,7 +1078,7 @@ def _extract_one_document(
         result.unverified_quotes = len(rejected)
         result.validation_notes = [*(result.validation_notes or []), *rejected]
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        count = write_extraction_record(
+        count, record_digest = write_extraction_record(
             output_path,
             doc_path=doc_path,
             source_document_id=doc_path.relative_to(plan["root"]).as_posix(),
@@ -1013,7 +1089,7 @@ def _extract_one_document(
             run_id=run_id,
             schema_id=str(plan["schema_path"]),
             schema_metadata=plan["metadata"],
-            source_sha256=source.sha256 if source else plan["source_digests"][doc_path],
+            source_sha256=source.sha256,
             input_fingerprint=plan["fingerprints"][doc_path],
             payload_validator=plan["validator"],
         )
@@ -1021,12 +1097,24 @@ def _extract_one_document(
             "file": doc_path.name,
             "success": True,
             "items": count,
+            "record_sha256": record_digest,
             "cost": result.cost,
             "time": getattr(result, "processing_time", 0),
             "input_tokens": getattr(result, "input_tokens", None),
             "output_tokens": getattr(result, "output_tokens", None),
             "output_path": str(output_path),
             "coverage": getattr(result, "coverage", {}),
+            "derived_text_sha256": (
+                source.cached_text.sha256
+                if source.cached_text
+                and (source.cached_text.method == "ocr" or transcription.is_audio(doc_path))
+                and page_ranges is None
+                else hashlib.sha256(text.encode()).hexdigest()
+                if transcription.is_audio(doc_path)
+                else parser_scope.get("raw_text_sha256")
+                if page_ranges is None
+                else None
+            ),
         }
     except Exception as exc:
         logger.debug(
@@ -1047,10 +1135,19 @@ def _target_extraction_inputs(plan: dict):
     ranges, sections, locator_clients = dict(plan["ranges"]), {}, []
     targeting = inputs.get("page_targeting") or {}
     worker = local()
-    prepared = set()
+    prepared = {}
+    plan["scope_identities"] = prepared
 
-    def target(doc):
-        if doc in prepared or not _plan_targeted(plan, doc):
+    def target(source):
+        doc = source.original
+        if doc in prepared:
+            if prepared[doc] != source.identity:
+                raise SourceChangedError(
+                    f"{doc.name} scope input changed since preflight; rerun extraction",
+                    document=doc.name,
+                )
+            return
+        if not _plan_targeted(plan, doc):
             return
         locator_type = PageLocator if doc.suffix.lower() == ".pdf" else SectionLocator
         if not hasattr(worker, "locators"):
@@ -1081,7 +1178,7 @@ def _target_extraction_inputs(plan: dict):
         subject = identity.get(fields[-1]) if fields else None
         locator.set_source_context(info, subject=str(subject) if subject is not None else None)
         with document_scope(doc.name):
-            selection = locator.locate(doc)
+            selection = locator.locate(source)
             if locator_type is PageLocator:
                 if selection:
                     ranges[doc] = selection.ranges
@@ -1106,9 +1203,35 @@ def _target_extraction_inputs(plan: dict):
                     if selection is None
                     else "using a partial selection",
                 )
-        prepared.add(doc)
+        prepared[doc] = source.identity
 
     return ranges, sections, locator_clients, target
+
+
+def extraction_lock_path(output: Path) -> Path:
+    """Sibling lock: one writer per extraction output, outside its inventoried tree."""
+    return output.parent / f".{output.name}.publication.lock"
+
+
+def _admission_scope(plan, results) -> dict[str, dict]:
+    """Disposition of every document in this invocation's scope, before ``limit``."""
+    output = plan["output"]
+    succeeded = {result["output_path"]: result for result in results if result["success"]}
+    attempted = set(plan["pending"]) | set(plan["reused"])
+    scope = {}
+    for doc in plan["documents"]:
+        path = plan["outputs"][doc]
+        outcome = succeeded.get(str(path))
+        if outcome is not None:
+            entry = {
+                "disposition": "reused" if outcome.get("skipped") else "new",
+                "record_sha256": outcome["record_sha256"],
+                "items": outcome.get("items", 0),
+            }
+        else:
+            entry = {"disposition": "failed" if doc in attempted else "deferred"}
+        scope[path.relative_to(output).as_posix()] = entry
+    return scope
 
 
 def _complete_extraction(plan, results, extractor, locator_clients, run_id, started):
@@ -1179,23 +1302,30 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
         },
     )
     manifest["status"]["result"] = status
+    manifest["status"]["items"] = sum(result.get("items", 0) for result in successes)
+    manifest["status"]["zero_item_records"] = sum(not result.get("items") for result in successes)
     manifest["coverage"] = {
         result["output_path"]: result["coverage"] for result in successes if result.get("coverage")
     }
-    successful_paths = {result["output_path"] for result in successes}
+    successful_by_path = {result["output_path"]: result for result in successes}
     manifest["reuse"] = {
         str(plan["outputs"][doc]): {
             "input_fingerprint": plan["fingerprints"][doc],
-            "record_sha256": artifact_sha256(plan["outputs"][doc]),
+            "record_sha256": successful_by_path[str(plan["outputs"][doc])]["record_sha256"],
+            "consumption_version": CONSUMPTION_VERSION,
+            "derived_text_sha256": successful_by_path[str(plan["outputs"][doc])].get(
+                "derived_text_sha256"
+            ),
         }
         for doc in pending
         if plan["outputs"][doc].is_file()
         and doc not in plan.get("targeting_incomplete", set())
-        and str(plan["outputs"][doc]) in successful_paths
+        and str(plan["outputs"][doc]) in successful_by_path
     }
     manifest["withdrawn"] = [str(path) for path in plan["withdrawn"]]
     manifest_path = output / "run_manifests" / f"{run_id.removeprefix('run://')}.manifest.json"
     atomic_json(manifest_path, manifest)
+    admission = publish_admission(output, run_id=run_id, scope=_admission_scope(plan, results))
     return ExtractionRunResult(
         total=len(results),
         successful=len(successes),
@@ -1210,10 +1340,17 @@ def _complete_extraction(plan, results, extractor, locator_clients, run_id, star
         manifest_path=manifest_path,
         records=results,
         withdrawn=plan["withdrawn"],
+        admitted=sum(entry["disposition"] in ADMITTED_DISPOSITIONS for entry in admission.values()),
     )
 
 
 def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
+    """Execute the plan once under the output's single-writer publication lock."""
+    with publication_lock(extraction_lock_path(plan["output"])):
+        return _execute_locked(plan, on_progress=on_progress)
+
+
+def _execute_locked(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     """Execute the plan once and publish its measured outcome.
 
     ``on_progress(doc, None)`` fires when a pending document starts and
@@ -1242,12 +1379,32 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
         # protected input is unsafe. Normal runs target inside extraction workers
         # instead of a preparation barrier; only compact scopes survive preflight.
         def preflight(doc):
-            target(doc)
-            if _plan_targeted(plan, doc):
-                try:
-                    _prepared_input(doc, plan, ranges.get(doc), sections.get(doc))
-                except TargetingSafetyError as exc:
-                    return doc, exc
+            try:
+                with _capture_input(doc, plan) as source:
+                    target(source)
+                    if doc in plan["candidates"]:
+                        _verified_roster_text(doc, plan, source)
+                    elif _plan_targeted(plan, doc):
+                        _, _, _, parser_scope = _prepared_input(
+                            doc, plan, ranges.get(doc), sections.get(doc), source
+                        )
+                        # Preflight may create raw OCR. Bind a retained scope to
+                        # that exact derived product, not merely any new cache.
+                        if source.cached_text is None and parser_scope.get("raw_text_sha256"):
+                            cached = document_utils.read_text_cache(
+                                doc, return_meta=True, source_sha256=source.sha256
+                            )
+                            if (
+                                cached
+                                and cached[1].get("method") == "ocr"
+                                and cached[1]["text_sha256"] == parser_scope["raw_text_sha256"]
+                            ):
+                                plan["scope_identities"][doc] = {
+                                    "source_sha256": source.sha256,
+                                    "effective_text": effective_identity(cached[1]),
+                                }
+            except (TargetingSafetyError, SourceChangedError) as exc:
+                return doc, exc
             return doc, None
 
         order = {doc: index for index, doc in enumerate(pending)}
@@ -1268,31 +1425,54 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
                 if on_progress:
                     on_progress(doc, blocked[-1])
             return _complete_extraction(
-                {**plan, "pending": [doc for doc, _ in held], "withdrawn": []},
+                {**plan, "pending": [doc for doc, _ in held], "reused": {}, "withdrawn": []},
                 blocked,
                 extractor,
                 locator_clients,
                 run_id,
                 started,
             )
-        shutil.rmtree(output)
+        # Do not destroy historical bytes before workers verify retained scopes.
+        # Remove stale products only after every fresh consumer succeeded.
+    fresh_products = (
+        set(output.rglob("*")) if plan["fresh"] and plan["documents"] and output.exists() else set()
+    )
     results = []
     for doc, record in plan["reused"].items():
+        try:
+            with _capture_input(doc, plan) as source:
+                if (
+                    source.cached_text is not None
+                    and plan["ranges"].get(doc) is None
+                    and (source.cached_text.method == "ocr" or transcription.is_audio(doc))
+                    and source.cached_text.sha256
+                    != plan["reuse_proofs"][doc].get("derived_text_sha256")
+                ):
+                    raise SourceChangedError(
+                        f"{doc.name} derived evidence differs from reuse proof; rerun extraction",
+                        document=doc.name,
+                    )
+                if doc in plan["candidates"]:
+                    _verified_roster_text(doc, plan, source)
+        except Exception as exc:  # noqa: BLE001 - stale reuse is a document failure
+            results.append(_failed_outcome(doc, exc, plan))
+            continue
         results.append(
             {
                 "file": doc.name,
                 "success": True,
                 "skipped": True,
                 "items": record.get("item_count", 0),
+                "record_sha256": plan["reuse_proofs"][doc]["record_sha256"],
                 "cost": 0,
                 "output_path": str(plan["outputs"][doc]),
                 "coverage": record.get("processing_metrics", {}).get("coverage", {}),
             }
         )
 
-    def scope(doc):
-        target(doc)
-        return ranges.get(doc), sections.get(doc)
+    def scope(source):
+        target(source)
+        return ranges.get(source.original), sections.get(source.original)
 
     def extract(doc):
         return _extract_one_document(doc, plan, extractor=extractor, run_id=run_id, prepare=scope)
@@ -1316,7 +1496,11 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
                 index, doc = running.pop(future)
                 outcomes[index] = future.result()
                 section = sections.pop(doc, None)
-                if section is not None and inputs.get("page_targeting", {}).get("save_discovered"):
+                if (
+                    section is not None
+                    and outcomes[index]["success"]
+                    and inputs.get("page_targeting", {}).get("save_discovered")
+                ):
                     atomic_write(
                         output
                         / ".sections"
@@ -1330,20 +1514,31 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
         raise
     pool.shutdown()
     results.extend(outcomes)
+    if fresh_products and all(result["success"] for result in outcomes):
+        current = {plan["outputs"][doc] for doc in pending}
+        current.update(
+            output / ".sections" / doc.relative_to(plan["root"]).with_suffix(doc.suffix + ".txt")
+            for doc, result in zip(pending, outcomes, strict=True)
+            if result.get("coverage", {}).get("section_filtered")
+        )
+        for path in fresh_products - current:
+            if path.is_file():
+                path.unlink(missing_ok=True)
+        for path in sorted(fresh_products, key=lambda p: len(p.parts), reverse=True):
+            if path.is_dir() and not any(path.iterdir()):
+                path.rmdir()
     if inputs.get("page_targeting", {}).get("save_discovered"):
         # A reused record was extracted from the pages its coverage recorded.
+        successful = {result["output_path"]: result for result in results if result["success"]}
         used = {
             doc: normalize_page_ranges(coverage["selected_page_ranges"])
-            for doc, record in plan["reused"].items()
-            if "selected_page_ranges"
-            in (coverage := record.get("processing_metrics", {}).get("coverage", {}))
+            for doc, path in plan["outputs"].items()
+            if str(path) in successful
+            and "selected_page_ranges" in (coverage := successful[str(path)].get("coverage", {}))
         }
-        held = {
-            doc
-            for doc, outcome in zip(pending, outcomes, strict=True)
-            if outcome.get("targeting_blocked")
-        }
-        used.update({doc: found for doc, found in ranges.items() if doc not in held})
+        used.update(
+            {doc: found for doc, found in ranges.items() if str(plan["outputs"][doc]) in successful}
+        )
         buffer = io.StringIO(newline="")
         writer = csv.writer(buffer)
         writer.writerow(["file_path", "start_page", "end_page"])
@@ -1448,12 +1643,16 @@ def compiled_table_fresh(
     )
     manifest = latest_compilation_manifest(out_dir) or {}
     lineage = manifest.get("lineage") or {}
+    try:
+        current = compiler.fingerprint(ext_dir)
+    except ValueError:  # broken admission evidence is never a fresh table
+        return False
     return (
         manifest.get("status", {}).get("result", "success") == "success"
         and table.is_file()
         and bool(lineage.get("build_fingerprint"))
         and lineage.get("table_sha256") == artifact_sha256(table)
-        and lineage["build_fingerprint"] == compiler.fingerprint(ext_dir)
+        and lineage["build_fingerprint"] == current
     )
 
 
@@ -1484,14 +1683,16 @@ def compile_extractions(
     )
     schema_metadata = compiler.schema_metadata
     started_at = datetime.now(UTC)
-    provenance_warnings = analyze_compile_input_provenance(ext_dir)
+    selected = select_compile_inputs(ext_dir)
+    provenance_warnings = analyze_compile_input_provenance(selected)
     if protected_mode() and provenance_warnings:
         raise ValueError(
             "Protected compilation rejected provenance: " + "; ".join(provenance_warnings)
         )
-    build_fingerprint = None if dry_run else compiler.fingerprint(ext_dir)
+    build_fingerprint = None if dry_run else compiler.fingerprint(ext_dir, inputs=selected)
     df, _schema_info = compiler.compile_from_directory(
         ext_dir,
+        inputs=selected,
         apply_deduplication=not dry_run,
         allow_model=not dry_run,
     )
@@ -1542,6 +1743,7 @@ def compile_extractions(
                 "columns": len(frame.columns),
                 "duplicates_removed": compiler.duplicates_removed,
                 "output_formats": schema_metadata.get_output_formats(),
+                "admission": selected.summary,
                 **(compiler.roster_stats or {}),
             },
             started_at=started_at,

@@ -91,13 +91,13 @@ def test_build_pipeline_accounting_from_extraction_run_manifest(monkeypatch, tmp
         },
     )
 
-    assert accounting["accounting_version"] == "2.0.0"
+    assert accounting["accounting_version"] == "3.0.0"
     assert accounting["domain"] == domain
     summary = accounting["summary"]
     assert summary["total_cost_usd"] == 0.5
-    assert summary["documents_extracted"] == 2
+    assert summary["documents_billed"] == 2
     assert summary["extraction_runs"] == 1
-    assert summary["cost_per_document_usd"] == 0.25
+    assert summary["cost_per_billed_document_usd"] == 0.25
     assert summary["tokens_total"] == 150
 
     ext_stage = accounting["stages"]["extraction"]
@@ -355,3 +355,107 @@ def test_receipt_matching_by_run_id_and_duplicate_manifests(monkeypatch, tmp_pat
     assert accounting["summary"]["total_cost_usd"] == 0.2
     assert accounting["summary"]["llm_calls_total"] == 1
     assert accounting["stages"]["compilation"]["run_count"] == 2
+
+
+def _extraction_run(extraction_dir, run_id, finished, result, *, processed, ok, billed, items):
+    _write_json(
+        extraction_dir / "run_manifests" / f"{run_id}.manifest.json",
+        {
+            "run_id": f"run://{run_id}",
+            "costs": {"total_cost_usd": 0.6, "documents_billed": billed, "llm_calls": billed},
+            "lineage": {"model": "gpt-x", "provider": "azure", "schema_id": "s.json"},
+            "timing": {"started_at": finished, "finished_at": finished},
+            "status": {
+                "result": result,
+                "total_processed": processed,
+                "successful": ok,
+                "failed": processed - ok,
+                "items": items,
+                "zero_item_records": 1 if ok and not items else 0,
+            },
+        },
+    )
+
+
+def test_accounting_reports_outcomes_not_billed_attempts_as_successes(monkeypatch, tmp_path):
+    """Six billed attempts, one valid zero-item record, five failures."""
+    monkeypatch.chdir(tmp_path)
+    extraction_dir = Workspace("widgets").extracted
+    _extraction_run(
+        extraction_dir,
+        "r1",
+        "2026-01-01T00:00:00Z",
+        "partial_failure",
+        processed=6,
+        ok=1,
+        billed=6,
+        items=0,
+    )
+    _write_json(
+        extraction_dir / "run_manifests" / "current_admission.json",
+        {
+            "admission_version": "1.0.0",
+            "run_id": "run://r1",
+            "records": {
+                "g.json": {"disposition": "new", "record_sha256": "0" * 64, "items": 0},
+                **{f"f{i}.json": {"disposition": "failed"} for i in range(5)},
+            },
+        },
+    )
+    accounting = build_pipeline_accounting(
+        domain="widgets",
+        extraction_dir=extraction_dir,
+        output_dir=Workspace("widgets").compiled,
+        compilation_stats={"records": 0},
+    )
+    assert accounting["accounting_version"] == "3.0.0"
+    summary, stage = accounting["summary"], accounting["stages"]["extraction"]
+    assert "documents_extracted" not in summary
+    assert summary["documents_billed"] == 6
+    assert (summary["documents_admitted"], summary["documents_failed"]) == (1, 5)
+    assert summary["items_admitted"] == 0
+    assert summary["cost_per_billed_document_usd"] == 0.1
+    assert summary["cost_per_admitted_document_usd"] == 0.6
+    assert stage["status"] == "completed_with_errors"
+    assert stage["runs"][0]["documents_succeeded"] == 1
+    assert stage["runs"][0]["documents_failed"] == 5
+
+
+def test_accounting_status_follows_the_latest_run_and_unknown_is_not_success(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    extraction_dir = Workspace("widgets").extracted
+    _extraction_run(
+        extraction_dir, "r1", "2026-01-01T00:00:00Z", "failed", processed=2, ok=0, billed=2, items=0
+    )
+    _extraction_run(
+        extraction_dir,
+        "r2",
+        "2026-01-02T00:00:00Z",
+        "success",
+        processed=2,
+        ok=2,
+        billed=2,
+        items=4,
+    )
+    accounting = build_pipeline_accounting(
+        domain="widgets",
+        extraction_dir=extraction_dir,
+        output_dir=Workspace("widgets").compiled,
+        compilation_stats={"records": 4},
+    )
+    assert accounting["stages"]["extraction"]["status"] == "completed"
+    assert accounting["summary"]["documents_billed"] == 4  # cumulative spend, not current output
+    assert accounting["summary"]["documents_admitted"] is None  # no admission evidence
+    assert accounting["summary"]["cost_per_admitted_document_usd"] is None
+    legacy = Workspace("legacy").extracted
+    _write_json(
+        legacy / "run_manifests" / "x.manifest.json",
+        {"run_id": "run://x", "costs": {"documents_billed": 1}},
+    )
+    stage = build_pipeline_accounting(
+        domain="legacy",
+        extraction_dir=legacy,
+        output_dir=Workspace("legacy").compiled,
+        compilation_stats={},
+    )["stages"]["extraction"]
+    assert stage["status"] == "unknown"

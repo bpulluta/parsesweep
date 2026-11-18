@@ -512,8 +512,36 @@ and uses the snapshot for every read, quote check, and the record's
 `document.source_sha256`. If the file changed after preparation the document
 fails with `source_changed` before any paid request and nothing is published;
 rerun extraction. The original path remains the provenance path. Snapshots exist
-only for documents currently being extracted, are owner-only, and are removed
-when the document finishes or the run is interrupted.
+only for active consumers (including one-at-a-time roster scans and bounded
+fresh preflight workers), are owner-only, and are removed when the consumer
+finishes or is interrupted. Capture occurs **before** targeting: locator indexes,
+filtered sections, candidate windows, quote checks, and publication share the
+captured source and verified effective text. Original paths still key provenance
+and `.pages/` / `.sections/` sidecars.
+
+Preparation retains compact method/text/representation identities. Missing or
+changed authoritative browser/API text cannot fall back to native text under its
+old fingerprint. Raw OCR corrections apply after capture; transcripts must match
+the source and transcriber identity. Derived OCR/transcript caches can be created
+without perpetual re-extraction; changed verified derived text rejects reuse.
+Roster/no-match decisions and reused records are rechecked at consumption.
+Fresh preflight releases captures promptly and rechecks retained scope identities
+inside workers. Prior records survive a mismatch; stale-product cleanup occurs
+only after every fresh document succeeds (successful siblings may still publish).
+An empty fresh inventory leaves prior outputs intact. Saved page scopes exclude
+failed reuse as well as failed new extraction. Cached-only audio uses the same
+transcript acceptance rule as configured transcription; newly appearing derived
+text must match the selected record's consumption proof before reporting reuse.
+Page locators read the snapshot only, with no unbound pre-parsed page override.
+Manifest record digests come from the exact bytes atomically published by the
+writer (which returns item count plus SHA-256), never a later live-output hash.
+
+**Rollout/cache cost:** `captured-input-v1` fingerprints and manifest consumption
+proofs reject all pre-fix records because they cannot prove which inputs were
+consumed. A later extraction run pays to re-extract those records. Locator version
+`captured-scope-v4` rejects old page/section cache entries, causing paid re-location
+only where selection is needed. Valid text/OCR/transcript products are retained;
+canonical record contract remains 2.0.0. No discovery regrading is triggered.
 
 ### Final payload acceptance
 
@@ -526,6 +554,51 @@ nulling breaks a composite constraint, the document fails with
 `schema_contract` and any previous record is left untouched. Unsupported claims
 are never reinstated or invented to satisfy the schema. Arrays that the schema
 allows to be empty still publish empty after filtering.
+
+### Current admission versus preserved history
+
+Record bytes under `extracted/` are history; compilation reads only what the
+output's **current admission** admits. Every extraction invocation publishes
+`run_manifests/current_admission.json` atomically (not a `*.manifest.json` run
+manifest) with a disposition for each document in its scope, taken *before*
+`limit`: `new` or `reused` (admitted, with the exact `record_sha256` published
+or verified), `failed`, or `deferred` (not admitted). A scoped run (single file,
+subtree) replaces only its own documents and keeps other entries while their
+record file exists. A failed or deferred document's previous record is
+**preserved on disk but not admitted**, so a partial run compiles its succeeded
+and verified-reused siblings and never a stale sibling. Terminal targeting holds
+stay failures. Admission is never inherited from an earlier globally successful
+run.
+
+Extraction holds a single-writer lock per output (`.<output>.publication.lock`,
+beside the output directory); a second concurrent extraction into the same
+output is rejected.
+
+`psweep compile` (and `compile_extractions`) select admitted records through one
+selector shared by provenance checks, row/roster/reconciliation compilation,
+dry-run, and the build fingerprint, and read exactly the bytes whose digest
+admission recorded. Fail-closed cases: unreadable/malformed pointer, an admitted
+record that is missing or whose bytes changed, and an extraction directory with
+run manifests but no admission (rerun `psweep extract`). Excluded preserved
+records are reported as a count, not a warning, so `provenance_policy` cannot
+readmit them. A standalone directory with no run evidence compiles as
+`historical_unverified` (recorded in the compile manifest as
+`outputs.admission.qualification`; `current` otherwise). The build fingerprint
+includes the qualification and admitted digests, so a change in admission makes
+a compiled table stale even when record bytes are unchanged.
+
+When every admitted record is a valid empty result and nothing failed, an empty
+table is a successful result. If failed documents exist and the compiled table
+has no rows, compile status is `failed` (nonzero exit) instead of a clean
+success; the table is still written. The extraction manifest `status` adds
+`items` and `zero_item_records`.
+
+**Rollout/cache cost:** none for records or reuse. Output directories written
+before this change have run manifests but no admission; compile refuses them
+until `psweep extract` publishes one (records already invalidated by source
+identity are re-extracted at that time; no discovery regrade, no model calls
+are added by this change). Compiled tables become stale once because the
+fingerprint gains the qualification field.
 
 ### Roster-anchored extraction
 

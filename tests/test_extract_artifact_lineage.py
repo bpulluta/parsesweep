@@ -809,7 +809,7 @@ def test_write_extraction_record_includes_lineage_fields(
 
     document = tmp_path / "example.pdf"
     document.write_bytes(b"synthetic source")
-    count = write_extraction_record(
+    count, digest = write_extraction_record(
         tmp_path / "example.json",
         doc_path=document,
         source_sha256=artifact_sha256(document),
@@ -825,6 +825,7 @@ def test_write_extraction_record_includes_lineage_fields(
     )
 
     assert count == 2
+    assert digest == artifact_sha256(tmp_path / "example.json")
 
     output_path = tmp_path / "example.json"
     saved = json.loads(output_path.read_text(encoding="utf-8"))

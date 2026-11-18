@@ -23,6 +23,34 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 _CHUNK = 1024 * 1024
+_UNCHECKED = object()
+CONSUMPTION_VERSION = "captured-input-v1"
+
+
+def effective_identity(metadata: dict) -> dict:
+    """Compact identity of a verified text product, including representation."""
+    return {key: metadata.get(key) for key in ("method", "text_sha256", "page_count", "ocr_raw")}
+
+
+@dataclass(frozen=True)
+class CapturedText:
+    """Verified raw text product frozen for one source lifetime."""
+
+    text: str
+    method: str
+    sha256: str
+    page_count: int | None
+    ocr_raw: bool | None
+
+    @property
+    def identity(self) -> dict:
+        """Return compact method, content and representation proof."""
+        return {
+            "method": self.method,
+            "text_sha256": self.sha256,
+            "page_count": self.page_count,
+            "ocr_raw": self.ocr_raw,
+        }
 
 
 @dataclass(frozen=True)
@@ -34,10 +62,30 @@ class CapturedSource:
     sha256: str
     size: int
     mtime_ns: int
+    cached_text: CapturedText | None = None
+
+    @property
+    def name(self) -> str:
+        """Keep original document names in logs and worker context."""
+        return self.original.name
+
+    @property
+    def identity(self) -> dict:
+        """Bind retained scopes to this source and effective evidence."""
+        return {
+            "source_sha256": self.sha256,
+            "effective_text": self.cached_text.identity if self.cached_text else None,
+        }
 
 
 @contextlib.contextmanager
-def capture_source(original: Path, *, expected: str | None = None) -> Iterator[CapturedSource]:
+def capture_source(
+    original: Path,
+    *,
+    expected: str | None = None,
+    expected_effective=_UNCHECKED,
+    transcriber=None,
+) -> Iterator[CapturedSource]:
     """Snapshot *original* for one consumer and always remove the snapshot.
 
     The snapshot lives in a new owner-only directory under the system temporary
@@ -69,6 +117,49 @@ def capture_source(original: Path, *, expected: str | None = None) -> Iterator[C
                 "rerun extraction so the record describes the bytes consumed"
             )
             raise SourceChangedError(message, document=original.name)
+        # Read metadata and bytes once; never reopen the live pair after capture.
+        from .document_utils import read_text_cache
+        from .transcription import accepts_transcript, is_audio
+
+        cached = read_text_cache(original, return_meta=True, source_sha256=captured.sha256)
+        if cached and is_audio(original):
+            method = cached[1].get("method") or ""
+            if not accepts_transcript(method, transcriber):
+                cached = None
+        product = None
+        if cached:
+            text, metadata = cached
+            identity = effective_identity(metadata)
+            product = CapturedText(
+                text,
+                identity["method"],
+                identity["text_sha256"],
+                identity["page_count"],
+                identity["ocr_raw"],
+            )
+        actual = product.identity if product else None
+        # A derived cache may safely appear during this run. An authoritative
+        # browser/API product cannot appear or disappear under a prepared identity.
+        derived = product and (product.method == "ocr" or is_audio(original))
+        mismatch = (
+            expected_effective is not _UNCHECKED
+            and actual != expected_effective
+            and not (expected_effective is None and derived)
+        )
+        if mismatch:
+            raise SourceChangedError(
+                f"{original.name} effective text changed after extraction was prepared; "
+                "rerun extraction",
+                document=original.name,
+            )
+        captured = CapturedSource(
+            original,
+            snapshot,
+            captured.sha256,
+            snapshot.stat().st_size,
+            captured.mtime_ns,
+            product,
+        )
         yield captured
     finally:
         shutil.rmtree(workdir, ignore_errors=True)

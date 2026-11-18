@@ -254,6 +254,15 @@ def build_transcriber(inputs: dict[str, Any]) -> Transcriber | None:
     )
 
 
+def accepts_transcript(method: str | None, transcriber: Transcriber | None) -> bool:
+    """Use the configured identity, or a cached transcript when no model is configured."""
+    return (
+        method == getattr(transcriber, "identity", None)
+        if transcriber is not None
+        else (isinstance(method, str) and method.startswith(f"{METHOD_PREFIX}:"))
+    )
+
+
 def transcript(
     source: Path, transcriber: Transcriber | None, *, captured: CapturedSource | None = None
 ) -> str:
@@ -270,14 +279,18 @@ def transcript(
         write_text_cache,
     )
 
-    cached = read_text_cache(
-        source, return_meta=True, source_sha256=captured.sha256 if captured else None
+    cached = (
+        (
+            (captured.cached_text.text, captured.cached_text.identity)
+            if captured.cached_text
+            else None
+        )
+        if captured is not None
+        else read_text_cache(source, return_meta=True)
     )
     if cached is not None:
         method = str(cached[1].get("method") or "")
-        if method == getattr(transcriber, "identity", None) or (
-            transcriber is None and method.startswith(f"{METHOD_PREFIX}:")
-        ):
+        if accepts_transcript(method, transcriber):
             return cached[0]
     if transcriber is None:
         message = (

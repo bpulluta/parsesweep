@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import datetime, UTC
 from pathlib import Path
@@ -11,7 +12,7 @@ from uuid import uuid4
 
 from psweep.exceptions import SchemaValidationError
 from psweep.utils.error_taxonomy import normalize_error_records
-from psweep.utils.file_io import atomic_json
+from psweep.utils.file_io import atomic_write
 from psweep.utils.item_matcher import get_nested_value
 from psweep.utils.page_range import PageRanges, format_page_ranges
 from psweep.extraction.schema_utils import (
@@ -227,8 +228,8 @@ def write_extraction_record(
     input_fingerprint: str | None = None,
     payload_validator: Any,
     record_validator: Any = None,
-) -> int:
-    """Publish a record atomically and return its item count.
+) -> tuple[int, str]:
+    """Publish atomically and return item count and exact published-byte SHA-256.
 
     ``payload_validator`` is the resolved domain-schema validator. It is the
     final acceptance gate: the payload is checked after every mutation
@@ -254,5 +255,6 @@ def write_extraction_record(
     if record_validator is None:
         record_validator = load_record_validator()
     record_validator.validate(record)
-    atomic_json(output_path, record)
-    return num_items
+    content = json.dumps(record, indent=2, sort_keys=True, allow_nan=False).encode("utf-8")
+    atomic_write(output_path, content)
+    return num_items, hashlib.sha256(content).hexdigest()

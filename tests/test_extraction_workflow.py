@@ -314,7 +314,7 @@ def test_parser_failure_has_zero_model_calls(workflow, monkeypatch):
     )
     result = _cli(documents, schema, output)
     assert result.exit_code == 1
-    manifest = json.loads(next((output / "run_manifests").glob("*.json")).read_text())
+    manifest = json.loads(next((output / "run_manifests").glob("*.manifest.json")).read_text())
     assert manifest["costs"]["llm_calls"] == 0
     assert manifest["costs"]["unknown_cost_calls"] == 0
     provider.assert_not_called()
@@ -401,6 +401,109 @@ def test_record_digest_is_the_consumed_version(workflow):
     assert provider.call_count == 1
 
 
+@pytest.mark.parametrize("initial", ["Pima County A evidence", "No roster matches"])
+@pytest.mark.parametrize("change", ["source", "effective"])
+def test_roster_decision_is_bound_to_prepared_input(workflow, monkeypatch, initial, change):
+    from psweep import pipeline
+    from psweep.extraction.document_utils import write_text_cache
+    from psweep.extraction.provenance import SourceContext
+    from psweep.extraction.roster import Roster
+
+    documents, schema, output, provider = workflow
+    document = documents / "alpha.txt"
+    contract = json.loads(schema.read_text())
+    contract["required"] = ["items"]  # valid abstention must not mask stale no-match
+    schema.write_text(json.dumps(contract))
+    roster = Roster.build([{"state": "AZ", "ahj": "Pima County"}], ("state", "ahj"))
+    monkeypatch.setattr(pipeline, "load_roster", lambda *_: roster)
+    monkeypatch.setattr(
+        pipeline,
+        "build_source_context_map",
+        lambda *_: {"alpha.txt": SourceContext(None, "shared", None, None, {})},
+    )
+    if change == "effective":
+        write_text_cache(document, initial, method="browser_render")
+    else:
+        document.write_text(initial)
+    plan = pipeline._prepare_extraction(
+        {"path": str(documents), "schema": str(schema), "output": str(output)}
+    )
+    if change == "effective":
+        write_text_cache(document, "Pima County B evidence", method="browser_render")
+    else:
+        document.write_text("Pima County B evidence")
+    outcome = pipeline._execute_extraction(plan)
+    assert outcome.failed == 1
+    provider.assert_not_called()
+    assert not (output / "alpha.json").exists()
+
+
+@pytest.mark.parametrize("initial", ["Pima County A evidence", "No roster matches"])
+def test_roster_windows_use_frozen_effective_evidence(workflow, monkeypatch, initial):
+    from psweep import pipeline
+    from psweep.extraction.document_utils import write_text_cache
+    from psweep.extraction.provenance import SourceContext
+    from psweep.extraction.roster import Roster
+
+    documents, schema, output, provider = workflow
+    document = documents / "alpha.txt"
+    contract = json.loads(schema.read_text())
+    contract["required"] = ["items"]
+    schema.write_text(json.dumps(contract))
+    roster = Roster.build([{"state": "AZ", "ahj": "Pima County"}], ("state", "ahj"))
+    monkeypatch.setattr(pipeline, "load_roster", lambda *_: roster)
+    monkeypatch.setattr(
+        pipeline,
+        "build_source_context_map",
+        lambda *_: {"alpha.txt": SourceContext(None, "shared", None, None, {})},
+    )
+    write_text_cache(document, initial, method="browser_render")
+    original = pipeline._verified_roster_text
+
+    def verify(*args, **kwargs):
+        write_text_cache(document, "Pima County B evidence", method="browser_render")
+        try:
+            return original(*args, **kwargs)
+        finally:
+            write_text_cache(document, initial, method="browser_render")
+
+    monkeypatch.setattr(pipeline, "_verified_roster_text", verify)
+    plan = pipeline._prepare_extraction(
+        {"path": str(documents), "schema": str(schema), "output": str(output)}
+    )
+    assert pipeline._execute_extraction(plan).successful == 1
+    if initial.startswith("Pima"):
+        assert "A evidence" in str(provider.call_args)
+        assert "B evidence" not in str(provider.call_args)
+    else:
+        provider.assert_not_called()
+
+
+def test_effective_a_b_a_during_generation_uses_frozen_a(workflow, monkeypatch):
+    from psweep import pipeline
+    from psweep.extraction.document_utils import write_text_cache
+
+    documents, schema, output, provider = workflow
+    document = documents / "alpha.txt"
+    write_text_cache(document, "A evidence", method="browser_render")
+    original = pipeline._prepared_input
+
+    def prepare(*args, **kwargs):
+        write_text_cache(document, "B evidence", method="browser_render")
+        try:
+            return original(*args, **kwargs)
+        finally:
+            write_text_cache(document, "A evidence", method="browser_render")
+
+    monkeypatch.setattr(pipeline, "_prepared_input", prepare)
+    assert extract_documents(documents, schema, output_dir=output).successful == 1
+    assert "A evidence" in str(provider.call_args)
+    assert "B evidence" not in str(provider.call_args)
+    provider.reset_mock()
+    assert extract_documents(documents, schema, output_dir=output).successful == 1
+    provider.assert_not_called()
+
+
 def test_snapshots_are_private_and_removed(workflow, monkeypatch, tmp_path):
     """Per-document snapshots live outside inputs/outputs and never accumulate."""
     documents, schema, output, provider = workflow
@@ -421,3 +524,192 @@ def test_snapshots_are_private_and_removed(workflow, monkeypatch, tmp_path):
     (documents / "alpha.txt").write_text("Changed")
     assert extract_documents(documents, schema, output_dir=output).failed == 1
     assert list(scratch.iterdir()) == []
+
+
+# --- Step 3: current admission is separate from preserved history -------------
+
+
+def _answer(items=1):
+    return {
+        "data": {"source": {"id": "x"}, "items": [{"n": i} for i in range(items)]},
+        "cost": 0.01,
+        "input_tokens": 10,
+        "output_tokens": 5,
+    }
+
+
+def _route(provider, fail=(), items=1):
+    """Fail the call whose prompt mentions a failing document marker."""
+
+    def respond(*args, **kwargs):
+        blob = f"{args}{kwargs}"
+        if any(marker in blob for marker in fail):
+            raise RuntimeError("fixture failure")
+        return _answer(items)
+
+    provider.side_effect = respond
+
+
+def _admission(output):
+    return json.loads((output / "run_manifests" / "current_admission.json").read_text())["records"]
+
+
+def _two_changed_documents(workflow):
+    documents, schema, output, provider = workflow
+    (documents / "a.txt").write_text("marker-a one")
+    (documents / "b.txt").write_text("marker-b one")
+    (documents / "alpha.txt").unlink()
+    _route(provider)
+    assert extract_documents(documents, schema, output_dir=output).successful == 2
+    (documents / "a.txt").write_text("marker-a two")
+    (documents / "b.txt").write_text("marker-b two")
+    return documents, schema, output, provider
+
+
+def test_failed_changed_document_keeps_history_but_loses_admission(workflow):
+    """The old-a/new-b reproduction: history stays, admission does not."""
+    import hashlib
+
+    documents, schema, output, provider = _two_changed_documents(workflow)
+    old_a = (output / "a.json").read_bytes()
+    _route(provider, fail=("marker-a",))
+    result = extract_documents(documents, schema, output_dir=output)
+    assert (result.successful, result.failed) == (1, 1)
+    assert (output / "a.json").read_bytes() == old_a
+    records = _admission(output)
+    assert records["a.json"]["disposition"] == "failed"
+    assert "record_sha256" not in records["a.json"]
+    assert records["b.json"]["disposition"] == "new"
+    assert (
+        records["b.json"]["record_sha256"]
+        == hashlib.sha256((output / "b.json").read_bytes()).hexdigest()
+    )
+
+
+def test_limit_deferred_changed_record_is_not_admitted(workflow):
+    documents, schema, output, _ = _two_changed_documents(workflow)
+    extract_documents(documents, schema, output_dir=output, limit=1)
+    records = _admission(output)
+    assert records["a.json"]["disposition"] == "new"
+    assert records["b.json"]["disposition"] == "deferred"
+    extract_documents(documents, schema, output_dir=output, limit=1)
+    assert {rel: r["disposition"] for rel, r in _admission(output).items()} == {
+        "a.json": "reused",
+        "b.json": "new",
+    }
+
+
+def test_verified_reuse_is_admitted_and_scoped_runs_preserve_siblings(workflow):
+    documents, schema, output, provider = _two_changed_documents(workflow)
+    extract_documents(documents, schema, output_dir=output)
+    provider.reset_mock()
+    extract_documents(documents, schema, output_dir=output)
+    provider.assert_not_called()
+    assert {r["disposition"] for r in _admission(output).values()} == {"reused"}
+    # A single-file scope qualifies only itself and keeps its sibling's entry.
+    (documents / "a.txt").write_text("marker-a three")
+    _route(provider, fail=("marker-a",))
+    extract_documents(documents / "a.txt", schema, output_dir=output)
+    records = _admission(output)
+    assert records["a.json"]["disposition"] == "failed"
+    assert records["b.json"]["disposition"] == "reused"
+
+
+def test_withdrawn_record_leaves_admission(workflow):
+    documents, schema, output, _ = _two_changed_documents(workflow)
+    extract_documents(documents, schema, output_dir=output)
+    (documents / "b.txt").unlink()
+    extract_documents(documents, schema, output_dir=output)
+    assert not (output / "b.json").exists()
+    assert set(_admission(output)) == {"a.json"}
+
+
+def test_extraction_output_rejects_a_second_writer(workflow):
+    from psweep.utils.file_io import PublicationLockError, publication_lock
+    from psweep import pipeline
+
+    documents, schema, output, provider = workflow
+    with (
+        publication_lock(pipeline.extraction_lock_path(output)),
+        pytest.raises(PublicationLockError),
+    ):
+        extract_documents(documents, schema, output_dir=output)
+    provider.assert_not_called()
+
+
+def test_manifest_records_item_and_zero_item_outcomes(workflow):
+    documents, schema, output, provider = workflow
+    (documents / "empty.txt").write_text("marker-empty")
+    provider.side_effect = lambda *a, **k: _answer(0 if "marker-empty" in f"{a}{k}" else 2)
+    extract_documents(documents, schema, output_dir=output)
+    (manifest,) = (output / "run_manifests").glob("*.manifest.json")
+    status = json.loads(manifest.read_text())["status"]
+    assert status["items"] == 2 and status["zero_item_records"] == 1
+
+
+def test_compilation_uses_only_admitted_current_records(workflow, tmp_path):
+    """The old-a/new-b gate: history stays on disk, compilation reads new-b only."""
+    from psweep.pipeline import compile_extractions, compiled_table_fresh
+
+    documents, schema, output, provider = _two_changed_documents(workflow)
+    _route(provider, fail=("marker-a",))
+    assert extract_documents(documents, schema, output_dir=output).failed == 1
+    compiled = tmp_path / "compiled"
+    result = compile_extractions(output, schema, output_dir=compiled)
+    assert result.total_rows == 1 and result.status == "success"
+    assert (output / "a.json").is_file()
+    (manifest,) = (compiled / "run_manifests").glob("*.manifest.json")
+    admission = json.loads(manifest.read_text())["outputs"]["admission"]
+    assert admission == {
+        "qualification": "current",
+        "admitted_records": 1,
+        "excluded_records": 1,
+        "failed_documents": 1,
+    }
+    assert compiled_table_fresh(output, schema, config_path=None, output_dir=compiled)
+    # Same record bytes, different admission: the table is no longer fresh.
+    _route(provider)
+    extract_documents(documents, schema, output_dir=output)
+    assert not compiled_table_fresh(output, schema, config_path=None, output_dir=compiled)
+
+
+def test_broken_current_pointer_blocks_compilation_and_freshness(workflow, tmp_path):
+    from psweep.pipeline import compile_extractions, compiled_table_fresh
+
+    _, schema, output, _ = _two_changed_documents(workflow)
+    compiled = tmp_path / "compiled"
+    compile_extractions(output, schema, output_dir=compiled)
+    (output / "run_manifests" / "current_admission.json").write_text("{broken")
+    with pytest.raises(ValueError, match="admission evidence"):
+        compile_extractions(output, schema, output_dir=compiled)
+    assert not compiled_table_fresh(output, schema, config_path=None, output_dir=compiled)
+
+
+def test_empty_table_beside_failed_documents_is_not_success(workflow, tmp_path):
+    """Zero rows from valid empty records plus failures never reads as clean data."""
+    from psweep.pipeline import compile_extractions
+
+    documents, schema, output, provider = workflow
+    (documents / "good.txt").write_text("marker-good")
+    (documents / "bad.txt").write_text("marker-bad")
+    (documents / "alpha.txt").unlink()
+
+    def respond(*args, **kwargs):
+        if "marker-bad" in f"{args}{kwargs}":
+            raise RuntimeError("fixture failure")
+        return _answer(0)
+
+    provider.side_effect = respond
+    assert extract_documents(documents, schema, output_dir=output).failed == 1
+    result = compile_extractions(output, schema, output_dir=tmp_path / "compiled")
+    assert result.total_rows == 0 and result.status == "failed"
+
+
+def test_valid_empty_results_without_failures_remain_success(workflow, tmp_path):
+    from psweep.pipeline import compile_extractions
+
+    documents, schema, output, provider = workflow
+    provider.side_effect = lambda *a, **k: _answer(0)
+    extract_documents(documents, schema, output_dir=output)
+    result = compile_extractions(output, schema, output_dir=tmp_path / "compiled")
+    assert result.total_rows == 0 and result.status == "success"

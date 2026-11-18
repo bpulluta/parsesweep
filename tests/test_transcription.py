@@ -580,6 +580,8 @@ def _fingerprints(tmp_path, documents, transcriber):
         {},
         None,
         {},
+        dict.fromkeys(documents),
+        {},
         transcriber,
     )
 
@@ -653,7 +655,9 @@ def test_extraction_reads_transcripts_and_bills_transcription(monkeypatch, tmp_p
     result = pipeline._execute_extraction(pipeline._prepare_extraction(inputs))
     assert result.successful == 1
     assert seen == ["[00:00:00] I support the project."]
-    manifest = json.loads(next((tmp_path / "out" / "run_manifests").glob("*.json")).read_text())
+    manifest = json.loads(
+        next((tmp_path / "out" / "run_manifests").glob("*.manifest.json")).read_text()
+    )
     costs = manifest["costs"]
     assert costs["total_cost_usd"] == pytest.approx(0.75)
     assert costs["llm_calls"] == 4

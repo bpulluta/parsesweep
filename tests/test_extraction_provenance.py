@@ -258,6 +258,36 @@ def test_text_cache_is_judged_against_the_captured_digest(tmp_path):
         assert read_text_cache(doc, source_sha256=changed.sha256) is None
 
 
+@pytest.mark.parametrize("method", ["browser_render", "api", "ocr", "transcript:model:v1"])
+def test_effective_product_stays_frozen_with_raw_ocr_corrections(tmp_path, method):
+    from psweep.extraction.document_utils import extract_text_from_document, write_text_cache
+    from psweep.extraction.prepared_document import capture_source
+
+    document = tmp_path / ("doc.mp3" if method.startswith("transcript:") else "doc.txt")
+    document.write_bytes(b"source A")
+    write_text_cache(document, "A evidcnce", method=method)
+    with capture_source(document) as source:
+        write_text_cache(document, "B evidence", method=method)
+        text = extract_text_from_document(
+            document,
+            source=source,
+            ocr_corrections=[{"pattern": "evidcnce", "replacement": "evidence"}],
+        )
+        assert text == ("A evidence" if method == "ocr" else "A evidcnce")
+        assert source.cached_text.text == "A evidcnce"
+
+
+def test_capture_cleans_up_on_cancellation(tmp_path):
+    from psweep.extraction.prepared_document import capture_source
+
+    document = tmp_path / "doc.txt"
+    document.write_text("A")
+    with pytest.raises(KeyboardInterrupt), capture_source(document) as source:
+        directory = source.path.parent
+        raise KeyboardInterrupt
+    assert not directory.exists()
+
+
 def test_record_cannot_certify_a_different_digest(tmp_path):
     """The writer records the captured digest and requires it explicitly."""
     import inspect

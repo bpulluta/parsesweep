@@ -237,6 +237,7 @@ def _plan(tmp_path, document, schema, schema_path, metadata):
         "quote_rows": None,
         "fingerprints": {document: "a" * 64},
         "source_digests": {document: artifact_sha256(document)},
+        "effective_inputs": {document: None},
         "validator": build_schema_validator(schema),
     }
 

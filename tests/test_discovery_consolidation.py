@@ -464,6 +464,7 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
             "quote_rows": None,
             "fingerprints": {document: "a" * 64},
             "source_digests": {document: artifact_sha256(document)},
+            "effective_inputs": {document: None},
             "validator": build_schema_validator(schema),
         }
         result = _extract_one_document(

@@ -31,7 +31,9 @@ SCHEMA_PATH = None
 
 
 def _patch_compiler(monkeypatch):
-    def _fake_compile_from_directory(self, json_dir, apply_deduplication=True, allow_model=True):
+    def _fake_compile_from_directory(
+        self, json_dir, inputs=None, apply_deduplication=True, allow_model=True
+    ):
         return (
             pd.DataFrame([{"State": "MA", "County": "Longmeadow", "Value": 1}]),
             {"type": "Document", "main_array_key": "requirements"},
