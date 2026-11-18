@@ -1221,3 +1221,130 @@ def test_source_only_default_keep_top_keeps_a_single_permit(tmp_path):
     _stub_grades(reviewer, {n: _primary() for n in names})
     reviewer.review(records, [])
     assert sum(r["review_selected"] for r in records) == 1
+
+
+# --- Step 12b R1: diagnosable grounding failures -------------------------------------------
+
+
+def _grounding_failure(segments, **evidence_overrides):
+    reviewer = DocumentReviewer(document_description="records", coverage={"role": "need"})
+    evidence = _evidence("anchor")
+    evidence.update(evidence_overrides)
+    with pytest.raises(document_reviewer.ReviewError) as caught:
+        reviewer._verify_evidence({**_equal_grade(1.0), "evidence": evidence}, segments)
+    return caught.value
+
+
+def test_ungrounded_quote_names_kind_and_path_but_keeps_text_out_of_the_message():
+    error = _grounding_failure(["anchor text"], content_quote="fabricated words")
+    assert str(error) == "invalid document grade evidence: ungrounded evidence.content_quote"
+    assert error.failure == {
+        "kind": "ungrounded",
+        "paths": ["evidence.content_quote"],
+        "quotes": {"evidence.content_quote": "fabricated words"},
+    }
+
+
+def test_every_failing_path_is_named_including_structured_and_coverage_quotes():
+    error = _grounding_failure(
+        ["anchor text"],
+        scope={"value": "s", "quote": "invented scope"},
+        coverage={"role": {"quote": "invented coverage", "scope": "s"}},
+    )
+    assert error.failure["paths"] == ["evidence.scope", "evidence.coverage.role"]
+    assert str(error).endswith("ungrounded evidence.scope, evidence.coverage.role")
+
+
+@pytest.mark.parametrize(
+    ("segments", "quote"),
+    [
+        (["anchor alpha The Regu", "la tion beta"], "The Regula"),  # straddles a sample boundary
+        (["anchor alpha The Regu", "la tion beta"], "The Regulation"),  # word completed past a cut
+    ],
+)
+def test_quote_across_a_sample_boundary_is_ungrounded(segments, quote):
+    error = _grounding_failure(segments, content_quote=quote)
+    assert error.failure["kind"] == "ungrounded"
+    assert error.failure["paths"] == ["evidence.content_quote"]
+
+
+def test_contract_mismatch_is_distinct_from_an_ungrounded_quote():
+    reviewer = DocumentReviewer(document_description="records")
+    grade = {**_equal_grade(0.25), "evidence": _evidence("anchor")}  # is_primary contradicts level
+    with pytest.raises(document_reviewer.ReviewError) as caught:
+        reviewer._verify_evidence(grade, ["anchor text"])
+    assert str(caught.value) == "invalid document grade evidence: contract"
+    assert caught.value.failure == {"kind": "contract", "paths": [], "quotes": {}}
+
+
+def test_rejected_quote_text_is_truncated_to_300_characters():
+    error = _grounding_failure(["anchor text"], content_quote="x" * 400)
+    assert error.failure["quotes"]["evidence.content_quote"] == "x" * 300
+
+
+def _grounding_client(quote: str):
+    class Client(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            evidence = _evidence("source evidence")
+            evidence["content_quote"] = quote
+            return {"data": {"grade": 4, "doc_kind": "source", "reason": "r", "evidence": evidence}}
+
+    return Client()
+
+
+def test_review_audit_keeps_failure_detail_and_notes_count_grounding_failures(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        document_utils, "extract_text_from_document", lambda _p: "source evidence " * 100
+    )
+    record = _record(tmp_path, "source.txt", "A")
+    reviewer = DocumentReviewer(document_description="records", cache_dir=tmp_path / "cache")
+    reviewer._client = _grounding_client("document dated")
+    notes: list[str] = []
+    reviewer.review([record], notes)
+    assert record["review_failed"] and record["review_retryable"]
+    assert record["review_error"] == (
+        "invalid document grade evidence: ungrounded evidence.content_quote"
+    )
+    assert record["review_initial_error"] == record["review_error"]
+    assert record["review_initial_failure"] == {
+        "kind": "ungrounded",
+        "paths": ["evidence.content_quote"],
+        "quotes": {"evidence.content_quote": "document dated"},
+    }
+    assert any("1 file(s) failed evidence grounding" in note for note in notes)
+    assert not list((tmp_path / "cache").glob("*.json"))
+
+
+def test_a_failing_grade_costs_one_physical_call_and_a_malformed_one_costs_two(
+    tmp_path, monkeypatch
+):
+    """Pin the metering contract: grounding failures are not retried; malformed replies are."""
+    monkeypatch.setattr(
+        document_utils, "extract_text_from_document", lambda _p: "source evidence " * 100
+    )
+    record = _record(tmp_path, "source.txt", "A")
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._client = _grounding_client("invented")
+    reviewer.review([record], [])
+    assert reviewer.get_costs()["llm_calls"] == 1
+
+    malformed = _record(tmp_path, "malformed.txt", "B")
+    replies = iter([{"data": {"grade": 9}}, None])
+
+    class Flaky(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            return next(replies) or {
+                "data": {
+                    "grade": 4,
+                    "doc_kind": "k",
+                    "reason": "r",
+                    "evidence": _evidence("source evidence"),
+                }
+            }
+
+    other = DocumentReviewer(document_description="records")
+    other._client = Flaky()
+    other.review([malformed], [])
+    assert malformed["review_selected"] and other.get_costs()["llm_calls"] == 2

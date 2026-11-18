@@ -270,7 +270,12 @@ Grades are cached by content and grading inputs in
 `discovered/.review_cache/` and reused across runs. Recordings are graded on
 their transcript: a run's copy inherits the curated copy's transcript (matched
 by SHA-256) before review. A recording not yet transcribed (first run) is kept
-without review and transcribed at extraction. Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
+without review and transcribed at extraction. A grade whose quotes are not found contiguously in one excerpt segment fails
+closed with `invalid document grade evidence: ungrounded <path>` (or `contract`
+for a malformed grade); the record's `review_initial_failure` (or
+`review_escalation_failure`) holds the kind, failing evidence paths and each
+rejected quote truncated to 300 characters, kept only in the local discovery
+manifest. Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
 `psweep curate --config …` to republish the curated selection; the next
 `psweep extract` withdraws the records of documents it dropped.
 

@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No image cost for `input_mode: text` (the default).
 - Older records are not read: there is no legacy layer.
 
+### Changed (document review: diagnosable grounding failures)
+- A review grade whose quotes the sampled excerpt does not support now fails with
+  the kind and the failing evidence paths (`invalid document grade evidence:
+  ungrounded evidence.content_quote`; `contract` when the grade itself is
+  malformed) instead of one generic message. The record's review audit
+  (`review_initial_failure`, or `review_escalation_failure`) keeps the kind, the
+  paths and each rejected quote truncated to 300 characters, in the local
+  discovery manifest only. A run note counts the files that failed grounding.
+  Grounding stays exactly as strict. No grade cache key, prompt or sampler
+  change: no existing cache is invalidated and no regrade is triggered.
+
 ### Added (selected-page vision, opt-in)
 - `extraction.input_mode: text | auto | vision` (default `text`; unknown values
   fail at load). `auto` sends images of PDF pages that neither native text nor

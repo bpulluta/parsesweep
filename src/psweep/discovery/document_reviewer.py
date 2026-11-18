@@ -41,6 +41,7 @@ import contextlib
 
 _REVIEW_WORKERS = 4
 _GRADE_ATTEMPTS = 2
+_REJECTED_QUOTE_CHARS = 300
 _GRADE_FIELDS = ("is_primary", "relevance", "doc_kind", "reason", "evidence")
 _SAMPLE_SEPARATOR = "\n[...]\n"
 
@@ -57,6 +58,26 @@ class ReviewError(Exception):
         self.usage_unknown = usage_unknown
         self.retryable = retryable
         super().__init__(message)
+
+
+class EvidenceError(ReviewError):
+    """A well-formed grade whose evidence the sampled source does not support.
+
+    ``failure`` is the audit detail: ``kind`` (``contract`` | ``ungrounded``), the
+    failing evidence ``paths`` and the rejected quote text, truncated. The quote text
+    stays in the local discovery manifest and never appears in the message.
+    """
+
+    def __init__(self, kind: str, paths: dict[str, str]) -> None:
+        shown = ", ".join(paths) or None
+        super().__init__(
+            "invalid document grade evidence: " + " ".join(filter(None, (kind, shown)))
+        )
+        self.failure = {
+            "kind": kind,
+            "paths": list(paths),
+            "quotes": {path: quote[:_REJECTED_QUOTE_CHARS] for path, quote in paths.items()},
+        }
 
 
 class UnreadableDocumentError(ReviewError):
@@ -693,14 +714,16 @@ class DocumentReviewer:
         return quotes
 
     def _verify_evidence(self, grade: dict[str, Any], segments: list[str]) -> None:
+        if not self._valid_grade(grade):
+            raise EvidenceError("contract", {})
         # Review quotes are contiguous: an ellipsis is literal text, never an elision.
-        if not self._valid_grade(grade) or any(
-            not quote_in_segments(quote, segments, elide=False)
-            for quote in self._evidence_quotes(grade["evidence"]).values()
-        ):
-            raise ReviewError(
-                "invalid document grade evidence: unsupported sampled quote or contract"
-            )
+        ungrounded = {
+            f"evidence.{path}": quote
+            for path, quote in self._evidence_quotes(grade["evidence"]).items()
+            if not quote_in_segments(quote, segments, elide=False)
+        }
+        if ungrounded:
+            raise EvidenceError("ungrounded", ungrounded)
 
     def _valid_grade(self, grade: object) -> bool:
         """Require typed grades and the current evidence contract."""
@@ -836,6 +859,8 @@ class DocumentReviewer:
             raise
         except ReviewError as exc:
             audit["initial_error"] = str(exc)
+            if isinstance(exc, EvidenceError):
+                audit["initial_failure"] = exc.failure
             if not self._escalate_model:
                 exc.review_audit = audit
                 raise
@@ -854,6 +879,8 @@ class DocumentReviewer:
                 deciding_route = self._resolved_route(self._escalate_model)
             except (AttemptBudgetExceeded, ReviewError) as exc:
                 audit["escalation_error"] = str(exc)
+                if isinstance(exc, EvidenceError):
+                    audit["escalation_failure"] = exc.failure
                 exc.review_audit = audit
                 raise
         else:
@@ -1510,6 +1537,16 @@ class DocumentReviewer:
             f"selected {selected} primary document(s) "
             f"(keep_top={self._keep_top})."
         )
+        ungrounded = sum(
+            bool(r.get("review_failed"))
+            and bool(r.get("review_initial_failure") or r.get("review_escalation_failure"))
+            for r in gradable
+        )
+        if ungrounded:
+            notes.append(
+                f"Document review: {ungrounded} file(s) failed evidence grounding "
+                "(kind, paths and rejected quotes are in each record's review audit)."
+            )
         kept = sum(r.get(FIELD_REVIEW_REASON) == RECORDING_KEPT for r in gradable)
         if kept:
             notes.append(f"{kept} recording(s) kept without review (transcribed at extraction).")
