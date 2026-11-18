@@ -661,13 +661,25 @@ def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
     if not str(targeting.get("section_description") or "").strip():
         message = "pages.auto_locate requires section_description"
         raise ValueError(message)
-    return resolve_llm_kwargs(
-        targeting.get("model"),
+    if not targeting.get("model"):
+        message = (
+            "pages.auto_locate.model is required when auto_locate is enabled: selection "
+            "must use an explicit model other than the extraction model"
+        )
+        raise ValueError(message)
+    locator = resolve_llm_kwargs(
+        targeting["model"],
         models=inputs.get("models"),
         default_model=llm["model"],
-        llm_config=inputs.get("llm_config") if targeting.get("model") else llm,
-        provider=None if targeting.get("model") else llm["provider"],
+        llm_config=inputs.get("llm_config"),
     )
+    if (locator["provider"], locator["model"]) == (llm["provider"], llm["model"]):
+        message = (
+            "pages.auto_locate.model resolves to the extraction model; "
+            "choose a separate, independently resolved model for selection"
+        )
+        raise ValueError(message)
+    return locator
 
 
 def _prepare_extraction(
@@ -823,10 +835,11 @@ def _document_text(doc_path, page_ranges, section_text, corrections, transcriber
 
 
 def _prepared_input(doc_path, plan, page_ranges, section_text, source=None):
-    """Return text, the exact final prompt, and scope; hold unsafe automatic input.
+    """Return text, the exact final prompt, and scope; hold unsafe input.
 
-    Protected documents never reach the primary request unbounded or oversized:
-    the final string is measured after every source hint and candidate prefix.
+    No document reaches the primary request oversized: the final string is
+    measured after every source hint and candidate prefix. Protected (automatic)
+    documents are additionally held when targeting selected nothing.
     """
     inputs = plan["inputs"]
     protected = _plan_targeted(plan, doc_path)
@@ -856,13 +869,15 @@ def _prepared_input(doc_path, plan, page_ranges, section_text, source=None):
                 f"{trigger}) but targeting selected nothing"
             )
             raise TargetingSafetyError(message, code=NO_USABLE_SCOPE, document=name)
-        limit = inputs.get("max_context", DEFAULT_MAX_CONTEXT)
-        if len(prompt) > limit:
-            message = (
-                f"Prepared extraction input for {name} is {len(prompt)} characters; "
-                f"extraction.max_context is {limit}"
-            )
-            raise TargetingSafetyError(message, code=CONTEXT_BUDGET_EXCEEDED, document=name)
+    # Every path, including manual scope and disabled targeting, obeys the same
+    # budget: an oversized input is held, never silently recropped.
+    limit = inputs.get("max_context", DEFAULT_MAX_CONTEXT)
+    if len(prompt) > limit:
+        message = (
+            f"Prepared extraction input for {name} is {len(prompt)} characters; "
+            f"extraction.max_context is {limit}"
+        )
+        raise TargetingSafetyError(message, code=CONTEXT_BUDGET_EXCEEDED, document=name)
     return text, prompt, effective, parser_scope
 
 
@@ -1226,6 +1241,8 @@ def _admission_scope(plan, results) -> dict[str, dict]:
             entry = {
                 "disposition": "reused" if outcome.get("skipped") else "new",
                 "record_sha256": outcome["record_sha256"],
+                "source_sha256": plan["source_digests"][doc],
+                "input_fingerprint": plan["fingerprints"][doc],
                 "items": outcome.get("items", 0),
             }
         else:
@@ -1440,6 +1457,15 @@ def _execute_locked(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     results = []
     for doc, record in plan["reused"].items():
         try:
+            # Reuse was judged at prepare time, before this writer held the lock.
+            if (
+                hashlib.sha256(plan["outputs"][doc].read_bytes()).hexdigest()
+                != plan["reuse_proofs"][doc]["record_sha256"]
+            ):
+                raise SourceChangedError(
+                    f"{doc.name} record changed since preparation; rerun extraction",
+                    document=doc.name,
+                )
             with _capture_input(doc, plan) as source:
                 if (
                     source.cached_text is not None
@@ -1477,6 +1503,18 @@ def _execute_locked(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     def extract(doc):
         return _extract_one_document(doc, plan, extractor=extractor, run_id=run_id, prepare=scope)
 
+    if pending:
+        # Records are about to be rewritten one by one; until the final pointer
+        # lands they are not admitted, so an interrupted run never leaves new
+        # bytes under an old digest. Rerunning extraction re-admits them.
+        publish_admission(
+            output,
+            run_id=run_id,
+            scope={
+                plan["outputs"][doc].relative_to(output).as_posix(): {"disposition": "deferred"}
+                for doc in pending
+            },
+        )
     queue, running = enumerate(pending), {}
     outcomes = [None] * len(pending)
     pool = ThreadPoolExecutor(max_workers=workers)

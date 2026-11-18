@@ -311,36 +311,17 @@ def test_invalid_schema_preflight_preserves_fresh_output(tmp_path, schema, comma
     assert validation.exit_code != 0
 
 
-def test_context_truncation_survives_canonical_record(tmp_path, schema, payload):
-    from psweep.extraction.record_writer import build_extraction_record
+def test_oversized_text_is_rejected_not_sliced(schema, payload):
+    from psweep.exceptions import ExtractionError
 
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini", max_context_chars=5)
     with patch.object(
         extractor.client, "extract", return_value={"data": payload, "cost": 0.0}
     ) as client:
-        result = extractor.extract("long source text", schema)
-    assert client.call_args.args[0] == "long "
-    assert any("truncated" in note for note in result.validation_notes)
-    document = tmp_path / "doc.txt"
-    document.write_text("long source text")
-    schema_path = tmp_path / "schema.json"
-    schema_path.write_text(json.dumps(schema))
-    record, count = build_extraction_record(
-        doc_path=document,
-        source_sha256=artifact_sha256(document),
-        source_document_id="doc.txt",
-        result=result,
-        model="gpt-4o-mini",
-        provider="openai",
-        schema_metadata=SchemaMetadata(schema_path),
-    )
-    assert count == record["item_count"] == 1
-    assert record["processing_metrics"]["coverage"] == {
-        "input_characters": 16,
-        "extracted_characters": 5,
-        "context_truncated": True,
-    }
-    assert any("truncated" in note for note in record["quality"]["warnings"])
+        with pytest.raises(ExtractionError, match="context_window_exceeded"):
+            extractor.extract("long source text", schema)
+        client.assert_not_called()
+        assert extractor.extract("12345", schema).coverage["context_truncated"] is False
 
 
 def test_incomplete_bounded_targeting_survives_canonical_record(tmp_path, schema, payload):
@@ -465,7 +446,7 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
     )
     monkeypatch.setattr(
         "psweep.extraction.llm_client.LLMClient.extract",
-        lambda *args: {"data": deepcopy(data), "cost": 0.0},
+        lambda *args, **kwargs: {"data": deepcopy(data), "cost": 0.0},
     )
     run = extract_documents(
         documents, schema_path, output_dir=extracted, provider="openai", pages_csv=pages_csv
@@ -549,7 +530,7 @@ def test_pipeline_does_not_write_invalid_extraction(tmp_path, monkeypatch, schem
     output = tmp_path / "output"
     monkeypatch.setattr(
         "psweep.extraction.llm_client.LLMClient.extract",
-        lambda *args: {"data": {"items": []}, "cost": 0.0},
+        lambda *args, **kwargs: {"data": {"items": []}, "cost": 0.0},
     )
     result = extract_documents(documents, schema_path, output_dir=output, provider="openai")
     assert result.failed == 1

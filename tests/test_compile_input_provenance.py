@@ -27,10 +27,11 @@ def _publish(directory: Path, **dispositions: str) -> None:
         entry = {"disposition": disposition}
         if disposition in {"new", "reused"}:
             entry["record_sha256"] = hashlib.sha256((directory / name).read_bytes()).hexdigest()
+            entry["source_sha256"] = entry["input_fingerprint"] = "1" * 64
         records[name] = entry
     _write_json(
         admission_path(directory),
-        {"admission_version": "1.0.0", "run_id": "run://x", "records": records},
+        {"admission_version": "2.0.0", "run_id": "run://x", "records": records},
     )
 
 

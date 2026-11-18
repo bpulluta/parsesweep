@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (scope budgeting, explicit locator)
+- `extraction.max_context` is now enforced on every path, including CSV and
+  `pages.range` scope, disabled targeting and unsupported types. Oversized
+  input is held (`targeting_context_budget_exceeded`) and the primary is not
+  called; `DocumentExtractor.extract` rejects it instead of slicing a prefix.
+  Records that were truncated at `max_context` can no longer be produced.
+- `pages.auto_locate.model` is required when auto-locate is enabled and must
+  resolve to a different provider/model than `extraction.model`; the silent
+  inherit-the-primary default is removed. Configs that enabled auto-locate
+  without a model now fail validation. No record, fingerprint or cache impact;
+  documents that were previously truncated will hold until a scope is chosen.
+
+### Fixed (central request admission)
+- `LLMClient.complete` now admits the exact final request (messages plus
+  response schema) against `model_context_windows` before any provider
+  attempt, for every caller, replacing the extract-only chars/4 check. Primary
+  extraction and locator calls additionally use LiteLLM's pinned local catalog
+  and send the route's output limit as `max_tokens`. Estimates are
+  conservative (3 UTF-8 bytes/token). Unknown limits are not guarded. A
+  rejected request sends and meters nothing. Discovery, reconciliation and
+  transcription get no catalog guard or output cap.
+- No cache, record, or discovery impact; very large inputs on known routes
+  now hold earlier with `context_window_exceeded`.
+
 ### Changed (test efficiency)
 - The full offline suite and CI retain all distinct regression scenarios;
   two duplicate config-validation parameter cases are consolidated into
@@ -30,7 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   old bytes on disk but are not admitted; succeeded and verified-reused siblings
   of a partial run are. Previously a changed document that failed re-extraction
   compiled alongside new siblings with no warning. Extraction holds a per-output
-  single-writer lock.
+  single-writer lock. Records judged reusable at preparation are re-hashed
+  under that lock; one replaced in between fails that document instead of
+  being admitted as reused. No cache or cost impact.
+- Admission pointer is now version 2.0.0: each admitted entry also records the
+  consumed `source_sha256` and `input_fingerprint`. Before rewriting records, a
+  run marks its pending documents `deferred`, so an interrupted run excludes
+  them from compilation instead of leaving new bytes under an old digest;
+  `psweep extract` again re-admits them (documents finished before the
+  interruption are re-extracted, since reuse proof is written only at run end).
+  Pointers published by the earlier draft format are rejected as malformed:
+  rerun `psweep extract` once. No discovery regrade.
 - Compilation, dry-run, `compiled_table_fresh`, provenance and the build
   fingerprint share one selector (`select_compile_inputs`) that verifies and
   reads the same admitted bytes; broken, missing or contradicted admission fails

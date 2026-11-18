@@ -394,10 +394,16 @@ def test_accounting_reports_outcomes_not_billed_attempts_as_successes(monkeypatc
     _write_json(
         extraction_dir / "run_manifests" / "current_admission.json",
         {
-            "admission_version": "1.0.0",
+            "admission_version": "2.0.0",
             "run_id": "run://r1",
             "records": {
-                "g.json": {"disposition": "new", "record_sha256": "0" * 64, "items": 0},
+                "g.json": {
+                    "disposition": "new",
+                    "record_sha256": "0" * 64,
+                    "source_sha256": "1" * 64,
+                    "input_fingerprint": "2" * 64,
+                    "items": 0,
+                },
                 **{f"f{i}.json": {"disposition": "failed"} for i in range(5)},
             },
         },

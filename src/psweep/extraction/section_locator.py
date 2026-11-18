@@ -401,6 +401,7 @@ class SectionLocator(_BaseLocator):
                 system_prompt=_LOCATE_SYSTEM,
                 user_prompt=user_prompt,
                 suppress_errors=True,
+                admit=True,
             )
         except APIKeyError:
             raise

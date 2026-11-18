@@ -430,6 +430,7 @@ class PageLocator(_BaseLocator):
                 system_prompt=system,
                 user_prompt=user_prompt,
                 suppress_errors=True,
+                admit=True,
             )
         except APIKeyError:
             raise

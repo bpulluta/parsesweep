@@ -50,7 +50,7 @@ pixi run psweep discover --config config/<domain>/run.yaml --show-effective-conf
 | `domain` | required | Names the run; every output is derived under `outputs/<domain>/`. |
 | `schema` | `schema.json` beside the config | Extraction schema path. |
 | `models` | — | Alias → model-name map. Stages reference aliases (`primary`, `secondary`, …) so a model is changed in one place. |
-| `model_context_windows` | — | Model name → context window (positive integer) for models the runtime does not know. |
+| `model_context_windows` | — | Model name → input window in tokens (positive integer). Every request is checked against it, schema included, before sending; extraction and locator requests also use the pinned LiteLLM catalog and cap output at the route's output limit. Unknown limits are not guarded. |
 | `reasoning_models` | — | Model names to treat as reasoning models (sent without `temperature`; JSON mode stays on). |
 | `discovery` | — | [Discovery](#discovery). |
 | `extraction` | — | [Extraction](#extraction). |
@@ -411,7 +411,7 @@ positionally) and writes one JSON record per document to
 | `transcription_model` | — | `models:` alias that transcribes audio; required when audio is present. |
 | `limit` | — | Process only the first N documents. |
 | `skip_existing` | `true` | Reuse verified records (see [Reuse](#runs-reuse-and-exit-codes)). |
-| `max_context` | `600000` | Characters sent per call. With automatic targeting this is a hard limit on the final prepared input, source hints and candidate context included (characters, not tokens); otherwise longer input is truncated and reported. |
+| `max_context` | `600000` | Characters sent per call. A hard limit on the final prepared input on every path (automatic targeting, CSV/`pages.range` scope, or no targeting), source hints and candidate context included (characters, not tokens). Longer input is held, never cut to a prefix. |
 | `max_concurrent` | `4` | Documents extracted in parallel (also concurrent transcription chunks). |
 | `timeout_seconds` | `120` (`LLM_TIMEOUT`) | Per-request LLM timeout. |
 | `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR text only. |
@@ -428,7 +428,7 @@ extraction:
       trigger_chars: 200000       # default; only larger documents are targeted
       max_selected_pages: 30      # default; total, referenced pages included
       keywords: [rate schedule]   # optional cheap pre-filter
-      model: secondary            # optional locator model
+      model: secondary            # required when enabled; not the extraction model
       save_discovered: true       # write found ranges for review
 ```
 
@@ -444,7 +444,8 @@ and inclusive ranges.
 Targeting normally runs within each bounded extraction worker, so a slow
 locator doesn't hold up every other document. A fresh run with existing output
 performs bounded targeting preflight before deleting old records. Its `model`
-is independent of `extraction.model`; when omitted it inherits that model.
+is required when `auto_locate` is enabled and must resolve to a different
+provider/model than `extraction.model`; it is never inherited.
 Target-scoped selections retain subject identity/header context. The subject
 comes from the last configured `partition_by` field (the roster's name field),
 not from parsing a display label or guessing metadata fields. Discovery labels
@@ -465,9 +466,11 @@ nothing, or the PDF had no readable native text) or
 extract stage ends `failed` (exit 1) even when other documents succeeded, so
 `run` stops before compiling; `psweep compile` can still be run by hand on the
 historical records. A CSV row, including a blank one that forces the full
-document, or `pages.range` bypasses targeting for every supported type; the
-full-document text is then truncated at `max_context` and reported. Scanned
-PDFs with no native text need such a row. `--fresh` runs the same checks
+document, or `pages.range` bypasses targeting for every supported type but not
+the budget: an input over `max_context` is held with
+`targeting_context_budget_exceeded` (also when targeting is disabled or the type
+is unsupported), never truncated. Scanned PDFs with no native text need such a
+row. `--fresh` runs the same checks
 before deleting any output and, on a hold, keeps the previous records.
 
 `auto_locate` shows the locator model the opening lines of each candidate page
@@ -485,8 +488,8 @@ A malformed page-range answer is rejected whole, not partly used.
 
 Selections are cached in `.pages/` beside the document. If a reference pass
 fails, the pages found so far are extracted with
-`coverage.targeting_incomplete` and a warning in the record; such a record and
-any record truncated at `max_context` are never reused, and the document is
+`coverage.targeting_incomplete` and a warning in the record; such a record
+is never reused, and the document is
 located again on the next run.
 With `save_discovered`, `extracted/discovered_page_ranges.csv` (the `pages.csv`
 columns, one row per range) lists the pages behind every current record, reused
@@ -572,7 +575,14 @@ run.
 
 Extraction holds a single-writer lock per output (`.<output>.publication.lock`,
 beside the output directory); a second concurrent extraction into the same
-output is rejected.
+output is rejected. Reuse decided at preparation is re-verified against the
+record's proof digest once the lock is held; a record replaced in between fails
+that document (rerun extraction).
+
+Each admitted pointer entry carries the record digest plus the consumed
+`source_sha256` and `input_fingerprint`. A run marks the documents it will
+rewrite `deferred` before writing, so an interrupted run leaves them excluded
+from compilation until `psweep extract` is rerun.
 
 `psweep compile` (and `compile_extractions`) select admitted records through one
 selector shared by provenance checks, row/roster/reconciliation compilation,

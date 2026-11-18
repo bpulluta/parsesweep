@@ -12,7 +12,7 @@ from typing import Any
 
 from psweep.utils.file_io import atomic_json
 
-ADMISSION_VERSION = "1.0.0"
+ADMISSION_VERSION = "2.0.0"
 ADMISSION_NAME = "current_admission.json"
 ADMITTED_DISPOSITIONS = frozenset({"new", "reused"})
 DISPOSITIONS = ADMITTED_DISPOSITIONS | {"failed", "deferred"}
@@ -31,8 +31,10 @@ def _valid_entry(entry: Any) -> bool:
     if not isinstance(entry, dict) or entry.get("disposition") not in DISPOSITIONS:
         return False
     if entry["disposition"] in ADMITTED_DISPOSITIONS:
-        digest = entry.get("record_sha256")
-        return isinstance(digest, str) and len(digest) == 64
+        return all(
+            isinstance(entry.get(key), str) and len(entry[key]) == 64
+            for key in ("record_sha256", "source_sha256", "input_fingerprint")
+        )
     return True
 
 

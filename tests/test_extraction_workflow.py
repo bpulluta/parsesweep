@@ -637,6 +637,65 @@ def test_extraction_output_rejects_a_second_writer(workflow):
     provider.assert_not_called()
 
 
+def test_reuse_is_reverified_under_the_lock(workflow):
+    """A record replaced between prepare and execute is never certified as reused."""
+    from psweep import pipeline
+
+    documents, schema, output, _ = workflow
+    assert extract_documents(documents, schema, output_dir=output).successful == 1
+    inputs = {
+        "path": str(documents),
+        "schema": str(schema),
+        "output": str(output),
+        "skip_existing": True,
+    }
+    plan = pipeline._prepare_extraction(inputs)
+    assert list(plan["reused"]) and not plan["pending"]
+    record = output / "alpha.json"
+    record.write_bytes(record.read_bytes() + b"\n")  # a second writer lands
+    result = pipeline._execute_extraction(plan)
+    assert (result.successful, result.failed) == (0, 1)
+    assert result.admitted == 0
+    assert _admission(output)["alpha.json"]["disposition"] == "failed"
+
+
+def test_admission_entries_carry_source_and_fingerprint_identity(workflow):
+    import hashlib
+
+    documents, schema, output, _ = _two_changed_documents(workflow)
+    extract_documents(documents, schema, output_dir=output)
+    extract_documents(documents, schema, output_dir=output)  # verified reuse
+    for rel, entry in _admission(output).items():
+        source = documents / rel.replace(".json", ".txt")
+        assert entry["source_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+        assert len(entry["input_fingerprint"]) == 64
+
+
+def test_interrupted_run_leaves_a_consistent_recoverable_pointer(workflow):
+    """A crash mid-run excludes rewritten documents instead of mismatching bytes."""
+    from psweep.compilation.input_provenance import select_compile_inputs
+
+    documents, schema, output, provider = _two_changed_documents(workflow)
+    extract_documents(documents, schema, output_dir=output)
+    (documents / "a.txt").write_text("marker-a three")
+    (documents / "b.txt").write_text("marker-b three")
+
+    def respond(*args, **kwargs):
+        if "marker-b" in f"{args}{kwargs}":
+            raise KeyboardInterrupt
+        return _answer()
+
+    provider.side_effect = respond
+    with pytest.raises(KeyboardInterrupt):
+        extract_documents(documents, schema, output_dir=output)
+    records = _admission(output)
+    assert {r["disposition"] for r in records.values()} == {"deferred"}
+    inputs = select_compile_inputs(output)
+    assert not inputs.records
+    _route(provider)
+    assert extract_documents(documents, schema, output_dir=output).admitted == 2
+
+
 def test_manifest_records_item_and_zero_item_outcomes(workflow):
     documents, schema, output, provider = workflow
     (documents / "empty.txt").write_text("marker-empty")

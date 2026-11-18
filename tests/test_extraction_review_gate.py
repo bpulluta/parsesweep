@@ -109,7 +109,11 @@ def test_proxy_with_explicit_azure_needs_no_direct_azure_endpoint(
 def test_document_work_logs_name_the_document(reviewed_inputs, monkeypatch):
     """Locating (main thread) and extracting (worker) both log under the document."""
     inputs, provider = reviewed_inputs
-    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+    inputs["page_targeting"] = {
+        "enabled": True,
+        "section_description": "evidence",
+        "model": "gpt-locator",
+    }
     seen = []
     monkeypatch.setattr(
         "psweep.extraction.section_locator.SectionLocator.locate",
@@ -134,7 +138,8 @@ def test_targeting_and_extraction_share_bounded_document_workers(reviewed_inputs
     for name in ("a-slow.txt", "b-fast.txt", "c-next.txt", "d-next.txt"):
         (root / name).write_text("Source evidence")
     inputs.update(
-        max_concurrent=2, page_targeting={"enabled": True, "section_description": "evidence"}
+        max_concurrent=2,
+        page_targeting={"enabled": True, "section_description": "evidence", "model": "gpt-locator"},
     )
     extracted = Event()
     lock = Lock()
@@ -169,7 +174,7 @@ def test_targeting_binds_subject_from_configured_identity_not_the_label(
     inputs, _provider = reviewed_inputs
     inputs.update(
         partition_by=["region", field],
-        page_targeting={"enabled": True, "section_description": "evidence"},
+        page_targeting={"enabled": True, "section_description": "evidence", "model": "gpt-locator"},
     )
     with (Path(inputs["path"]) / "download_index.csv").open("w", newline="") as handle:
         writer = csv.DictWriter(
@@ -209,6 +214,7 @@ def test_completed_section_text_is_released_before_the_next_document(
         page_targeting={
             "enabled": True,
             "section_description": "evidence",
+            "model": "gpt-locator",
             "save_discovered": save,
         },
     )
@@ -238,7 +244,11 @@ def test_completed_section_text_is_released_before_the_next_document(
 
 def test_subject_context_and_locator_version_invalidate_record_reuse(reviewed_inputs, monkeypatch):
     inputs, provider = reviewed_inputs
-    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+    inputs["page_targeting"] = {
+        "enabled": True,
+        "section_description": "evidence",
+        "model": "gpt-locator",
+    }
     index = Path(inputs["path"]) / "download_index.csv"
     inputs["path"] = str(Path(inputs["path"]) / "doc.txt")
 
@@ -274,6 +284,7 @@ def test_invalid_locator_keywords_preserve_fresh_output(reviewed_inputs):
     inputs["page_targeting"] = {
         "enabled": True,
         "section_description": "evidence",
+        "model": "gpt-locator",
         "keywords": [123],
     }
     with pytest.raises(ValueError, match="keywords"):
@@ -384,6 +395,7 @@ def test_saved_page_ranges_cover_reused_records(reviewed_inputs, monkeypatch):
     inputs["page_targeting"] = {
         "enabled": True,
         "section_description": "evidence",
+        "model": "gpt-locator",
         "save_discovered": True,
     }
     found = {"a.pdf": ((3, 4),), "b.pdf": ((2, 2), (7, 9)), "c.pdf": None}
@@ -434,7 +446,11 @@ def test_pages_left_out_by_the_budget_are_recorded(reviewed_inputs, monkeypatch)
     root = Path(inputs["path"])
     (root / "doc.txt").unlink()
     (root / "doc.pdf").write_bytes(b"fixture")
-    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+    inputs["page_targeting"] = {
+        "enabled": True,
+        "section_description": "evidence",
+        "model": "gpt-locator",
+    }
     monkeypatch.setattr(
         "psweep.extraction.page_locator.PageLocator.locate",
         lambda _self, _doc: PageSelection(((2, 2), (5, 6)), omitted=((8, 9),)),
@@ -941,7 +957,12 @@ def test_composed_main_array_schema_is_supported(reviewed_inputs, composition):
 
 
 def _targeting(inputs, **extra):
-    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence", **extra}
+    inputs["page_targeting"] = {
+        "enabled": True,
+        "section_description": "evidence",
+        "model": "gpt-locator",
+        **extra,
+    }
 
 
 def _sections(monkeypatch, *, by_name=None, default=None, incomplete=False, calls=None):
@@ -1372,18 +1393,68 @@ def test_incomplete_pdf_targeting_is_held_without_parsing_or_a_primary_call(
 
 
 @pytest.mark.parametrize("kind", ["disabled", "unsupported"])
-def test_unprotected_inputs_keep_reported_truncation(reviewed_inputs, monkeypatch, kind):
-    inputs, provider = reviewed_inputs
-    inputs["max_context"] = 5
+@pytest.mark.parametrize(("limit", "held"), [(15, False), (14, True)])
+def test_untargeted_inputs_are_held_not_sliced(reviewed_inputs, kind, limit, held):
+    """Every path obeys max_context exactly; nothing is silently recropped."""
+    inputs, provider = reviewed_inputs  # the source text is exactly 15 characters
+    inputs["max_context"] = limit
+    root = Path(inputs["path"])
     if kind == "unsupported":
-        (Path(inputs["path"]) / "doc.txt").rename(Path(inputs["path"]) / "doc.csv")
+        (root / "doc.txt").rename(root / "doc.csv")
         _targeting(inputs, trigger_chars=1)
-    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-    record = next(Path(inputs["output"]).glob("doc.json"))
-    assert json.loads(record.read_text("utf-8"))["processing_metrics"]["coverage"][
-        "context_truncated"
-    ]
-    provider.assert_called_once()
+    elif kind == "manual":
+        (root / "pages.csv").write_text("file,pages\ndoc.txt,1-1\n", encoding="utf-8")
+        inputs["pages_csv"] = str(root / "pages.csv")
+        _targeting(inputs, trigger_chars=1)
+    outcome = _execute_extraction(_prepare_extraction(inputs))
+    if held:
+        assert _codes(outcome) == ["targeting_context_budget_exceeded"]
+        provider.assert_not_called()
+        assert not (Path(inputs["output"]) / "doc.json").exists()
+    else:
+        assert outcome.exit_code == 0
+        record = json.loads((Path(inputs["output"]) / "doc.json").read_text("utf-8"))
+        assert not record["processing_metrics"]["coverage"]["context_truncated"]
+
+
+@pytest.mark.parametrize(
+    ("model", "match"),
+    [(None, "auto_locate.model is required"), ("gpt-fixture", "resolves to the extraction model")],
+)
+def test_auto_targeting_requires_an_independent_locator_model(reviewed_inputs, model, match):
+    inputs, provider = reviewed_inputs
+    inputs["page_targeting"] = {"enabled": True, "section_description": "evidence"}
+    if model:
+        inputs["page_targeting"]["model"] = model
+    with pytest.raises(ValueError, match=match):
+        _prepare_extraction(inputs)
+    provider.assert_not_called()
+
+
+def test_manual_page_scope_cannot_bypass_the_budget(reviewed_inputs, monkeypatch):
+    inputs, provider = reviewed_inputs
+    root = Path(inputs["path"])
+    (root / "doc.txt").unlink()
+    (root / "a.pdf").write_bytes(b"first")
+    pages = root.parent / "pages.csv"
+    pages.write_text("file_path,start_page,end_page\na.pdf,1,2\n", encoding="utf-8")
+    inputs["pages_csv"] = str(pages)
+    inputs["max_context"] = 5
+    monkeypatch.setattr(
+        "psweep.extraction.document_utils.extract_text_from_document",
+        lambda *_a, **_k: (
+            "far too long for the budget",
+            {
+                "page_ranges": ((1, 2),),
+                "page_count": 9,
+                "selected_pages": [1, 2],
+                "extracted_pages": [1, 2],
+            },
+        ),
+    )
+    outcome = _execute_extraction(_prepare_extraction(inputs))
+    assert _codes(outcome) == ["targeting_context_budget_exceeded"]
+    provider.assert_not_called()
 
 
 def test_locator_version_changes_enabled_fingerprints_only(reviewed_inputs, monkeypatch):

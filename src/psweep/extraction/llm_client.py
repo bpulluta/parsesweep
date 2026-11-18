@@ -38,6 +38,7 @@ from psweep.exceptions import ExtractionError
 from psweep.exceptions import AttemptBudgetExceeded
 from .llm_factory import DEFAULT_MODEL, detect_provider
 from psweep.utils.retry import compute_backoff, is_transient_error
+from .request_policy import RouteLimits, assess_request, route_limits
 from .schema_utils import strict_compatible
 from .text_processor import find_data_arrays
 
@@ -81,8 +82,6 @@ class LLMClient:
     Uses LiteLLM for unified interface across all providers.
     Automatically tracks costs and handles provider-specific parameters.
     """
-
-    CONTEXT_RESPONSE_RESERVE_TOKENS = 4096
 
     DEFAULT_TIMEOUT = 120  # seconds; overridable via LLM_TIMEOUT env var
 
@@ -365,7 +364,12 @@ class LLMClient:
             return None
 
     def complete(
-        self, messages: list[dict[str, Any]], *, before_request=None, **params: Any
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        before_request=None,
+        admit: bool = False,
+        **params: Any,
     ) -> Completion:
         """Send one chat request and account for it.
 
@@ -373,7 +377,18 @@ class LLMClient:
         sanitized ``ExtractionError`` failures; ``params`` are request
         options such as ``temperature`` or ``response_format``. A reply
         without choices raises ``ExtractionError`` carrying its usage.
+
+        The exact request is admitted before any attempt: it must fit the
+        operator's ``model_context_windows``. With ``admit=True`` (extraction
+        and locator callers) the pinned catalog limits also apply and the
+        output is capped at the route's output limit, sent as ``max_tokens``.
         """
+        limits = self._route_limits(admit)
+        output_cap = limits.output_tokens if admit else None
+        if admit or all(isinstance(m.get("content"), str) for m in messages):
+            assess_request(messages, params.get("response_format"), limits, output_cap=output_cap)
+        if output_cap is not None:
+            params = {**params, "max_tokens": output_cap}
         if before_request is not None:
             before_request()
         request = {**self._route(), "messages": messages, **params}
@@ -477,6 +492,7 @@ class LLMClient:
         user_prompt: str | None = None,
         suppress_errors: bool = False,
         before_request=None,
+        admit: bool = False,
     ) -> dict[str, Any]:
         """
         Extract structured data using LLM.
@@ -512,8 +528,6 @@ class LLMClient:
             {"role": "user", "content": user_prompt},
         ]
 
-        self._validate_context_budget(messages)
-
         # Reasoning models reject a non-default temperature; JSON mode stays on
         # for every model (LiteLLM's drop_params removes it where unsupported).
         is_reasoning_model = any(x in self.model.lower() for x in self.reasoning_model_markers)
@@ -528,6 +542,8 @@ class LLMClient:
                 "No markdown, no code fences, no explanation."
             )
 
+        if admit:
+            params["admit"] = True
         reply = (
             self.complete(messages, before_request=before_request, **params)
             if before_request is not None
@@ -659,43 +675,16 @@ class LLMClient:
             token in message for token in ("deprecated", "unsupported", "invalid_request_error")
         )
 
-    def _get_context_window_tokens(self) -> int | None:
-        """Return the configured context window (prompt tokens) for this model.
-
-        Sourced from the caller-supplied ``context_windows`` map only (populated
-        from ``model_context_windows`` in run.yaml). No model names are
-        hardcoded; models absent from the map are simply not guarded.
-        """
-        for candidate in (self.model, self.raw_model):
-            if candidate in self.context_windows:
-                return self.context_windows[candidate]
-        return None
-
-    def _estimate_message_tokens(self, messages: list[dict[str, str]]) -> int:
-        """Estimate prompt token usage conservatively from message content."""
-        content_tokens = sum((len(message.get("content", "")) + 3) // 4 for message in messages)
-        per_message_overhead = 16 * len(messages)
-        return content_tokens + per_message_overhead
-
-    def _validate_context_budget(self, messages: list[dict[str, str]]) -> None:
-        """Fail fast when the estimated request exceeds a known model context window."""
-        context_window = self._get_context_window_tokens()
-        if context_window is None:
-            return
-
-        estimated_prompt_tokens = self._estimate_message_tokens(messages)
-        estimated_total_tokens = estimated_prompt_tokens + self.CONTEXT_RESPONSE_RESERVE_TOKENS
-        if estimated_total_tokens <= context_window:
-            return
-
-        raise ExtractionError(
-            "context_window_exceeded: estimated request size "
-            f"{estimated_prompt_tokens} prompt tokens + "
-            f"{self.CONTEXT_RESPONSE_RESERVE_TOKENS} reserved output tokens "
-            f"exceeds model context window {context_window} for "
-            f"provider={self.provider}, model={self.model}. "
-            "Reduce max_context_chars or use page ranges/chunking for large documents."
+    def _route_limits(self, admit: bool) -> RouteLimits:
+        """Known limits: operator windows always; pinned catalog only when ``admit``."""
+        names = (self.model, self.raw_model)
+        if admit:
+            return route_limits(*names, configured_windows=self.context_windows)
+        configured = route_limits(
+            *(n for n in names if n in self.context_windows),
+            configured_windows=self.context_windows,
         )
+        return RouteLimits(input_tokens=configured.input_tokens)
 
     @staticmethod
     def _build_extraction_prompt(text: str, schema: dict[str, Any]) -> str:

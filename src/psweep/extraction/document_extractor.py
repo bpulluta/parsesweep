@@ -8,6 +8,7 @@ import time
 from typing import Any
 from dataclasses import dataclass
 
+from psweep.exceptions import ExtractionError
 from psweep.extraction.schema_utils import validate_payload
 from .llm_client import LLMClient
 from .llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
@@ -147,17 +148,20 @@ class DocumentExtractor:
         """
         start_time = time.time()
         validation_notes = []
-        excerpt = text[: self.max_context_chars]
+        if len(text) > self.max_context_chars:
+            # Never recrop silently: a prefix is not a document.
+            message = (
+                f"context_window_exceeded: input is {len(text)} characters but "
+                f"max_context_chars is {self.max_context_chars}. Use page ranges or "
+                "targeting to select the relevant part."
+            )
+            raise ExtractionError(message)
+        excerpt = text
         coverage = {
             "input_characters": len(text),
-            "extracted_characters": len(excerpt),
-            "context_truncated": len(excerpt) < len(text),
+            "extracted_characters": len(text),
+            "context_truncated": False,
         }
-        if coverage["context_truncated"]:
-            validation_notes.append(
-                f"Extraction context truncated from {coverage['input_characters']} "
-                f"to {coverage['extracted_characters']} characters; coverage is partial."
-            )
 
         from .schema_utils import build_schema_validator
 
@@ -165,7 +169,7 @@ class DocumentExtractor:
 
         # Stage 1: LLM Structured Extraction
         logger.info("🤖 Stage 1: LLM Structured Extraction")
-        extraction = self.client.extract(excerpt, schema)
+        extraction = self.client.extract(excerpt, schema, admit=True)
         try:
             validated_data = extraction["data"]
 

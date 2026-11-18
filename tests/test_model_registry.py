@@ -237,7 +237,7 @@ def test_context_windows_remain_separate_from_alias_resolution(tmp_path, monkeyp
     monkeypatch.setenv("OPENAI_API_KEY", "test-original-key")
     client = LLMClient(**kwargs, context_windows=windows)
     assert client.context_windows == windows
-    assert client._get_context_window_tokens() == 20000
+    assert client._route_limits(admit=False).input_tokens == 20000
     assert windows == config_data["model_context_windows"]
 
 
