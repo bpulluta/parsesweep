@@ -408,6 +408,7 @@ positionally) and writes one JSON record per document to
 |-----|---------|---------|
 | `model` | [default model](#environment-variables) | `models:` alias or model name. |
 | `provider` | `auto` | `openai`, `azure`, `anthropic`, `gemini` or `auto`. |
+| `input_mode` | `text` | PDF modality: `text` (text only), `auto` (also attach images of pages no parser could read as text or OCR), `vision` (attach images of every non-blank selected page). See [Selected-page vision](#selected-page-vision). |
 | `transcription_model` | — | `models:` alias that transcribes audio; required when audio is present. |
 | `limit` | — | Process only the first N documents. |
 | `skip_existing` | `true` | Reuse verified records (see [Reuse](#runs-reuse-and-exit-codes)). |
@@ -545,6 +546,33 @@ The prompt states that conversions or normalization happen only when a schema
 field description explicitly requires them, that unsupported conversions yield
 `null`, and that quotes stay verbatim.
 
+### Selected-page vision
+
+`extraction.input_mode` is a PDF-only policy; other document types and the
+roster-anchored path stay text-only. Pages are rendered at full size
+(144 dpi PNG) from the captured source and sent after the text through the same
+request path, each preceded by `[Image of PDF page N]` with its original number.
+Only the pages in scope are rendered; nothing is cropped or dropped to fit.
+
+- `auto` attaches only `unreadable` pages (visual content that neither native
+  text nor OCR could read). Clean documents stay text-only and cost the same.
+  A document with no readable text at all proceeds on images instead of failing.
+- `vision` attaches every non-blank selected page, alongside its text. Use page
+  targeting or ranges; an unscoped long PDF is held by a known context window.
+- The route must be known to accept images (LiteLLM's pinned catalog,
+  checked on the model name and the resolved model). An unmapped proxy alias
+  holds with `request_not_admitted` before any request; there is no fallback
+  to another model. Image size is estimated from each PNG's own dimensions
+  (pixels / 750 + 256 per image, high on purpose) and counted against known
+  input windows.
+- Quotes are still verified against text only. Content that exists only in an
+  image has no text to match, so a quote taken from it is rejected like any
+  other unverifiable quote; the record notes `visual_pages`. The record's
+  coverage fields do not yet describe image use (planned with Step 9).
+- Native PDF transport is not implemented.
+- A non-`text` mode joins the extraction fingerprint (mode and dpi), so
+  switching modes re-extracts; `text` keeps existing fingerprints.
+
 ### Source identity
 
 Each extracted record describes the exact bytes that were read. Extraction
@@ -563,9 +591,11 @@ and `.pages/` / `.sections/` sidecars.
 
 Preparation retains compact method/text/representation identities. Missing or
 changed authoritative browser/API text cannot fall back to native text under its
-old fingerprint. Raw OCR corrections apply after capture; transcripts must match
-the source and transcriber identity. Derived OCR/transcript caches can be created
-without perpetual re-extraction; changed verified derived text rejects reuse.
+old fingerprint. Transcripts must match the source and transcriber identity. Raw
+OCR is derived from the source per page (see **Caches**); its identity is the
+digest of the cached page entries, recorded with each whole-document record.
+Derived OCR/transcript caches can be created without perpetual re-extraction;
+changed verified derived text rejects reuse.
 Roster/no-match decisions and reused records are rechecked at consumption.
 Fresh preflight releases captures promptly and rechecks retained scope identities
 inside workers. Prior records survive a mismatch; stale-product cleanup occurs
@@ -925,12 +955,22 @@ unreadable selected page makes the record's coverage `parser_partial` with a
 warning instead of being certified as extracted. The per-page status is in the
 extraction metadata under `pages` and keeps the original page numbers; the
 page locator's index OCRs raster pages too, so scans can be targeted.
-`ocr_corrections` apply only to OCR pages. `pdf_inspection` and discovery
-screening are unchanged and stay native-only.
+`ocr_corrections` apply only to OCR pages, each time the text is read.
+`pdf_inspection` and discovery screening are unchanged and stay native-only.
 
-**Caches.** OCR text and transcripts: `.text/<filename>.txt` + `.meta.json`
-beside the document, verified by size, mtime and SHA-256 and carried to a
-re-downloaded file with the same SHA-256. Page/section targeting: `.pages/`,
+**Caches.** Raw OCR: one entry per page in `.text/<filename>.ocr/<page>.json`,
+keyed by the source SHA-256, the page number and the OCR engine/render version,
+and shared by the page locator's index, page-range runs and whole-document
+extraction, so a raster page is OCR-ed once. Entries hold raw text only (the
+configured corrections are applied on read) and are replaced atomically; an
+unreadable, mismatched or tampered entry is a miss and is rewritten. The entry
+key includes the PyMuPDF version but not the Tesseract version, so upgrading
+Tesseract keeps existing OCR text until the `.ocr` directories are deleted.
+Discovery moves entries with their document (into `curated/`, to a same-SHA
+re-download, and out on removal). Transcripts
+and browser/API renders: `.text/<filename>.txt` + `.meta.json` beside the
+document, verified by size, mtime and SHA-256 and carried to a re-downloaded file
+with the same SHA-256. Page/section targeting: `.pages/`,
 `.sections/`. Review grades: `discovered/.review_cache/`. Delete a cache
 directory to force that work again.
 

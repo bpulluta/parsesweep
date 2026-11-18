@@ -78,6 +78,13 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
                 "(.mp3 .m4a .wav .ogg .flac); required for audio."
             ),
         ),
+        "input_mode": (
+            "optional",
+            (
+                "PDF modality: text (default), auto (page images only for pages with no "
+                "readable text), vision (page images of every meaningful selected page)."
+            ),
+        ),
         "limit": ("optional", "Process only the first N files."),
         "max_context": ("advanced", "Maximum characters to pass to extraction context."),
         "max_concurrent": ("advanced", "Documents extracted in parallel (default: 4)."),
@@ -218,6 +225,7 @@ _AUTO_LOCATE_KEYS = (
     "save_discovered",
 )
 
+INPUT_MODES = ("text", "auto", "vision")
 _ALLOWED_PROVENANCE_POLICIES = {"warn", "fail"}
 
 _SECTION_NAMES = ("discovery", "extraction", "compilation")
@@ -355,6 +363,12 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
     for name in ("max_context", "max_concurrent", "limit", "timeout_seconds"):
         if name in extraction and extraction[name] is not None:
             _require_positive_int(name, extraction[name])
+
+    mode = extraction.get("input_mode")
+    if mode is not None and mode not in INPUT_MODES:
+        raise RuntimeConfigError(
+            f"extraction.input_mode must be one of: {', '.join(INPUT_MODES)} (got {mode!r})"
+        )
 
     if extraction.get("skip_existing") is not None and not isinstance(
         extraction["skip_existing"], bool
@@ -972,6 +986,7 @@ _FIELD_MAP: dict[str, str] = {
     "provider": "provider",
     "model": "model",
     "transcription_model": "transcription_model",
+    "input_mode": "input_mode",
     "limit": "limit",
     "skip_existing": "skip_existing",
     "max_context": "max_context",

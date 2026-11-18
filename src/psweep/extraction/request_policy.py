@@ -8,8 +8,10 @@ treated as a large one.
 
 from __future__ import annotations
 
+import base64
 import json
 import math
+import struct
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,6 +24,14 @@ from psweep.exceptions import AttemptBudgetExceeded, ExtractionError
 # both without a tokenizer dependency per provider.
 BYTES_PER_TOKEN = 3
 PER_MESSAGE_OVERHEAD_TOKENS = 16
+
+
+# Pixels per token for image input; the smallest figure any major provider
+# documents, so the estimate errs high. Each image also pays a fixed overhead.
+PIXELS_PER_TOKEN = 750
+IMAGE_OVERHEAD_TOKENS = 256
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_DATA_URI_PREFIX = "data:image/png;base64,"
 
 
 class RequestNotAdmittedError(ExtractionError):
@@ -85,6 +95,30 @@ def route_limits(
     )
 
 
+def image_block(image) -> dict[str, Any]:
+    """OpenAI-style inline image content block for a rendered page."""
+    encoded = base64.b64encode(image.png).decode("ascii")
+    return {"type": "image_url", "image_url": {"url": _DATA_URI_PREFIX + encoded}}
+
+
+def _image_tokens(block: dict[str, Any]) -> int:
+    """Conservative tokens for an inline PNG, read from its own header."""
+    url = (block.get("image_url") or {}).get("url", "")
+    try:
+        header = (
+            base64.b64decode(url[len(_DATA_URI_PREFIX) :][:44])
+            if url.startswith(_DATA_URI_PREFIX)
+            else b""
+        )
+        if header[:8] != _PNG_SIGNATURE:
+            raise ValueError("not a PNG data URI")
+        width, height = struct.unpack(">II", header[16:24])
+    except (ValueError, struct.error):
+        message = "request_not_admitted: image dimensions are unknown, so its size is unknown"
+        raise RequestNotAdmittedError(message) from None
+    return math.ceil(width * height / PIXELS_PER_TOKEN) + IMAGE_OVERHEAD_TOKENS
+
+
 def estimate_text_tokens(text: str) -> int:
     """Conservative upper estimate of text tokens."""
     return math.ceil(len(text.encode("utf-8")) / BYTES_PER_TOKEN)
@@ -100,11 +134,16 @@ def estimate_request_tokens(
         if isinstance(content, str):
             total += estimate_text_tokens(content)
         else:
-            # Typed content blocks (images/files) have no text-token estimate
-            # yet; refuse to guess a small number for them.
-            raise RequestNotAdmittedError(
-                "request_not_admitted: non-text content has no known token estimate"
-            )
+            for block in content:
+                if block.get("type") == "text":
+                    total += estimate_text_tokens(block["text"])
+                elif block.get("type") == "image_url":
+                    total += _image_tokens(block)
+                else:  # an unknown block type has no estimate: never guess it small
+                    kind = block.get("type")
+                    raise RequestNotAdmittedError(
+                        f"request_not_admitted: unsupported content block {kind!r}"
+                    )
     if response_format:
         total += estimate_text_tokens(json.dumps(response_format, sort_keys=True))
     return total

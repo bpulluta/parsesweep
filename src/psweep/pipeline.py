@@ -63,7 +63,7 @@ from psweep.extraction.page_locator import (
     DEFAULT_MAX_SELECTED_PAGES,
 )
 from psweep.extraction.section_locator import SectionLocator
-from psweep.extraction.pdf_utils import validate_pdf_scope
+from psweep.extraction.pdf_utils import RENDER_DPI, render_pages, validate_pdf_scope
 from psweep.extraction.llm_factory import (
     DEFAULT_MAX_CONCURRENT,
     DEFAULT_MAX_CONTEXT,
@@ -73,6 +73,7 @@ from psweep.extraction.prepared_document import (
     CONSUMPTION_VERSION,
     capture_source,
     effective_identity,
+    visual_pages,
 )
 from psweep.extraction.provenance import (
     build_source_context_map,
@@ -108,6 +109,7 @@ from psweep.utils.page_range import (
     load_pages_csv,
     normalize_page_ranges,
     parse_page_ranges,
+    ranges_from_pages,
 )
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.workspace import Workspace, infer_domain
@@ -556,6 +558,8 @@ def _extraction_fingerprints(
             },
         }
     )
+    if (mode := _input_mode(inputs)) != "text":  # text-only records keep their fingerprints
+        policy["input_mode"] = {"mode": mode, "render_dpi": RENDER_DPI}
     fingerprints = {}
     for doc in documents:
         info = source_context(doc, context)
@@ -563,9 +567,7 @@ def _extraction_fingerprints(
         audio = transcription.is_audio(doc)
         data = {
             **policy,
-            "effective_text": (
-                cached if cached and cached.get("method") != "ocr" and not audio else None
-            ),
+            "effective_text": cached if cached and not audio else None,
             "table_layout": document_utils.TABLE_TEXT_LAYOUT.get(doc.suffix.lower()),
             "source": str(doc),
             "source_sha256": digests[doc],
@@ -768,10 +770,12 @@ def _prepare_extraction(
             validator,
             protected=_auto_targeted(inputs, doc, ranges, candidates, roster_errors, anchors),
             derived_text_sha256=(
-                effective_inputs[doc]["text_sha256"]
-                if effective_inputs[doc]
-                and (effective_inputs[doc]["method"] == "ocr" or transcription.is_audio(doc))
-                and ranges.get(doc) is None
+                None
+                if ranges.get(doc) is not None
+                else effective_inputs[doc]["text_sha256"]
+                if effective_inputs[doc] and transcription.is_audio(doc)
+                else document_utils.ocr_page_cache(doc, digests[doc]).digest()
+                if doc.suffix.lower() == ".pdf"
                 else None
             ),
         )
@@ -814,10 +818,20 @@ def _prepare_extraction(
     }
 
 
-def _document_text(doc_path, page_ranges, section_text, corrections, transcriber=None, source=None):
+def _document_text(
+    doc_path,
+    page_ranges,
+    section_text,
+    corrections,
+    transcriber=None,
+    source=None,
+    *,
+    allow_empty=False,
+):
     """Prepare text and effective scope for one document.
 
     ``source`` is the captured version consumed; without one the live path is read.
+    ``allow_empty`` lets a visual input mode proceed when no page has readable text.
     """
     scope = {}
     if section_text is not None:
@@ -840,10 +854,18 @@ def _document_text(doc_path, page_ranges, section_text, corrections, transcriber
             source=source,
         )
         effective = page_ranges
-    if not text.strip():
+    if not text.strip() and not allow_empty:
         message = "Document parser returned no source text"
         raise ValueError(message)
     return text, effective, scope
+
+
+def _input_mode(inputs) -> str:
+    return inputs.get("input_mode") or "text"
+
+
+def _visual_pages(inputs, parser_scope) -> list[int]:
+    return visual_pages(_input_mode(inputs), parser_scope)
 
 
 def _prepared_input(doc_path, plan, page_ranges, section_text, source=None):
@@ -867,7 +889,11 @@ def _prepared_input(doc_path, plan, page_ranges, section_text, source=None):
         inputs.get("ocr_corrections"),
         plan.get("transcriber"),
         source,
+        allow_empty=_input_mode(inputs) != "text",
     )
+    if not text.strip() and not _visual_pages(inputs, parser_scope):
+        message = "Document parser returned no source text"
+        raise ValueError(message)
     prompt = prepend_source_context(text, source_context(doc_path, plan["context"]))
     if anchors := plan["anchors"].get(doc_path):
         prompt = candidates_block(plan["roster"], anchors) + prompt
@@ -1083,7 +1109,18 @@ def _extract_one_document(
             text, prompt, effective_ranges, parser_scope = _prepared_input(
                 doc_path, plan, page_ranges, section_text, source
             )
-            result = extractor.extract(prompt, plan["schema"])
+            pages = _visual_pages(inputs, parser_scope)
+            visual = {"page_images": render_pages(source.path, pages)} if pages else {}
+            result = extractor.extract(prompt, plan["schema"], **visual)
+            if pages:
+                result.validation_notes = [
+                    *(result.validation_notes or []),
+                    (
+                        f"visual_pages: PDF pages {format_page_ranges(ranges_from_pages(pages))}"
+                        " were also sent as images; image-only content has no text to verify"
+                        " quotes"
+                    ),
+                ]
             record_extraction_scope(
                 result,
                 page_ranges=effective_ranges,
@@ -1130,15 +1167,13 @@ def _extract_one_document(
             "output_path": str(output_path),
             "coverage": getattr(result, "coverage", {}),
             "derived_text_sha256": (
-                source.cached_text.sha256
-                if source.cached_text
-                and (source.cached_text.method == "ocr" or transcription.is_audio(doc_path))
-                and page_ranges is None
+                None
+                if page_ranges is not None
+                else source.cached_text.sha256
+                if source.cached_text and transcription.is_audio(doc_path)
                 else hashlib.sha256(text.encode()).hexdigest()
                 if transcription.is_audio(doc_path)
-                else parser_scope.get("raw_text_sha256")
-                if page_ranges is None
-                else None
+                else parser_scope.get("ocr_sha256")
             ),
         }
     except Exception as exc:
@@ -1412,24 +1447,7 @@ def _execute_locked(plan: dict, *, on_progress=None) -> ExtractionRunResult:
                     if doc in plan["candidates"]:
                         _verified_roster_text(doc, plan, source)
                     elif _plan_targeted(plan, doc):
-                        _, _, _, parser_scope = _prepared_input(
-                            doc, plan, ranges.get(doc), sections.get(doc), source
-                        )
-                        # Preflight may create raw OCR. Bind a retained scope to
-                        # that exact derived product, not merely any new cache.
-                        if source.cached_text is None and parser_scope.get("raw_text_sha256"):
-                            cached = document_utils.read_text_cache(
-                                doc, return_meta=True, source_sha256=source.sha256
-                            )
-                            if (
-                                cached
-                                and cached[1].get("method") == "ocr"
-                                and cached[1]["text_sha256"] == parser_scope["raw_text_sha256"]
-                            ):
-                                plan["scope_identities"][doc] = {
-                                    "source_sha256": source.sha256,
-                                    "effective_text": effective_identity(cached[1]),
-                                }
+                        _prepared_input(doc, plan, ranges.get(doc), sections.get(doc), source)
             except (TargetingSafetyError, SourceChangedError) as exc:
                 return doc, exc
             return doc, None
@@ -1477,12 +1495,15 @@ def _execute_locked(plan: dict, *, on_progress=None) -> ExtractionRunResult:
                     document=doc.name,
                 )
             with _capture_input(doc, plan) as source:
+                derived = (
+                    source.cached_text.sha256
+                    if source.cached_text and transcription.is_audio(doc)
+                    else source.ocr_sha256
+                )
                 if (
-                    source.cached_text is not None
+                    derived is not None
                     and plan["ranges"].get(doc) is None
-                    and (source.cached_text.method == "ocr" or transcription.is_audio(doc))
-                    and source.cached_text.sha256
-                    != plan["reuse_proofs"][doc].get("derived_text_sha256")
+                    and derived != plan["reuse_proofs"][doc].get("derived_text_sha256")
                 ):
                     raise SourceChangedError(
                         f"{doc.name} derived evidence differs from reuse proof; rerun extraction",

@@ -69,7 +69,7 @@ def test_output_cap_cannot_exceed_route_output_limit():
 
 def test_typed_content_has_no_small_default_estimate():
     blocks = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "x"}}]}]
-    with pytest.raises(RequestNotAdmittedError, match="no known token estimate"):
+    with pytest.raises(RequestNotAdmittedError, match="image dimensions are unknown"):
         estimate_request_tokens(blocks)
 
 

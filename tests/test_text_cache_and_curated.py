@@ -16,9 +16,11 @@ from pathlib import Path
 import pytest
 
 from psweep.discovery.engine import DiscoveryEngine
+from psweep.extraction import pdf_utils
 from psweep.extraction.document_utils import (
     extract_text_from_document,
     read_text_cache,
+    text_cache_files,
     text_cache_paths,
     write_text_cache,
 )
@@ -33,37 +35,23 @@ class TestTextCache:
         extract_text_from_document(doc)
         assert not (tmp_path / ".text").exists()
 
-    def test_ocr_result_is_cached_and_reused(self, tmp_path: Path, monkeypatch):
-        # Simulate a scanned PDF whose extraction goes through the OCR path.
+    def test_ocr_is_not_cached_as_whole_document_text(self, tmp_path: Path, monkeypatch):
+        # OCR is cached per page by pdf_utils; no whole-document pair is written.
         pdf = tmp_path / "scan.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
-        calls = {"n": 0}
 
-        def _fake(pdf_path, page_ranges=None, return_meta=False, ocr_corrections=None):
-            calls["n"] += 1
-            text = "OCR EXTRACTED TEXT"
-            return (
-                (text, {"used_ocr": True, "raw_text": text, "ocr_spans": [[0, len(text)]]})
-                if return_meta
-                else text
-            )
+        def _fake(pdf_path, page_ranges=None, return_meta=False, **_kwargs):
+            return ("OCR EXTRACTED TEXT", {"used_ocr": True}) if return_meta else "OCR TEXT"
 
-        monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_text_from_pdf",
-            _fake,
-        )
-        text1 = extract_text_from_document(pdf)
-        assert (tmp_path / ".text" / "scan.pdf.txt").exists()
-        assert calls["n"] == 1
-        # Second call is served from cache — the extractor does not run again.
-        text2 = extract_text_from_document(pdf)
-        assert text2 == text1 and calls["n"] == 1
+        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_text_from_pdf", _fake)
+        assert extract_text_from_document(pdf) == "OCR EXTRACTED TEXT"
+        assert not (tmp_path / ".text" / "scan.pdf.txt").exists()
 
     def test_native_pdf_is_not_cached(self, tmp_path: Path, monkeypatch):
         pdf = tmp_path / "native.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
 
-        def _fake(pdf_path, page_ranges=None, return_meta=False, ocr_corrections=None):
+        def _fake(pdf_path, page_ranges=None, return_meta=False, **_kwargs):
             text = "NATIVE TEXT WITH TABLES"
             return (text, {"used_ocr": False}) if return_meta else text
 
@@ -200,7 +188,7 @@ class TestTextCache:
         doc.write_bytes(b"%PDF-1.4 fake")
         write_text_cache(doc, "FULL-CACHED")
 
-        def _fake(pdf_path, page_ranges=None, return_meta=False, ocr_corrections=None):
+        def _fake(pdf_path, page_ranges=None, return_meta=False, **_kwargs):
             text = f"PAGE-RANGE {page_ranges}"
             return (text, {"used_ocr": False}) if return_meta else text
 
@@ -215,33 +203,10 @@ class TestTextCache:
 
 
 class TestRawOcrCache:
-    def test_current_corrections_apply_without_repeating_ocr(self, tmp_path, monkeypatch):
+    def test_old_whole_document_ocr_cache_is_a_miss(self, tmp_path):
         pdf = tmp_path / "scan.pdf"
         pdf.write_bytes(b"fake")
-        calls = []
-
-        def fake(*args, **kwargs):
-            calls.append(kwargs)
-            return "RAW text", {"used_ocr": True, "raw_text": "RAW text", "ocr_spans": [[0, 8]]}
-
-        monkeypatch.setattr("psweep.extraction.pdf_utils.extract_text_from_pdf", fake)
-        for replacement in ("first", "second"):
-            text = extract_text_from_document(
-                pdf,
-                ocr_corrections=[{"pattern": "RAW", "replacement": replacement}],
-            )
-            assert text == f"{replacement} text"
-        assert len(calls) == 1
-        assert read_text_cache(pdf) == "RAW text"
-
-    def test_old_corrected_ocr_cache_is_invalidated(self, tmp_path):
-        pdf = tmp_path / "scan.pdf"
-        pdf.write_bytes(b"fake")
-        write_text_cache(pdf, "corrected text")
-        _, metadata = text_cache_paths(pdf)
-        meta = json.loads(metadata.read_text())
-        meta.pop("ocr_raw", None)
-        metadata.write_text(json.dumps(meta))
+        write_text_cache(pdf, "old ocr text", method="ocr")
         assert read_text_cache(pdf) is None
 
     def test_non_ocr_discovery_cache_is_preserved(self, tmp_path):
@@ -250,19 +215,6 @@ class TestRawOcrCache:
         write_text_cache(html, "API text", method="code_host_api")
         assert read_text_cache(html) == "API text"
         assert extract_text_from_document(html) == "API text"
-
-    def test_partial_ocr_does_not_write_full_document_cache(self, tmp_path, monkeypatch):
-        pdf = tmp_path / "scan.pdf"
-        pdf.write_bytes(b"fake")
-        monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_text_from_pdf",
-            lambda *_a, **_k: (
-                "partial",
-                {"used_ocr": True, "raw_text": "partial", "ocr_spans": [[0, 7]]},
-            ),
-        )
-        assert extract_text_from_document(pdf, ((2, 2),)) == "partial"
-        assert not (tmp_path / ".text").exists()
 
 
 class TestMaterializeCurated:
@@ -423,3 +375,104 @@ class TestDocumentRetention:
         assert not (docs / "a/keep.pdf").exists()
         assert not (docs / "a/drop.pdf").exists()
         assert not (curated / "a/keep.pdf").exists()
+
+
+pymupdf = pytest.importorskip("pymupdf")
+
+
+def _scanned_pdf(path: Path) -> Path:
+    """A one-page PDF whose only page is a raster image (needs OCR)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = pymupdf.open()
+    page = doc.new_page()
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 120, 160), False)
+    pix.set_rect(pix.irect, (200, 200, 200))
+    page.insert_image(page.rect, pixmap=pix)
+    doc.save(str(path))
+    doc.close()
+    return path
+
+
+@pytest.fixture
+def ocr_calls(monkeypatch):
+    calls: list[int] = []
+
+    def fake(page):
+        calls.append(page.number + 1)
+        return "RAW scanned tariff text"
+
+    monkeypatch.setattr(pdf_utils, "_ocr_page", fake)
+    return calls
+
+
+def _ocr_entries(pdf: Path) -> list[Path]:
+    return sorted((pdf.parent / ".text" / f"{pdf.name}.ocr").glob("*.json"))
+
+
+class TestOcrPageEntriesFollowTheDocument:
+    def _reviewed(self, docs: Path, rel: str = "co/scan.pdf") -> dict:
+        pdf = _scanned_pdf(docs / rel)
+        extract_text_from_document(pdf)  # discovery review OCRs the scan once
+        assert _ocr_entries(pdf)
+        return {
+            "path": pdf.as_posix(),
+            "relative_path": rel,
+            "review_selected": True,
+            "status": "downloaded",
+        }
+
+    def test_text_cache_files_lists_pair_and_page_entries(self, tmp_path, ocr_calls):
+        record = self._reviewed(tmp_path / "documents")
+        pdf = Path(record["path"])
+        write_text_cache(pdf, "text")
+        files = text_cache_files(pdf)
+        assert set(files) == {*text_cache_paths(pdf), *_ocr_entries(pdf)}
+
+    def test_curated_extraction_does_not_ocr_again(self, tmp_path, ocr_calls):
+        docs = tmp_path / "documents"
+        record = self._reviewed(docs)
+        reviewed_calls = list(ocr_calls)
+        curated, count, _ = DiscoveryEngine._materialize_curated(
+            documents_dir=docs, download_records=[record]
+        )
+        assert count == 1
+        text = extract_text_from_document(curated / "co/scan.pdf")
+        assert "RAW scanned tariff text" in text
+        assert ocr_calls == reviewed_calls
+
+    def test_removing_a_curated_document_removes_its_entries(self, tmp_path, ocr_calls):
+        docs = tmp_path / "documents"
+        record = self._reviewed(docs)
+        curated, _, _ = DiscoveryEngine._materialize_curated(
+            documents_dir=docs, download_records=[record]
+        )
+        copy = curated / "co/scan.pdf"
+        assert _ocr_entries(copy)
+        record["review_selected"] = False
+        DiscoveryEngine._apply_document_retention(
+            mode="curated", documents_dir=docs, curated_dir=curated, download_records=[record]
+        )
+        assert not Path(record["path"]).exists()
+        assert not _ocr_entries(Path(record["path"]))
+
+    def test_held_document_keeps_its_entries(self, tmp_path, ocr_calls):
+        docs = tmp_path / "documents"
+        record = self._reviewed(docs)
+        pdf = Path(record["path"])
+        record["review_selected"] = False
+        before = _ocr_entries(pdf)
+        DiscoveryEngine._apply_document_retention(
+            mode="curated",
+            documents_dir=docs,
+            curated_dir=None,
+            download_records=[record],
+            keep=frozenset({pdf}),
+        )
+        assert pdf.exists() and _ocr_entries(pdf) == before
+
+    def test_ocr_entries_are_not_documents(self, tmp_path, ocr_calls):
+        from psweep.discovery import publication as pub
+
+        record = self._reviewed(tmp_path / "documents")
+        root = Path(record["path"]).parents[1]
+        assert {p.name for p in pub._documents(root)} == {"scan.pdf"}

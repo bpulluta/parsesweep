@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from psweep.utils.file_io import artifact_sha256, staged_file
 from psweep.utils.page_range import PageRanges
-from .pdf_utils import apply_ocr_corrections
+from .pdf_utils import OcrPageCache
 from .transcription import AUDIO_EXTENSIONS, transcript
 
 if TYPE_CHECKING:
@@ -40,19 +40,22 @@ def text_cache_paths(file_path: Path) -> tuple[Path, Path]:
     )
 
 
-def _valid_spans(spans, meta: dict) -> bool:
-    """Check OCR page offsets are ordered, disjoint and inside the cached text."""
-    if not isinstance(spans, list):
-        return False
-    previous = 0
-    for span in spans:
-        if not (isinstance(span, list) and len(span) == 2 and all(type(v) is int for v in span)):
-            return False
-        start, end = span
-        if not previous <= start <= end <= int(meta.get("chars", -1)):
-            return False
-        previous = end
-    return True
+def text_cache_files(file_path: Path) -> list[Path]:
+    """Return every cache file that travels with a document through discovery.
+
+    The text-cache pair plus the raw-OCR page entries (``.text/<name>.ocr/*.json``).
+    Lifecycle code (link, remove, protect, inherit) uses this; read and write
+    sites keep :func:`text_cache_paths`.
+    """
+    entries_dir = file_path.parent / TEXT_CACHE_DIRNAME / f"{file_path.name}.ocr"
+    entries = sorted(entries_dir.glob("*.json")) if entries_dir.is_dir() else []
+    return [*text_cache_paths(file_path), *entries]
+
+
+def ocr_page_cache(original: Path, source_sha256: str) -> OcrPageCache:
+    """Return the raw-OCR page cache of one source version, beside its text cache."""
+    directory = original.parent / TEXT_CACHE_DIRNAME / f"{original.name}.ocr"
+    return OcrPageCache(directory, source_sha256)
 
 
 def read_text_cache(
@@ -68,11 +71,9 @@ def read_text_cache(
     txt_path, meta_path = text_cache_paths(file_path)
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        # Older OCR entries may contain domain-specific corrections or lack
-        # per-page OCR offsets; neither can be consumed under current rules.
-        if meta.get("method") == "ocr" and (
-            meta.get("ocr_raw") is not True or not _valid_spans(meta.get("ocr_spans"), meta)
-        ):
+        # OCR lives in the per-page cache; a whole-document OCR entry from an
+        # earlier version is a miss, not a text product.
+        if meta.get("method") == "ocr":
             return None
         if source_sha256 is not None:
             if meta.get("source_sha256") != source_sha256:
@@ -99,22 +100,19 @@ def read_text_cache(
 def write_text_cache(
     file_path: Path,
     text: str,
-    method: str = "ocr",
+    method: str = "text",
     *,
     page_count: int | None = None,
     source: CapturedSource | None = None,
-    ocr_spans: list | None = None,
 ) -> None:
     """Write the cache via flushed temporary files, metadata last.
 
     A ``source`` capture supplies the identity of the bytes the text came
     from; without one the live path is read.
 
-    OCR callers supply raw text, never corrected text, plus ``ocr_spans``: the
-    offsets of OCR-derived pages in it (native pages are never corrected).
-    Discovery also
-    caches browser/API products under their own ``method``. Cheap native
-    document parsing remains uncached.
+    Discovery caches browser/API products and extraction caches transcripts
+    under their own ``method``. OCR is cached per page instead
+    (:func:`ocr_page_cache`); cheap native document parsing stays uncached.
     Each file is atomically replaced, not the pair as a transaction.
     An interruption between replacements is a miss because readers
     verify both digests. ``method`` is recorded for transparency.
@@ -135,13 +133,7 @@ def write_text_cache(
                 "text_sha256": hashlib.sha256(text_bytes).hexdigest(),
                 "chars": len(text),
                 "method": method,
-                "ocr_raw": method == "ocr",
                 "page_count": page_count,
-                **(
-                    {"ocr_spans": [list(span) for span in ocr_spans or []]}
-                    if method == "ocr"
-                    else {}
-                ),
             },
             indent=2,
         ).encode("utf-8")
@@ -385,15 +377,11 @@ def extract_text_from_document(
         meta = {"used_ocr": False, "page_ranges": None, "page_count": None}
         return (text, meta) if return_meta else text
 
-    # Reuse cached full-document text (OCR is expensive; do it once). Only the
-    # whole-document extraction is cached — page selections bypass it so a
-    # partial slice never poisons the full-text cache other stages depend on.
+    # Reuse a cached whole-document text product (browser/API render). Page
+    # selections bypass it so a slice never stands in for the full text.
     if page_ranges is None:
         cached = (
-            (
-                source.cached_text.text,
-                {**source.cached_text.identity, "ocr_spans": source.cached_text.ocr_spans},
-            )
+            (source.cached_text.text, source.cached_text.identity)
             if source is not None and source.cached_text
             else None
             if source is not None
@@ -401,30 +389,31 @@ def extract_text_from_document(
         )
         if cached is not None:
             text, cache_meta = cached
-            used_ocr = cache_meta.get("method") == "ocr"
-            if used_ocr:
-                text = apply_ocr_corrections(text, cache_meta["ocr_spans"], ocr_corrections)
             page_count = cache_meta.get("page_count")
             pages = list(range(1, page_count + 1)) if page_count else []
             meta = {
-                "used_ocr": used_ocr,
+                "used_ocr": False,
                 "page_count": page_count,
                 "page_ranges": ((1, page_count),) if page_count else None,
                 "selected_pages": pages,
                 "extracted_pages": pages,
-                "raw_text_sha256": cache_meta.get("text_sha256"),
             }
             logger.debug("Text cache hit for %s", file_path.name)
             return (text, meta) if return_meta else text
 
-    # Only the expensive OCR path is cached. Native-text PDFs and structured
-    # formats (DOCX/XLSX/CSV/HTML) are cheap to re-extract, and caching a
-    # flattened copy would defeat any richer/table-aware extraction a later
-    # stage might want — so they always extract fresh from the source.
+    # Native-text PDFs and structured formats (DOCX/XLSX/CSV/HTML) are cheap to
+    # re-extract, and caching a flattened copy would defeat any richer
+    # table-aware extraction a later stage might want. Only OCR is expensive, so
+    # only raw OCR is cached, per page, and corrections apply on every read.
     meta = {"used_ocr": False, "page_ranges": None, "page_count": None}
     if ext == ".pdf":
-        # Parse/cache raw OCR before applying current corrections.
-        text, meta = _extract_from_pdf(read_path, page_ranges)
+        digest = source.sha256 if source is not None else artifact_sha256(file_path)
+        text, meta = _extract_from_pdf(
+            read_path,
+            page_ranges,
+            ocr_corrections,
+            ocr_page_cache(source.original if source is not None else file_path, digest),
+        )
     elif ext in _TEXT_READERS:
         text = _TEXT_READERS[ext](read_path)
     else:
@@ -432,23 +421,6 @@ def extract_text_from_document(
             f"Unsupported file format: {ext}. "
             f"Supported formats: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
-
-    if meta.get("used_ocr"):
-        raw_text = meta["raw_text"]
-        meta["raw_text_sha256"] = hashlib.sha256(raw_text.encode()).hexdigest()
-        page_count = meta.get("page_count")
-        pages = meta.get("extracted_pages")
-        # Skipped OCR pages must not produce a whole-document cache.
-        complete = pages is None or (page_count is not None and len(pages) == page_count)
-        if page_ranges is None and raw_text and complete:
-            write_text_cache(
-                file_path,
-                raw_text,
-                page_count=page_count,
-                source=source,
-                ocr_spans=meta["ocr_spans"],
-            )
-        text = apply_ocr_corrections(raw_text, meta["ocr_spans"], ocr_corrections)
     return (text, meta) if return_meta else text
 
 
@@ -456,6 +428,7 @@ def _extract_from_pdf(
     pdf_path: Path,
     page_ranges: PageRanges | None = None,
     ocr_corrections: list | None = None,
+    ocr_cache: OcrPageCache | None = None,
 ) -> tuple[str, dict]:
     """Extract PDF text; return ``(text, scope metadata)``."""
     from .pdf_utils import extract_text_from_pdf
@@ -465,6 +438,7 @@ def _extract_from_pdf(
         page_ranges=page_ranges,
         return_meta=True,
         ocr_corrections=ocr_corrections,
+        ocr_cache=ocr_cache,
     )
 
 

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (selected-page vision, opt-in)
+- `extraction.input_mode: text | auto | vision` (default `text`; unknown values
+  fail at load). `auto` sends images of PDF pages that neither native text nor
+  OCR could read; `vision` sends images of every non-blank selected page. Images
+  go through the same `complete` path as text as labeled inline PNG blocks, with
+  original page numbers. A route not known to accept images holds before any
+  request; image tokens are estimated from PNG dimensions and counted against
+  known windows. Typed content blocks reach `LLMClient.extract` via
+  `page_images`.
+- Cost/cache: none for `text` (fingerprints unchanged). Other modes add image
+  input cost and re-extract once (mode and dpi join the fingerprint). Image-only
+  content has no text to verify quotes against; coverage fields describing
+  image use and native PDF transport are deferred.
+
 ### Changed (response outcomes, one schema-feedback generation)
 - Primary extraction now rejects length-terminated (`response_truncated`) and
   refused (`response_refused`) answers as explicit `model_response` failures
@@ -32,6 +46,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fingerprint, so no existing record is invalidated or regraded and no
   discovery cache changes; records produced before this change are reused until
   the Step 9 fingerprint change (use `--fresh` to re-extract).
+
+### Changed (per-page raw-OCR cache)
+- OCR is cached once per page (`.text/<file>.ocr/<page>.json`), keyed by the
+  source SHA-256, page number and OCR engine/render version, instead of as one
+  whole-document text. The page locator's index, page-range runs and
+  whole-document extraction share it, so a raster page is OCR-ed once per source
+  instead of again for each stage or page selection. Entries are raw text
+  written atomically; `ocr_corrections` are applied on every read. A corrupt,
+  tampered or other-source/engine entry is a miss. The captured derived-text
+  identity (and a record's `derived_text_sha256` reuse proof) is the digest of the
+  OCR page entries; character offsets (`ocr_spans`), `raw_text` and
+  whole-document OCR entries are removed, and an old whole-document OCR entry is
+  ignored.
+- Cache/cost impact: scanned PDFs are OCR-ed once more locally (Tesseract, no LLM
+  cost). Removing `ocr_raw` changes the `effective_text` identity of documents
+  with a browser/API text product, which re-extracts them once; against `main`
+  that change is subsumed by `captured-input-v1` and `captured-scope-v4`, so it
+  adds no further cost. No discovery regrade; existing
+  records are reused while no page cache exists for the document. Once a
+  document has page entries, a record made from a different set of OCR pages is
+  re-extracted rather than reused (e.g. after deleting only some entries). The
+  page locator's scope version is unchanged, so no locator calls are repeated.
+  Old `.text/*.txt` OCR pairs are left in place, unused.
+- Discovery carries the OCR page entries with their document: they are linked
+  into `curated/`, inherited by a same-SHA re-download (never by a different
+  file), protected with a kept or held document, and removed with the document
+  (retention cleanup, publication swaps, old-run pruning). A scanned PDF OCR-ed
+  during discovery review is therefore not OCR-ed again by extraction from
+  `curated/`, which restores `main`'s OCR-once behaviour. No LLM cost, no regrade.
 
 ### Changed (per-page PDF representation)
 - PDF text extraction decides native text versus OCR per page instead of from

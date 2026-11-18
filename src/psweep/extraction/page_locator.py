@@ -645,9 +645,12 @@ class PageLocator(_BaseLocator):
             logger.debug("Page targeting cache hit for %s", pdf_path.name)
             return cached
 
+        from .document_utils import ocr_page_cache
         from .pdf_utils import extract_pages_text
 
-        pages = extract_pages_text(pdf_path, ocr=True)
+        pages = extract_pages_text(
+            pdf_path, ocr=True, ocr_cache=ocr_page_cache(source.original, source.sha256)
+        )
         # Unreadable native text is unknown, not a harmless small document.
         if not any(page.strip() for page in pages):
             self.incomplete = True

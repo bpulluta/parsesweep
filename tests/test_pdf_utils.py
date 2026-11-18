@@ -140,8 +140,8 @@ def test_pypdf_fallback_honors_range_and_reports_clamped_scope(tmp_path, monkeyp
     assert meta["used_ocr"] is False
 
 
-def test_ocr_honors_range_and_returns_raw_text_metadata(tmp_path, monkeypatch):
-    """OCR returns only selected pages and retains raw pre-correction text."""
+def test_ocr_honors_range_and_applies_corrections_to_ocr_pages(tmp_path, monkeypatch):
+    """OCR returns only selected pages, corrected, with a digest of the OCR used."""
     pdf = tmp_path / "scan.pdf"
     pdf.write_bytes(b"fake")
     doc = _Doc([_Page(ocr=f"PAGE{i} RAW " * 100, raster=1) for i in range(1, 4)])
@@ -158,8 +158,7 @@ def test_ocr_honors_range_and_returns_raw_text_metadata(tmp_path, monkeypatch):
     assert "PAGE2 fixed" in text
     assert meta["page_ranges"] == ((2, 2),)
     assert meta["used_ocr"] is True
-    assert "PAGE2 RAW" in meta["raw_text"]
-    assert meta["ocr_spans"] == [[0, len(meta["raw_text"]) - 1]]
+    assert meta["ocr_sha256"] is not None
 
 
 @pytest.mark.parametrize(
@@ -366,8 +365,7 @@ def test_corrections_touch_only_ocr_pages(tmp_path, ocr_calls):
     text, meta = pdf_utils.extract_text_from_pdf(pdf, return_meta=True, ocr_corrections=rules)
     assert "Oil schedule" in text and "XX schedule" not in text
     assert "Rate table: E charge" in text
-    assert "Energy charge" in meta["raw_text"]
-    assert len(meta["ocr_spans"]) == 1
+    assert meta["ocr_sha256"] is not None
 
 
 def test_table_text_page_is_native(tmp_path, ocr_calls):

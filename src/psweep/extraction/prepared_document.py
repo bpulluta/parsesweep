@@ -29,7 +29,21 @@ CONSUMPTION_VERSION = "captured-input-v1"
 
 def effective_identity(metadata: dict) -> dict:
     """Compact identity of a verified text product, including representation."""
-    return {key: metadata.get(key) for key in ("method", "text_sha256", "page_count", "ocr_raw")}
+    return {key: metadata.get(key) for key in ("method", "text_sha256", "page_count")}
+
+
+def visual_pages(mode: str, parser_scope: dict) -> list[int]:
+    """Original page numbers to attach as images under ``extraction.input_mode``.
+
+    ``text`` attaches none. ``auto`` attaches only pages no parser could turn
+    into text, so clean documents stay text-only. ``vision`` attaches every
+    meaningful (non-blank) selected page. Only PDF parsing reports pages, so
+    other document types never get visuals.
+    """
+    if mode == "text":
+        return []
+    attach = {"unreadable"} if mode == "auto" else {"native", "ocr", "unreadable"}
+    return [entry["page"] for entry in parser_scope.get("pages") or () if entry["status"] in attach]
 
 
 @dataclass(frozen=True)
@@ -40,8 +54,6 @@ class CapturedText:
     method: str
     sha256: str
     page_count: int | None
-    ocr_raw: bool | None
-    ocr_spans: tuple[tuple[int, int], ...] = ()
 
     @property
     def identity(self) -> dict:
@@ -50,7 +62,6 @@ class CapturedText:
             "method": self.method,
             "text_sha256": self.sha256,
             "page_count": self.page_count,
-            "ocr_raw": self.ocr_raw,
         }
 
 
@@ -64,6 +75,7 @@ class CapturedSource:
     size: int
     mtime_ns: int
     cached_text: CapturedText | None = None
+    ocr_sha256: str | None = None
 
     @property
     def name(self) -> str:
@@ -72,7 +84,12 @@ class CapturedSource:
 
     @property
     def identity(self) -> dict:
-        """Bind retained scopes to this source and effective evidence."""
+        """Bind retained scopes to this source and effective evidence.
+
+        Raw OCR is derived deterministically from the source and the OCR
+        engine, so it is proven by :attr:`ocr_sha256` and the reuse proof, not
+        part of a scope's identity.
+        """
         return {
             "source_sha256": self.sha256,
             "effective_text": self.cached_text.identity if self.cached_text else None,
@@ -119,7 +136,7 @@ def capture_source(
             )
             raise SourceChangedError(message, document=original.name)
         # Read metadata and bytes once; never reopen the live pair after capture.
-        from .document_utils import read_text_cache
+        from .document_utils import ocr_page_cache, read_text_cache
         from .transcription import accepts_transcript, is_audio
 
         cached = read_text_cache(original, return_meta=True, source_sha256=captured.sha256)
@@ -136,13 +153,11 @@ def capture_source(
                 identity["method"],
                 identity["text_sha256"],
                 identity["page_count"],
-                identity["ocr_raw"],
-                tuple((start, end) for start, end in metadata.get("ocr_spans") or ()),
             )
         actual = product.identity if product else None
-        # A derived cache may safely appear during this run. An authoritative
+        # A derived transcript may safely appear during this run. An authoritative
         # browser/API product cannot appear or disappear under a prepared identity.
-        derived = product and (product.method == "ocr" or is_audio(original))
+        derived = product and is_audio(original)
         mismatch = (
             expected_effective is not _UNCHECKED
             and actual != expected_effective
@@ -161,6 +176,10 @@ def capture_source(
             snapshot.stat().st_size,
             captured.mtime_ns,
             product,
+            # Identity of the OCR pages cached so far, from their own digests.
+            ocr_page_cache(original, captured.sha256).digest()
+            if original.suffix.lower() == ".pdf"
+            else None,
         )
         yield captured
     finally:

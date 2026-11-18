@@ -38,7 +38,13 @@ from psweep.exceptions import ExtractionError, ResponseOutcomeError
 from psweep.exceptions import AttemptBudgetExceeded
 from .llm_factory import DEFAULT_MODEL, detect_provider
 from psweep.utils.retry import compute_backoff, is_transient_error
-from .request_policy import RouteLimits, assess_request, route_limits
+from .request_policy import (
+    RequestNotAdmittedError,
+    RouteLimits,
+    assess_request,
+    image_block,
+    route_limits,
+)
 from .schema_utils import strict_compatible
 from .text_processor import find_data_arrays
 
@@ -500,6 +506,7 @@ class LLMClient:
         *,
         strict_outcomes: bool = False,
         follow_up: list[dict[str, Any]] | None = None,
+        page_images: list | None = None,
     ) -> dict[str, Any]:
         """
         Extract structured data using LLM.
@@ -508,6 +515,9 @@ class LLMClient:
         length-terminated answers, and raises empty/non-JSON answers as
         ``ResponseOutcomeError``; other callers keep accepting what they always
         did. ``follow_up`` messages are appended after the unchanged request.
+        ``page_images`` (rendered PDF pages) are sent after the text through the
+        same ``complete`` path, each labeled with its original page number; a
+        route not known to accept images holds before any request.
 
         Parameters
         ----------
@@ -547,12 +557,26 @@ class LLMClient:
         if not is_reasoning_model:
             params["temperature"] = 0
         # Azure's json_object mode requires the word JSON in the messages.
-        all_content = " ".join(m["content"] for m in messages)
+        all_content = " ".join(m["content"] for m in messages if isinstance(m["content"], str))
         if "json" not in all_content.lower():
             messages[-1]["content"] += (
                 "\n\nRespond with ONLY a raw JSON object. "
                 "No markdown, no code fences, no explanation."
             )
+
+        if page_images:
+            self._require_vision()
+            messages[-1]["content"] = [
+                {"type": "text", "text": messages[-1]["content"]},
+                *(
+                    block
+                    for image in page_images
+                    for block in (
+                        {"type": "text", "text": f"[Image of PDF page {image.page}]"},
+                        image_block(image),
+                    )
+                ),
+            ]
 
         messages.extend(follow_up or [])
         if admit:
@@ -642,6 +666,20 @@ class LLMClient:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         }
+
+    def _require_vision(self) -> None:
+        """Hold unless the pinned catalog says this route accepts images."""
+        for name in (self.model, self.raw_model):
+            try:
+                if litellm.supports_vision(model=name):
+                    return
+            except Exception:  # noqa: BLE001, S112 - unmapped route: support stays unknown
+                continue
+        message = (
+            f"request_not_admitted: route {self.model!r} is not known to accept image "
+            "input (vision); use a vision-capable model or extraction.input_mode: text"
+        )
+        raise RequestNotAdmittedError(message)
 
     def _response_format(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Use strict json_schema only when the provider and schema both allow it."""

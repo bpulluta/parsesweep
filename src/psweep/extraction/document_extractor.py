@@ -156,7 +156,9 @@ class DocumentExtractor:
             reasoning_models=reasoning_models,
         )
 
-    def extract(self, text: str, schema: dict[str, Any]) -> ExtractionResult:
+    def extract(
+        self, text: str, schema: dict[str, Any], page_images: list | None = None
+    ) -> ExtractionResult:
         """
         Extract structured data from document.
 
@@ -171,6 +173,8 @@ class DocumentExtractor:
             Full document text to extract from
         schema : Dict[str, Any]
             JSON schema defining structure to extract (must have 'type' and 'properties')
+        page_images : list, optional
+            Rendered PDF pages sent with the text (``extraction.input_mode``).
 
         Returns
         -------
@@ -212,7 +216,7 @@ class DocumentExtractor:
 
         # Stage 1: LLM Structured Extraction (one document-local attempt allowance)
         logger.info("🤖 Stage 1: LLM Structured Extraction")
-        validated_data, usage, repaired = self._generate(excerpt, schema, validator)
+        validated_data, usage, repaired = self._generate(excerpt, schema, validator, page_images)
         if repaired:
             validation_notes.append(
                 "schema_feedback: first answer was rejected by the schema; accepted after "
@@ -234,7 +238,7 @@ class DocumentExtractor:
             coverage=coverage,
         )
 
-    def _generate(self, excerpt, schema, validator):
+    def _generate(self, excerpt, schema, validator, page_images=None):
         """Return ``(validated payload, total usage, repaired)``.
 
         The original generation plus at most one feedback generation against the
@@ -253,6 +257,7 @@ class DocumentExtractor:
                     schema,
                     admit=True,
                     strict_outcomes=True,
+                    page_images=page_images,
                     before_request=allowance.reserve,
                     **({"follow_up": follow_up} if follow_up else {}),
                 )

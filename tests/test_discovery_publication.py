@@ -501,3 +501,47 @@ def test_query_variants_of_one_shared_page_get_distinct_stable_names(tmp_path):
     rerun = records([3, 1, 0, 2])
     pub.assign_document_names(rerun, index, set())
     assert {r["url"]: r["relative_path"] for r in rerun} == names
+
+
+def _ocr_pdf(path: Path, content: bytes) -> Path:
+    from psweep.extraction.pdf_utils import OcrPageCache
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    import hashlib
+
+    OcrPageCache(
+        path.parent / ".text" / f"{path.name}.ocr", hashlib.sha256(content).hexdigest()
+    ).put(1, "raw ocr")
+    return path
+
+
+def _entry_names(pdf: Path) -> list[str]:
+    return sorted(p.name for p in (pdf.parent / ".text" / f"{pdf.name}.ocr").glob("*.json"))
+
+
+def test_promotion_removal_swaps_remove_page_entries_with_the_document(tmp_path):
+    """A renamed owner's old consolidated document takes its OCR entries along."""
+    domain, run = tmp_path / "domain", tmp_path / "domain/runs/r1"
+    old = _ocr_pdf(domain / "curated/county/old.pdf", b"old")
+    (run / "curated/county").mkdir(parents=True)
+    (run / "curated/county/new.pdf").write_bytes(b"new")
+    _index(domain / "download_index.csv", [{"relative_path": "county/old.pdf", "url": "u"}])
+    _index(run / "download_index.csv", [{"relative_path": "county/new.pdf", "url": "u"}])
+    assert _entry_names(old) == ["1.json"]
+    pub.promote_curated(
+        run_curated_dir=run / "curated", domain_dir=domain, run_index=run / "download_index.csv"
+    )
+    assert not old.exists()
+    assert not list((domain / "curated/county/.text").glob("old.pdf.ocr/*"))
+
+
+@pytest.mark.parametrize("same_bytes", [True, False])
+def test_inherit_carries_page_entries_only_to_identical_bytes(tmp_path, same_bytes):
+    """A same-SHA re-download inherits OCR pages; a different file does not."""
+    old = _ocr_pdf(tmp_path / "old/report.pdf", b"v1")
+    new = tmp_path / "new/report.pdf"
+    new.parent.mkdir()
+    new.write_bytes(b"v1" if same_bytes else b"v2")
+    pub.inherit_text_caches([new], [old])
+    assert _entry_names(new) == (["1.json"] if same_bytes else [])

@@ -24,7 +24,7 @@ from collections.abc import Iterable, Iterator, Mapping
 
 from psweep.extraction.document_utils import (
     read_text_cache,
-    text_cache_paths,
+    text_cache_files,
     write_text_cache,
 )
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
@@ -514,11 +514,9 @@ def _stage_curated(documents_dir: Path, records: list[dict[str, object]], destin
         seen.add(rel)
         dest = destination / rel
         _link(source, dest)
-        for cache, curated_cache in zip(
-            text_cache_paths(source), text_cache_paths(dest), strict=True
-        ):
+        for cache in text_cache_files(source):
             if cache.is_file():
-                _link(cache, curated_cache)
+                _link(cache, dest.parent / cache.relative_to(source.parent))
         count += 1
     return count
 
@@ -722,19 +720,33 @@ def _inherit_text_caches(source: Path, curated: Path, replaced: set[Path]) -> No
     inherit_text_caches(new, outgoing)
 
 
+def _ocr_entries(document: Path) -> list[Path]:
+    return [path for path in text_cache_files(document) if path.parent.name.endswith(".ocr")]
+
+
 def inherit_text_caches(targets: Iterable[Path], donors: Iterable[Path]) -> None:
-    """Copy a donor's valid text cache to each uncached target with the same SHA-256."""
+    """Copy a donor's valid text cache and OCR page entries to each target with the same SHA-256."""
     cached = {}
+    ocr_donors: dict[str, list[Path]] = {}
     for old in donors:
-        hit = read_text_cache(old, return_meta=True) if old.is_file() else None
+        if not old.is_file():
+            continue
+        hit = read_text_cache(old, return_meta=True)
         if hit:
             cached[hit[1]["source_sha256"]] = hit
-    if not cached:
+        if entries := _ocr_entries(old):
+            ocr_donors.setdefault(artifact_sha256(old), []).extend(entries)
+    if not cached and not ocr_donors:
         return
     for path in targets:
-        if read_text_cache(path) is None and (hit := cached.get(artifact_sha256(path))):
+        digest = artifact_sha256(path) if path.is_file() else None
+        if read_text_cache(path) is None and (hit := cached.get(digest)):
             text, meta = hit
             write_text_cache(path, text, meta["method"], page_count=meta.get("page_count"))
+        for entry in ocr_donors.get(digest, ()):
+            target = path.parent / ".text" / f"{path.name}.ocr" / entry.name
+            if not target.exists():
+                _link(entry, target)
 
 
 def _stage_promotion(
@@ -820,7 +832,7 @@ def _stage_promotion(
         for key in sorted(removed):
             document = root / "curated" / key
             swaps.extend(
-                (path, None) for path in (document, *text_cache_paths(document)) if _exists(path)
+                (path, None) for path in (document, *text_cache_files(document)) if _exists(path)
             )
         staged_index = staging / "index"
         atomic_write(staged_index, content)

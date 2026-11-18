@@ -695,6 +695,9 @@ def test_owner_whose_name_changes_keeps_one_curated_path(monkeypatch, tmp_path):
     cache = text_cache_paths(old)[0]
     cache.parent.mkdir(exist_ok=True)
     cache.write_text("cached")
+    ocr_entry = old.parent / ".text" / "old-slug.pdf.ocr" / "1.json"
+    ocr_entry.parent.mkdir()
+    ocr_entry.write_text("{}")
     assert old.is_file()
 
     landing["https://a.gov/doc"] = "https://a.gov/files/new-slug.pdf"
@@ -704,6 +707,7 @@ def test_owner_whose_name_changes_keeps_one_curated_path(monkeypatch, tmp_path):
     DiscoveryEngine().run(request)
     assert {p.name for p in curated.glob("*.pdf")} == {"new-slug.pdf", "b.pdf"}
     assert not cache.exists()
+    assert not ocr_entry.exists()
     rows = [row for row in _index_rows(tmp_path) if row["url"] == "https://a.gov/doc"]
     assert [row["relative_path"] for row in rows] == ["by_label/target/new-slug.pdf"]
 

@@ -587,7 +587,7 @@ def test_locator_consumes_snapshot_during_live_a_b_a(reviewed_inputs, monkeypatc
         monkeypatch.setattr(
             pipeline.document_utils,
             "_extract_from_pdf",
-            lambda path, ranges: (path.read_text(), {"page_ranges": ranges}),
+            lambda path, ranges, *_a: (path.read_text(), {"page_ranges": ranges}),
         )
     original = document.read_bytes()
     _targeting(inputs, trigger_chars=1)
@@ -622,7 +622,7 @@ def test_source_mismatch_precedes_locator_request(reviewed_inputs, monkeypatch):
     provider.assert_not_called()
 
 
-@pytest.mark.parametrize("method", ["browser_render", "api", "ocr"])
+@pytest.mark.parametrize("method", ["browser_render", "api"])
 @pytest.mark.parametrize("change", ["replace", "missing"])
 def test_effective_product_mismatch_precedes_paid_use(reviewed_inputs, method, change):
     from psweep.extraction.document_utils import text_cache_paths
@@ -676,7 +676,7 @@ def test_manifest_uses_digest_of_exact_published_record(reviewed_inputs, monkeyp
 
     inputs, provider = reviewed_inputs
     document = Path(inputs["path"]) / "doc.txt"
-    write_text_cache(document, "OCR A", method="ocr")
+    write_text_cache(document, "Rendered A", method="browser_render")
     complete = pipeline._complete_extraction
     published = []
 
@@ -710,18 +710,43 @@ def test_cached_audio_without_transcriber_tracks_effective_identity(reviewed_inp
     assert "TRANSCRIPT B" in str(provider.call_args)
 
 
-def test_new_derived_cache_cannot_requalify_planned_reuse(reviewed_inputs):
-    from psweep.extraction.document_utils import text_cache_paths
+def _scanned_document(inputs, monkeypatch, ocr_text):
+    """Replace the fixture document with a PDF whose second page needs OCR."""
+    import pymupdf
+
+    root = Path(inputs["path"])
+    (root / "doc.txt").unlink()
+    document = root / "doc.pdf"
+    pdf = pymupdf.open()
+    pdf.new_page().insert_textbox(pymupdf.Rect(36, 36, 560, 780), "Native prose. " * 40)
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 120, 160), False)
+    pix.set_rect(pix.irect, (200, 200, 200))
+    page = pdf.new_page()
+    page.insert_image(page.rect, pixmap=pix)
+    pdf.save(str(document))
+    pdf.close()
+    monkeypatch.setattr("psweep.extraction.pdf_utils._ocr_page", lambda _page: ocr_text[0])
+    return document
+
+
+def _write_ocr_page(document, text):
+    from psweep.extraction.document_utils import ocr_page_cache
+    from psweep.utils.file_io import artifact_sha256
+
+    ocr_page_cache(document, artifact_sha256(document)).put(2, text)
+
+
+def test_new_derived_cache_cannot_requalify_planned_reuse(reviewed_inputs, monkeypatch):
+    import shutil
 
     inputs, provider = reviewed_inputs
-    document = Path(inputs["path"]) / "doc.txt"
-    write_text_cache(document, "OCR A", method="ocr")
+    ocr = ["OCR A"]
+    document = _scanned_document(inputs, monkeypatch, ocr)
     assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
-    for path in text_cache_paths(document):
-        path.unlink()
+    shutil.rmtree(document.parent / ".text")
     plan = _prepare_extraction(inputs)
     assert plan["reused"]
-    write_text_cache(document, "OCR B", method="ocr")
+    _write_ocr_page(document, "OCR B")
     provider.reset_mock()
     assert _execute_extraction(plan).failed == 1
     provider.assert_not_called()
@@ -787,14 +812,22 @@ def test_prepared_reuse_is_verified_at_consumption(reviewed_inputs, kind):
     provider.assert_not_called()
 
 
-def test_changed_derived_cache_invalidates_verified_reuse(reviewed_inputs):
+def test_changed_derived_cache_invalidates_verified_reuse(reviewed_inputs, monkeypatch):
     inputs, provider = reviewed_inputs
-    document = Path(inputs["path"]) / "doc.txt"
-    write_text_cache(document, "A evidence", method="ocr")
+    document = _scanned_document(inputs, monkeypatch, ["OCR A"])
     assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
-    write_text_cache(document, "B evidence", method="ocr")
+    _write_ocr_page(document, "OCR B")
     assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
     assert provider.call_count == 2
+
+
+def test_complete_page_cache_keeps_verified_reuse(reviewed_inputs, monkeypatch):
+    """A page cache created by the run itself does not invalidate its own record."""
+    inputs, provider = reviewed_inputs
+    _scanned_document(inputs, monkeypatch, ["OCR A"])
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    assert _execute_extraction(_prepare_extraction(inputs)).successful == 1
+    assert provider.call_count == 1
 
 
 @pytest.mark.parametrize("kind", ["source", "effective"])

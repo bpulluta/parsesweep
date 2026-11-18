@@ -24,7 +24,7 @@ from urllib.parse import unquote, urlparse
 from psweep.extraction.transcription import is_audio
 from psweep.extraction.document_utils import (
     TEXT_CACHE_DIRNAME,
-    text_cache_paths,
+    text_cache_files,
 )
 from psweep.utils.error_taxonomy import (
     build_error_record,
@@ -2522,7 +2522,7 @@ class DiscoveryEngine:
         protected = {
             path.resolve()
             for kept in (set(keep) | held)
-            for path in (kept, *text_cache_paths(kept))
+            for path in (kept, *text_cache_files(kept))
         }
 
         def _remove_file(path: Path) -> None:
@@ -2581,7 +2581,7 @@ class DiscoveryEngine:
                 if file_path.parent.exists():
                     cache_dir = file_path.parent / TEXT_CACHE_DIRNAME
                     if cache_dir.exists():
-                        for cache_path in text_cache_paths(file_path):
+                        for cache_path in text_cache_files(file_path):
                             _remove_file(cache_path)
             _prune_empty_dirs()
         return files_removed, bytes_removed
@@ -4575,7 +4575,7 @@ class DiscoveryEngine:
             old = Path(str(outcome["path"])).resolve()
             if runs_dir not in old.parents or current in old.parents:
                 continue
-            for path in (old, *text_cache_paths(old)):
+            for path in (old, *text_cache_files(old)):
                 path.unlink(missing_ok=True)
             for parent in old.parents:
                 if parent == runs_dir:
