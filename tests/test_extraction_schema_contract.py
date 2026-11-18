@@ -675,3 +675,98 @@ def test_valid_nulled_evidence_is_still_published(tmp_path):
     )
     assert result["success"] is True
     assert json.loads(record.read_text())["payload"]["fact"] == {"value": None, "quote": None}
+
+
+@pytest.fixture
+def permit_schema():
+    """Synthetic permit contract: required-but-nullable dates, nonblank identity."""
+    nullable_number = {"type": ["number", "null"]}
+    return {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$metadata": {
+            "extraction": {"main_data_array": "units", "context_objects": ["permit"]},
+        },
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["permit", "units"],
+        "properties": {
+            "permit": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["number", "issued", "expires", "facility"],
+                "properties": {
+                    "number": {"type": "string", "pattern": r"\S"},
+                    "issued": {"type": ["string", "null"], "format": "date"},
+                    "expires": {"type": ["string", "null"], "format": "date"},
+                    "facility": {"type": "string", "pattern": r"\S"},
+                },
+            },
+            "units": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["reference", "make", "kw", "bhp"],
+                    "properties": {
+                        "reference": {"type": "string", "pattern": r"\S"},
+                        "make": {"type": ["string", "null"]},
+                        "kw": nullable_number,
+                        "bhp": nullable_number,
+                        "hp": nullable_number,
+                        "count": nullable_number,
+                    },
+                },
+            },
+        },
+    }
+
+
+@pytest.fixture
+def permit_payload():
+    return {
+        "permit": {
+            "number": "11541",
+            "issued": "2008-05-16",
+            "expires": None,
+            "facility": "Example Data Center",
+        },
+        "units": [{"reference": "3", "make": "Caterpillar", "kw": 1500, "bhp": 2500}],
+    }
+
+
+def test_permit_dates_are_required_but_may_be_null(permit_schema, permit_payload):
+    result = extract_reply(permit_schema, permit_payload)
+    assert result.data["permit"]["expires"] is None
+    del permit_payload["permit"]["expires"]
+    with pytest.raises(SchemaValidationError):
+        extract_reply(permit_schema, permit_payload)
+
+
+@pytest.mark.parametrize("blank", ["", "  ", "\t\n"])
+@pytest.mark.parametrize("field", ["number", "facility"])
+def test_permit_identity_rejects_blank_strings(permit_schema, permit_payload, field, blank):
+    permit_payload["permit"][field] = blank
+    with pytest.raises(SchemaValidationError):
+        extract_reply(permit_schema, permit_payload)
+
+
+@pytest.mark.parametrize("date", ["", "unknown", "2008-13-01"])
+def test_permit_date_cannot_be_blank_or_invalid_text(permit_schema, permit_payload, date):
+    permit_payload["permit"]["expires"] = date
+    with pytest.raises(SchemaValidationError):
+        extract_reply(permit_schema, permit_payload)
+
+
+def test_unknown_capacities_stay_null_and_are_never_converted(permit_schema, permit_payload):
+    permit_payload["units"][0].update(kw=None, bhp=None, hp=4060, count=6)
+    unit = extract_reply(permit_schema, permit_payload).data["units"][0]
+    assert (unit["kw"], unit["bhp"], unit["hp"], unit["count"]) == (None, None, 4060, 6)
+    permit_payload["units"][0]["make"] = None
+    assert extract_reply(permit_schema, permit_payload).data["units"][0]["make"] is None
+
+
+def test_empty_units_is_valid_unless_the_domain_requires_a_unit(permit_schema, permit_payload):
+    permit_payload["units"] = []
+    assert extract_reply(permit_schema, permit_payload).data["units"] == []
+    permit_schema["properties"]["units"]["minItems"] = 1
+    with pytest.raises(SchemaValidationError):
+        extract_reply(permit_schema, permit_payload)

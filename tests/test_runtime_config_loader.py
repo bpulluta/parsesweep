@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import yaml
 import pytest
@@ -1393,3 +1394,62 @@ def test_rows_quote_field_reaches_extraction(tmp_path: Path, validation, expecte
     assert extract.get("quote_field") == expected
     if expected:
         assert extract["_config_sources"]["quote_field"] == "config.validation.quote_field"
+
+
+SOURCE_ONLY_REVIEW_YAML = """
+models:
+  primary: gpt-6.1-sol
+  secondary: claude-haiku-5-5
+discovery:
+  sources:
+    - https://example.org/permits
+  selection:
+    max_per_target: 5
+    exclude:
+      - guideline
+      - policy
+  document_review:
+    model: secondary
+    document_description: An issued permit identifying its permit number.
+    keep_top: 5
+    deduplicate_redundant: false
+"""
+
+
+def _resolve_discover(tmp_path: Path, body: str) -> dict[str, Any]:
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(body, encoding="utf-8")
+    return resolve_command_config(
+        command="discover", cli_values={}, config_data=load_runtime_config_file(run_path)
+    )
+
+
+def test_source_only_review_settings_resolve_without_targets(tmp_path: Path):
+    """A shared-source domain (no targets) can qualify linked documents by review."""
+    resolved = _resolve_discover(tmp_path, SOURCE_ONLY_REVIEW_YAML)
+    assert resolved["selection_primary_per_target"] == 5
+    assert resolved["selection_relevance_exclude_any_terms"] == ["guideline", "policy"]
+    review = resolved["document_review"]
+    assert (review["keep_top"], review["deduplicate_redundant"]) == (5, False)
+    assert review["model"] == "secondary"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "match"),
+    [
+        ("keep_top: 5", "keep_top: 6", r"selection\.max_per_target' must be >="),
+        ("keep_top: 5", "keep_top: 0", "keep_top"),
+        ("keep_top: 5", "keep_top: 5\n    keep_tpo: 1", "keep_tpo"),
+        ("deduplicate_redundant: false", "deduplicate_redundant: maybe", "deduplicate"),
+        ("      - guideline\n", "", None),
+    ],
+)
+def test_source_only_review_settings_fail_strictly(tmp_path: Path, old, new, match):
+    body = SOURCE_ONLY_REVIEW_YAML.replace(old, new)
+    if match is None:
+        assert _resolve_discover(tmp_path, body)["selection_relevance_exclude_any_terms"] == [
+            "policy"
+        ]
+        return
+    with pytest.raises(RuntimeConfigError, match=match):
+        _resolve_discover(tmp_path, body)

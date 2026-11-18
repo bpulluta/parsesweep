@@ -1165,3 +1165,59 @@ def test_forged_cached_quote_is_not_a_successful_reuse(tmp_path, monkeypatch):
     assert record["review_selected"] and not record["review_cached"]
     assert len(reviewer._client.prompts) == 2
     assert not reviewer._grade_memo and not reviewer._dedup_memo
+
+
+def _shared_records(tmp_path, names):
+    """Source-only records: no roster, no target metadata, one shared group."""
+    records = [_record(tmp_path, name, "unused") for name in names]
+    for record in records:
+        record.pop("target_metadata")
+        record.pop("target_label")
+    return records
+
+
+def _primary(relevance=0.9):
+    return {"is_primary": True, "relevance": relevance, "doc_kind": "permit", "reason": "fixture"}
+
+
+def _guidance():
+    return {"is_primary": False, "relevance": 0.1, "doc_kind": "guidance", "reason": "fixture"}
+
+
+def test_source_only_group_qualifies_independent_permits_and_rejects_guidance(tmp_path):
+    permits = [f"permit-{n}.pdf" for n in range(1, 4)]
+    guidance = ["guidelines.pdf", "policy.pdf"]
+    records = _shared_records(tmp_path, [*guidance[:1], *permits, *guidance[1:]])
+    reviewer = DocumentReviewer(
+        document_description="issued permits", keep_top=5, deduplicate_redundant=False
+    )
+    _stub_grades(
+        reviewer, {**{n: _primary() for n in permits}, **{n: _guidance() for n in guidance}}
+    )
+    reviewer.review(records, [])
+    selected = {Path(r["path"]).name for r in records if r["review_selected"]}
+    assert selected == set(permits)
+    assert not any(r.get("review_redundant") for r in records)
+
+
+def test_source_only_group_cap_is_one_shared_keep_top(tmp_path):
+    """keep_top bounds the whole shared group, not each facility."""
+    names = [f"permit-{n}.pdf" for n in range(1, 7)]
+    records = _shared_records(tmp_path, names)
+    reviewer = DocumentReviewer(
+        document_description="issued permits", keep_top=5, deduplicate_redundant=False
+    )
+    _stub_grades(reviewer, {n: _primary(0.9 - i / 100) for i, n in enumerate(names)})
+    reviewer.review(records, [])
+    selected = [Path(r["path"]).name for r in records if r["review_selected"]]
+    assert len(selected) == 5 and "permit-6.pdf" not in selected
+
+
+def test_source_only_default_keep_top_keeps_a_single_permit(tmp_path):
+    """The default cap is why a shared collection must configure keep_top deliberately."""
+    names = ["permit-1.pdf", "permit-2.pdf"]
+    records = _shared_records(tmp_path, names)
+    reviewer = DocumentReviewer(document_description="issued permits", deduplicate_redundant=False)
+    _stub_grades(reviewer, {n: _primary() for n in names})
+    reviewer.review(records, [])
+    assert sum(r["review_selected"] for r in records) == 1

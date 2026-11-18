@@ -772,3 +772,130 @@ def test_valid_empty_results_without_failures_remain_success(workflow, tmp_path)
     extract_documents(documents, schema, output_dir=output)
     result = compile_extractions(output, schema, output_dir=tmp_path / "compiled")
     assert result.total_rows == 0 and result.status == "success"
+
+
+# --- Saved-run pattern: failed eligible permits beside a lone zero-item record ---
+
+
+def _permit_schema(*, corrected: bool) -> dict:
+    """Weak contract (non-null dates, any string) versus the corrected local contract."""
+    date = {"type": ["string", "null"]} if corrected else {"type": "string"}
+    identity = {"type": "string", **({"pattern": r"\S"} if corrected else {})}
+    return {
+        "$metadata": {"extraction": {"main_data_array": "units", "context_objects": ["permit"]}},
+        "type": "object",
+        "required": ["permit", "units"],
+        "properties": {
+            "permit": {
+                "type": "object",
+                "required": ["number", "issued", "expires"],
+                "properties": {"number": identity, "issued": date, "expires": date},
+            },
+            "units": {"type": "array", "items": {"type": "object"}},
+        },
+    }
+
+
+def _permit_answer(number, *, expires, units):
+    return {
+        "data": {
+            "permit": {"number": number, "issued": "2008-05-16", "expires": expires},
+            "units": [{"reference": f"EG{i}"} for i in range(units)],
+        },
+        "cost": 0.02,
+        "input_tokens": 10,
+        "output_tokens": 5,
+    }
+
+
+def _six_inputs(workflow, *, corrected):
+    """Two issued permits, three unrelated documents, one listing page."""
+    documents, schema_path, output, provider = workflow
+    schema_path.write_text(json.dumps(_permit_schema(corrected=corrected)))
+    (documents / "alpha.txt").unlink()
+    for name in (
+        "permit-11541",
+        "permit-11790",
+        "guidance-1",
+        "guidance-2",
+        "guidance-3",
+        "listing",
+    ):
+        (documents / f"{name}.txt").write_text(f"marker-{name}")
+
+    def respond(*args, **kwargs):
+        blob = f"{args}{kwargs}"
+        if "marker-permit-11541" in blob:
+            return _permit_answer("11541", expires=None, units=3)
+        if "marker-permit-11790" in blob:
+            return _permit_answer("11790", expires=None, units=2)
+        if "marker-guidance-1" in blob:
+            # Valid only under the weak contract: blank identity, no units.
+            return _permit_answer("", expires="", units=0)
+        return _permit_answer(None, expires=None, units=0)
+
+    provider.side_effect = respond
+    return documents, schema_path, output, provider
+
+
+def _compile_saved_run(output, schema_path, tmp_path):
+    from psweep.compilation.accounting import build_pipeline_accounting
+    from psweep.pipeline import compile_extractions
+
+    compiled = tmp_path / "compiled"
+    result = compile_extractions(output, schema_path, output_dir=compiled)
+    accounting = build_pipeline_accounting(
+        domain="fixture",
+        extraction_dir=output,
+        output_dir=compiled,
+        compilation_stats={"total_rows": result.total_rows},
+    )
+    return result, accounting
+
+
+def test_uncorrected_contract_keeps_failures_and_billed_attempts_explicit(workflow, tmp_path):
+    documents, schema_path, output, _ = _six_inputs(workflow, corrected=False)
+    run = extract_documents(documents, schema_path, output_dir=output)
+    assert (run.total, run.successful, run.failed) == (6, 1, 5)
+    assert run.status == "partial_failure" and run.admitted == 1 and run.total_items == 0
+
+    result, accounting = _compile_saved_run(output, schema_path, tmp_path)
+    assert result.total_rows == 0
+    assert result.status == "failed"
+    extraction = accounting["stages"]["extraction"]
+    assert extraction["status"] == "completed_with_errors"
+    assert extraction["documents_billed"] == 6
+    assert extraction["current"] == {
+        "documents_admitted": 1,
+        "documents_failed": 5,
+        "documents_deferred": 0,
+        "items_admitted": 0,
+    }
+    assert "documents_extracted" not in accounting["summary"]
+
+
+def test_corrected_contract_and_qualified_inputs_compile_the_permits(workflow, tmp_path):
+    documents, schema_path, output, _ = _six_inputs(workflow, corrected=True)
+    for name in ("guidance-1", "guidance-2", "guidance-3", "listing"):
+        (documents / f"{name}.txt").unlink()  # discovery qualification no longer admits them
+    run = extract_documents(documents, schema_path, output_dir=output)
+    assert (run.total, run.successful, run.failed, run.total_items) == (2, 2, 0, 5)
+
+    result, accounting = _compile_saved_run(output, schema_path, tmp_path)
+    assert result.total_rows == 5 and result.status == "success"
+    assert accounting["stages"]["extraction"]["current"]["items_admitted"] == 5
+    assert accounting["stages"]["extraction"]["documents_billed"] == 2
+
+
+def test_valid_empty_results_stay_a_clean_success(workflow, tmp_path):
+    """Control: every eligible input validly returns no items; nothing failed."""
+    documents, schema_path, output, provider = workflow
+    schema_path.write_text(json.dumps(_permit_schema(corrected=True)))
+    provider.side_effect = lambda *a, **k: _permit_answer("11541", expires=None, units=0)
+    run = extract_documents(documents, schema_path, output_dir=output)
+    assert (run.successful, run.failed, run.total_items) == (1, 0, 0)
+
+    result, accounting = _compile_saved_run(output, schema_path, tmp_path)
+    assert result.total_rows == 0 and result.status == "success"
+    assert accounting["stages"]["extraction"]["status"] == "completed"
+    assert accounting["stages"]["extraction"]["current"]["documents_failed"] == 0

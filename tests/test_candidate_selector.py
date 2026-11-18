@@ -574,3 +574,60 @@ def test_selection_notes_name_targets_by_label():
     assert any(note.startswith("CO, Boulder County: seeker returned 0") for note in notes)
     _, default_notes = CandidateSelector().select([[]])
     assert default_notes[0].startswith("#1: ")
+
+
+# ---------------------------------------------------------------------------
+# Opaque endpoint URLs: eligibility comes from the link text, not the URL
+# ---------------------------------------------------------------------------
+
+
+def _opaque(doc_id: int, text: str):
+    return _candidate(
+        f"https://agency.gov/home/showpublisheddocument/{doc_id}/6386{doc_id}0000",
+        snippet=text,
+    )
+
+
+class TestOpaqueEndpointLinks:
+    GUIDANCE = (
+        (
+            "Clarification #2025-03: Construction Activities Permissible Prior to Receiving "
+            "an Air Permit"
+        ),
+        "Clarification #2025-02: Data Center Air Permits Guidelines",
+        "Clarification #2025-01: Emergency Generator Air Permit Guidelines",
+    )
+
+    def _selector(self):
+        return CandidateSelector(
+            exclude_draft=False,
+            relevance_exclude_any_terms=[
+                "guideline",
+                "policy",
+                "construction activities permissible prior to receiving an air permit",
+            ],
+        )
+
+    def test_guidance_snippets_are_ineligible_and_numeric_permit_links_stay(self):
+        guidance = [_opaque(10 + i, text) for i, text in enumerate(self.GUIDANCE)]
+        permits = [_opaque(20, "11541-3"), _opaque(21, "11790-1")]
+        selected, notes = self._selector().select(
+            [[*guidance, *permits]], primary_per_target=len(guidance) + len(permits)
+        )
+        assert selected == permits
+        assert any("relevance filter excluded" in note for note in notes)
+
+    def test_no_permit_word_requirement_and_no_filename_rule(self):
+        """Neither an opaque URL nor a numeric anchor contains 'permit'."""
+        numeric = _opaque(30, "11541-3")
+        selected, _ = self._selector().select([[numeric]], primary_per_target=1)
+        assert selected == [numeric]
+
+    def test_exclusion_reads_the_link_text_not_the_parent_source(self):
+        child = _candidate(
+            "https://agency.gov/home/showpublisheddocument/40/638640000",
+            snippet="11790-1",
+            source_url="https://agency.gov/permits/air/guidelines-and-policy",
+        )
+        selected, _ = self._selector().select([[child]], primary_per_target=1)
+        assert selected == [child]
