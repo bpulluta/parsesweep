@@ -1,7 +1,8 @@
 # Copy to config/<domain>/run.yaml beside schema.json and targets.csv.
-# Every key, default and rule: docs/config-reference.md. Keys go in .env.
+# Every key, default and rule: docs/config-reference.md.
+# API keys never go in YAML; set them in .env.
 domain: my_domain
-models:                               # aliases used by every stage
+models:                               # aliases used by every stage; use your provider's models
   primary: gpt-4o
   secondary: gpt-4o-mini
 discovery:
@@ -10,19 +11,19 @@ discovery:
     - '"{name}" {state} installation manual filetype:pdf'
   partition_by: [state, name]         # curated/by_state/<s>/by_name/<n>/
   selection:
-    max_per_target: 2
+    max_per_target: 2                 # must be >= document_review.keep_top
   # Optional automatic qualification; domain requirements stay in this YAML.
   # document_review:
   #   document_description: "Installation manual for {name} in {state}."
   #   model: secondary
   #   escalate_model: primary
-  #   keep_top: 2
+  #   keep_top: 2                      # <= selection.max_per_target
   #   coverage:
   #     installation: "Explicit installation instructions for {name}."
   #     specification: "Applicable technical specifications for {name}."
   # search:
   #   cache: true
-  #   fallback_queries: ['"{name}" {state} manufacturer installation manual']
+  #   fallback_queries: ['"{name}" {state} manufacturer installation manual']  # needs document_description
   # runtime:
   #   max_review_calls: 8              # physical attempts per target/run
   #   max_search_calls: 100            # physical attempts across this run
@@ -37,4 +38,4 @@ compilation:
   output:
     default_format: csv               # csv | excel | both
 validation:
-  models: [secondary]                 # contender; add references: [labels.csv]
+  models: [secondary]                 # contender; add references: [samples/labels.csv]
