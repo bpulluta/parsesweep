@@ -30,6 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Grounding stays exactly as strict. No grade cache key, prompt or sampler
   change: no existing cache is invalidated and no regrade is triggered.
 
+### Changed (document review: one bounded grounding repair)
+- When a reviewer's well-formed grade quotes text the sampled excerpt does not
+  contain contiguously (a "cleaned" run-together word, `and/or`, a word completed
+  across a `[...]` cut), review sends ONE same-model follow-up that repeats the
+  rejected quote text and the failing evidence paths and restates the copy rule.
+  The system never supplies, snaps or fuzzy-matches candidate text: the reply is
+  verified by the same strict matcher. A second failure fails closed as before.
+  The repair is metered and counts against the review attempt budget; it is not
+  used when `escalate_model` is set or after a provider error. A run note counts
+  repaired and failed grounding. Cost: at most one extra review call per failing
+  grade. Cache: none; the first-attempt prompt and the grade cache key are
+  unchanged, and a repaired grade is stored under the same key and re-verified on
+  every read like any other grade.
+
 ### Added (selected-page vision, opt-in)
 - `extraction.input_mode: text | auto | vision` (default `text`; unknown values
   fail at load). `auto` sends images of PDF pages that neither native text nor

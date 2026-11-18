@@ -1313,14 +1313,14 @@ def test_review_audit_keeps_failure_detail_and_notes_count_grounding_failures(
         "paths": ["evidence.content_quote"],
         "quotes": {"evidence.content_quote": "document dated"},
     }
-    assert any("1 file(s) failed evidence grounding" in note for note in notes)
+    assert any("0 repaired, 1 failed" in note for note in notes)
     assert not list((tmp_path / "cache").glob("*.json"))
 
 
-def test_a_failing_grade_costs_one_physical_call_and_a_malformed_one_costs_two(
+def test_a_grounding_failure_costs_one_call_plus_one_repair_and_a_malformed_one_two(
     tmp_path, monkeypatch
 ):
-    """Pin the metering contract: grounding failures are not retried; malformed replies are."""
+    """Pin the metering contract: a grounding failure gets one repair; malformed replies a retry."""
     monkeypatch.setattr(
         document_utils, "extract_text_from_document", lambda _p: "source evidence " * 100
     )
@@ -1328,7 +1328,7 @@ def test_a_failing_grade_costs_one_physical_call_and_a_malformed_one_costs_two(
     reviewer = DocumentReviewer(document_description="records")
     reviewer._client = _grounding_client("invented")
     reviewer.review([record], [])
-    assert reviewer.get_costs()["llm_calls"] == 1
+    assert reviewer.get_costs()["llm_calls"] == 2 and record["review_failed"]
 
     malformed = _record(tmp_path, "malformed.txt", "B")
     replies = iter([{"data": {"grade": 9}}, None])
@@ -1348,3 +1348,126 @@ def test_a_failing_grade_costs_one_physical_call_and_a_malformed_one_costs_two(
     other._client = Flaky()
     other.review([malformed], [])
     assert malformed["review_selected"] and other.get_costs()["llm_calls"] == 2
+
+
+# --- Step 12b R2: one bounded grounding repair ------------------------------------------------
+
+_RUN_TOGETHER = "The permit documentdated May 2008 authorizes operation. "
+
+
+class _RepairClient(MeteredReviewClient):
+    """First answer is paraphrased (``document dated``); a repair may answer verbatim."""
+
+    def __init__(self, *quotes: str) -> None:
+        super().__init__()
+        self.quotes = list(quotes)
+        self.follow_ups: list = []
+
+    def respond(self, *, text, schema, system_prompt, user_prompt, follow_up=None):
+        self.follow_ups.append(follow_up)
+        quote = self.quotes.pop(0)
+        evidence = _evidence("documentdated")
+        evidence["content_quote"] = quote
+        return {"data": {"grade": 4, "doc_kind": "permit", "reason": "r", "evidence": evidence}}
+
+
+def _repair_review(tmp_path, monkeypatch, client, **kwargs):
+    monkeypatch.setattr(document_utils, "extract_text_from_document", lambda _p: _RUN_TOGETHER * 30)
+    record = _record(tmp_path, "permit.txt", "A")
+    reviewer = DocumentReviewer(
+        document_description="permits", cache_dir=tmp_path / "cache", **kwargs
+    )
+    reviewer._client = client
+    notes: list[str] = []
+    reviewer.review([record], notes)
+    return reviewer, record, notes
+
+
+def test_one_repair_turns_a_paraphrased_quote_into_a_verbatim_grade(tmp_path, monkeypatch):
+    client = _RepairClient("document dated", "documentdated")
+    reviewer, record, notes = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_selected"] and not record.get("review_failed")
+    assert len(client.follow_ups) == 2 and client.follow_ups[0] is None
+    assert reviewer.get_costs()["llm_calls"] == 2
+    assert record["review_initial_repair"]["kind"] == "ungrounded"
+    assert record["review_initial_repair"]["quotes"] == {"evidence.content_quote": "document dated"}
+    assert any("1 repaired" in note for note in notes)
+
+
+def test_repair_names_the_rejected_text_but_never_supplies_source_text(tmp_path, monkeypatch):
+    client = _RepairClient("document dated", "documentdated")
+    _repair_review(tmp_path, monkeypatch, client)
+    assistant, user = client.follow_ups[1]
+    assert assistant["role"] == "assistant" and "document dated" in assistant["content"]
+    assert user["role"] == "user"
+    for expected in ("evidence.content_quote", "document dated", "character for character"):
+        assert expected in user["content"]
+    assert "documentdated" not in user["content"]
+    assert "[...]" in user["content"]
+
+
+def test_repaired_grade_is_cached_under_the_unchanged_key_and_reused_free(tmp_path, monkeypatch):
+    _repair_review(tmp_path, monkeypatch, _RepairClient("document dated", "documentdated"))
+    repaired = {p.name for p in (tmp_path / "cache").glob("*.json")}
+    clean_root = tmp_path / "clean"
+    clean_root.mkdir()
+    _repair_review(clean_root, monkeypatch, _RepairClient("documentdated"))
+    assert repaired == {p.name for p in (clean_root / "cache").glob("*.json")}
+    assert len(repaired) == 1
+    again = _RepairClient()  # a second run must not call the model
+    _, record, _ = _repair_review(tmp_path, monkeypatch, again)
+    assert record["review_cached"] and record["review_selected"] and not again.follow_ups
+
+
+def test_a_second_ungrounded_answer_fails_closed_after_exactly_two_calls(tmp_path, monkeypatch):
+    client = _RepairClient("document dated", "documents dated")
+    reviewer, record, notes = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_failed"] and not record["review_selected"]
+    assert record["review_error"].endswith("ungrounded evidence.content_quote")
+    assert reviewer.get_costs()["llm_calls"] == 2
+    assert not list((tmp_path / "cache").glob("*.json"))
+    assert any("1 failed" in note for note in notes)
+
+
+def test_a_malformed_repair_answer_keeps_the_original_grounding_failure(tmp_path, monkeypatch):
+    class Client(_RepairClient):
+        def respond(self, **kwargs):
+            if kwargs.get("follow_up"):
+                self.follow_ups.append(kwargs["follow_up"])
+                return {"data": {"grade": 9}}
+            return super().respond(**kwargs)
+
+    client = Client("document dated")
+    _, record, _ = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_failed"]
+    assert record["review_error"].endswith("ungrounded evidence.content_quote")
+
+
+def test_repair_draws_on_the_attempt_budget(tmp_path, monkeypatch):
+    from psweep.discovery.attempt_budget import AttemptBudget
+
+    client = _RepairClient("document dated", "documentdated")
+    reviewer, record, _ = _repair_review(
+        tmp_path, monkeypatch, client, attempt_budget=AttemptBudget(max_review_calls=1)
+    )
+    assert record["review_failed"] and record["review_budget_exhausted"]
+    assert reviewer.get_costs()["llm_calls"] == 1
+
+
+def test_provider_errors_are_not_repaired(tmp_path, monkeypatch):
+    class Client(_RepairClient):
+        def respond(self, **kwargs):
+            self.follow_ups.append(kwargs.get("follow_up"))
+            raise RuntimeError("provider down")
+
+    client = Client()
+    _, record, _ = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_failed"] and "LLM grade call failed" in record["review_error"]
+    assert len(client.follow_ups) == 1
+
+
+def test_a_valid_first_answer_is_never_repaired(tmp_path, monkeypatch):
+    client = _RepairClient("documentdated")
+    reviewer, record, _ = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_selected"] and "review_initial_repair" not in record
+    assert reviewer.get_costs()["llm_calls"] == 1

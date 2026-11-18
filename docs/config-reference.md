@@ -270,12 +270,21 @@ Grades are cached by content and grading inputs in
 `discovered/.review_cache/` and reused across runs. Recordings are graded on
 their transcript: a run's copy inherits the curated copy's transcript (matched
 by SHA-256) before review. A recording not yet transcribed (first run) is kept
-without review and transcribed at extraction. A grade whose quotes are not found contiguously in one excerpt segment fails
-closed with `invalid document grade evidence: ungrounded <path>` (or `contract`
-for a malformed grade); the record's `review_initial_failure` (or
-`review_escalation_failure`) holds the kind, failing evidence paths and each
-rejected quote truncated to 300 characters, kept only in the local discovery
-manifest. Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
+without review and transcribed at extraction.
+
+A grade whose quotes are not found contiguously in one excerpt segment is
+repaired once, then fails closed. The repair is ONE same-model request that
+repeats the rejected quote and the failing evidence paths and restates the copy
+rule; it never supplies or fuzzy-matches text, is not used with
+`escalate_model` or after a provider error, and is a metered review attempt (a
+failing grade costs at most one extra call). If it also fails, the error reads
+`invalid document grade evidence: ungrounded <path>` (`contract` for a malformed
+grade). The record's `review_initial_failure` (`review_escalation_failure` for
+the escalation route) holds the kind, failing evidence paths and each rejected
+quote truncated to 300 characters, and `review_initial_repair` marks a grade
+that was repaired; both stay only in the local discovery manifest.
+
+Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
 `psweep curate --config …` to republish the curated selection; the next
 `psweep extract` withdraws the records of documents it dropped.
 

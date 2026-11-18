@@ -853,6 +853,8 @@ class DocumentReviewer:
                 escalation=False,
                 decision_key=f"{raw_key}-initial",
             )
+            if repaired_from := initial.pop("repaired_from", None):
+                audit["initial_repair"] = repaired_from
             audit["initial_grade"] = self._audit_grade(initial)
         except AttemptBudgetExceeded as exc:
             exc.review_audit = audit
@@ -920,37 +922,104 @@ class DocumentReviewer:
         except Exception as exc:
             raise ReviewError(f"LLM unavailable ({type(exc).__name__})") from exc
         attempts = 1 if self._escalate_model else _GRADE_ATTEMPTS
+        segments = sample.split(_SAMPLE_SEPARATOR)
         for _ in range(attempts):
+            reply = self._ask(model, client, target_context, sample, user_prompt)
+            grade = self._grade_from_reply(reply)
+            if grade is None:
+                continue
             try:
-                result = self._request(
-                    client,
-                    target_context,
-                    text=sample,
-                    schema=_REVIEW_SCHEMA,
-                    system_prompt=_REVIEW_SYSTEM,
-                    user_prompt=user_prompt,
+                self._verify_evidence(grade, segments)
+            except EvidenceError as failure:
+                # An escalation route already is the second opinion; contract failures
+                # cannot reach here for a fresh reply, so only quotes are repaired.
+                if self._escalate_model or failure.failure["kind"] != "ungrounded":
+                    raise
+                return self._repair_grounding(
+                    model, client, target_context, sample, user_prompt, reply, failure
                 )
-            except AttemptBudgetExceeded:
-                raise
-            except Exception as exc:
-                if self._provider_failure(exc):
-                    with self._route_lock:
-                        self._failed_routes.add(self._route_key(model))
-                message = (
-                    f"LLM grade call failed: {provider_error_category(exc)} ({type(exc).__name__})"
-                )
-                raise ReviewError(
-                    message, usage_unknown=getattr(exc, "usage", None) is None
-                ) from exc
-            grade = self._grade_from_reply(result.get("data") if isinstance(result, dict) else None)
-            if grade is not None:
-                self._verify_evidence(grade, sample.split(_SAMPLE_SEPARATOR))
-                if self._cache_dir is None and self._escalate_model:
-                    self._grade_memo[decision_key] = grade
-                if self._escalate_model:
-                    self._write_cached_grade(decision_key, grade)
-                return grade
+            if self._cache_dir is None and self._escalate_model:
+                self._grade_memo[decision_key] = grade
+            if self._escalate_model:
+                self._write_cached_grade(decision_key, grade)
+            return grade
         raise ReviewError(f"invalid LLM grade: expected integer level 0-{_TOP_GRADE} and strings")
+
+    def _ask(
+        self,
+        model: str | None,
+        client: Any,
+        target_context: str,
+        sample: str,
+        user_prompt: str,
+        follow_up: list[dict[str, str]] | None = None,
+    ) -> object:
+        """One metered grading request; provider failures become sanitized review errors."""
+        try:
+            result = self._request(
+                client,
+                target_context,
+                text=sample,
+                schema=_REVIEW_SCHEMA,
+                system_prompt=_REVIEW_SYSTEM,
+                user_prompt=user_prompt,
+                **({"follow_up": follow_up} if follow_up else {}),
+            )
+        except AttemptBudgetExceeded:
+            raise
+        except Exception as exc:
+            if self._provider_failure(exc):
+                with self._route_lock:
+                    self._failed_routes.add(self._route_key(model))
+            message = (
+                f"LLM grade call failed: {provider_error_category(exc)} ({type(exc).__name__})"
+            )
+            raise ReviewError(message, usage_unknown=getattr(exc, "usage", None) is None) from exc
+        return result.get("data") if isinstance(result, dict) else None
+
+    def _repair_grounding(
+        self,
+        model: str | None,
+        client: Any,
+        target_context: str,
+        sample: str,
+        user_prompt: str,
+        reply: object,
+        failure: EvidenceError,
+    ) -> dict[str, Any]:
+        """One same-model follow-up for a well-formed grade whose quotes were not verbatim.
+
+        The reply is checked by the same strict matcher as any first answer; the
+        system never offers, snaps or fuzzy-matches candidate text.
+        """
+        rejected = "\n".join(
+            f"- {path}: {quote!r}" for path, quote in failure.failure["quotes"].items()
+        )
+        follow_up = [
+            {"role": "assistant", "content": json.dumps(reply)},
+            {
+                "role": "user",
+                "content": (
+                    "These evidence quotes are not contiguous text from a single excerpt "
+                    f"segment:\n{rejected}\n"
+                    "Copy every quote character for character from ONE segment of the excerpt. "
+                    "Keep run-together words and punctuation such as and/or exactly as "
+                    "printed, never complete a word that is cut off at a [...] boundary, and "
+                    "never join text across segments. Return the complete corrected JSON "
+                    "object for the same excerpt and schema. Return ONLY valid JSON."
+                ),
+            },
+        ]
+        grade = self._grade_from_reply(
+            self._ask(model, client, target_context, sample, user_prompt, follow_up)
+        )
+        if grade is None:
+            raise failure
+        try:
+            self._verify_evidence(grade, sample.split(_SAMPLE_SEPARATOR))
+        except EvidenceError as second:
+            raise second from None
+        return {**grade, "repaired_from": failure.failure}
 
     # Raw grade cache (selection is always recomputed).
 
@@ -1537,14 +1606,15 @@ class DocumentReviewer:
             f"selected {selected} primary document(s) "
             f"(keep_top={self._keep_top})."
         )
+        repaired = sum(bool(r.get("review_initial_repair")) for r in gradable)
         ungrounded = sum(
             bool(r.get("review_failed"))
             and bool(r.get("review_initial_failure") or r.get("review_escalation_failure"))
             for r in gradable
         )
-        if ungrounded:
+        if repaired or ungrounded:
             notes.append(
-                f"Document review: {ungrounded} file(s) failed evidence grounding "
+                f"Document review grounding: {repaired} repaired, {ungrounded} failed "
                 "(kind, paths and rejected quotes are in each record's review audit)."
             )
         kept = sum(r.get(FIELD_REVIEW_REASON) == RECORDING_KEPT for r in gradable)
