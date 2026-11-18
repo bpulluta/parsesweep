@@ -68,6 +68,9 @@ class EvidenceError(ReviewError):
     stays in the local discovery manifest and never appears in the message.
     """
 
+    # True for a fresh model answer: every route was tried, so the outcome is terminal.
+    terminal = False
+
     def __init__(self, kind: str, paths: dict[str, str]) -> None:
         shown = ", ".join(paths) or None
         super().__init__(
@@ -931,6 +934,7 @@ class DocumentReviewer:
             try:
                 self._verify_evidence(grade, segments)
             except EvidenceError as failure:
+                failure.terminal = True
                 # An escalation route already is the second opinion; contract failures
                 # cannot reach here for a fresh reply, so only quotes are repaired.
                 if self._escalate_model or failure.failure["kind"] != "ungrounded":
@@ -1018,6 +1022,7 @@ class DocumentReviewer:
         try:
             self._verify_evidence(grade, sample.split(_SAMPLE_SEPARATOR))
         except EvidenceError as second:
+            second.terminal = True
             raise second from None
         return {**grade, "repaired_from": failure.failure}
 
@@ -1073,6 +1078,47 @@ class DocumentReviewer:
             "coverage": payload.get("coverage", {}),
             "audit": payload.get("audit", {}),
         }
+
+    @staticmethod
+    def _unverifiable(error: EvidenceError) -> ReviewError:
+        """Terminal outcome: every route's answer failed grounding for these exact inputs."""
+        terminal = ReviewError(f"review unverifiable: {error}", retryable=False)
+        terminal.review_audit = {**getattr(error, "review_audit", {}), "unverifiable": True}
+        return terminal
+
+    def _read_unverifiable(self, cache_key: str) -> _ReviewFailure | None:
+        """Return a stored terminal outcome; it is never a grade (no ``llm`` entry)."""
+        if self._cache_dir is None:
+            return None
+        try:
+            stored = json.loads((self._cache_dir / f"{cache_key}.json").read_text("utf-8"))[
+                "unverifiable"
+            ]
+            message, audit = stored["message"], stored["audit"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        if (
+            not isinstance(message, str)
+            or not isinstance(audit, dict)
+            or not audit.get("unverifiable")
+        ):
+            return None
+        return _ReviewFailure(
+            message=message,
+            budget=False,
+            usage_unknown=False,
+            retryable=False,
+            audit=audit,
+            route_failure=False,
+        )
+
+    def _write_unverifiable(self, cache_key: str, failure: _ReviewFailure) -> None:
+        """Best-effort negative entry under the grade's own key; a failed write costs a retry."""
+        if self._cache_dir is None:
+            return
+        payload = {"unverifiable": {"message": failure.message, "audit": failure.audit}}
+        with contextlib.suppress(OSError, TypeError, ValueError):
+            atomic_json(self._cache_dir / f"{cache_key}.json", payload)
 
     def _write_cached_grade(self, cache_key: str, grade: dict[str, Any]) -> None:
         """Best-effort store of a fresh grade; a failed write only costs a regrade."""
@@ -1331,7 +1377,7 @@ class DocumentReviewer:
                     grade = None
             was_cached = grade is not None
             if grade is None:
-                failure = self._review_failures.get(cache_key)
+                failure = self._review_failures.get(cache_key) or self._read_unverifiable(cache_key)
                 if failure is not None:
                     raise failure.exception()
                 grade = self._grade(
@@ -1358,9 +1404,16 @@ class DocumentReviewer:
             self._mark_budget_failure(record, exc)
             return record, None, False
         except ReviewError as exc:
+            if isinstance(exc, EvidenceError) and exc.terminal:
+                exc = self._unverifiable(exc)
+                if cache_key:
+                    self._write_unverifiable(cache_key, _ReviewFailure.capture(exc))
             if cache_key:
                 self._review_failures[cache_key] = _ReviewFailure.capture(exc)
             self._mark_review_failure(record, exc)
+            if getattr(exc, "review_audit", {}).get("unverifiable"):
+                record["review_incomplete"] = False  # a settled verdict, not unfinished work
+                record[FIELD_REVIEW_REASON] = str(exc)
             return record, None, False
         except Exception as exc:  # noqa: BLE001 - isolate record-level failures
             message = f"document grade failed ({type(exc).__name__})"
@@ -1607,15 +1660,12 @@ class DocumentReviewer:
             f"(keep_top={self._keep_top})."
         )
         repaired = sum(bool(r.get("review_initial_repair")) for r in gradable)
-        ungrounded = sum(
-            bool(r.get("review_failed"))
-            and bool(r.get("review_initial_failure") or r.get("review_escalation_failure"))
-            for r in gradable
-        )
-        if repaired or ungrounded:
+        unverifiable = sum(bool(r.get("review_unverifiable")) for r in gradable)
+        if repaired or unverifiable:
             notes.append(
-                f"Document review grounding: {repaired} repaired, {ungrounded} failed "
-                "(kind, paths and rejected quotes are in each record's review audit)."
+                f"Document review grounding: {repaired} repaired, {unverifiable} unverifiable "
+                "(held; resolve with human_decision keep/reject; kind, paths and rejected "
+                "quotes are in each record's review audit)."
             )
         kept = sum(r.get(FIELD_REVIEW_REASON) == RECORDING_KEPT for r in gradable)
         if kept:

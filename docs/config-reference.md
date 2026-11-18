@@ -273,16 +273,26 @@ by SHA-256) before review. A recording not yet transcribed (first run) is kept
 without review and transcribed at extraction.
 
 A grade whose quotes are not found contiguously in one excerpt segment is
-repaired once, then fails closed. The repair is ONE same-model request that
-repeats the rejected quote and the failing evidence paths and restates the copy
-rule; it never supplies or fuzzy-matches text, is not used with
-`escalate_model` or after a provider error, and is a metered review attempt (a
-failing grade costs at most one extra call). If it also fails, the error reads
-`invalid document grade evidence: ungrounded <path>` (`contract` for a malformed
-grade). The record's `review_initial_failure` (`review_escalation_failure` for
-the escalation route) holds the kind, failing evidence paths and each rejected
-quote truncated to 300 characters, and `review_initial_repair` marks a grade
-that was repaired; both stay only in the local discovery manifest.
+repaired once, then settled. The repair is ONE same-model request that repeats
+the rejected quote and the failing evidence paths and restates the copy rule; it
+never supplies or fuzzy-matches text, is not used with `escalate_model` or after
+a provider error, and is a metered review attempt (a failing grade costs at most
+one extra call). If it also fails (with `escalate_model`: if both routes fail),
+the document is `review_unverifiable`: held and not curated, a terminal outcome
+whose reason shows in `review.csv` `llm_reason`. It is stored as a negative
+entry in `discovered/.review_cache/` under the grade's own key, so the same
+bytes and grading inputs are never billed again and the partition completes
+(worst case 2 calls per unique document per grading-input version). Changing a
+grading input (model, description, prompt, keywords, `max_chars`) changes the
+key and retries it; provider, transport and attempt-budget failures stay
+retryable. `human_decision` `keep`/`reject` resolves a held document.
+
+The record's `review_initial_error` reads `invalid document grade evidence:
+ungrounded <path>` (`contract` for a malformed grade). `review_initial_failure`
+(`review_escalation_failure` for the escalation route) holds the kind, failing
+evidence paths and each rejected quote truncated to 300 characters, and
+`review_initial_repair` marks a grade that was repaired; these stay only in the
+local discovery manifest.
 
 Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
 `psweep curate --config …` to republish the curated selection; the next

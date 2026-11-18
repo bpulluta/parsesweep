@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A review grade whose quotes the sampled excerpt does not support now fails with
   the kind and the failing evidence paths (`invalid document grade evidence:
   ungrounded evidence.content_quote`; `contract` when the grade itself is
-  malformed) instead of one generic message. The record's review audit
+  malformed) instead of one generic message, in the audit as
+  `review_initial_error`. The record's review audit
   (`review_initial_failure`, or `review_escalation_failure`) keeps the kind, the
   paths and each rejected quote truncated to 300 characters, in the local
   discovery manifest only. A run note counts the files that failed grounding.
@@ -36,13 +37,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   across a `[...]` cut), review sends ONE same-model follow-up that repeats the
   rejected quote text and the failing evidence paths and restates the copy rule.
   The system never supplies, snaps or fuzzy-matches candidate text: the reply is
-  verified by the same strict matcher. A second failure fails closed as before.
+  verified by the same strict matcher. A second failure ends as an unverifiable document (next entry).
   The repair is metered and counts against the review attempt budget; it is not
   used when `escalate_model` is set or after a provider error. A run note counts
   repaired and failed grounding. Cost: at most one extra review call per failing
   grade. Cache: none; the first-attempt prompt and the grade cache key are
   unchanged, and a repaired grade is stored under the same key and re-verified on
   every read like any other grade.
+
+### Changed (document review: unverifiable documents are terminal and never re-billed)
+- A document whose grade still fails quote grounding after the repair (or, with
+  `escalate_model`, after both routes) is now a settled `review_unverifiable`
+  outcome (`review_failed`, `review_retryable: false`, `review_unverifiable:
+  true`; the reason is shown in `review.csv` `llm_reason`) instead of a retryable
+  failure. Before, the same inputs were re-billed on every discover run and the
+  partition never completed. It is stored as a negative entry in
+  `.review_cache/` under the grade's own key; it is never read as a grade. The
+  document stays held (not curated); `psweep curate` with `human_decision`
+  `keep`/`reject` resolves it. Any change to a grading input (model,
+  description, prompt, keywords, `max_chars`, sampling id) changes the key, so
+  the document is retried automatically. Provider, transport and attempt-budget
+  failures stay retryable and write no entry. Worst case: 2 calls per unique
+  document per grading-input version. Run notes count repaired and unverifiable
+  documents. Cache: no grade cache key changes, no existing cache is
+  invalidated and no regrade is triggered.
 
 ### Added (selected-page vision, opt-in)
 - `extraction.input_mode: text | auto | vision` (default `text`; unknown values
