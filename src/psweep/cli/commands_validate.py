@@ -7,6 +7,8 @@ from pathlib import Path
 
 import click
 
+from psweep.cli.commands import domain_option
+
 
 def _gate_failure(gate: dict) -> str:
     reasons = []
@@ -46,6 +48,7 @@ def _gate_failure(gate: dict) -> str:
     is_flag=True,
     help="Validate the validation: section and exit.",
 )
+@domain_option
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output.")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output.")
 @click.option("--debug", is_flag=True, help="Debug output.")
@@ -55,6 +58,7 @@ def validate(
     sample: int | None,
     seed: int,
     validate_config_only: bool,
+    domain: str | None,
     quiet: bool,
     verbose: bool,
     debug: bool,
@@ -80,7 +84,7 @@ def validate(
     view = begin_run("validate", quiet=quiet, verbose=verbose, debug=debug)
     try:
         if validate_config_only:
-            config_data = load_runtime_config_file(config_path)
+            config_data = load_runtime_config_file(config_path, domain=domain)
             if not config_data.get("validation"):
                 raise RuntimeConfigError(f"{config_path} has no validation: section")
             resolve_command_config(command="validate", cli_values={}, config_data=config_data)
@@ -90,7 +94,9 @@ def validate(
         from psweep.validation.tables import leaderboard
 
         if sample is not None:
-            path = write_sample(config_path, n=sample, seed=seed, notify=view.warning)
+            path = write_sample(
+                config_path, n=sample, seed=seed, notify=view.warning, domain=domain
+            )
             view.success(f"Wrote {path.as_posix()}")
             view.next_steps(
                 [
@@ -105,11 +111,11 @@ def validate(
                 ]
             )
             return
-        summary = run_validation(config_path, fresh=fresh, notify=view.info)
+        summary = run_validation(config_path, fresh=fresh, notify=view.info, domain=domain)
     except (ValueError, OSError, sqlite3.Error, ParseSweepError) as exc:
         view.error("Validation failed", str(exc))
         raise click.exceptions.Exit(1) from exc
-    domain = load_runtime_config_file(config_path)["domain"]
+    domain = load_runtime_config_file(config_path, domain=domain)["domain"]
     if not view.is_quiet:
         view.console.print()
         for line in leaderboard(summary, f"validate {domain}"):

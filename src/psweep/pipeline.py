@@ -212,15 +212,18 @@ def build_run_stage_commands(
     target_limit: int | None = None,
     extract_input_path: str | Path | None = None,
     extra_flags: Sequence[str] = (),
+    domain: str | None = None,
 ) -> list[tuple[str, list[str]]]:
     """Build the subprocess commands used to execute a run config pipeline.
 
     ``fresh`` propagates a "start fresh" signal to discover (ignore the
     checkpoint and refresh the search cache), extract (re-extract already-
     processed documents), and compile (clear compiled outputs before writing),
-    giving ``run --fresh`` a fully clean pipeline across all stages.
+    giving ``run --fresh`` a fully clean pipeline across all stages. ``domain``
+    (``run --domain``) is forwarded to every stage.
     """
     cfg_path = Path(config_path)
+    extra_flags = [*extra_flags, *(["--domain", domain] if domain else [])]
     stage_cmds: list[tuple[str, list[str]]] = []
 
     if discovery_enabled is None:
@@ -1672,7 +1675,9 @@ def extract_documents(
     return _execute_extraction(plan)
 
 
-def _compiler(extraction_dir, schema, *, config_path=None, output_dir=None, report_format=None):
+def _compiler(
+    extraction_dir, schema, *, config_path=None, output_dir=None, report_format=None, domain=None
+):
     """Resolve compile settings exactly like ``psweep compile --config``."""
     from psweep.compilation.data_compiler import DataCompiler
     from psweep.security import validate_protected_paths
@@ -1686,8 +1691,12 @@ def _compiler(extraction_dir, schema, *, config_path=None, output_dir=None, repo
     if config_path:
         resolved = resolve_command_config(
             command="compile",
-            cli_values={"schema": str(schema_path), "extracted_dir": str(ext_dir)},
-            config_data=load_runtime_config_file(Path(config_path)),
+            cli_values={
+                "schema": str(schema_path),
+                "extracted_dir": str(ext_dir),
+                **({"domain": domain} if domain else {}),
+            },
+            config_data=load_runtime_config_file(Path(config_path), domain=domain),
         )
     workspace = Workspace(resolved.get("domain") or infer_domain(ext_dir))
     out_dir = Path(output_dir or workspace.compiled)
@@ -1712,12 +1721,13 @@ def compiled_table_fresh(
     *,
     config_path: str | Path | None,
     output_dir: str | Path | None,
+    domain: str | None = None,
 ) -> bool:
     """True when the newest compile manifest matches the records and the CSV bytes."""
     from psweep.compilation.accounting import latest_compilation_manifest
 
     compiler, ext_dir, out_dir, table = _compiler(
-        extraction_dir, schema, config_path=config_path, output_dir=output_dir
+        extraction_dir, schema, config_path=config_path, output_dir=output_dir, domain=domain
     )
     manifest = latest_compilation_manifest(out_dir) or {}
     lineage = manifest.get("lineage") or {}
@@ -1742,6 +1752,7 @@ def compile_extractions(
     output_dir: str | Path | None = None,
     report_format: str | None = None,
     dry_run: bool = False,
+    domain: str | None = None,
 ) -> CompilationResult:
     """Compile extracted JSON files into Excel/CSV output.
 
@@ -1758,6 +1769,7 @@ def compile_extractions(
         config_path=config_path,
         output_dir=output_dir,
         report_format=report_format,
+        domain=domain,
     )
     schema_metadata = compiler.schema_metadata
     started_at = datetime.now(UTC)

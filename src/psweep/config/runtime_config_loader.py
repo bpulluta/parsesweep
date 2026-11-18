@@ -875,8 +875,14 @@ def _reject_derived_path_keys(config_data: dict[str, Any], config_path: Path) ->
         raise RuntimeConfigError(msg)
 
 
-def _resolve_workspace_keys(config_data: dict[str, Any], config_path: Path) -> None:
-    """Default ``domain`` to the config directory name and type-check ``schema``."""
+def _resolve_workspace_keys(
+    config_data: dict[str, Any], config_path: Path, domain_override: str | None
+) -> None:
+    """Resolve ``domain`` (override, config key, else the config directory name)
+    and type-check ``schema``.
+    """
+    if domain_override is not None:
+        config_data["domain"] = domain_override
     domain = config_data.setdefault("domain", config_path.parent.name)
     try:
         Workspace(domain)
@@ -888,8 +894,12 @@ def _resolve_workspace_keys(config_data: dict[str, Any], config_path: Path) -> N
     config_data["_config_path"] = config_path.as_posix()
 
 
-def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
-    """Load a run-level or section-level runtime config file."""
+def load_runtime_config_file(config_path: Path, *, domain: str | None = None) -> dict[str, Any]:
+    """Load a run-level or section-level runtime config file.
+
+    ``domain`` (the ``--domain`` workspace override) replaces the config's
+    ``domain`` here, once, so every reader of ``cfg["domain"]`` agrees.
+    """
     if not config_path.exists():
         msg = f"Config file not found: {config_path.as_posix()}"
         raise RuntimeConfigError(msg)
@@ -899,7 +909,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
 
     reject_unknown_keys(config_data, _ALLOWED_TOP_LEVEL, config_path=config_path.as_posix())
     _reject_derived_path_keys(config_data, config_path)
-    _resolve_workspace_keys(config_data, config_path)
+    _resolve_workspace_keys(config_data, config_path, domain)
 
     _validate_models_block(config_data.get("models"))
     _validate_model_context_windows_block(config_data.get("model_context_windows"))

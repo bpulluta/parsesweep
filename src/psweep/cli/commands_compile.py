@@ -11,6 +11,7 @@ from typing import Any
 
 import click
 
+from psweep.cli.commands import domain_option
 from psweep.cli.ui import (
     Verbosity,
     console,
@@ -168,6 +169,7 @@ def _should_fail_on_provenance(
         "results. Pair with 'extract --fresh' for a guaranteed clean pipeline."
     ),
 )
+@domain_option
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output (machine-readable)")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output with statistics")
 @click.option("--debug", is_flag=True, help="Debug mode with full logs")
@@ -183,6 +185,7 @@ def compile(  # noqa: A001 - public CLI command name
     fail_on_suspicious: str,
     provenance_policy: str,
     fresh: bool,
+    domain: str | None,  # noqa: ARG001 - read via _explicit_cli_overrides
     quiet: bool,
     verbose: bool,
     debug: bool,
@@ -225,6 +228,7 @@ def compile(  # noqa: A001 - public CLI command name
             "fail_on_suspicious",
             "provenance_policy",
             "fresh",
+            "domain",
         ]
     )
 

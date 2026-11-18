@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No image cost for `input_mode: text` (the default).
 - Older records are not read: there is no legacy layer.
 
+### Added (one `--domain` workspace override on every config-driven stage)
+- `extract`, `compile`, `validate` and `run` now take the `--domain` that only
+  `discover` had, so a second workspace (for example `aq_permits_va_s12` from
+  `config/aq_permits_va/run.yaml`) is addressed the same way at every stage
+  without `-o`, which recorded the wrong domain and broke compile and validate
+  chaining. The override is applied once, in `load_runtime_config_file`, so
+  every reader of the domain agrees; `run --domain` forwards it to every stage.
+  `curate` and `gc` keep their positional domain argument (the same key).
+  Without the option nothing changes. No cache or regrade impact.
+
 ### Fixed (discovery publication: final decisions apply in incomplete partitions)
 - A shared partition left incomplete by one retryable failure used to publish
   additively and ignore every other decision, so the consolidated `curated/`

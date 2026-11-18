@@ -47,7 +47,7 @@ pixi run psweep discover --config config/<domain>/run.yaml --show-effective-conf
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `domain` | required | Names the run; every output is derived under `outputs/<domain>/`. |
+| `domain` | required | Names the run; every output is derived under `outputs/<domain>/`. `--domain KEY` on `discover`, `extract`, `compile`, `validate` and `run` replaces it for that invocation (`--show-effective-config` shows `domain ... (cli)`). `run --domain` forwards it to every stage. Explicit `PATH`/`--output` still win. `curate` and `gc` take the same key as their positional argument. |
 | `schema` | `schema.json` beside the config | Extraction schema path. |
 | `models` | — | Alias → model-name map. Stages reference aliases (`primary`, `secondary`, …) so a model is changed in one place. |
 | `model_context_windows` | — | Model name → input window in tokens (positive integer) for models the runtime does not know. See [LLM calls](#llm-calls). |

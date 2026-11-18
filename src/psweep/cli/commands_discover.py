@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 
+from psweep.cli.commands import domain_option
 from psweep.cli.dashboard import create_discovery_live_dashboard
 from psweep.cli.ui import (
     Verbosity,
@@ -42,12 +43,7 @@ from psweep.discovery.request_inputs import discovery_request_fields
     is_flag=True,
     help="Validate resolved command inputs and exit without running discovery",
 )
-@click.option(
-    "--domain",
-    type=str,
-    default=None,
-    help="Domain key for the output workspace (overrides config)",
-)
+@domain_option
 @click.option(
     "--source",
     "sources",
