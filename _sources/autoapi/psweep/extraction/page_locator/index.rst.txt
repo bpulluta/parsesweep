@@ -22,13 +22,15 @@ psweep.extraction.page_locator
       one-line outline of every page, and ask which other parts they refer to
       hold information the section needs (e.g. "charges are specified in
       Sheet 75"). Repeat for the pages that adds until nothing new is referenced
-      or ``max_selected_pages`` is spent; relevant parts that do not fit are
+      or ``max_selected_pages`` is spent (the final selected frontier is still
+      read, so its dependencies are reported); relevant parts that do not fit are
       reported as omitted.
 
    Results are cached in a ``.pages/<stem>.json`` sidecar, verified against
    source SHA-256 and resolved model/effective settings. Cached selections are
    checked against the page count and budget without parsing. ``locate`` returns
-   ``None`` on failure so the caller can fall back to full-document extraction.
+   ``None`` when no selection is established; ``incomplete`` tells the caller
+   whether that was a failure or a valid absence.
 
 
 

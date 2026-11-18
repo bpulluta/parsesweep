@@ -371,6 +371,40 @@
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="unreleased">
 <h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<section id="fixed-extraction-targeting-safety">
+<h3>Fixed (extraction targeting safety)<a class="headerlink" href="#fixed-extraction-targeting-safety" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>A running header naming the target no longer makes every page mandatory:
+only its earliest page is kept, body and wrapped identity pages stay. A
+176-page tariff with the utility name in every header could never be targeted
+under a 60-page cap and fell back to the whole document, truncated.</p></li>
+<li><p>Automatic targeting fails closed. A governed document with no usable
+selection, readable text over <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code> and no selection, or a final
+input (source hints and candidate context included) over <code class="docutils literal notranslate"><span class="pre">max_context</span></code> is held
+before the extraction request (<code class="docutils literal notranslate"><span class="pre">targeting_no_usable_scope</span></code>,
+<code class="docutils literal notranslate"><span class="pre">targeting_context_budget_exceeded</span></code>, category <code class="docutils literal notranslate"><span class="pre">targeting</span></code>) instead of sending
+the whole document or a silently sliced prefix. A hold ends the extract stage
+<code class="docutils literal notranslate"><span class="pre">failed</span></code> (exit 1), so <code class="docutils literal notranslate"><span class="pre">run</span></code> does not compile historical records. A
+document with no readable native PDF text is now held too (use a blank CSV
+row to force OCR of the full document).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--fresh</span></code> runs these checks before deleting output and keeps previous records
+when a document is held; blocked documents report no primary calls or tokens.</p></li>
+<li><p>The final selected reference frontier is read even when the page cap is full,
+so its dependencies are reported as omitted (one extra locator call per
+locate); a later smaller reference range can reclaim pages from an omitted
+larger one.</p></li>
+<li><p>A page-range answer with any malformed member is rejected whole rather than
+using the valid remainder. A reference-pass failure keeps the established pages,
+records <code class="docutils literal notranslate"><span class="pre">coverage.targeting_incomplete</span></code> and is never reused.</p></li>
+<li><p>A CSV row that is blank (full document) is now distinct from no row in the
+record fingerprint and skips targeting for HTML/DOC/DOCX/TXT as it did for PDF.</p></li>
+<li><p>Cache impact: <code class="docutils literal notranslate"><span class="pre">LOCATOR_BEHAVIOR_VERSION</span></code> is bumped, which invalidates every
+<code class="docutils literal notranslate"><span class="pre">.pages/</span></code>/<code class="docutils literal notranslate"><span class="pre">.sections/</span></code> selection and every extraction-record fingerprint in
+runs with <code class="docutils literal notranslate"><span class="pre">pages.auto_locate</span></code> enabled (including small, CSV-mapped and
+unsupported files), so the next run re-locates and re-extracts those
+documents (paid). Domains without targeting keep their fingerprints.</p></li>
+</ul>
+</section>
 <section id="changed-breaking-config">
 <h3>Changed (breaking config)<a class="headerlink" href="#changed-breaking-config" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -775,6 +809,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
             <ul>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li><a class="reference internal" href="#fixed-extraction-targeting-safety">Fixed (extraction targeting safety)</a></li>
 <li><a class="reference internal" href="#changed-breaking-config">Changed (breaking config)</a></li>
 <li><a class="reference internal" href="#fixed">Fixed</a></li>
 <li><a class="reference internal" href="#added">Added</a></li>

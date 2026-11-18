@@ -381,13 +381,15 @@ candidate pages and ask which page ranges contain the section.</p></li>
 one-line outline of every page, and ask which other parts they refer to
 hold information the section needs (e.g. “charges are specified in
 Sheet 75”). Repeat for the pages that adds until nothing new is referenced
-or <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code> is spent; relevant parts that do not fit are
+or <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code> is spent (the final selected frontier is still
+read, so its dependencies are reported); relevant parts that do not fit are
 reported as omitted.</p></li>
 </ol>
 <p>Results are cached in a <code class="docutils literal notranslate"><span class="pre">.pages/&lt;stem&gt;.json</span></code> sidecar, verified against
 source SHA-256 and resolved model/effective settings. Cached selections are
 checked against the page count and budget without parsing. <code class="docutils literal notranslate"><span class="pre">locate</span></code> returns
-<code class="docutils literal notranslate"><span class="pre">None</span></code> on failure so the caller can fall back to full-document extraction.</p>
+<code class="docutils literal notranslate"><span class="pre">None</span></code> when no selection is established; <code class="docutils literal notranslate"><span class="pre">incomplete</span></code> tells the caller
+whether that was a failure or a valid absence.</p>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">

@@ -411,7 +411,7 @@ positionally) and writes one JSON record per document to
 | `transcription_model` | — | `models:` alias that transcribes audio; required when audio is present. |
 | `limit` | — | Process only the first N documents. |
 | `skip_existing` | `true` | Reuse verified records (see [Reuse](#runs-reuse-and-exit-codes)). |
-| `max_context` | `600000` | Characters of document text sent per call. |
+| `max_context` | `600000` | Characters sent per call. With automatic targeting this is a hard limit on the final prepared input, source hints and candidate context included (characters, not tokens); otherwise longer input is truncated and reported. |
 | `max_concurrent` | `4` | Documents extracted in parallel (also concurrent transcription chunks). |
 | `timeout_seconds` | `120` (`LLM_TIMEOUT`) | Per-request LLM timeout. |
 | `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR text only. |
@@ -452,21 +452,42 @@ and metadata remain untrusted scope hints, never factual evidence. Cache
 identities include the configured identity, subject hints and locator behavior
 version. HTML/HTM targeting uses readable
 section text against `trigger_chars`, not raw markup size, so scripts/styles
-and navigation do not turn a short article into a paid locator call. Locator
-failures fall back to full-document extraction, subject to `max_context`.
+and navigation do not turn a short article into a paid locator call.
 
-`auto_locate` shows the locator model the opening lines of every page and asks
-for the pages of the described section. It then reads those pages in full and
-adds the parts they refer to elsewhere in the document, such as "charges
-specified in Tariff Sheet 75" or "riders on Sheet 80", and repeats with the
-added pages until nothing new is referenced. `max_selected_pages` caps the
-total. Relevant pages it leaves out are logged as a warning and recorded in the
-record's `coverage.omitted_page_ranges`. The extracted text marks each skipped
-stretch with `[Omitted pages: 28-67]`.
+Automatic targeting fails closed. A document it governs (enabled, a supported
+type, no CSV row, not handled by the roster bypasses) is extracted only from a
+bounded selection, or whole when its readable text is at most `trigger_chars`.
+The exact final input must fit `max_context` (equal is allowed). Otherwise the
+document is held before any extraction request: a failed outcome with category
+`targeting` and code `targeting_no_usable_scope` (the locator failed, found
+nothing, or the PDF had no readable native text) or
+`targeting_context_budget_exceeded`. The prior record is left untouched, the
+extract stage ends `failed` (exit 1) even when other documents succeeded, so
+`run` stops before compiling; `psweep compile` can still be run by hand on the
+historical records. A CSV row, including a blank one that forces the full
+document, or `pages.range` bypasses targeting for every supported type; the
+full-document text is then truncated at `max_context` and reported. Scanned
+PDFs with no native text need such a row. `--fresh` runs the same checks
+before deleting any output and, on a hold, keeps the previous records.
 
-Selections are cached in `.pages/` beside the document. If the section cannot
-be located, the full document is extracted. If a reference pass fails, the
-pages found so far are used and the document is located again on the next run.
+`auto_locate` shows the locator model the opening lines of each candidate page
+and asks for the pages of the described section. It then reads those pages in
+full and adds the parts they refer to elsewhere in the document, such as
+"charges specified in Tariff Sheet 75" or "riders on Sheet 80", and repeats
+with the added pages until nothing new is referenced. `max_selected_pages` caps
+the total; the final selected pages are still read, so what they refer to is
+reported as omitted. Relevant pages it leaves out are logged as a warning and
+recorded in the record's `coverage.omitted_page_ranges`. The extracted text
+marks each skipped stretch with `[Omitted pages: 28-67]`. Pages naming the
+target in a repeated header or footer count once toward the mandatory identity
+pages (the earliest occurrence is kept); pages naming it in the body all stay.
+A malformed page-range answer is rejected whole, not partly used.
+
+Selections are cached in `.pages/` beside the document. If a reference pass
+fails, the pages found so far are extracted with
+`coverage.targeting_incomplete` and a warning in the record; such a record and
+any record truncated at `max_context` are never reused, and the document is
+located again on the next run.
 With `save_discovered`, `extracted/discovered_page_ranges.csv` (the `pages.csv`
 columns, one row per range) lists the pages behind every current record, reused
 records included. Non-PDF selections are saved under `extracted/.sections/` as

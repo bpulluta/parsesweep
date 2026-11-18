@@ -412,6 +412,9 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaValidationError" title="psweep.exceptions.SchemaValidationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaValidationError</span></code></a></p></td>
 <td><p>Raised when a schema's structure fails validation.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.TargetingSafetyError" title="psweep.exceptions.TargetingSafetyError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TargetingSafetyError</span></code></a></p></td>
+<td><p>Raised when automatic targeting leaves no safe input for the primary request.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -507,6 +510,15 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
+<dl class="py exception">
+<dt class="sig sig-object py" id="psweep.exceptions.TargetingSafetyError">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.exceptions.</span></span><span class="sig-name descname"><span class="pre">TargetingSafetyError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">code</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">document</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.exceptions.TargetingSafetyError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#psweep.exceptions.ExtractionError" title="psweep.exceptions.ExtractionError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ExtractionError</span></code></a></p>
+<p>Raised when automatic targeting leaves no safe input for the primary request.</p>
+<p><code class="docutils literal notranslate"><span class="pre">code</span></code> is a stable machine-readable reason; it never carries document text.</p>
+<p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
 </section>
 </section>
 
@@ -582,6 +594,7 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <li><a class="reference internal" href="#psweep.exceptions.SchemaError"><code class="docutils literal notranslate"><span class="pre">SchemaError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.SchemaMetadataError"><code class="docutils literal notranslate"><span class="pre">SchemaMetadataError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.SchemaValidationError"><code class="docutils literal notranslate"><span class="pre">SchemaValidationError</span></code></a></li>
+<li><a class="reference internal" href="#psweep.exceptions.TargetingSafetyError"><code class="docutils literal notranslate"><span class="pre">TargetingSafetyError</span></code></a></li>
 </ul>
 </li>
 </ul>

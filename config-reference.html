@@ -1123,7 +1123,7 @@ positionally) and writes one JSON record per document to
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_context</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">600000</span></code></p></td>
-<td><p>Characters of document text sent per call.</p></td>
+<td><p>Characters sent per call. With automatic targeting this is a hard limit on the final prepared input, source hints and candidate context included (characters, not tokens); otherwise longer input is truncated and reported.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_concurrent</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">4</span></code></p></td>
@@ -1177,19 +1177,39 @@ and metadata remain untrusted scope hints, never factual evidence. Cache
 identities include the configured identity, subject hints and locator behavior
 version. HTML/HTM targeting uses readable
 section text against <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code>, not raw markup size, so scripts/styles
-and navigation do not turn a short article into a paid locator call. Locator
-failures fall back to full-document extraction, subject to <code class="docutils literal notranslate"><span class="pre">max_context</span></code>.</p>
-<p><code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> shows the locator model the opening lines of every page and asks
-for the pages of the described section. It then reads those pages in full and
-adds the parts they refer to elsewhere in the document, such as “charges
-specified in Tariff Sheet 75” or “riders on Sheet 80”, and repeats with the
-added pages until nothing new is referenced. <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code> caps the
-total. Relevant pages it leaves out are logged as a warning and recorded in the
-record’s <code class="docutils literal notranslate"><span class="pre">coverage.omitted_page_ranges</span></code>. The extracted text marks each skipped
-stretch with <code class="docutils literal notranslate"><span class="pre">[Omitted</span> <span class="pre">pages:</span> <span class="pre">28-67]</span></code>.</p>
-<p>Selections are cached in <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> beside the document. If the section cannot
-be located, the full document is extracted. If a reference pass fails, the
-pages found so far are used and the document is located again on the next run.
+and navigation do not turn a short article into a paid locator call.</p>
+<p>Automatic targeting fails closed. A document it governs (enabled, a supported
+type, no CSV row, not handled by the roster bypasses) is extracted only from a
+bounded selection, or whole when its readable text is at most <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code>.
+The exact final input must fit <code class="docutils literal notranslate"><span class="pre">max_context</span></code> (equal is allowed). Otherwise the
+document is held before any extraction request: a failed outcome with category
+<code class="docutils literal notranslate"><span class="pre">targeting</span></code> and code <code class="docutils literal notranslate"><span class="pre">targeting_no_usable_scope</span></code> (the locator failed, found
+nothing, or the PDF had no readable native text) or
+<code class="docutils literal notranslate"><span class="pre">targeting_context_budget_exceeded</span></code>. The prior record is left untouched, the
+extract stage ends <code class="docutils literal notranslate"><span class="pre">failed</span></code> (exit 1) even when other documents succeeded, so
+<code class="docutils literal notranslate"><span class="pre">run</span></code> stops before compiling; <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">compile</span></code> can still be run by hand on the
+historical records. A CSV row, including a blank one that forces the full
+document, or <code class="docutils literal notranslate"><span class="pre">pages.range</span></code> bypasses targeting for every supported type; the
+full-document text is then truncated at <code class="docutils literal notranslate"><span class="pre">max_context</span></code> and reported. Scanned
+PDFs with no native text need such a row. <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> runs the same checks
+before deleting any output and, on a hold, keeps the previous records.</p>
+<p><code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> shows the locator model the opening lines of each candidate page
+and asks for the pages of the described section. It then reads those pages in
+full and adds the parts they refer to elsewhere in the document, such as
+“charges specified in Tariff Sheet 75” or “riders on Sheet 80”, and repeats
+with the added pages until nothing new is referenced. <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code> caps
+the total; the final selected pages are still read, so what they refer to is
+reported as omitted. Relevant pages it leaves out are logged as a warning and
+recorded in the record’s <code class="docutils literal notranslate"><span class="pre">coverage.omitted_page_ranges</span></code>. The extracted text
+marks each skipped stretch with <code class="docutils literal notranslate"><span class="pre">[Omitted</span> <span class="pre">pages:</span> <span class="pre">28-67]</span></code>. Pages naming the
+target in a repeated header or footer count once toward the mandatory identity
+pages (the earliest occurrence is kept); pages naming it in the body all stay.
+A malformed page-range answer is rejected whole, not partly used.</p>
+<p>Selections are cached in <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> beside the document. If a reference pass
+fails, the pages found so far are extracted with
+<code class="docutils literal notranslate"><span class="pre">coverage.targeting_incomplete</span></code> and a warning in the record; such a record and
+any record truncated at <code class="docutils literal notranslate"><span class="pre">max_context</span></code> are never reused, and the document is
+located again on the next run.
 With <code class="docutils literal notranslate"><span class="pre">save_discovered</span></code>, <code class="docutils literal notranslate"><span class="pre">extracted/discovered_page_ranges.csv</span></code> (the <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code>
 columns, one row per range) lists the pages behind every current record, reused
 records included. Non-PDF selections are saved under <code class="docutils literal notranslate"><span class="pre">extracted/.sections/</span></code> as
