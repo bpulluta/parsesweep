@@ -545,3 +545,42 @@ def test_inherit_carries_page_entries_only_to_identical_bytes(tmp_path, same_byt
     new.write_bytes(b"v1" if same_bytes else b"v2")
     pub.inherit_text_caches([new], [old])
     assert _entry_names(new) == (["1.json"] if same_bytes else [])
+
+
+def test_review_ledger_leaves_llm_selected_blank_when_no_review_ran(tmp_path):
+    """A downloaded status is not an LLM verdict; only a real review fills the column."""
+    import csv
+
+    from psweep.discovery import DiscoveryEngine
+
+    def record(name, **review):
+        path = tmp_path / name
+        path.write_bytes(b"%PDF-1.4")
+        return {
+            "path": str(path),
+            "relative_path": f"_shared/{name}",
+            "status": "downloaded",
+            "target_label": "t",
+            **review,
+        }
+
+    def rows(records):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(exist_ok=True)
+        review = DiscoveryEngine._write_review_index(download_records=records, run_dir=run_dir)
+        with review.open(newline="") as handle:
+            return {r["relative_path"]: r for r in csv.DictReader(handle)}
+
+    unreviewed = rows([record("a.pdf")])
+    assert unreviewed["_shared/a.pdf"]["llm_selected"] == ""
+    assert unreviewed["_shared/a.pdf"]["curated_selected"] == "True"
+
+    mixed = rows(
+        [
+            record("a.pdf", review_selected=True),
+            record("b.pdf", review_selected=False),
+            record("c.pdf"),
+        ]
+    )
+    assert mixed["_shared/a.pdf"]["llm_selected"] == "True"
+    assert mixed["_shared/b.pdf"]["llm_selected"] == "False"

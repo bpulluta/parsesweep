@@ -110,6 +110,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repeated runs converge. No fingerprint or cache change; a budget-limited
   listing may fetch more pages in the same run.
 
+### Fixed (review ledger no longer invents an LLM verdict)
+- `review.csv` leaves `llm_selected` blank for documents no relevance review
+  graded, instead of defaulting it to `True` for every downloaded file. Use
+  `curated_selected` for what was effectively published. `curate` already treats
+  a blank `llm_selected` as "no verdict". Ledger-only change: no fingerprint,
+  cache, regrade or cost impact.
+
 ### Fixed (central request admission)
 - `LLMClient.complete` admits the exact final request (messages plus response
   schema) against `model_context_windows` before any provider attempt, for

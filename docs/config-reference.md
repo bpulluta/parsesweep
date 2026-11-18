@@ -260,7 +260,8 @@ must satisfy every mandatory requirement in `document_description`; 'partial'
 means missing optional detail, not missing required evidence. The reason quotes
 the deciding source content or identifies what is absent. In
 `review.csv`, `relevance` = grade / 4 and `llm_is_primary` = grade ≥ 3;
-selection keeps at most `keep_top` non-redundant primaries per target. Without
+`llm_selected` is blank for documents no review graded (use `curated_selected`
+for what was published); selection keeps at most `keep_top` non-redundant primaries per target. Without
 coverage, grades then reproducible provenance break ties (with `prefer_newest`,
 provably older dated editions are excluded first). With coverage, newly
 covered verified labels take priority, then grade; supported publication dates

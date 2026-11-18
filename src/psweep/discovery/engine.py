@@ -2476,10 +2476,7 @@ class DiscoveryEngine:
                         "doc_kind": record.get("review_doc_kind"),
                         "relevance": record.get("review_relevance"),
                         "llm_is_primary": record.get("review_is_primary"),
-                        "llm_selected": record.get(
-                            "review_selected",
-                            record.get("status") == "downloaded",
-                        ),
+                        "llm_selected": record.get("review_selected"),
                         **eligibility_columns(record),
                         "curated_selected": record_is_curated(record, review_ran=review_ran),
                         "human_decision": record.get("human_decision") or "",
