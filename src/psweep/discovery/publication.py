@@ -592,9 +592,11 @@ def _merged_index(
     """Merge run provenance; return the index and the withdrawn paths removed.
 
     A path is only replaced or withdrawn by its owner (``document_owner``),
-    and each owner keeps at most one path. Outside blocked partitions an
-    unpromoted row is withdrawn when its owner was promoted elsewhere, is in
-    ``withdrawn``, or belongs to a ``completed`` target or source.
+    and each owner keeps at most one path. An unpromoted row is withdrawn
+    when its owner was promoted elsewhere or is in ``withdrawn``: both are
+    final per-document decisions, so they apply in blocked partitions too.
+    Absence is only an inference outside blocked partitions: a row whose
+    owner belongs to a ``completed`` target or source goes only there.
     """
     fieldnames, existing = _csv_read(domain_index) if domain_index.exists() else ([], [])
     if run_content is None:
@@ -632,10 +634,10 @@ def _merged_index(
         if _under(rel.parent, replaced_partitions):
             continue
         owner = document_owner(row)
-        if (
-            key not in promoted
-            and not is_blocked(rel.parent)
-            and (owner in promoted_owners or owner in withdrawn or owner[0] in completed)
+        if key not in promoted and (
+            owner in promoted_owners
+            or owner in withdrawn
+            or (owner[0] in completed and not is_blocked(rel.parent))
         ):
             removed.add(key)
             continue
@@ -849,7 +851,8 @@ def promote_curated(
     run_index: Path | None = None,
 ) -> None:
     """Publish run curation and its consolidated provenance; blocked
-    partitions are published additively.
+    partitions are published additively, except that an owner renamed by this
+    run keeps only its new path.
     """
     root = Path(domain_dir).resolve()
     source = Path(run_curated_dir).resolve()
@@ -907,7 +910,9 @@ def publish_manual_curation(
     _lock_held: bool = False,
 ) -> tuple[Path, int]:
     """Publish local/consolidated human curation and its provenance
-    together; ``completed`` targets/sources reconcile their documents.
+    together. Final per-document decisions (human reject, final
+    non-selection) apply in blocked partitions as well; ``completed``
+    targets/sources reconcile their documents outside blocked partitions.
     """
     root = paths.domain_dir
     if paths.run_curated_dir == root / "curated":

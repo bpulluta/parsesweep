@@ -446,7 +446,7 @@ def test_atomic_json_failure_keeps_prior_bytes(tmp_path, monkeypatch):
 @pytest.mark.parametrize("blocked", [False, True])
 def test_merged_index_keeps_one_path_per_owner(tmp_path, blocked):
     """Renamed and unselected owners lose their old path whatever its name,
-    except in blocked partitions.
+    in blocked partitions too (a final decision); only a rename needs a promotion.
     """
     index = tmp_path / "download_index.csv"
     index.write_text(
@@ -466,7 +466,7 @@ def test_merged_index_keeps_one_path_per_owner(tmp_path, blocked):
     )
     paths = {row.split(",")[0] for row in content.splitlines()[1:]}
     if blocked:
-        assert not removed and paths == {"p/old-slug.pdf", "p/held.pdf", "p/other.pdf"}
+        assert removed == {"p/held.pdf"} and paths == {"p/old-slug.pdf", "p/other.pdf"}
     else:
         assert removed == {"p/old-slug.pdf", "p/held.pdf"}
         assert paths == {"p/new-slug.pdf", "p/other.pdf"}
@@ -584,3 +584,145 @@ def test_review_ledger_leaves_llm_selected_blank_when_no_review_ran(tmp_path):
     )
     assert mixed["_shared/a.pdf"]["llm_selected"] == "True"
     assert mixed["_shared/b.pdf"]["llm_selected"] == "False"
+
+
+_SHARED_URLS = {
+    name: f"https://site.gov/{name}" for name in ("keep", "reject", "drop", "failed", "old")
+}
+
+
+def _blocked_corpus(tmp_path: Path):
+    """A consolidated `_shared` partition holding five documents of one source."""
+    domain = tmp_path / "domain"
+    rows = []
+    for name, url in _SHARED_URLS.items():
+        document = domain / f"curated/_shared/{name}.pdf"
+        document.parent.mkdir(parents=True, exist_ok=True)
+        document.write_bytes(name.encode())
+        rows.append(
+            {"relative_path": f"_shared/{name}.pdf", "url": url, "source_url": "https://site.gov"}
+        )
+    (domain / "download_index.csv").write_text(
+        pub.csv_content(["relative_path", "url", "source_url"], rows), encoding="utf-8"
+    )
+    return domain
+
+
+def _decide(tmp_path: Path, domain: Path, decisions: dict[str, dict]):
+    """Publish a run in which each named document carries its own record fields."""
+    from psweep.discovery.publication import publish_manual_curation, resolve_publication_paths
+
+    run = domain / "runs/r2"
+    documents = run / "documents"
+    records = []
+    for name, fields in decisions.items():
+        source = documents / f"_shared/{name}.pdf"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(name.encode())
+        records.append(
+            {
+                "status": "downloaded",
+                "relative_path": f"_shared/{name}.pdf",
+                "path": str(source),
+                "url": _SHARED_URLS.get(name, f"https://site.gov/{name}"),
+                "source_url": "https://site.gov",
+                **fields,
+            }
+        )
+    paths = resolve_publication_paths(
+        documents, run / "manifest.json", "example", domain_dir=domain
+    )
+    content = pub.csv_content(
+        ["relative_path", "url", "source_url"],
+        [r for r in records if pub.record_is_curated(r, review_ran=True)],
+    )
+    publish_manual_curation(
+        paths=paths,
+        download_records=records,
+        run_index=paths.run_index,
+        run_index_content=content,
+        metadata_updates={},
+        blocked_partitions={Path("_shared")},
+        attempted_partitions={Path("_shared")},
+    )
+    with (domain / "download_index.csv").open() as handle:
+        indexed = {Path(row["relative_path"]).stem for row in csv.DictReader(handle)}
+    return {p.stem for p in (domain / "curated/_shared").glob("*.pdf")}, indexed
+
+
+_KEEP = {"review_selected": True}
+
+
+def test_final_decisions_withdraw_consolidated_documents_in_a_blocked_partition(tmp_path):
+    """A human reject or a final non-selection applies even though another
+    document in the partition failed; a retryable failure and a document this
+    run never saw stay.
+    """
+    domain = _blocked_corpus(tmp_path)
+    files, indexed = _decide(
+        tmp_path,
+        domain,
+        {
+            "keep": _KEEP,
+            "reject": {**_KEEP, "human_decision": "reject"},
+            "drop": {"review_selected": False},
+            "failed": {"review_failed": True, "review_retryable": True},
+        },
+    )
+    assert files == indexed == {"keep", "failed", "old"}
+
+
+def test_blocked_partition_does_not_infer_absence_for_completed_targets(tmp_path):
+    """Only a decision about a document applies; 'completed means gone' does not."""
+    from psweep.discovery.publication import publish_manual_curation, resolve_publication_paths
+
+    domain = _blocked_corpus(tmp_path)
+    run = domain / "runs/r2"
+    paths = resolve_publication_paths(
+        run / "documents", run / "manifest.json", "example", domain_dir=domain
+    )
+    publish_manual_curation(
+        paths=paths,
+        download_records=[],
+        run_index=paths.run_index,
+        run_index_content="relative_path,url,source_url\n",
+        metadata_updates={},
+        blocked_partitions={Path("_shared")},
+        completed={pub.owner_key("", "https://site.gov")},
+    )
+    assert {p.stem for p in (domain / "curated/_shared").glob("*.pdf")} == set(_SHARED_URLS)
+
+
+def test_blocked_partition_promotion_removes_the_old_path_of_a_renamed_owner(tmp_path):
+    """The discover path: one URL published under a new name leaves one document."""
+    domain, run = tmp_path / "domain", tmp_path / "domain/runs/r1"
+    old = domain / "curated/_shared/old-slug.pdf"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"old")
+    other = domain / "curated/_shared/other.pdf"
+    other.write_bytes(b"other")
+    _index(
+        domain / "download_index.csv",
+        [
+            {"relative_path": "_shared/old-slug.pdf", "url": "u"},
+            {"relative_path": "_shared/other.pdf", "url": "o"},
+        ],
+    )
+    (run / "curated/_shared").mkdir(parents=True)
+    (run / "curated/_shared/new-slug.pdf").write_bytes(b"new")
+    _index(run / "download_index.csv", [{"relative_path": "_shared/new-slug.pdf", "url": "u"}])
+    pub.promote_curated(
+        run_curated_dir=run / "curated",
+        domain_dir=domain,
+        blocked_partitions={Path("_shared")},
+        run_index=run / "download_index.csv",
+    )
+    assert sorted(p.name for p in (domain / "curated/_shared").glob("*.pdf")) == [
+        "new-slug.pdf",
+        "other.pdf",
+    ]
+    with (domain / "download_index.csv").open() as handle:
+        assert {row["relative_path"] for row in csv.DictReader(handle)} == {
+            "_shared/new-slug.pdf",
+            "_shared/other.pdf",
+        }

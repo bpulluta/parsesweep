@@ -1016,7 +1016,14 @@ that target; changing a target's `urls` or rendered queries re-runs it.
   additively, and the next run re-fetches the listing, reuses every earlier
   download whose SHA-256 still matches (no request, no `max_files` slot),
   skips terminal outcomes (e.g. 404) and fetches only the rest. A capped
-  listing converges batch by batch.
+  listing converges batch by batch. An incomplete partition never removes a
+  document the run did not decide, but every final per-document decision still
+  applies to the consolidated `curated/` and `download_index.csv`: a human
+  `reject` (`psweep curate`), a final non-selection (review `keep_top`,
+  `max_per_target`, a rejected grade) and a document republished under a new
+  name. Only "this completed target no longer lists the document" waits for the
+  partition to complete. Extraction records of a removed document become
+  historical; nothing under `extracted/` is deleted by discovery.
 - **Transient** failures (timeouts, connection errors, truncated streams, HTTP
   408/429/5xx) are retried in the run and leave the item incomplete. **Bot
   challenges** (429/5xx with `cf-mitigated`, `x-vercel-mitigated` or

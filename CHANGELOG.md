@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No image cost for `input_mode: text` (the default).
 - Older records are not read: there is no legacy layer.
 
+### Fixed (discovery publication: final decisions apply in incomplete partitions)
+- A shared partition left incomplete by one retryable failure used to publish
+  additively and ignore every other decision, so the consolidated `curated/`
+  and `download_index.csv` kept a document the run had finally rejected (a human
+  `reject` via `psweep curate`), finally not selected (`keep_top`,
+  `max_per_target`) or republished under a new name. Those three decisions now
+  apply there too, in `discover` and in `curate`. Unchanged: a retryable failure
+  withdraws nothing, a document the run did not decide stays, and "absent from a
+  completed target" still waits for the partition to complete. User-visible
+  effect: a later `discover` or `curate` can remove documents that previously
+  lingered in `curated/`; their extraction records become historical through the
+  existing admission rules and nothing under `extracted/` is deleted. No cache
+  or regrade impact: no cache key, fingerprint or LLM call changes.
+
 ### Changed (document review: diagnosable grounding failures)
 - A review grade whose quotes the sampled excerpt does not support now fails with
   the kind and the failing evidence paths (`invalid document grade evidence:
