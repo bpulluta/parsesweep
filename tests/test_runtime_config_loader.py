@@ -727,6 +727,18 @@ def test_processing_validator_rejects_invalid_fields(tmp_path: Path, snippet: st
         load_runtime_config_file(cfg)
 
 
+def test_pages_csv_and_range_together_fail_at_load(tmp_path: Path):
+    """`range` would be silently ignored beside a CSV, so the pair is a config error."""
+    cfg = _write(
+        tmp_path,
+        "schema: s.json\nextraction:\n  pages:\n    csv: ranges.csv\n    range: '1-3'\n",
+    )
+    with pytest.raises(
+        RuntimeConfigError, match=r"pages\.csv.*pages\.range|pages\.range.*pages\.csv"
+    ):
+        load_runtime_config_file(cfg)
+
+
 def test_processing_validator_accepts_valid_block(tmp_path: Path):
     cfg = _write(
         tmp_path,

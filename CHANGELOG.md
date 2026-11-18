@@ -117,6 +117,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a blank `llm_selected` as "no verdict". Ledger-only change: no fingerprint,
   cache, regrade or cost impact.
 
+### Fixed (conflicting page scopes fail at load)
+- `extraction.pages.csv` together with `extraction.pages.range` is now a config
+  error instead of silently ignoring the range. Configs that set both must drop
+  one. Load-time validation only: no fingerprint, cache or cost impact.
+
 ### Fixed (central request admission)
 - `LLMClient.complete` admits the exact final request (messages plus response
   schema) against `model_context_windows` before any provider attempt, for

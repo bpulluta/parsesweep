@@ -330,6 +330,11 @@ def _normalize_pages_block(extraction: dict[str, Any], config_path: Path) -> Non
         )
     reject_unknown_keys(pages, _PAGES_KEYS, "extraction.pages", where)
     extraction.pop("pages")
+    if "csv" in pages and "range" in pages:
+        raise RuntimeConfigError(
+            "extraction.pages.csv and extraction.pages.range cannot be combined: "
+            "CSV rows take precedence, so the range would be ignored"
+        )
     if "csv" in pages:
         csv_path = pages["csv"]
         if not isinstance(csv_path, str) or not csv_path.strip():

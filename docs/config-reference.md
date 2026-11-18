@@ -459,11 +459,12 @@ working directory). A row's `file_path` matches a document by path, by path
 relative to the input folder, or by file name; give a file one row per range.
 CSV rows win; leave both pages empty to force the full document. `pages.range`
 (or `--pages 27,68-73`) selects pages for a single file: comma-separated pages
-and inclusive ranges.
+and inclusive ranges. Setting `pages.csv` and `pages.range` together in the config
+fails at load (the range would be ignored); the `--pages` flag still yields to a
+configured CSV.
 
 **Scope precedence**, highest first: (1) a `pages.csv` row, or a blank row for
-the full document; (2) `pages.range` / `--pages`, used only when `pages.csv` is
-not set; (3) `auto_locate` for a governed document without either; (4) the whole
+the full document; (2) `pages.range` / `--pages`, used only when no CSV applies; (3) `auto_locate` for a governed document without either; (4) the whole
 document. Roster-anchored extraction chooses its own windows. Whichever scope
 wins, the final input must still fit `max_context`; a manual scope controls
 which pages are read, never whether the budget applies.
