@@ -136,7 +136,7 @@ query variants of a configured page (its pagination), which belong to that page.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `runtime.max_files` | unbounded | Download budget per run; configured URLs never count. |
+| `runtime.max_files` | unbounded | Download budget per run; configured URLs never count, and neither do linked documents that selection eligibility drops after crawling. |
 | `runtime.timeout_seconds` | engine default | Request timeout, and the stall limit (time without data) for file downloads. |
 | `runtime.max_concurrent_downloads` | `2` | Parallel downloads. |
 | `runtime.min_request_interval_ms` | `0` | Minimum delay between outbound requests. |

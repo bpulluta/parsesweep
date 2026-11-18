@@ -101,6 +101,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inherit-the-primary default is removed. Configs that enabled auto-locate
   without a model now fail validation.
 
+### Fixed (crawl budget starved by excluded links)
+- Linked documents that selection eligibility (exclusion terms, URL/text
+  patterns, draft filters) drops after crawling no longer consume the raw-link
+  budget of `runtime.max_files`. Previously a listing whose first links were all
+  excluded could exhaust the budget on every run and never reach a later wanted
+  link; the crawl now widens its budget by the number of dropped links, so
+  repeated runs converge. No fingerprint or cache change; a budget-limited
+  listing may fetch more pages in the same run.
+
 ### Fixed (central request admission)
 - `LLMClient.complete` admits the exact final request (messages plus response
   schema) against `model_context_windows` before any provider attempt, for

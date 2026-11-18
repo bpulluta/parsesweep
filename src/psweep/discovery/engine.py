@@ -2202,75 +2202,86 @@ class DiscoveryEngine:
         owners = {owner_key(c.target_id, c.source_url) for c in candidates}
         known = sum(len((prior or {}).get(key, {})) for key in owners if key)
         file_budget = None if request.max_files is None else request.max_files + known
-        try:
-            result = resolve_digger_connector(request.crawl_provider).discover(
-                DiggerInput(
-                    sources=pages,
-                    max_depth=request.max_depth,
-                    max_pages=request.max_pages,
-                    max_files=file_budget,
-                    timeout_seconds=request.timeout_seconds or 30,
-                    allowed_domains=request.allowed_domains,
-                    include_url_patterns=request.include_url_patterns,
-                    include_link_text_patterns=request.include_link_text_patterns,
-                    extra_params={
-                        "ssl_verify": ssl_verify,
-                        "request_headers": self._resolve_request_headers(request),
-                        "retry": self._resolve_retry_policy(request),
-                        "browser_escalation": self._browser_recovery_enabled(request),
-                        "request_gate": self._network_gate(request, ssl_verify),
-                        "response_url_gate": self._network_gate(request, ssl_verify),
-                        "rate_limiter": self._rate_limiter,
-                        "browser_policy_strict": request.robots_policy_mode == "enforce"
-                        or request.tos_policy_mode == "enforce",
-                    },
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 - network isolation: recorded as an error record
-            error = build_error_record(
-                exc,
-                stage="discovery.crawl",
-                provider=request.crawl_provider,
-            )
-            notes.append("Crawl failed; continuing with uncrawled candidates.")
-            retry_urls = (set(pages) if error["retryable"] else set()) | unevaluated
-            unfinished = [c for c in candidates if c.url in retry_urls]
-            if error["retryable"]:
-                state["unfinished_cause"] = "retryable crawl failure"
-            return candidates, normalize_error_records([error]), notes, state, unfinished
-
-        origins: dict[str, list[DiscoveryCandidate]] = {}
-        for candidate in candidates:
-            origins.setdefault(candidate.url, []).append(candidate)
-        seen = {(c.url, c.target_id) for c in candidates}
-        crawled: list[DiscoveryCandidate] = []
-        for artifact in result.artifacts:
-            metadata = artifact.metadata or {}
-            page = urlparse(artifact.url)._replace(query="", fragment="")
-            for origin in origins.get(str(metadata.get("source_url")), ()):
-                if (artifact.url, origin.target_id) in seen:
-                    continue
-                seen.add((artifact.url, origin.target_id))
-                # Query variants of a configured page (its pagination) are
-                # that configured page, so they skip selection and review.
-                continuation = origin.source == CONFIGURED_SOURCE and (
-                    page == urlparse(origin.url)._replace(query="", fragment="")
-                )
-                crawled.append(
-                    DiscoveryCandidate(
-                        url=artifact.url,
-                        source=CONFIGURED_SOURCE if continuation else artifact.source,
-                        score=CandidateScore(url_signal=0.35, trust_signal=0.55),
-                        reasons=[ROUTE_REASON_CRAWLED],
-                        mime_type=artifact.mime_type,
-                        extension=artifact.extension,
-                        target_metadata=origin.target_metadata,
-                        snippet=str(metadata.get("link_text") or "") or None,
-                        source_scope=origin.source_scope,
-                        source_url=origin.source_url or origin.url,
-                        target_id=origin.target_id,
+        # Links the selection filters drop after crawling must not consume the
+        # raw-link budget, or a long excluded prefix starves later wanted links.
+        dropped = 0
+        while True:
+            budget = None if file_budget is None else file_budget + dropped
+            try:
+                result = resolve_digger_connector(request.crawl_provider).discover(
+                    DiggerInput(
+                        sources=pages,
+                        max_depth=request.max_depth,
+                        max_pages=request.max_pages,
+                        max_files=budget,
+                        timeout_seconds=request.timeout_seconds or 30,
+                        allowed_domains=request.allowed_domains,
+                        include_url_patterns=request.include_url_patterns,
+                        include_link_text_patterns=request.include_link_text_patterns,
+                        extra_params={
+                            "ssl_verify": ssl_verify,
+                            "request_headers": self._resolve_request_headers(request),
+                            "retry": self._resolve_retry_policy(request),
+                            "browser_escalation": self._browser_recovery_enabled(request),
+                            "request_gate": self._network_gate(request, ssl_verify),
+                            "response_url_gate": self._network_gate(request, ssl_verify),
+                            "rate_limiter": self._rate_limiter,
+                            "browser_policy_strict": request.robots_policy_mode == "enforce"
+                            or request.tos_policy_mode == "enforce",
+                        },
                     )
                 )
+            except Exception as exc:  # noqa: BLE001 - network isolation: recorded as an error record
+                error = build_error_record(
+                    exc,
+                    stage="discovery.crawl",
+                    provider=request.crawl_provider,
+                )
+                notes.append("Crawl failed; continuing with uncrawled candidates.")
+                retry_urls = (set(pages) if error["retryable"] else set()) | unevaluated
+                unfinished = [c for c in candidates if c.url in retry_urls]
+                if error["retryable"]:
+                    state["unfinished_cause"] = "retryable crawl failure"
+                return candidates, normalize_error_records([error]), notes, state, unfinished
+
+            origins: dict[str, list[DiscoveryCandidate]] = {}
+            for candidate in candidates:
+                origins.setdefault(candidate.url, []).append(candidate)
+            seen = {(c.url, c.target_id) for c in candidates}
+            crawled: list[DiscoveryCandidate] = []
+            for artifact in result.artifacts:
+                metadata = artifact.metadata or {}
+                page = urlparse(artifact.url)._replace(query="", fragment="")
+                for origin in origins.get(str(metadata.get("source_url")), ()):
+                    if (artifact.url, origin.target_id) in seen:
+                        continue
+                    seen.add((artifact.url, origin.target_id))
+                    # Query variants of a configured page (its pagination) are
+                    # that configured page, so they skip selection and review.
+                    continuation = origin.source == CONFIGURED_SOURCE and (
+                        page == urlparse(origin.url)._replace(query="", fragment="")
+                    )
+                    crawled.append(
+                        DiscoveryCandidate(
+                            url=artifact.url,
+                            source=CONFIGURED_SOURCE if continuation else artifact.source,
+                            score=CandidateScore(url_signal=0.35, trust_signal=0.55),
+                            reasons=[ROUTE_REASON_CRAWLED],
+                            mime_type=artifact.mime_type,
+                            extension=artifact.extension,
+                            target_metadata=origin.target_metadata,
+                            snippet=str(metadata.get("link_text") or "") or None,
+                            source_scope=origin.source_scope,
+                            source_url=origin.source_url or origin.url,
+                            target_id=origin.target_id,
+                        )
+                    )
+            if budget is None or len(result.artifacts) < budget:
+                break
+            ineligible = self._count_ineligible(request=request, candidates=crawled)
+            if ineligible <= dropped:
+                break
+            dropped = ineligible
         state.update(
             applied=True,
             page_count=len(pages),
@@ -2286,7 +2297,7 @@ class DiscoveryEngine:
                 f"{name}={shown}"
                 for name, shown, limit, used in (
                     ("crawl.max_pages", request.max_pages, request.max_pages, result.pages_fetched),
-                    ("runtime.max_files", request.max_files, file_budget, len(result.artifacts)),
+                    ("runtime.max_files", request.max_files, budget, len(result.artifacts)),
                 )
                 if limit is not None and used >= limit
             ]
@@ -2302,6 +2313,20 @@ class DiscoveryEngine:
             c for c in candidates if c.url in result.incomplete_sources or c.url in unevaluated
         ]
         return candidates + crawled, [], notes, state, unfinished
+
+    def _count_ineligible(
+        self, *, request: DiscoveryRequest, candidates: list[DiscoveryCandidate]
+    ) -> int:
+        """Crawled candidates that selection eligibility will drop before download."""
+        kept, _notes = self._apply_post_routing_selection_filters(
+            request=request, candidates=candidates
+        )
+        return len(candidates) - sum(
+            1
+            for candidate in kept
+            if candidate.source == CONFIGURED_SOURCE
+            or self._passes_final_url_selection_guard(final_url=candidate.url, request=request)[0]
+        )
 
     @staticmethod
     def _write_download_index(
