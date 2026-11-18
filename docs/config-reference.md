@@ -567,11 +567,43 @@ Only the pages in scope are rendered; nothing is cropped or dropped to fit.
   input windows.
 - Quotes are still verified against text only. Content that exists only in an
   image has no text to match, so a quote taken from it is rejected like any
-  other unverifiable quote; the record notes `visual_pages`. The record's
-  coverage fields do not yet describe image use (planned with Step 9).
+  other unverifiable quote. The record's `input` block states the mode, the
+  per-page representation, `visual_pages` and `render_dpi`; coverage
+  `image_only_pages` lists sent pages that had no readable text, with a matching
+  warning that their values rest on page images alone. A page that has text
+  (`vision` mode) is not image-only.
 - Native PDF transport is not implemented.
 - A non-`text` mode joins the extraction fingerprint (mode and dpi), so
   switching modes re-extracts; `text` keeps existing fingerprints.
+
+### Record input provenance
+
+Every record has an `input` block (record contract 3.0.0), outside the domain
+payload and bounded to metadata (no rendered bytes):
+`input_mode` (the mode in effect; the roster path and non-PDF documents are
+`text`), `pages` (each selected PDF page with `status`, `chars`,
+`image_fraction` and, when OCR output was obtained for it, `ocr_sha256`),
+`visual_pages` and `render_dpi` (only when images were sent). Coverage gains
+`unreadable_pages` (the selected pages no parser could read) and
+`image_only_pages`; the `parser_partial` warning names the unreadable pages
+(`PDF pages 4,7 could not be read as text or OCR`). The always-false
+`context_truncated` coverage key is removed: an oversized input is held, never
+truncated.
+
+**Reuse proof for OCR.** A record is reusable only while every valid OCR page
+entry in the cache agrees with the `ocr_sha256` the record used for that page.
+A missing entry is unknown and regenerable, so it keeps reuse (no provider call);
+a present entry that differs, or one for a page the record could not read, makes
+the record stale; entries for pages outside the record's selection are ignored.
+Transcripts keep their own `derived_text_sha256` proof in the run manifest; PDFs
+no longer write one. The check repeats at consumption.
+
+**Behaviour versions in the extraction fingerprint.** `extraction-behavior-v1`
+(prompt and one-feedback-generation policy) joins every fingerprint. PDFs also
+bind `OCR_PAGE_VERSION` and `PAGE_REPRESENTATION_VERSION`; other formats do not
+change when those are bumped. The page locator's settings fingerprint binds the
+same two PDF versions, so a changed OCR call or page rule re-locates scanned
+PDFs.
 
 ### Source identity
 
@@ -592,8 +624,8 @@ and `.pages/` / `.sections/` sidecars.
 Preparation retains compact method/text/representation identities. Missing or
 changed authoritative browser/API text cannot fall back to native text under its
 old fingerprint. Transcripts must match the source and transcriber identity. Raw
-OCR is derived from the source per page (see **Caches**); its identity is the
-digest of the cached page entries, recorded with each whole-document record.
+OCR is derived from the source per page (see **Caches**); each record stores the
+digest of the OCR text it used per page (see **Record input provenance**).
 Derived OCR/transcript caches can be created without perpetual re-extraction;
 changed verified derived text rejects reuse.
 Roster/no-match decisions and reused records are rechecked at consumption.
@@ -612,8 +644,10 @@ writer (which returns item count plus SHA-256), never a later live-output hash.
 proofs reject all pre-fix records because they cannot prove which inputs were
 consumed. A later extraction run pays to re-extract those records. Locator version
 `captured-scope-v4` rejects old page/section cache entries, causing paid re-location
-only where selection is needed. Valid text/OCR/transcript products are retained;
-canonical record contract remains 2.0.0. No discovery regrading is triggered.
+only where selection is needed. Valid text/OCR/transcript products are retained.
+The canonical record contract is 3.0.0 (adds `input`, removes
+`coverage.context_truncated`); there is no reader for older records, which are
+re-extracted. No discovery regrading is triggered.
 
 ### Final payload acceptance
 

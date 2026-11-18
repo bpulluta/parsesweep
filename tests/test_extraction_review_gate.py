@@ -80,7 +80,7 @@ def test_record_contract_does_not_depend_on_repository_path(monkeypatch, tmp_pat
     )
     try:
         validator = schema_utils.record_validator()
-        assert validator.schema["properties"]["contract_version"]["const"] == "2.0.0"
+        assert validator.schema["properties"]["contract_version"]["const"] == "3.0.0"
     finally:
         schema_utils.record_validator.cache_clear()
 
@@ -1257,7 +1257,7 @@ def _rewrite_record(output: Path, mutate):
         manifest.write_text(json.dumps(data), encoding="utf-8")
 
 
-@pytest.mark.parametrize("flag", ["context_truncated", "targeting_incomplete"])
+@pytest.mark.parametrize("flag", ["targeting_incomplete"])
 @pytest.mark.parametrize("protected", [True, False])
 def test_matching_proof_unsafe_record_is_rejected_only_in_protected_mode(
     reviewed_inputs, monkeypatch, flag, protected
@@ -1461,7 +1461,7 @@ def test_untargeted_inputs_are_held_not_sliced(reviewed_inputs, kind, limit, hel
     else:
         assert outcome.exit_code == 0
         record = json.loads((Path(inputs["output"]) / "doc.json").read_text("utf-8"))
-        assert not record["processing_metrics"]["coverage"]["context_truncated"]
+        assert "context_truncated" not in record["processing_metrics"]["coverage"]
 
 
 @pytest.mark.parametrize(

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (record contract 3.0.0: persisted input provenance, versioned reuse)
+- Every extraction record has an `input` block: `input_mode`, per-page PDF
+  representation (`status`, `chars`, `image_fraction`, and `ocr_sha256` where OCR
+  output was obtained), `visual_pages` and `render_dpi`. Coverage adds
+  `unreadable_pages` and `image_only_pages` (sent pages with no readable text,
+  whose quotes cannot be checked against text, with a warning); the
+  `parser_partial` warning names unreadable pages. The always-false
+  `coverage.context_truncated` key is removed. `contract_version` is `3.0.0`;
+  older records are not read and are re-extracted.
+- OCR reuse proof is per page. A record is stale when a present OCR page entry
+  disagrees with the digest the record used (or the record could not read that
+  page); a missing entry still reuses with no provider call. PDFs no longer write
+  `derived_text_sha256` to the run manifest (transcripts keep it). Page-range
+  runs are now checked against their own pages, and auto-targeted runs no longer
+  fail reuse by being compared against the whole-document cache.
+- The extraction fingerprint binds the prompt/repair behavior version for every
+  document and the OCR and page-representation versions for PDFs only; the page
+  locator fingerprint binds the same PDF versions. New `PAGE_REPRESENTATION_VERSION`.
+- Cost/cache impact against `main`: none beyond what this PR already causes
+  (`captured-input-v1` and `captured-scope-v4` already force one paid
+  re-extraction and one paid re-location of everything, and the record contract
+  moves 2.0.0 to 3.0.0 in the same rollout). Relative to the intermediate
+  branch commits, records written before this change are re-extracted once and
+  saved page scopes are re-located once. Text-only runs add no image cost; no
+  discovery regrade; no local re-OCR (entries are unchanged). Later bumps of
+  `OCR_PAGE_VERSION`, `PAGE_REPRESENTATION_VERSION` or the extraction behavior
+  version re-extract PDFs only (behavior version: every document). A record
+  with unreadable pages stays non-reusable (`parser_partial`), as before.
+
 ### Added (selected-page vision, opt-in)
 - `extraction.input_mode: text | auto | vision` (default `text`; unknown values
   fail at load). `auto` sends images of PDF pages that neither native text nor
@@ -18,8 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `page_images`.
 - Cost/cache: none for `text` (fingerprints unchanged). Other modes add image
   input cost and re-extract once (mode and dpi join the fingerprint). Image-only
-  content has no text to verify quotes against; coverage fields describing
-  image use and native PDF transport are deferred.
+  content has no text to verify quotes against (recorded in the contract-3.0.0
+  `input` block and coverage, above); native PDF transport is deferred.
 
 ### Changed (response outcomes, one schema-feedback generation)
 - Primary extraction now rejects length-terminated (`response_truncated`) and
@@ -54,9 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whole-document extraction share it, so a raster page is OCR-ed once per source
   instead of again for each stage or page selection. Entries are raw text
   written atomically; `ocr_corrections` are applied on every read. A corrupt,
-  tampered or other-source/engine entry is a miss. The captured derived-text
-  identity (and a record's `derived_text_sha256` reuse proof) is the digest of the
-  OCR page entries; character offsets (`ocr_spans`), `raw_text` and
+  tampered or other-source/engine entry is a miss. A record's reuse proof is the
+  per-page `ocr_sha256` of the OCR text it used (see the contract-3.0.0 entry);
+  character offsets (`ocr_spans`), `raw_text` and
   whole-document OCR entries are removed, and an old whole-document OCR entry is
   ignored.
 - Cache/cost impact: scanned PDFs are OCR-ed once more locally (Tesseract, no LLM

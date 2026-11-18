@@ -167,21 +167,23 @@ def test_per_page_write_is_atomic(tmp_path, ocr_calls, monkeypatch):
     assert list(_entries(pdf)[0].parent.iterdir()) == _entries(pdf)
 
 
-def test_captured_identity_is_derived_from_the_page_digests(tmp_path, ocr_calls):
+def test_captured_ocr_identity_is_the_per_page_digests(tmp_path, ocr_calls):
     pdf = _scan(tmp_path)
     with capture_source(pdf) as source:
-        assert source.ocr_sha256 is None
+        assert source.ocr_pages == {}
         _, meta = extract_text_from_document(pdf, source=source, return_meta=True)
+    used = {rep["page"]: rep["ocr_sha256"] for rep in meta["pages"] if "ocr_sha256" in rep}
+    assert set(used) == {2, 3}
     with capture_source(pdf) as source:
-        assert source.ocr_sha256 == meta["ocr_sha256"] is not None
+        assert source.ocr_pages == used
     _entries(pdf)[0].unlink()
     with capture_source(pdf) as source:
-        assert source.ocr_sha256 not in {None, meta["ocr_sha256"]}
+        assert source.ocr_pages == {3: used[3]}
 
 
 def test_native_pdf_never_creates_a_page_cache(tmp_path, ocr_calls):
     pdf = _build(tmp_path / "native.pdf", [_text(_PROSE)])
     with capture_source(pdf) as source:
         _, meta = extract_text_from_document(pdf, source=source, return_meta=True)
-        assert meta["ocr_sha256"] is None
+        assert not any("ocr_sha256" in rep for rep in meta["pages"])
     assert not (tmp_path / ".text").exists()

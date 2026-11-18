@@ -49,6 +49,7 @@ from psweep.utils.page_range import (
     ranges_from_pages,
 )
 from psweep.exceptions import APIKeyError
+from . import pdf_utils
 from .request_policy import RequestNotAdmittedError
 from .llm_factory import resolve_llm_kwargs
 from .provenance import SourceContext, prepend_source_context
@@ -326,7 +327,13 @@ class _BaseLocator:
             },
         }
         if isinstance(self, PageLocator):
-            settings.update(max_pages=self._max_pages, context_pages=self._context)
+            # The index is built from page text, so OCR and page rules change it.
+            settings.update(
+                max_pages=self._max_pages,
+                context_pages=self._context,
+                ocr_page_version=pdf_utils.OCR_PAGE_VERSION,
+                page_representation_version=pdf_utils.PAGE_REPRESENTATION_VERSION,
+            )
         return hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()
 
     def _cache_metadata(self, source: CapturedSource) -> dict:

@@ -63,6 +63,7 @@ from psweep.extraction.page_locator import (
     DEFAULT_MAX_SELECTED_PAGES,
 )
 from psweep.extraction.section_locator import SectionLocator
+from psweep.extraction import document_extractor, pdf_utils
 from psweep.extraction.pdf_utils import RENDER_DPI, render_pages, validate_pdf_scope
 from psweep.extraction.llm_factory import (
     DEFAULT_MAX_CONCURRENT,
@@ -73,6 +74,7 @@ from psweep.extraction.prepared_document import (
     CONSUMPTION_VERSION,
     capture_source,
     effective_identity,
+    input_provenance,
     visual_pages,
 )
 from psweep.extraction.provenance import (
@@ -109,7 +111,6 @@ from psweep.utils.page_range import (
     load_pages_csv,
     normalize_page_ranges,
     parse_page_ranges,
-    ranges_from_pages,
 )
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.workspace import Workspace, infer_domain
@@ -418,8 +419,14 @@ def _reusable_record(
     *,
     protected: bool = False,
     derived_text_sha256: str | None = None,
+    ocr_entries: dict[int, str] | None = None,
 ):
-    """Require digest evidence and valid record/payload contracts."""
+    """Require digest evidence and valid record/payload contracts.
+
+    ``derived_text_sha256`` proves a transcript. ``ocr_entries`` are the valid OCR
+    page entries now cached for a PDF: any that disagree with the record's own
+    per-page provenance make it stale, while a missing entry is regenerable.
+    """
     try:
         matching = [
             entry
@@ -453,12 +460,12 @@ def _reusable_record(
             return None
         record_validator().validate(record)
         validator.validate(record["payload"])
+        if ocr_entries and pdf_utils.ocr_reuse_conflict(record["input"]["pages"], ocr_entries):
+            return None
         coverage = record.get("processing_metrics", {}).get("coverage", {})
         if coverage.get("parser_partial"):
             return None
-        if protected and (
-            coverage.get("context_truncated") or coverage.get("targeting_incomplete")
-        ):
+        if protected and coverage.get("targeting_incomplete"):
             return None
     except (
         OSError,
@@ -534,6 +541,7 @@ def _extraction_fingerprints(
     policy.update(
         {
             "consumption_version": CONSUMPTION_VERSION,
+            "extraction_behavior": document_extractor.EXTRACTION_BEHAVIOR_VERSION,
             "model": llm["model"],
             "provider": llm["provider"],
             "endpoint": llm.get("base_url") or llm.get("azure_endpoint"),
@@ -569,6 +577,14 @@ def _extraction_fingerprints(
             **policy,
             "effective_text": cached if cached and not audio else None,
             "table_layout": document_utils.TABLE_TEXT_LAYOUT.get(doc.suffix.lower()),
+            "pdf_preparation": (
+                {
+                    "ocr_page_version": pdf_utils.OCR_PAGE_VERSION,
+                    "page_representation_version": pdf_utils.PAGE_REPRESENTATION_VERSION,
+                }
+                if doc.suffix.lower() == ".pdf"
+                else None
+            ),
             "source": str(doc),
             "source_sha256": digests[doc],
             "manual_pages": ranges.get(doc),
@@ -770,11 +786,12 @@ def _prepare_extraction(
             validator,
             protected=_auto_targeted(inputs, doc, ranges, candidates, roster_errors, anchors),
             derived_text_sha256=(
-                None
-                if ranges.get(doc) is not None
-                else effective_inputs[doc]["text_sha256"]
+                effective_inputs[doc]["text_sha256"]
                 if effective_inputs[doc] and transcription.is_audio(doc)
-                else document_utils.ocr_page_cache(doc, digests[doc]).digest()
+                else None
+            ),
+            ocr_entries=(
+                document_utils.ocr_page_cache(doc, digests[doc]).entries()
                 if doc.suffix.lower() == ".pdf"
                 else None
             ),
@@ -1032,7 +1049,6 @@ def _roster_extract(extractor, schema, array, roster, candidates, budget, info):
         coverage={
             "input_characters": sum(r.coverage["input_characters"] for r in results),
             "extracted_characters": sum(r.coverage["extracted_characters"] for r in results),
-            "context_truncated": any(r.coverage["context_truncated"] for r in results),
         },
         off_candidate_items=dropped,
     )
@@ -1091,8 +1107,10 @@ def _extract_one_document(
         if doc_path in plan["roster_errors"]:
             raise ValueError(plan["roster_errors"][doc_path])
         text = ""
+        provenance = input_provenance("text", {}, [])
         if doc_path in plan["candidates"]:
             text, parser_scope = _verified_roster_text(doc_path, plan, source)
+            provenance = input_provenance("text", parser_scope, [])
         if anchors == set():
             result = _no_roster_match(array)
         elif doc_path in plan["candidates"]:
@@ -1110,17 +1128,9 @@ def _extract_one_document(
                 doc_path, plan, page_ranges, section_text, source
             )
             pages = _visual_pages(inputs, parser_scope)
+            provenance = input_provenance(_input_mode(inputs), parser_scope, pages)
             visual = {"page_images": render_pages(source.path, pages)} if pages else {}
             result = extractor.extract(prompt, plan["schema"], **visual)
-            if pages:
-                result.validation_notes = [
-                    *(result.validation_notes or []),
-                    (
-                        f"visual_pages: PDF pages {format_page_ranges(ranges_from_pages(pages))}"
-                        " were also sent as images; image-only content has no text to verify"
-                        " quotes"
-                    ),
-                ]
             record_extraction_scope(
                 result,
                 page_ranges=effective_ranges,
@@ -1128,6 +1138,7 @@ def _extract_one_document(
                 section_filtered=section_text is not None,
                 parser_scope=parser_scope,
                 targeting_incomplete=doc_path in plan.get("targeting_incomplete", ()),
+                visual_pages=pages,
             )
             if anchors:
                 result.off_candidate_items = _keep_roster_items(result.data, array, roster, anchors)
@@ -1152,6 +1163,7 @@ def _extract_one_document(
             schema_id=str(plan["schema_path"]),
             schema_metadata=plan["metadata"],
             source_sha256=source.sha256,
+            input_provenance=provenance,
             input_fingerprint=plan["fingerprints"][doc_path],
             payload_validator=plan["validator"],
         )
@@ -1173,7 +1185,7 @@ def _extract_one_document(
                 if source.cached_text and transcription.is_audio(doc_path)
                 else hashlib.sha256(text.encode()).hexdigest()
                 if transcription.is_audio(doc_path)
-                else parser_scope.get("ocr_sha256")
+                else None
             ),
         }
     except Exception as exc:
@@ -1495,16 +1507,13 @@ def _execute_locked(plan: dict, *, on_progress=None) -> ExtractionRunResult:
                     document=doc.name,
                 )
             with _capture_input(doc, plan) as source:
-                derived = (
+                stale = (
                     source.cached_text.sha256
+                    != plan["reuse_proofs"][doc].get("derived_text_sha256")
                     if source.cached_text and transcription.is_audio(doc)
-                    else source.ocr_sha256
+                    else pdf_utils.ocr_reuse_conflict(record["input"]["pages"], source.ocr_pages)
                 )
-                if (
-                    derived is not None
-                    and plan["ranges"].get(doc) is None
-                    and derived != plan["reuse_proofs"][doc].get("derived_text_sha256")
-                ):
+                if stale:
                     raise SourceChangedError(
                         f"{doc.name} derived evidence differs from reuse proof; rerun extraction",
                         document=doc.name,

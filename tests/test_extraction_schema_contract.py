@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from psweep.extraction.prepared_document import input_provenance as _input_provenance
 
 from psweep.utils.file_io import artifact_sha256
 from psweep.exceptions import SchemaValidationError
@@ -13,6 +14,10 @@ from psweep.extraction.schema_utils import build_schema_validator
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.pipeline import _extract_one_document
+
+
+def text_input():
+    return _input_provenance("text", {}, [])
 
 
 @pytest.fixture(autouse=True)
@@ -321,7 +326,7 @@ def test_oversized_text_is_rejected_not_sliced(schema, payload):
         with pytest.raises(ExtractionError, match="context_window_exceeded"):
             extractor.extract("long source text", schema)
         client.assert_not_called()
-        assert extractor.extract("12345", schema).coverage["context_truncated"] is False
+        assert "context_truncated" not in extractor.extract("12345", schema).coverage
 
 
 def test_incomplete_bounded_targeting_survives_canonical_record(tmp_path, schema, payload):
@@ -342,6 +347,7 @@ def test_incomplete_bounded_targeting_survives_canonical_record(tmp_path, schema
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema))
     record, _ = build_extraction_record(
+        input_provenance=text_input(),
         doc_path=document,
         source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",

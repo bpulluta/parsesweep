@@ -158,7 +158,7 @@ def test_ocr_honors_range_and_applies_corrections_to_ocr_pages(tmp_path, monkeyp
     assert "PAGE2 fixed" in text
     assert meta["page_ranges"] == ((2, 2),)
     assert meta["used_ocr"] is True
-    assert meta["ocr_sha256"] is not None
+    assert [rep["page"] for rep in meta["pages"] if "ocr_sha256" in rep] == [2]
 
 
 @pytest.mark.parametrize(
@@ -365,7 +365,7 @@ def test_corrections_touch_only_ocr_pages(tmp_path, ocr_calls):
     text, meta = pdf_utils.extract_text_from_pdf(pdf, return_meta=True, ocr_corrections=rules)
     assert "Oil schedule" in text and "XX schedule" not in text
     assert "Rate table: E charge" in text
-    assert meta["ocr_sha256"] is not None
+    assert [rep["page"] for rep in meta["pages"] if "ocr_sha256" in rep] == [2]
 
 
 def test_table_text_page_is_native(tmp_path, ocr_calls):

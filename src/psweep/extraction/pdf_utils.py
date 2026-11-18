@@ -41,6 +41,9 @@ NATIVE, OCR, BLANK, UNREADABLE = "native", "ocr", "blank", "unreadable"
 REPRESENTED = frozenset({NATIVE, OCR, BLANK})
 # Names the raw-OCR page cache format and rendering; bump it when OCR output changes.
 OCR_PAGE_VERSION = "ocr-page-v1"
+# Names the per-page decision rules (native vs OCR vs blank vs unreadable) and the
+# joined page text; bump it when those rules change what a page contributes.
+PAGE_REPRESENTATION_VERSION = "pdf-pages-v1"
 RENDER_DPI = 144  # legible small print without oversized images
 
 
@@ -48,12 +51,18 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def ocr_digest(page_digests: dict[int, str]) -> str | None:
-    """Identity of a set of OCR pages: one digest over ``page:text digest`` lines."""
-    if not page_digests:
-        return None
-    lines = (f"{page}:{digest}" for page, digest in sorted(page_digests.items()))
-    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+def ocr_reuse_conflict(pages: list[dict], entries: dict[int, str]) -> bool:
+    """True when a present OCR entry disagrees with what a record's pages used.
+
+    ``pages`` are a record's per-page provenance; ``entries`` map page numbers to
+    the text digests of the valid cache entries now present. A missing entry is
+    unknown and regenerable, so it never conflicts. A present entry conflicts
+    when the record's page carries another digest, or none (a page the record
+    could not read has become readable). Entries for pages the record did not
+    select are outside its scope.
+    """
+    recorded = {entry["page"]: entry.get("ocr_sha256") for entry in pages}
+    return any(page in recorded and recorded[page] != digest for page, digest in entries.items())
 
 
 class OcrPageCache:
@@ -115,13 +124,13 @@ class OcrPageCache:
         except OSError:
             logger.debug("OCR page cache write failed for page %s", page, exc_info=True)
 
-    def digest(self) -> str | None:
-        """Identity of every valid cached page, or ``None`` when nothing is cached."""
+    def entries(self) -> dict[int, str]:
+        """Map every valid cached page to the digest of its text."""
         found = {}
         for path in self.directory.glob("*.json") if self.directory.is_dir() else ():
             if path.stem.isdecimal() and (hit := self._read(path, int(path.stem))):
                 found[int(path.stem)] = hit[1]
-        return ocr_digest(found)
+        return found
 
 
 def _checked_ranges(page_ranges) -> PageRanges:
@@ -174,22 +183,25 @@ class PageRepresentation:
     status: str
     chars: int
     image_fraction: float
+    ocr_sha256: str | None = None  # digest of the raw OCR text, when OCR output was obtained
 
     def as_dict(self) -> dict:
         """Return a JSON-safe record with the original 1-indexed page number."""
-        return {
+        entry = {
             "page": self.page,
             "status": self.status,
             "chars": self.chars,
             "image_fraction": round(self.image_fraction, 3),
         }
+        if self.ocr_sha256:
+            entry["ocr_sha256"] = self.ocr_sha256
+        return entry
 
 
 def _scope_meta(
     page_count: int | None,
     selected: list[int],
     pages: list[PageRepresentation],
-    ocr_pages: dict[int, str] | None = None,
 ) -> dict:
     """Describe the selected pages and which of them are actually represented."""
     extracted = [rep.page for rep in pages if rep.status in REPRESENTED]
@@ -200,7 +212,6 @@ def _scope_meta(
         "selected_pages": selected,
         "extracted_pages": extracted,
         "pages": [rep.as_dict() for rep in pages],
-        "ocr_sha256": ocr_digest(ocr_pages or {}),
     }
 
 
@@ -271,14 +282,11 @@ def _represent_page(page, number: int, state: dict) -> tuple[str, PageRepresenta
         else:
             if cache:
                 cache.put(number, recognized)
-    if recognized is None:
-        recognized = ""
-    else:
-        state.setdefault("ocr", {})[number] = _sha(recognized)
-    ocr_chars = len(recognized.strip())
+    digest = None if recognized is None else _sha(recognized)
+    ocr_chars = len((recognized or "").strip())
     if ocr_chars > chars:
-        return recognized, PageRepresentation(number, OCR, ocr_chars, fraction), True
-    return native, PageRepresentation(number, UNREADABLE, chars, fraction), False
+        return recognized, PageRepresentation(number, OCR, ocr_chars, fraction, digest), True
+    return native, PageRepresentation(number, UNREADABLE, chars, fraction, digest), False
 
 
 def _read_pymupdf(
@@ -305,7 +313,7 @@ def _read_pymupdf(
             logger.exception("Error extracting native PDF text from %s", pdf_path)
             return "", _scope_meta(len(document), selected, [])
         text = _join_pages(parts, rules)
-        return text, _scope_meta(len(document), selected, reps, state.get("ocr"))
+        return text, _scope_meta(len(document), selected, reps)
 
 
 def _read_pypdf(pdf_path: Path, page_ranges: PageRanges | None) -> tuple[str, dict]:
@@ -346,8 +354,8 @@ def extract_text_from_pdf(
     total ``page_count``, a ``pages`` list of :class:`PageRepresentation` records
     keyed by original page number, and ``extracted_pages``: the pages whose
     content is represented (native, OCR or blank), never merely iterated.
-    ``ocr_cache`` supplies and receives raw OCR per page; ``ocr_sha256`` is the
-    digest of the OCR pages this read used. Configured corrections touch only
+    ``ocr_cache`` supplies and receives raw OCR per page; each page that had OCR
+    output carries that text's ``ocr_sha256``. Configured corrections touch only
     OCR pages and are applied here, never stored.
     """
     pdf_path = Path(pdf_path)

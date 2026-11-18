@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from click.testing import CliRunner
 import pytest
+from psweep.extraction.prepared_document import input_provenance as _input_provenance
 
 from _helpers import write_json as _write_json
 from psweep.utils.file_io import artifact_sha256
@@ -21,6 +22,10 @@ from psweep.utils.schema_metadata import SchemaMetadata
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def text_input():
+    return _input_provenance("text", {}, [])
 
 
 def _write_file(path: Path, content: str) -> None:
@@ -811,6 +816,7 @@ def test_write_extraction_record_includes_lineage_fields(
     document.write_bytes(b"synthetic source")
     count, digest = write_extraction_record(
         tmp_path / "example.json",
+        input_provenance=text_input(),
         doc_path=document,
         source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",
@@ -829,7 +835,7 @@ def test_write_extraction_record_includes_lineage_fields(
 
     output_path = tmp_path / "example.json"
     saved = json.loads(output_path.read_text(encoding="utf-8"))
-    assert saved["contract_version"] == "2.0.0"
+    assert saved["contract_version"] == "3.0.0"
     assert saved["record_id"].startswith("record://deterministic1234/")
     assert len(saved["record_id"].rsplit("/", 1)[1]) == 64
     assert saved["document"]["source_filename"] == "example.pdf"
@@ -878,6 +884,7 @@ def test_write_extraction_record_persists_structured_processing_errors(
     document.write_bytes(b"synthetic source")
     write_extraction_record(
         tmp_path / "example.json",
+        input_provenance=text_input(),
         doc_path=document,
         source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",

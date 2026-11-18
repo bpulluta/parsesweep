@@ -16,6 +16,7 @@ from psweep.exceptions import SchemaValidationError
 from psweep.extraction.llm_factory import detect_provider
 from psweep.extraction.llm_client import LLMClient
 import pytest
+from psweep.extraction.prepared_document import input_provenance as _input_provenance
 from jsonschema import ValidationError
 
 from psweep.extraction.provenance import SourceContext
@@ -33,6 +34,10 @@ from psweep.utils.schema_metadata import SchemaMetadata
 
 
 # ── detect_provider (domain-neutral) ────────────────────────────────────────
+
+
+def text_input():
+    return _input_provenance("text", {}, [])
 
 
 def test_detect_provider_has_no_hardcoded_customer_prefix():
@@ -104,6 +109,7 @@ def test_record_document_identity_is_caller_supplied(record_metadata, source_doc
         target_metadata={},
     )
     record, _ = build_extraction_record(
+        input_provenance=text_input(),
         doc_path=source_document,
         source_sha256=artifact_sha256(source_document),
         source_document_id="AZ/Pima/doc.pdf",
@@ -123,6 +129,7 @@ def test_record_document_identity_is_caller_supplied(record_metadata, source_doc
 
 def test_record_without_index_row_has_null_provenance(record_metadata, source_document):
     record, _ = build_extraction_record(
+        input_provenance=text_input(),
         doc_path=source_document,
         source_sha256=artifact_sha256(source_document),
         source_document_id="doc.pdf",
@@ -148,6 +155,7 @@ def test_record_counts_declared_array_not_largest(
     """Empty primary arrays are zero-item results, not reference counts."""
     result = _make_result({"items": items, "references": list(range(10))})
     record, count = build_extraction_record(
+        input_provenance=text_input(),
         doc_path=source_document,
         source_sha256=artifact_sha256(source_document),
         source_document_id="doc.txt",
@@ -175,6 +183,7 @@ def test_record_source_identity_distinguishes_partitions_and_formats(
         doc.parent.mkdir(exist_ok=True)
         doc.write_bytes(b"source")
         record, _ = build_extraction_record(
+            input_provenance=text_input(),
             doc_path=doc,
             source_sha256=artifact_sha256(doc),
             source_document_id="doc.txt",
@@ -197,6 +206,7 @@ def test_record_emits_source_digest_and_optional_reuse_fingerprint(
 ):
     """Evidence hashes are canonical lowerhex, without provider secrets."""
     record, _ = build_extraction_record(
+        input_provenance=text_input(),
         doc_path=source_document,
         source_sha256=artifact_sha256(source_document),
         source_document_id="doc.txt",
@@ -224,7 +234,6 @@ def test_emitted_record_and_payload_validate_closed_contract(
     result.coverage = {
         "input_characters": 15,
         "extracted_characters": 5,
-        "context_truncated": True,
     }
     record_extraction_scope(
         result,
@@ -233,6 +242,7 @@ def test_emitted_record_and_payload_validate_closed_contract(
         section_filtered=True,
     )
     record, _ = build_extraction_record(
+        input_provenance=text_input(),
         doc_path=source_document,
         source_sha256=artifact_sha256(source_document),
         source_document_id="doc.txt",
@@ -245,7 +255,7 @@ def test_emitted_record_and_payload_validate_closed_contract(
     validator = record_validator()
     validator.validate(record)
     build_schema_validator(record_metadata.schema).validate(record["payload"])
-    assert record["contract_version"] == "2.0.0"
+    assert record["contract_version"] == "3.0.0"
     coverage = record["processing_metrics"]["coverage"]
     assert coverage["selected_page_ranges"] == [[2, 4], [8, 8]]
     assert coverage["omitted_page_ranges"] == [[5, 6]]
@@ -270,6 +280,7 @@ def test_record_rejects_invalid_declared_array(record_metadata, source_document,
     """Non-arrays cannot silently become verified zero-item records."""
     with pytest.raises(SchemaValidationError, match="main data array"):
         build_extraction_record(
+            input_provenance=text_input(),
             doc_path=source_document,
             source_sha256=artifact_sha256(source_document),
             source_document_id="doc.txt",
@@ -299,6 +310,7 @@ def test_record_write_is_atomic_on_replace_failure(
     with pytest.raises(OSError, match="replacement failed"):
         write_extraction_record(
             output,
+            input_provenance=text_input(),
             doc_path=source_document,
             source_sha256=artifact_sha256(source_document),
             source_document_id="doc.txt",
@@ -332,6 +344,7 @@ def test_writer_validates_envelope_before_replacing_existing_json(
     with pytest.raises(ValidationError):
         write_extraction_record(
             output,
+            input_provenance=text_input(),
             doc_path=source_document,
             source_sha256=artifact_sha256(source_document),
             source_document_id="doc.txt",
@@ -356,6 +369,7 @@ def test_writer_default_run_identity_is_unique(record_metadata, source_document)
         "model": "example",
         "provider": "openai",
         "schema_metadata": record_metadata,
+        "input_provenance": text_input(),
     }
     first, _ = build_extraction_record(**kwargs)
     second, _ = build_extraction_record(**kwargs)
@@ -372,6 +386,7 @@ def test_writer_rejects_malformed_input_fingerprint(
     """Invalid reuse evidence never enters a published envelope."""
     with pytest.raises(ValueError, match="input_fingerprint"):
         build_extraction_record(
+            input_provenance=text_input(),
             doc_path=source_document,
             source_sha256=artifact_sha256(source_document),
             source_document_id="doc.txt",
@@ -391,6 +406,7 @@ def test_writer_records_the_supplied_digest_without_reading_the_live_path(
     digest = "ab" * 32
     write_extraction_record(
         output,
+        input_provenance=text_input(),
         doc_path=tmp_path / "missing.txt",
         source_sha256=digest,
         source_document_id="doc.txt",
@@ -521,6 +537,7 @@ def test_writer_rejects_schema_invalid_payload_and_keeps_previous_bytes(
     with pytest.raises(SchemaValidationError, match="schema validation failed"):
         write_extraction_record(
             output,
+            input_provenance=text_input(),
             doc_path=source_document,
             source_sha256=artifact_sha256(source_document),
             source_document_id="doc.txt",
@@ -545,6 +562,7 @@ def test_writer_resolved_validator_wins_over_differing_metadata(
     with pytest.raises(SchemaValidationError):
         write_extraction_record(
             tmp_path / "doc.json",
+            input_provenance=text_input(),
             doc_path=source_document,
             source_sha256=artifact_sha256(source_document),
             source_document_id="doc.txt",
@@ -562,6 +580,7 @@ def test_writer_diagnostic_does_not_echo_payload(tmp_path, record_metadata, sour
     with pytest.raises(SchemaValidationError) as caught:
         write_extraction_record(
             tmp_path / "doc.json",
+            input_provenance=text_input(),
             doc_path=source_document,
             source_sha256=artifact_sha256(source_document),
             source_document_id="doc.txt",

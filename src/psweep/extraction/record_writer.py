@@ -14,7 +14,7 @@ from psweep.exceptions import SchemaValidationError
 from psweep.utils.error_taxonomy import normalize_error_records
 from psweep.utils.file_io import atomic_write
 from psweep.utils.item_matcher import get_nested_value
-from psweep.utils.page_range import PageRanges, format_page_ranges
+from psweep.utils.page_range import PageRanges, format_page_ranges, ranges_from_pages
 from psweep.extraction.schema_utils import (
     record_validator as load_record_validator,
     validate_payload,
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from psweep.extraction.provenance import SourceContext
     from psweep.utils.schema_metadata import SchemaMetadata
 
-CONTRACT_VERSION = "2.0.0"
+CONTRACT_VERSION = "3.0.0"
 
 
 def _resolve_lineage_artifact_id(
@@ -68,6 +68,10 @@ def build_lineage(
     }
 
 
+def _pages(numbers: list[int]) -> str:
+    return format_page_ranges(ranges_from_pages(numbers))
+
+
 def record_extraction_scope(
     result: Any,
     *,
@@ -76,6 +80,7 @@ def record_extraction_scope(
     section_filtered: bool = False,
     parser_scope: dict | None = None,
     targeting_incomplete: bool = False,
+    visual_pages: list[int] | None = None,
 ) -> None:
     """Retain selected-input limitations in the canonical result."""
     coverage = dict(getattr(result, "coverage", None) or {})
@@ -109,10 +114,23 @@ def record_extraction_scope(
         extracted = scope.get("extracted_pages", [])
         coverage["extracted_pages"] = extracted
         coverage["parser_partial"] = set(scope["selected_pages"]) != set(extracted)
+        unreadable = [e["page"] for e in scope.get("pages") or () if e["status"] == "unreadable"]
+        if unreadable:
+            coverage["unreadable_pages"] = unreadable
         if coverage["parser_partial"]:
             warnings.append(
-                "PDF parser coverage is partial: missing selected pages; "
+                f"PDF pages {_pages(unreadable)} could not be read as text or OCR; "
                 "not all requested source pages were extracted."
+                if unreadable
+                else "PDF parser coverage is partial: missing selected pages; "
+                "not all requested source pages were extracted."
+            )
+        image_only = [page for page in visual_pages or () if page in unreadable]
+        if image_only:
+            coverage["image_only_pages"] = image_only
+            warnings.append(
+                f"Values from PDF pages {_pages(image_only)} rest on page images only; "
+                "their quotes cannot be checked against source text."
             )
     result.coverage = coverage
     result.validation_notes = warnings
@@ -131,12 +149,15 @@ def build_extraction_record(
     schema_id: str | None = None,
     schema_metadata: SchemaMetadata,
     source_sha256: str,
+    input_provenance: dict[str, Any],
     input_fingerprint: str | None = None,
 ) -> tuple[dict[str, Any], int]:
     """Build a source-identified record using domain schema metadata.
 
     ``source_sha256`` is the digest of the captured source version the payload
     was extracted from; the live path is never rehashed to certify it.
+    ``input_provenance`` records how that source was read (mode, per-page
+    representation, image use).
     """
     item_array_key = schema_metadata.get_main_data_array()
     items = get_nested_value(result.data, item_array_key)
@@ -187,6 +208,7 @@ def build_extraction_record(
             ),
         },
         "lineage": lineage,
+        "input": input_provenance,
         "payload": result.data,
         "quality": {
             "status": getattr(result, "status", "extracted"),
@@ -225,6 +247,7 @@ def write_extraction_record(
     schema_id: str | None = None,
     schema_metadata: SchemaMetadata,
     source_sha256: str,
+    input_provenance: dict[str, Any],
     input_fingerprint: str | None = None,
     payload_validator: Any,
     record_validator: Any = None,
@@ -250,6 +273,7 @@ def write_extraction_record(
         schema_id=schema_id,
         schema_metadata=schema_metadata,
         source_sha256=source_sha256,
+        input_provenance=input_provenance,
         input_fingerprint=input_fingerprint,
     )
     if record_validator is None:

@@ -13,11 +13,12 @@ import hashlib
 import os
 import shutil
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from psweep.exceptions import SourceChangedError
+from psweep.extraction.pdf_utils import RENDER_DPI
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -44,6 +45,22 @@ def visual_pages(mode: str, parser_scope: dict) -> list[int]:
         return []
     attach = {"unreadable"} if mode == "auto" else {"native", "ocr", "unreadable"}
     return [entry["page"] for entry in parser_scope.get("pages") or () if entry["status"] in attach]
+
+
+def input_provenance(mode: str, parser_scope: dict, visual: list[int]) -> dict:
+    """Bounded record of how the input was read: mode, per-page evidence, image use.
+
+    Holds metadata only (never rendered bytes). ``pages`` are the selected PDF
+    pages' representations; a document without a PDF parse has none.
+    """
+    provenance = {
+        "input_mode": mode,
+        "pages": [dict(entry) for entry in parser_scope.get("pages") or ()],
+        "visual_pages": list(visual),
+    }
+    if visual:
+        provenance["render_dpi"] = RENDER_DPI
+    return provenance
 
 
 @dataclass(frozen=True)
@@ -75,7 +92,7 @@ class CapturedSource:
     size: int
     mtime_ns: int
     cached_text: CapturedText | None = None
-    ocr_sha256: str | None = None
+    ocr_pages: dict[int, str] = field(default_factory=dict)  # page -> raw OCR text digest
 
     @property
     def name(self) -> str:
@@ -87,8 +104,8 @@ class CapturedSource:
         """Bind retained scopes to this source and effective evidence.
 
         Raw OCR is derived deterministically from the source and the OCR
-        engine, so it is proven by :attr:`ocr_sha256` and the reuse proof, not
-        part of a scope's identity.
+        engine, so it is proven by the record's per-page ``ocr_sha256`` and
+        :attr:`ocr_pages`, not part of a scope's identity.
         """
         return {
             "source_sha256": self.sha256,
@@ -176,10 +193,10 @@ def capture_source(
             snapshot.stat().st_size,
             captured.mtime_ns,
             product,
-            # Identity of the OCR pages cached so far, from their own digests.
-            ocr_page_cache(original, captured.sha256).digest()
+            # Raw OCR pages cached so far, each by its own text digest.
+            ocr_page_cache(original, captured.sha256).entries()
             if original.suffix.lower() == ".pdf"
-            else None,
+            else {},
         )
         yield captured
     finally:

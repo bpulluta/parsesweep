@@ -23,6 +23,9 @@ from .text_processor import (
 logger = logging.getLogger(__name__)
 
 _USAGE_KEYS = ("cost", "input_tokens", "output_tokens")
+# Names the extraction prompt and the one-schema-feedback-generation policy; bump it
+# when either changes what a document is asked or how a rejected answer is repaired.
+EXTRACTION_BEHAVIOR_VERSION = "extraction-behavior-v1"
 
 
 def _total_usage(spent: list[dict[str, Any] | None]) -> dict[str, Any] | None:
@@ -207,7 +210,6 @@ class DocumentExtractor:
         coverage = {
             "input_characters": len(text),
             "extracted_characters": len(text),
-            "context_truncated": False,
         }
 
         from .schema_utils import build_schema_validator
