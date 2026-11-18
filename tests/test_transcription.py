@@ -16,6 +16,7 @@ import litellm
 import pytest
 import yaml
 
+from psweep.utils.file_io import artifact_sha256
 from psweep.config.runtime_config_loader import (
     RuntimeConfigError,
     load_runtime_config_file,
@@ -446,7 +447,7 @@ class FakeTranscriber:
 
     def transcribe(self, source, workdir):
         self.calls += 1
-        assert workdir == source.parent / ".text"
+        assert workdir.name == ".text"
         return self.text
 
 
@@ -569,7 +570,17 @@ def _fingerprints(tmp_path, documents, transcriber):
     schema.write_text("{}", encoding="utf-8")
     llm = {"model": "m", "provider": "openai"}
     return pipeline._extraction_fingerprints(
-        {}, llm, None, schema, documents, {}, {}, None, {}, transcriber
+        {},
+        llm,
+        None,
+        schema,
+        documents,
+        {doc: artifact_sha256(doc) for doc in documents},
+        {},
+        {},
+        None,
+        {},
+        transcriber,
     )
 
 

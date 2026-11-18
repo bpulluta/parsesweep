@@ -8,9 +8,7 @@ import time
 from typing import Any
 from dataclasses import dataclass
 
-from jsonschema import ValidationError
-
-from psweep.exceptions import SchemaValidationError
+from psweep.extraction.schema_utils import validate_payload
 from .llm_client import LLMClient
 from .llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
 from .text_processor import (
@@ -203,11 +201,4 @@ class DocumentExtractor:
     @staticmethod
     def _validate_payload(data, validator) -> None:
         """Reject invalid payloads using the shared error taxonomy."""
-        try:
-            validator.validate(data)
-        except ValidationError as exc:
-            path = ".".join(map(str, exc.absolute_schema_path)) or "schema"
-            message = (
-                f"Extraction schema validation failed at schema {path} (rule: {exc.validator})"
-            )
-            raise SchemaValidationError(message) from None
+        validate_payload(data, validator)

@@ -11,11 +11,12 @@ from uuid import uuid4
 
 from psweep.exceptions import SchemaValidationError
 from psweep.utils.error_taxonomy import normalize_error_records
-from psweep.utils.file_io import artifact_sha256, atomic_json
+from psweep.utils.file_io import atomic_json
 from psweep.utils.item_matcher import get_nested_value
 from psweep.utils.page_range import PageRanges, format_page_ranges
 from psweep.extraction.schema_utils import (
     record_validator as load_record_validator,
+    validate_payload,
 )
 
 if TYPE_CHECKING:
@@ -128,9 +129,14 @@ def build_extraction_record(
     run_id: str | None = None,
     schema_id: str | None = None,
     schema_metadata: SchemaMetadata,
+    source_sha256: str,
     input_fingerprint: str | None = None,
 ) -> tuple[dict[str, Any], int]:
-    """Build a source-identified record using domain schema metadata."""
+    """Build a source-identified record using domain schema metadata.
+
+    ``source_sha256`` is the digest of the captured source version the payload
+    was extracted from; the live path is never rehashed to certify it.
+    """
     item_array_key = schema_metadata.get_main_data_array()
     items = get_nested_value(result.data, item_array_key)
     if not isinstance(items, list):
@@ -146,7 +152,6 @@ def build_extraction_record(
     source_identity = hashlib.sha256(
         doc_path.resolve().as_posix().encode("utf-8"),
     ).hexdigest()
-    source_sha256 = artifact_sha256(doc_path)
     extracted_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     lineage = build_lineage(
@@ -218,10 +223,20 @@ def write_extraction_record(
     run_id: str | None = None,
     schema_id: str | None = None,
     schema_metadata: SchemaMetadata,
+    source_sha256: str,
     input_fingerprint: str | None = None,
+    payload_validator: Any,
     record_validator: Any = None,
 ) -> int:
-    """Publish a record atomically and return its item count."""
+    """Publish a record atomically and return its item count.
+
+    ``payload_validator`` is the resolved domain-schema validator. It is the
+    final acceptance gate: the payload is checked after every mutation
+    (normalization, roster filtering, quote verification) and before the
+    envelope check and publication, so a contract-invalid payload never
+    replaces an existing record.
+    """
+    validate_payload(result.data, payload_validator)
     record, num_items = build_extraction_record(
         doc_path=doc_path,
         source_document_id=source_document_id,
@@ -233,6 +248,7 @@ def write_extraction_record(
         run_id=run_id,
         schema_id=schema_id,
         schema_metadata=schema_metadata,
+        source_sha256=source_sha256,
         input_fingerprint=input_fingerprint,
     )
     if record_validator is None:

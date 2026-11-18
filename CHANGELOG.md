@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (extraction source identity)
+- Extraction now consumes one verified version of each source. Preparation
+  fingerprints the source digest; extraction stream-copies the document into a
+  private, owner-only, per-document snapshot (removed on success, failure, or
+  interruption), compares that digest with the prepared one, and reads only the
+  snapshot (including text-cache and transcript evidence). A source that changed
+  in between fails that document with `document_io/source_changed` before any
+  paid request, and the record's `document.source_sha256` is the consumed
+  digest rather than a later hash of the live path. Previously a document
+  prepared as A but read as B could publish a B-derived payload under A's
+  fingerprint and be reused when the file returned to A. Roster scans use the
+  same verified version. `build_extraction_record` and `write_extraction_record`
+  now require `source_sha256`. Cache impact: none; fingerprints and records are
+  unchanged for sources that do not change during a run. Page/section locators
+  still read the live path and cache by live digest; their selection is checked
+  only through the consumed-version comparison.
+
+### Fixed (extraction publication)
+- `write_extraction_record` now validates the finalized payload against the
+  resolved domain schema after roster filtering and quote verification and
+  before publishing. Previously a sole unsupported row removed by quote
+  filtering published `items: []` under a `minItems: 1` contract. Such a
+  document now fails with `schema_contract` and keeps its prior record. Direct
+  writer callers must pass `payload_validator`. No cache impact for valid
+  records: reuse is unchanged and nothing is re-extracted or regraded.
+
 ### Fixed (extraction targeting safety)
 - A running header naming the target no longer makes every page mandatory:
   only its earliest page is kept, body and wrapped identity pages stay. A

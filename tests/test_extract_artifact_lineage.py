@@ -8,12 +8,14 @@ from click.testing import CliRunner
 import pytest
 
 from _helpers import write_json as _write_json
+from psweep.utils.file_io import artifact_sha256
 from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
     _should_fail_on_suspicious,
 )
 from psweep.extraction.schema_utils import load_schema
 from psweep.extraction.record_writer import write_extraction_record
+from psweep.extraction.schema_utils import build_schema_validator
 from psweep.cli.main import cli
 from psweep.utils.schema_metadata import SchemaMetadata
 
@@ -810,10 +812,12 @@ def test_write_extraction_record_includes_lineage_fields(
     count = write_extraction_record(
         tmp_path / "example.json",
         doc_path=document,
+        source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",
         result=result,
         model="gpt-5",
         schema_metadata=writer_metadata,
+        payload_validator=build_schema_validator(writer_metadata.schema),
         runtime_artifact=runtime_artifact,
         run_id="run://deterministic1234",
         provider="azure",
@@ -874,10 +878,12 @@ def test_write_extraction_record_persists_structured_processing_errors(
     write_extraction_record(
         tmp_path / "example.json",
         doc_path=document,
+        source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",
         result=result,
         model="gpt-5",
         schema_metadata=writer_metadata,
+        payload_validator=build_schema_validator(writer_metadata.schema),
         runtime_artifact=None,
         run_id="run://deterministic1234",
         provider="azure",

@@ -503,6 +503,30 @@ retry logs a warning with the model, the failure category and the attempt,
 prefixed with the document being processed; provider error text is never
 logged.
 
+### Source identity
+
+Each extracted record describes the exact bytes that were read. Extraction
+snapshots the source into a private temporary directory while hashing the same
+bytes, requires that digest to equal the one fingerprinted during preparation,
+and uses the snapshot for every read, quote check, and the record's
+`document.source_sha256`. If the file changed after preparation the document
+fails with `source_changed` before any paid request and nothing is published;
+rerun extraction. The original path remains the provenance path. Snapshots exist
+only for documents currently being extracted, are owner-only, and are removed
+when the document finishes or the run is interrupted.
+
+### Final payload acceptance
+
+The domain schema is the contract for what is published, not only for what the
+model returned. After every mutation (normalization, roster filtering, quote and
+evidence verification) the record writer validates the finalized payload against
+the resolved schema, then the record envelope, then publishes atomically. If
+quote filtering removes the only row of a `minItems: 1` array, or evidence
+nulling breaks a composite constraint, the document fails with
+`schema_contract` and any previous record is left untouched. Unsupported claims
+are never reinstated or invented to satisfy the schema. Arrays that the schema
+allows to be empty still publish empty after filtering.
+
 ### Roster-anchored extraction
 
 When the schema's `identity.deduplication.key_fields` equal

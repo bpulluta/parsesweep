@@ -86,6 +86,10 @@ class TargetingSafetyError(ExtractionError):
         self.code = code
 
 
+class SourceChangedError(ExtractionError):
+    """Raised when a source no longer matches the identity extraction was prepared for."""
+
+
 class CompilationError(ParseSweepError):
     """Raised when JSON→Excel/CSV compilation fails."""
 

@@ -166,6 +166,22 @@ def build_schema_validator(schema: dict[str, Any]):
     return validator_class(schema, format_checker=FormatChecker())
 
 
+def validate_payload(data: Any, validator: Any) -> None:
+    """Raise a sanitized ``SchemaValidationError`` when ``data`` violates ``validator``.
+
+    The diagnostic names the failing schema path and rule only, never the value.
+    """
+    from jsonschema import ValidationError
+    from psweep.exceptions import SchemaValidationError
+
+    try:
+        validator.validate(data)
+    except ValidationError as exc:
+        path = ".".join(map(str, exc.absolute_schema_path)) or "schema"
+        message = f"Extraction schema validation failed at schema {path} (rule: {exc.validator})"
+        raise SchemaValidationError(message) from None
+
+
 @lru_cache(maxsize=1)
 def record_validator():
     """Load the canonical record-envelope validator once per process."""

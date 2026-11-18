@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from psweep.utils.file_io import artifact_sha256
 from psweep.exceptions import SchemaValidationError
 from psweep.extraction.document_extractor import DocumentExtractor
 from psweep.extraction.schema_utils import build_schema_validator
@@ -235,6 +236,8 @@ def _plan(tmp_path, document, schema, schema_path, metadata):
         "evidence_paths": [],
         "quote_rows": None,
         "fingerprints": {document: "a" * 64},
+        "source_digests": {document: artifact_sha256(document)},
+        "validator": build_schema_validator(schema),
     }
 
 
@@ -323,6 +326,7 @@ def test_context_truncation_survives_canonical_record(tmp_path, schema, payload)
     schema_path.write_text(json.dumps(schema))
     record, count = build_extraction_record(
         doc_path=document,
+        source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",
         result=result,
         model="gpt-4o-mini",
@@ -357,6 +361,7 @@ def test_incomplete_bounded_targeting_survives_canonical_record(tmp_path, schema
     schema_path.write_text(json.dumps(schema))
     record, _ = build_extraction_record(
         doc_path=document,
+        source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",
         result=result,
         model="gpt-4o-mini",
@@ -550,3 +555,135 @@ def test_pipeline_does_not_write_invalid_extraction(tmp_path, monkeypatch, schem
     assert result.successful == 0
     assert not (output / "doc.json").exists()
     assert "schema" in result.errors[0]["error"].lower()
+
+
+# ── authenticity filtering must not publish a contract-invalid payload ──────
+
+
+def _publish(tmp_path, schema, data, source_text, *, quote_rows=None, evidence=()):
+    document = tmp_path / "document.txt"
+    document.write_text(source_text)
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(json.dumps(schema))
+    metadata = SchemaMetadata(schema_path)
+    plan = _plan(tmp_path, document, schema, schema_path, metadata)
+    plan["quote_rows"] = quote_rows
+    plan["evidence_paths"] = list(evidence)
+    extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
+    with patch.object(extractor.client, "extract", return_value={"data": data, "cost": 0.0}):
+        result = _extract_one_document(document, plan, extractor=extractor, run_id="run://c")
+    return result, tmp_path / "document.json"
+
+
+@pytest.fixture
+def min_one_schema(schema):
+    schema["properties"]["items"]["minItems"] = 1
+    return schema
+
+
+def test_sole_unquoted_row_cannot_publish_empty_array_under_min_items(
+    tmp_path, min_one_schema, payload
+):
+    """Quote filtering that empties a minItems=1 array is a contract failure."""
+    from psweep.extraction.roster import QuoteRows
+
+    result, record = _publish(
+        tmp_path,
+        min_one_schema,
+        payload,
+        "Entirely different source text",
+        quote_rows=QuoteRows("items", None, "quote"),
+    )
+    assert result["success"] is False
+    assert result["errors"][0]["category"] == "schema_contract"
+    assert not record.exists()
+
+
+def test_filtering_without_cardinality_constraint_still_publishes_empty_array(
+    tmp_path, schema, payload
+):
+    from psweep.extraction.roster import QuoteRows
+
+    result, record = _publish(
+        tmp_path,
+        schema,
+        payload,
+        "Entirely different source text",
+        quote_rows=QuoteRows("items", None, "quote"),
+    )
+    assert result["success"] is True
+    assert json.loads(record.read_text())["payload"]["items"] == []
+
+
+def test_supported_quote_row_survives_min_items(tmp_path, min_one_schema, payload):
+    from psweep.extraction.roster import QuoteRows
+
+    result, record = _publish(
+        tmp_path,
+        min_one_schema,
+        payload,
+        "Quoted evidence appears here",
+        quote_rows=QuoteRows("items", None, "quote"),
+    )
+    assert result["success"] is True
+    assert len(json.loads(record.read_text())["payload"]["items"]) == 1
+
+
+def test_evidence_nulling_that_violates_composite_constraint_fails(tmp_path):
+    """Nulling an unsupported {value, quote} must not break value/quote coupling."""
+    evidence = {
+        "type": "object",
+        "required": ["value", "quote"],
+        "properties": {
+            "value": {"type": ["string", "null"]},
+            "quote": {"type": ["string", "null"]},
+        },
+    }
+    # Forbid a null fact value, so evidence-nulling would break the contract.
+    contract = {
+        "$metadata": {"extraction": {"main_data_array": "rows"}},
+        "type": "object",
+        "required": ["fact"],
+        "properties": {"fact": evidence, "rows": {"type": "array"}},
+        "not": {"properties": {"fact": {"properties": {"value": {"type": "null"}}}}},
+    }
+    from psweep.extraction.schema_utils import evidence_paths
+
+    result, record = _publish(
+        tmp_path,
+        contract,
+        {"fact": {"value": "x", "quote": "not in source"}, "rows": []},
+        "Unrelated source text",
+        evidence=evidence_paths(contract),
+    )
+    assert result["success"] is False
+    assert result["errors"][0]["category"] == "schema_contract"
+    assert not record.exists()
+
+
+def test_valid_nulled_evidence_is_still_published(tmp_path):
+    evidence = {
+        "type": "object",
+        "required": ["value", "quote"],
+        "properties": {
+            "value": {"type": ["string", "null"]},
+            "quote": {"type": ["string", "null"]},
+        },
+    }
+    contract = {
+        "$metadata": {"extraction": {"main_data_array": "rows"}},
+        "type": "object",
+        "required": ["fact"],
+        "properties": {"fact": evidence, "rows": {"type": "array"}},
+    }
+    from psweep.extraction.schema_utils import evidence_paths
+
+    result, record = _publish(
+        tmp_path,
+        contract,
+        {"fact": {"value": "x", "quote": "not in source"}, "rows": []},
+        "Unrelated source text",
+        evidence=evidence_paths(contract),
+    )
+    assert result["success"] is True
+    assert json.loads(record.read_text())["payload"]["fact"] == {"value": None, "quote": None}

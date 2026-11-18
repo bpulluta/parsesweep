@@ -21,6 +21,7 @@ from psweep.extraction.provenance import (
     prepend_source_context,
     source_context,
 )
+from psweep.extraction.schema_utils import build_schema_validator
 from psweep.pipeline import _extract_one_document, compile_extractions
 from psweep.utils.schema_metadata import SchemaMetadata
 
@@ -462,6 +463,8 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
             "evidence_paths": [],
             "quote_rows": None,
             "fingerprints": {document: "a" * 64},
+            "source_digests": {document: artifact_sha256(document)},
+            "validator": build_schema_validator(schema),
         }
         result = _extract_one_document(
             document,

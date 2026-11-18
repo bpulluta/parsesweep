@@ -32,6 +32,7 @@ import shutil
 import subprocess  # noqa: S404 - runs psweep stage subprocesses, no shell
 import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, UTC
 from uuid import uuid4
@@ -67,6 +68,7 @@ from psweep.extraction.llm_factory import (
     DEFAULT_MAX_CONTEXT,
     resolve_llm_kwargs,
 )
+from psweep.extraction.prepared_document import capture_source
 from psweep.extraction.provenance import (
     build_source_context_map,
     prepend_source_context,
@@ -480,13 +482,14 @@ def _extraction_fingerprints(
     locator,
     schema_path,
     documents,
+    digests,
     ranges,
     context,
     roster,
     anchors,
     transcriber=None,
 ):
-    """Bind reused records to effective behavior and source bytes."""
+    """Bind reused records to effective behavior and the prepared source digests."""
     targeting = inputs.get("page_targeting") or {}
     policy = {
         key: inputs.get(key)
@@ -527,7 +530,7 @@ def _extraction_fingerprints(
     fingerprints = {}
     for doc in documents:
         info = source_context(doc, context)
-        cached = document_utils.read_text_cache(doc, return_meta=True)
+        cached = document_utils.read_text_cache(doc, return_meta=True, source_sha256=digests[doc])
         audio = transcription.is_audio(doc)
         data = {
             **policy,
@@ -538,7 +541,7 @@ def _extraction_fingerprints(
             ),
             "table_layout": document_utils.TABLE_TEXT_LAYOUT.get(doc.suffix.lower()),
             "source": str(doc),
-            "source_sha256": artifact_sha256(doc),
+            "source_sha256": digests[doc],
             "manual_pages": ranges.get(doc),
             "manual_mapped": doc in ranges,
             "context": asdict(info) if info else None,
@@ -659,8 +662,9 @@ def _prepare_extraction(
     transcriber = transcription.build_transcriber(inputs)
     context = build_source_context_map(Path(inputs["path"]).resolve())
     roster = load_roster(inputs, plan["metadata"])
+    digests = {doc: artifact_sha256(doc) for doc in documents}
     candidates, anchors, roster_errors = (
-        _roster_plan(documents, plan["root"], context, roster, inputs, transcriber)
+        _roster_plan(documents, plan["root"], context, roster, inputs, digests, transcriber)
         if roster and not validate_only
         else ({}, {}, {})
     )
@@ -670,6 +674,7 @@ def _prepare_extraction(
         locator,
         plan["schema_path"],
         documents,
+        digests,
         ranges,
         context,
         roster,
@@ -712,6 +717,7 @@ def _prepare_extraction(
         "candidates": candidates,
         "anchors": anchors,
         "roster_errors": roster_errors,
+        "validator": validator,
         "evidence_paths": evidence_paths(plan["schema"]),
         "quote_rows": (
             QuoteRows(
@@ -723,14 +729,18 @@ def _prepare_extraction(
             else None
         ),
         "fingerprints": fingerprints,
+        "source_digests": digests,
         "inputs": inputs,
         "fresh": fresh,
         "withdrawn": [] if fresh or validate_only else _withdrawn_records(plan),
     }
 
 
-def _document_text(doc_path, page_ranges, section_text, corrections, transcriber=None):
-    """Prepare text and effective scope for one document."""
+def _document_text(doc_path, page_ranges, section_text, corrections, transcriber=None, source=None):
+    """Prepare text and effective scope for one document.
+
+    ``source`` is the captured version consumed; without one the live path is read.
+    """
     scope = {}
     if section_text is not None:
         text, effective = section_text, page_ranges
@@ -740,11 +750,12 @@ def _document_text(doc_path, page_ranges, section_text, corrections, transcriber
             page_ranges=page_ranges,
             ocr_corrections=corrections,
             return_meta=True,
+            source=source,
         )
         effective = scope.get("page_ranges") if page_ranges is not None else None
     else:
         text = document_utils.extract_text_from_document(
-            doc_path, page_ranges=page_ranges, transcriber=transcriber
+            doc_path, page_ranges=page_ranges, transcriber=transcriber, source=source
         )
         effective = page_ranges
     if not text.strip():
@@ -753,7 +764,7 @@ def _document_text(doc_path, page_ranges, section_text, corrections, transcriber
     return text, effective, scope
 
 
-def _prepared_input(doc_path, plan, page_ranges, section_text):
+def _prepared_input(doc_path, plan, page_ranges, section_text, source=None):
     """Return text, the exact final prompt, and scope; hold unsafe automatic input.
 
     Protected documents never reach the primary request unbounded or oversized:
@@ -772,6 +783,7 @@ def _prepared_input(doc_path, plan, page_ranges, section_text):
         section_text,
         inputs.get("ocr_corrections"),
         plan.get("transcriber"),
+        source,
     )
     prompt = prepend_source_context(text, source_context(doc_path, plan["context"]))
     if anchors := plan["anchors"].get(doc_path):
@@ -822,8 +834,11 @@ def _failed_outcome(doc_path, exc, plan, result=None) -> dict:
     return outcome
 
 
-def _roster_plan(documents, root, context, roster, inputs, transcriber=None):
-    """Anchor every document to roster targets before any provider call."""
+def _roster_plan(documents, root, context, roster, inputs, digests, transcriber=None):
+    """Anchor every document to roster targets before any provider call.
+
+    Shared documents are scanned from the version whose digest was fingerprinted.
+    """
     candidates, anchors, errors = {}, {}, {}
     for doc in documents:
         info = source_context(doc, context)
@@ -835,9 +850,10 @@ def _roster_plan(documents, root, context, roster, inputs, transcriber=None):
             )
         elif info.scope == "shared":
             try:
-                text = _document_text(doc, None, None, inputs.get("ocr_corrections"), transcriber)[
-                    0
-                ]
+                with capture_source(doc, expected=digests[doc]) as source:
+                    text = _document_text(
+                        doc, None, None, inputs.get("ocr_corrections"), transcriber, source
+                    )[0]
             except Exception as exc:  # noqa: BLE001 - isolate unreadable documents
                 errors[doc] = f"Roster candidate scan failed: {exc}"
                 continue
@@ -928,6 +944,7 @@ def _extract_one_document(
     array = plan["metadata"].get_main_data_array()
     info = source_context(doc_path, plan["context"])
     anchors = plan["anchors"].get(doc_path)
+    stack = ExitStack()
     try:
         if prepare is not None:
             page_ranges, section_text = prepare(doc_path)
@@ -935,38 +952,47 @@ def _extract_one_document(
             raise ValueError(plan["roster_errors"][doc_path])
         if anchors == set():
             text, result = "", _no_roster_match(array)
-        elif doc_path in plan["candidates"]:
-            text = _document_text(
-                doc_path,
-                None,
-                None,
-                inputs.get("ocr_corrections"),
-                plan.get("transcriber"),
-            )[0]
-            result = _roster_extract(
-                extractor,
-                plan["schema"],
-                array,
-                roster,
-                plan["candidates"][doc_path],
-                inputs.get("max_context", DEFAULT_MAX_CONTEXT),
-                info,
-            )
+            source = None
         else:
-            text, prompt, effective_ranges, parser_scope = _prepared_input(
-                doc_path, plan, page_ranges, section_text
-            )
-            result = extractor.extract(prompt, plan["schema"])
-            record_extraction_scope(
-                result,
-                page_ranges=effective_ranges,
-                omitted_page_ranges=plan.get("targeting_omitted", {}).get(doc_path),
-                section_filtered=section_text is not None,
-                parser_scope=parser_scope,
-                targeting_incomplete=doc_path in plan.get("targeting_incomplete", ()),
-            )
-            if anchors:
-                result.off_candidate_items = _keep_roster_items(result.data, array, roster, anchors)
+            # Consume one verified version: every read, quote check and the record
+            # digest below describe these bytes, never a later live-path reopen.
+            snapshot = capture_source(doc_path, expected=plan["source_digests"][doc_path])
+            source = stack.enter_context(snapshot)
+            if doc_path in plan["candidates"]:
+                text = _document_text(
+                    doc_path,
+                    None,
+                    None,
+                    inputs.get("ocr_corrections"),
+                    plan.get("transcriber"),
+                    source,
+                )[0]
+                result = _roster_extract(
+                    extractor,
+                    plan["schema"],
+                    array,
+                    roster,
+                    plan["candidates"][doc_path],
+                    inputs.get("max_context", DEFAULT_MAX_CONTEXT),
+                    info,
+                )
+            else:
+                text, prompt, effective_ranges, parser_scope = _prepared_input(
+                    doc_path, plan, page_ranges, section_text, source
+                )
+                result = extractor.extract(prompt, plan["schema"])
+                record_extraction_scope(
+                    result,
+                    page_ranges=effective_ranges,
+                    omitted_page_ranges=plan.get("targeting_omitted", {}).get(doc_path),
+                    section_filtered=section_text is not None,
+                    parser_scope=parser_scope,
+                    targeting_incomplete=doc_path in plan.get("targeting_incomplete", ()),
+                )
+                if anchors:
+                    result.off_candidate_items = _keep_roster_items(
+                        result.data, array, roster, anchors
+                    )
         rejected = verify_quotes(
             result.data,
             text,
@@ -987,7 +1013,9 @@ def _extract_one_document(
             run_id=run_id,
             schema_id=str(plan["schema_path"]),
             schema_metadata=plan["metadata"],
+            source_sha256=source.sha256 if source else plan["source_digests"][doc_path],
             input_fingerprint=plan["fingerprints"][doc_path],
+            payload_validator=plan["validator"],
         )
         return {
             "file": doc_path.name,
@@ -1007,6 +1035,8 @@ def _extract_one_document(
             exc_info=True,
         )
         return _failed_outcome(doc_path, exc, plan, result)
+    finally:
+        stack.close()
 
 
 def _target_extraction_inputs(plan: dict):

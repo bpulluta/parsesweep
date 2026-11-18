@@ -335,3 +335,89 @@ def test_client_setup_failure_preserves_fresh_output(workflow, monkeypatch):
     assert result.exit_code == 1
     assert sentinel.read_text() == "prior output"
     provider.assert_not_called()
+
+
+def _mutate_after_fingerprints(monkeypatch, document, content):
+    """Change the source after preparation fixed its identity, once."""
+    from psweep import pipeline
+
+    original = pipeline._extraction_fingerprints
+    state = {"done": False}
+
+    def wrapper(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if not state["done"]:
+            state["done"] = True
+            document.write_text(content)
+        return result
+
+    monkeypatch.setattr(pipeline, "_extraction_fingerprints", wrapper)
+
+
+def test_source_changed_after_preparation_is_held(workflow, monkeypatch):
+    """Bytes that differ from the prepared identity are never extracted."""
+    documents, schema, output, provider = workflow
+    _mutate_after_fingerprints(monkeypatch, documents / "alpha.txt", "Source beta")
+    result = extract_documents(documents, schema, output_dir=output)
+    assert (result.successful, result.failed) == (0, 1)
+    assert result.errors[0]["errors"][0]["code"] == "source_changed"
+    provider.assert_not_called()
+    assert not (output / "alpha.json").exists()
+
+
+def test_a_b_a_never_reuses_a_payload_extracted_from_b(workflow, monkeypatch):
+    """A run that prepared A but met B publishes nothing reusable under A."""
+    documents, schema, output, provider = workflow
+    _mutate_after_fingerprints(monkeypatch, documents / "alpha.txt", "Source beta")
+    extract_documents(documents, schema, output_dir=output)
+    (documents / "alpha.txt").write_text("Source alpha")
+    provider.reset_mock()
+    result = extract_documents(documents, schema, output_dir=output)
+    assert result.successful == 1
+    assert provider.call_count == 1
+    assert "Source alpha" in str(provider.call_args)
+    assert "Source beta" not in str(provider.call_args)
+
+
+def test_record_digest_is_the_consumed_version(workflow):
+    """A mid-request change cannot make the record claim the live bytes."""
+    import hashlib
+
+    documents, schema, output, provider = workflow
+    consumed = (documents / "alpha.txt").read_bytes()
+    answer = deepcopy(provider.return_value)
+
+    def mutate(*_args, **_kwargs):
+        (documents / "alpha.txt").write_text("Source beta")
+        return answer
+
+    provider.side_effect = mutate
+    assert extract_documents(documents, schema, output_dir=output).successful == 1
+    record = json.loads((output / "alpha.json").read_text())
+    assert record["document"]["source_sha256"] == hashlib.sha256(consumed).hexdigest()
+    provider.side_effect = None
+    provider.reset_mock()
+    assert extract_documents(documents, schema, output_dir=output).successful == 1
+    assert provider.call_count == 1
+
+
+def test_snapshots_are_private_and_removed(workflow, monkeypatch, tmp_path):
+    """Per-document snapshots live outside inputs/outputs and never accumulate."""
+    documents, schema, output, provider = workflow
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr("tempfile.tempdir", str(scratch))
+    seen = []
+
+    def inspect_snapshot(*_args, **_kwargs):
+        seen.extend(scratch.iterdir())
+        return deepcopy(provider.return_value)
+
+    provider.side_effect = inspect_snapshot
+    assert extract_documents(documents, schema, output_dir=output).successful == 1
+    assert len(seen) == 1
+    assert list(scratch.iterdir()) == []
+    provider.side_effect = RuntimeError("fixture failure")
+    (documents / "alpha.txt").write_text("Changed")
+    assert extract_documents(documents, schema, output_dir=output).failed == 1
+    assert list(scratch.iterdir()) == []

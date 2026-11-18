@@ -1,5 +1,7 @@
 """Universal document text extraction for multiple file formats."""
 
+from __future__ import annotations
+
 from html.parser import HTMLParser
 import contextlib
 import csv
@@ -11,12 +13,15 @@ import re
 from collections.abc import Iterable
 from itertools import zip_longest
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from psweep.utils.file_io import artifact_sha256, staged_file
 from psweep.utils.page_range import PageRanges
 from .pdf_utils import _cleanup_ocr_errors
 from .transcription import AUDIO_EXTENSIONS, transcript
+
+if TYPE_CHECKING:
+    from .prepared_document import CapturedSource
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +40,15 @@ def text_cache_paths(file_path: Path) -> tuple[Path, Path]:
     )
 
 
-def read_text_cache(file_path: Path, *, return_meta: bool = False):
+def read_text_cache(
+    file_path: Path, *, return_meta: bool = False, source_sha256: str | None = None
+):
     """Return cached text if its source and text still match.
 
     Size/mtime and source SHA-256 identify the document. Text SHA-256
     rejects partial or mismatched pairs. Stem-only caches are ignored.
+    With ``source_sha256`` (a captured or fingerprinted digest) that digest
+    identifies the document and the live path is not reopened.
     """
     txt_path, meta_path = text_cache_paths(file_path)
     try:
@@ -48,14 +57,18 @@ def read_text_cache(file_path: Path, *, return_meta: bool = False):
         # They cannot safely be consumed as raw OCR under current rules.
         if meta.get("method") == "ocr" and meta.get("ocr_raw") is not True:
             return None
-        stat = file_path.stat()
-        if (
-            int(meta.get("source_size", -1)) != stat.st_size
-            or int(meta.get("source_mtime_ns", -1)) != stat.st_mtime_ns
-        ):
-            return None
-        if meta.get("source_sha256") != artifact_sha256(file_path):
-            return None
+        if source_sha256 is not None:
+            if meta.get("source_sha256") != source_sha256:
+                return None
+        else:
+            stat = file_path.stat()
+            if (
+                int(meta.get("source_size", -1)) != stat.st_size
+                or int(meta.get("source_mtime_ns", -1)) != stat.st_mtime_ns
+            ):
+                return None
+            if meta.get("source_sha256") != artifact_sha256(file_path):
+                return None
         text_bytes = txt_path.read_bytes()
         if meta.get("text_sha256") != hashlib.sha256(text_bytes).hexdigest():
             return None
@@ -72,8 +85,12 @@ def write_text_cache(
     method: str = "ocr",
     *,
     page_count: int | None = None,
+    source: CapturedSource | None = None,
 ) -> None:
     """Write the cache via flushed temporary files, metadata last.
+
+    A ``source`` capture supplies the identity of the bytes the text came
+    from; without one the live path is read.
 
     OCR callers supply raw text, never corrected text. Discovery also
     caches browser/API products under their own ``method``. Cheap native
@@ -84,13 +101,17 @@ def write_text_cache(
     """
     txt_path, meta_path = text_cache_paths(file_path)
     try:
-        stat = file_path.stat()
+        if source is not None:
+            size, mtime_ns, digest = source.size, source.mtime_ns, source.sha256
+        else:
+            stat = file_path.stat()
+            size, mtime_ns, digest = stat.st_size, stat.st_mtime_ns, artifact_sha256(file_path)
         text_bytes = text.encode("utf-8")
         metadata = json.dumps(
             {
-                "source_size": stat.st_size,
-                "source_mtime_ns": stat.st_mtime_ns,
-                "source_sha256": artifact_sha256(file_path),
+                "source_size": size,
+                "source_mtime_ns": mtime_ns,
+                "source_sha256": digest,
                 "text_sha256": hashlib.sha256(text_bytes).hexdigest(),
                 "chars": len(text),
                 "method": method,
@@ -292,6 +313,7 @@ def extract_text_from_document(
     *,
     return_meta: bool = False,
     transcriber=None,
+    source: CapturedSource | None = None,
 ):
     """
     Extract text from any supported document format.
@@ -311,6 +333,10 @@ def extract_text_from_document(
         Return a text/metadata pair with actual PDF scope when True.
     transcriber : Optional[transcription.Transcriber]
         Transcribes uncached audio; without one, only cached transcripts.
+    source : Optional[CapturedSource]
+        The consumed version of ``file_path``. Content is read from its
+        snapshot; cache evidence is keyed to ``file_path`` and judged by its
+        captured digest.
 
     Returns
     -------
@@ -324,12 +350,13 @@ def extract_text_from_document(
     RuntimeError
         If extraction fails
     """
-    if not file_path.exists():
+    read_path = source.path if source is not None else file_path
+    if not read_path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
     ext = file_path.suffix.lower()
     if ext in AUDIO_EXTENSIONS:
-        text = transcript(file_path, transcriber)
+        text = transcript(file_path, transcriber, captured=source)
         meta = {"used_ocr": False, "page_ranges": None, "page_count": None}
         return (text, meta) if return_meta else text
 
@@ -337,7 +364,9 @@ def extract_text_from_document(
     # whole-document extraction is cached — page selections bypass it so a
     # partial slice never poisons the full-text cache other stages depend on.
     if page_ranges is None:
-        cached = read_text_cache(file_path, return_meta=True)
+        cached = read_text_cache(
+            file_path, return_meta=True, source_sha256=source.sha256 if source else None
+        )
         if cached is not None:
             text, cache_meta = cached
             used_ocr = cache_meta.get("method") == "ocr"
@@ -362,9 +391,9 @@ def extract_text_from_document(
     meta = {"used_ocr": False, "page_ranges": None, "page_count": None}
     if ext == ".pdf":
         # Parse/cache raw OCR before applying current corrections.
-        text, meta = _extract_from_pdf(file_path, page_ranges)
+        text, meta = _extract_from_pdf(read_path, page_ranges)
     elif ext in _TEXT_READERS:
-        text = _TEXT_READERS[ext](file_path)
+        text = _TEXT_READERS[ext](read_path)
     else:
         raise ValueError(
             f"Unsupported file format: {ext}. "
@@ -378,7 +407,7 @@ def extract_text_from_document(
         # Skipped OCR pages must not produce a whole-document cache.
         complete = pages is None or (page_count is not None and len(pages) == page_count)
         if page_ranges is None and raw_text and complete:
-            write_text_cache(file_path, raw_text, page_count=page_count)
+            write_text_cache(file_path, raw_text, page_count=page_count, source=source)
         text = _cleanup_ocr_errors(raw_text, ocr_corrections)
     return (text, meta) if return_meta else text
 
