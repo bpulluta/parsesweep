@@ -132,3 +132,16 @@ def test_extraction_error_keeps_its_category_when_it_carries_a_status() -> None:
     exc.status_code = 429
 
     assert build_error_record(exc, stage="extract")["category"] == "extraction"
+
+
+@pytest.mark.parametrize("code", ["targeting_no_usable_scope", "targeting_context_budget_exceeded"])
+def test_targeting_safety_error_keeps_its_typed_code_over_message_matching(code) -> None:
+    from psweep.exceptions import TargetingSafetyError
+
+    error = build_error_record(
+        TargetingSafetyError("maximum context length 9 of 7", code=code),
+        stage="extract",
+        document_path="doc.pdf",
+    )
+    assert (error["category"], error["code"]) == ("targeting", code)
+    assert error["retryable"] is False

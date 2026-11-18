@@ -258,6 +258,10 @@
             "section_filtered": {
               "type": "boolean"
             },
+            "targeting_incomplete": {
+              "type": "boolean",
+              "description": "Targeting could not complete reference discovery; the selection is a known partial."
+            },
             "page_count": {
               "type": "integer", "minimum": 0
             },

@@ -338,6 +338,42 @@ def test_context_truncation_survives_canonical_record(tmp_path, schema, payload)
     assert any("truncated" in note for note in record["quality"]["warnings"])
 
 
+def test_incomplete_bounded_targeting_survives_canonical_record(tmp_path, schema, payload):
+    from psweep.extraction.record_writer import build_extraction_record, record_extraction_scope
+
+    extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini", max_context_chars=500)
+    with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}):
+        result = extractor.extract("selected text", schema)
+    record_extraction_scope(
+        result,
+        page_ranges=((2, 3),),
+        omitted_page_ranges=((9, 9),),
+        targeting_incomplete=True,
+        parser_scope={"page_count": 9, "selected_pages": [2, 3], "extracted_pages": [2, 3]},
+    )
+    document = tmp_path / "doc.txt"
+    document.write_text("selected text")
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(json.dumps(schema))
+    record, _ = build_extraction_record(
+        doc_path=document,
+        source_document_id="doc.txt",
+        result=result,
+        model="gpt-4o-mini",
+        provider="openai",
+        schema_metadata=SchemaMetadata(schema_path),
+    )
+    coverage = record["processing_metrics"]["coverage"]
+    assert coverage["targeting_incomplete"] is True
+    assert coverage["selected_page_ranges"] == [[2, 3]]
+    assert coverage["omitted_page_ranges"] == [[9, 9]]
+    assert coverage["parser_partial"] is False
+    assert any("targeting" in note.lower() for note in record["quality"]["warnings"])
+    from psweep.extraction.schema_utils import record_validator
+
+    record_validator().validate(record)
+
+
 @pytest.mark.parametrize("shape", ["equipment", "evidence"])
 def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, monkeypatch, shape):
     from copy import deepcopy
