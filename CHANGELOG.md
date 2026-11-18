@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Locked `soupsieve` (transitive via `beautifulsoup4`) moves from 3.0.4 to 4.1.2, fixing CVE-2026-126190 (polynomial-time descendant-combinator matching) reported by the dependency audit. `pixi.lock` only; no other package moved, no config, cache or cost impact.
+
 ### Fixed (extraction targeting safety)
 - A running header naming the target no longer makes every page mandatory:
   only its earliest page is kept, body and wrapped identity pages stay. A
