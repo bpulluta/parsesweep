@@ -7,6 +7,271 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrade impact vs main
+- One paid re-extraction of every document: the consumed-input fingerprint
+  (`captured-input-v1`), record contract 3.0.0 and the extraction behavior
+  versions all change the fingerprint, and older records are not read.
+- One paid re-location wherever page/section targeting is enabled
+  (`captured-scope-v4`).
+- One local re-OCR of scanned PDFs into the per-page cache (Tesseract, no LLM
+  cost).
+- No discovery regrade.
+- No image cost for `input_mode: text` (the default).
+- Older records are not read: there is no legacy layer.
+
+### Added (one `--domain` workspace override on every config-driven stage)
+- `extract`, `compile`, `validate` and `run` now take the `--domain` that only
+  `discover` had, so a second workspace (for example `aq_permits_va_s12` from
+  `config/aq_permits_va/run.yaml`) is addressed the same way at every stage
+  without `-o`, which recorded the wrong domain and broke compile and validate
+  chaining. The override is applied once, in `load_runtime_config_file`, so
+  every reader of the domain agrees; `run --domain` forwards it to every stage.
+  `curate` and `gc` keep their positional domain argument (the same key).
+  Without the option nothing changes. No cache or regrade impact.
+
+### Fixed (discovery publication: final decisions apply in incomplete partitions)
+- A shared partition left incomplete by one retryable failure used to publish
+  additively and ignore every other decision, so the consolidated `curated/`
+  and `download_index.csv` kept a document the run had finally rejected (a human
+  `reject` via `psweep curate`), finally not selected (`keep_top`,
+  `max_per_target`) or republished under a new name. Those three decisions now
+  apply there too, in `discover` and in `curate`. Unchanged: a retryable failure
+  withdraws nothing, a document the run did not decide stays, and "absent from a
+  completed target" still waits for the partition to complete. User-visible
+  effect: a later `discover` or `curate` can remove documents that previously
+  lingered in `curated/`; their extraction records become historical through the
+  existing admission rules and nothing under `extracted/` is deleted. No cache
+  or regrade impact: no cache key, fingerprint or LLM call changes.
+
+### Changed (document review: diagnosable grounding failures)
+- A review grade whose quotes the sampled excerpt does not support now fails with
+  the kind and the failing evidence paths (`invalid document grade evidence:
+  ungrounded evidence.content_quote`; `contract` when the grade itself is
+  malformed) instead of one generic message, in the audit as
+  `review_initial_error`. The record's review audit
+  (`review_initial_failure`, or `review_escalation_failure`) keeps the kind, the
+  paths and each rejected quote truncated to 300 characters, in the local
+  discovery manifest only. A run note counts the files that failed grounding.
+  Grounding stays exactly as strict. No grade cache key, prompt or sampler
+  change: no existing cache is invalidated and no regrade is triggered.
+
+### Changed (document review: one bounded grounding repair)
+- When a reviewer's well-formed grade quotes text the sampled excerpt does not
+  contain contiguously (a "cleaned" run-together word, `and/or`, a word completed
+  across a `[...]` cut), review sends ONE same-model follow-up that repeats the
+  rejected quote text and the failing evidence paths and restates the copy rule.
+  The system never supplies, snaps or fuzzy-matches candidate text: the reply is
+  verified by the same strict matcher. A second failure ends as an unverifiable document (next entry).
+  The repair is metered and counts against the review attempt budget; it is not
+  used when `escalate_model` is set or after a provider error. A run note counts
+  repaired and failed grounding. Cost: at most one extra review call per failing
+  grade. Cache: none; the first-attempt prompt and the grade cache key are
+  unchanged, and a repaired grade is stored under the same key and re-verified on
+  every read like any other grade.
+
+### Changed (document review: unverifiable documents are terminal and never re-billed)
+- A document whose grade still fails quote grounding after the repair (or, with
+  `escalate_model`, after both routes) is now a settled `review_unverifiable`
+  outcome (`review_failed`, `review_retryable: false`, `review_unverifiable:
+  true`; the reason is shown in `review.csv` `llm_reason`) instead of a retryable
+  failure. Before, the same inputs were re-billed on every discover run and the
+  partition never completed. It is stored as a negative entry in
+  `.review_cache/` under the grade's own key; it is never read as a grade. The
+  document stays held (not curated); `psweep curate` with `human_decision`
+  `keep`/`reject` resolves it. Any change to a grading input (model,
+  description, prompt, keywords, `max_chars`, sampling id) changes the key, so
+  the document is retried automatically. Provider, transport and attempt-budget
+  failures stay retryable and write no entry. Worst case: 2 calls per unique
+  document per grading-input version. Run notes count repaired and unverifiable
+  documents. Cache: no grade cache key changes, no existing cache is
+  invalidated and no regrade is triggered.
+
+### Added (selected-page vision, opt-in)
+- `extraction.input_mode: text | auto | vision` (default `text`; unknown values
+  fail at load). `auto` sends images of PDF pages that neither native text nor
+  OCR could read; `vision` sends images of every non-blank selected page. Images
+  go through the same request path as text as labeled inline PNG blocks, with
+  original page numbers. A route not known to accept images holds before any
+  request; image tokens are estimated from PNG dimensions and counted against
+  known windows. A record with unreadable pages is never reused, so `auto` and
+  `vision` domains pay again on every re-run of such a document.
+- Image-only content has no text to verify quotes against; records say so
+  (`input` block, `image_only_pages` coverage and a warning). Native PDF
+  transport is not implemented.
+
+### Changed (record contract 3.0.0: input provenance)
+- Every extraction record has an `input` block: `input_mode`, per-page PDF
+  representation (`status`, `chars`, `image_fraction`, and `ocr_sha256` where OCR
+  output was obtained), `visual_pages` and `render_dpi`. Coverage adds
+  `unreadable_pages` and `image_only_pages`; the `parser_partial` warning names
+  the unreadable pages. The always-false `coverage.context_truncated` key is
+  removed. `contract_version` is `3.0.0`.
+- OCR reuse is proved per page. A record is stale when a present OCR page entry
+  disagrees with the digest the record used (or the record could not read that
+  page); a missing entry still reuses with no provider call. Transcripts carry
+  `derived_text_sha256` in the run manifest.
+- The extraction fingerprint binds the prompt/repair behavior version for every
+  document and the OCR and page-representation versions for PDFs only; the page
+  locator fingerprint binds the same PDF versions.
+
+### Changed (response outcomes, one schema-feedback generation)
+- Primary extraction rejects length-terminated (`response_truncated`) and
+  refused (`response_refused`) answers as explicit `model_response` failures
+  instead of accepting them (a schema-valid `items: []` with
+  `finish_reason=length` used to pass). They are never regenerated.
+- An empty, non-JSON or schema-invalid answer gets at most one feedback
+  generation: the original request, unchanged, plus the rejected answer and
+  bounded path/rule diagnostics (no values). It draws on one per-document
+  allowance of 4 physical attempts shared with transport retries and the
+  temperature fallback; the allowance is document-local. Both generations' cost
+  and tokens are in the record and in failures. `schema_diagnostics` is shared
+  with reconciliation, whose repair diagnostics also name unexpected keys and
+  expected types.
+- The extraction prompt says conversions apply only where a schema field
+  description explicitly requires them, that unsupported conversions are
+  `null`, and that evidence quotes stay verbatim.
+- Discovery, reconciliation, locators, judges and transcription keep their
+  response handling.
+
+### Changed (per-page PDF representation and OCR cache)
+- PDF text extraction decides native text versus OCR per page instead of from
+  an aggregate 500-character total, so a raster rate table can no longer be
+  hidden behind a readable cover page. Each selected page is recorded as
+  `native`, `ocr`, `blank` or `unreadable` with its original page number. Blank
+  pages are covered and never OCR-ed; a raster page OCR cannot read is
+  `unreadable`, is not counted in `extracted_pages`, and makes the record
+  `parser_partial` with a warning. `ocr_corrections` touch OCR pages only.
+- The page locator's index OCRs raster pages, so scanned documents can be
+  targeted instead of being held as unreadable.
+- OCR is cached once per page (`.text/<file>.ocr/<page>.json`), keyed by the
+  source SHA-256, page number and OCR engine/render version. The locator index,
+  page-range runs and whole-document extraction share it, so a raster page is
+  OCR-ed once per source. Entries are raw text written atomically;
+  `ocr_corrections` are applied on every read. A corrupt, tampered or
+  other-source entry is a miss.
+- Discovery carries the OCR page entries with their document: they are linked
+  into `curated/`, inherited by a same-SHA re-download (never by a different
+  file), protected with a kept or held document, and removed with the document.
+  A scanned PDF OCR-ed during discovery review is not OCR-ed again by extraction.
+
+### Changed (scope budgeting, explicit locator)
+- Targeting triggers at `min(trigger_chars, max_context)`: a document too large
+  for `max_context` is targeted even when under `trigger_chars`. A locator
+  candidate index the route cannot admit is split in halves (at most 8
+  requests); any unsendable remainder holds the document.
+- `extraction.max_context` is enforced on every path, including CSV and
+  `pages.range` scope, disabled targeting and unsupported types. Oversized
+  input is held (`targeting_context_budget_exceeded`) and the primary is not
+  called; input is never sliced to a prefix.
+- `pages.auto_locate.model` is required when auto-locate is enabled and must
+  resolve to a different provider/model than `extraction.model`; the silent
+  inherit-the-primary default is removed. Configs that enabled auto-locate
+  without a model now fail validation.
+
+### Fixed (crawl budget starved by excluded links)
+- Linked documents that selection eligibility (exclusion terms, URL/text
+  patterns, draft filters) drops after crawling no longer consume the raw-link
+  budget of `runtime.max_files`. Previously a listing whose first links were all
+  excluded could exhaust the budget on every run and never reach a later wanted
+  link; the crawl now widens its budget by the number of dropped links, so
+  repeated runs converge. No fingerprint or cache change; a budget-limited
+  listing may fetch more pages in the same run.
+
+### Fixed (review ledger no longer invents an LLM verdict)
+- `review.csv` leaves `llm_selected` blank for documents no relevance review
+  graded, instead of defaulting it to `True` for every downloaded file. Use
+  `curated_selected` for what was effectively published. `curate` already treats
+  a blank `llm_selected` as "no verdict". Ledger-only change: no fingerprint,
+  cache, regrade or cost impact.
+
+### Fixed (conflicting page scopes fail at load)
+- `extraction.pages.csv` together with `extraction.pages.range` is now a config
+  error instead of silently ignoring the range. Configs that set both must drop
+  one. Load-time validation only: no fingerprint, cache or cost impact.
+
+### Fixed (central request admission)
+- `LLMClient.complete` admits the exact final request (messages plus response
+  schema) against `model_context_windows` before any provider attempt, for
+  every caller. Extraction and locator calls additionally use LiteLLM's pinned
+  local catalog and send the route's output limit as `max_tokens`. Estimates
+  are conservative (3 UTF-8 bytes per token). Unknown limits are not guarded: a
+  custom route with no known output limit is sent without `max_tokens`, and
+  truncation is rejected after the fact by the response-outcome check. A
+  rejected request sends and meters nothing. Discovery, reconciliation and
+  transcription get no catalog guard or output cap. Very large inputs on known
+  routes hold with `context_window_exceeded`.
+
+### Changed (test efficiency)
+- The full offline suite and CI retain all distinct regression scenarios;
+  two duplicate config-validation parameter cases are consolidated into
+  existing stronger checks. Scheduling scale tests no longer collect
+  unasserted allocation/timing diagnostics. TLS tests share immutable
+  certificate files, keep isolated servers/call histories, and shut down
+  without the default half-second polling delay.
+- `pixi run --locked -e dev test-fast` is an optional local loop excluding
+  explicit `integration`, `slow`, and `live` cases. The ordinary `test` task
+  still runs real CLI/TLS/ffmpeg checks and the largest scale cases. Pytest
+  defaults to concise output and rejects unknown markers; `-v` remains available.
+
+### Fixed (extraction admission and outcomes)
+- Preserved historical records no longer enter a current compilation.
+  Extraction publishes an atomic `run_manifests/current_admission.json` with a
+  per-document disposition (`new`, `reused`, `failed`, `deferred`) and the exact
+  record digest, source digest and input fingerprint for admitted records,
+  scoped to the invocation (before `limit`) and merged with prior qualification.
+  Failed or deferred documents keep their old bytes on disk but are not
+  admitted; succeeded and verified-reused siblings of a partial run are.
+  Previously a changed document that failed re-extraction compiled alongside
+  new siblings with no warning. A run marks its pending documents `deferred`
+  before rewriting records, so an interrupted run excludes them until
+  `psweep extract` is rerun. Extraction holds a per-output single-writer lock,
+  and records judged reusable at preparation are re-hashed under it.
+- Compilation, dry-run, `compiled_table_fresh`, provenance and the build
+  fingerprint share one selector that verifies and reads the same admitted
+  bytes; broken, missing or contradicted admission fails closed, and excluded
+  records are a count rather than a warning. Standalone directories without run
+  evidence compile as `historical_unverified`; a directory with run manifests
+  but no admission is refused until `psweep extract` publishes one. Compile
+  manifests record `outputs.admission`.
+- A compiled table with zero rows beside failed documents has status `failed`;
+  valid all-empty results remain successful.
+- `run_accounting.json` is version 3.0.0: runs carry result and
+  processed/succeeded/failed/item counts, extraction `status` follows the latest
+  run (`completed`, `completed_with_errors`, `failed`, `unknown`), and a
+  `current` block reports admitted/failed/deferred documents and items.
+  `summary.documents_extracted` and `cost_per_document_usd` are replaced by
+  `documents_billed`, `cost_per_billed_document_usd`, and current
+  `documents_admitted`/`documents_failed`/`items_admitted`/
+  `cost_per_admitted_document_usd` (null when unknown). Billed attempts are no
+  longer presented as successful extractions.
+
+### Fixed (extraction source identity)
+- Extraction consumes one verified version of each source. Preparation
+  fingerprints the source digest; extraction stream-copies the document into a
+  private, owner-only, per-document snapshot (removed on success, failure, or
+  interruption), compares that digest with the prepared one, and reads only the
+  snapshot, including text-cache and transcript evidence. A source that changed
+  in between fails that document with `document_io/source_changed` before any
+  paid request, and the record's `document.source_sha256` is the consumed
+  digest. Previously a document prepared as A but read as B could publish a
+  B-derived payload under A's fingerprint and be reused when the file returned
+  to A.
+- Capture precedes page/section targeting and freezes verified browser/API
+  text, raw OCR and matching-model transcripts; roster scans, no-match
+  decisions, locator caches and reuse all use that version. Fresh preflight
+  keeps captures bounded, rechecks retained scopes, and preserves prior output
+  on a mismatch; stale products are cleaned only after all fresh documents
+  succeed, and an empty input inventory preserves previous outputs.
+- The record writer returns the item count and SHA-256 of the exact bytes it
+  published; manifests never rehash a later replacement as proof.
+
+### Fixed (extraction publication)
+- `write_extraction_record` validates the finalized payload against the
+  resolved domain schema after roster filtering and quote verification and
+  before publishing. Previously a sole unsupported row removed by quote
+  filtering published `items: []` under a `minItems: 1` contract. Such a
+  document now fails with `schema_contract` and keeps its prior record.
+
 ### Security
 - Locked `soupsieve` (transitive via `beautifulsoup4`) moves from 3.0.4 to 4.1.2, fixing CVE-2026-126190 (polynomial-time descendant-combinator matching) reported by the dependency audit. `pixi.lock` only; no other package moved, no config, cache or cost impact.
 
@@ -22,8 +287,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `targeting_context_budget_exceeded`, category `targeting`) instead of sending
   the whole document or a silently sliced prefix. A hold ends the extract stage
   `failed` (exit 1), so `run` does not compile historical records. A
-  document with no readable native PDF text is now held too (use a blank CSV
-  row to force OCR of the full document).
+  PDF with no page readable as text or OCR is now held too.
 - `--fresh` runs these checks before deleting output and keeps previous records
   when a document is held; blocked documents report no primary calls or tokens.
 - The final selected reference frontier is read even when the page cap is full,

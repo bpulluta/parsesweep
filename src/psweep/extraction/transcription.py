@@ -23,9 +23,12 @@ import threading
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from contextvars import copy_context
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from psweep.exceptions import ExtractionError
+
+if TYPE_CHECKING:
+    from .prepared_document import CapturedSource
 
 AUDIO_EXTENSIONS: frozenset[str] = frozenset({".mp3", ".m4a", ".wav", ".ogg", ".flac"})
 CONFIG_KEY = "extraction.transcription_model"
@@ -251,11 +254,24 @@ def build_transcriber(inputs: dict[str, Any]) -> Transcriber | None:
     )
 
 
-def transcript(source: Path, transcriber: Transcriber | None) -> str:
+def accepts_transcript(method: str | None, transcriber: Transcriber | None) -> bool:
+    """Use the configured identity, or a cached transcript when no model is configured."""
+    return (
+        method == getattr(transcriber, "identity", None)
+        if transcriber is not None
+        else (isinstance(method, str) and method.startswith(f"{METHOD_PREFIX}:"))
+    )
+
+
+def transcript(
+    source: Path, transcriber: Transcriber | None, *, captured: CapturedSource | None = None
+) -> str:
     """The recording's transcript: cached, or transcribed and cached.
 
     Without a transcriber (review, validation, CLI utilities) any cached
     transcript is used; with one, only a transcript of its identity is.
+    A ``captured`` version is transcribed from its snapshot and cached for
+    ``source`` under its captured digest.
     """
     from .document_utils import (
         TEXT_CACHE_DIRNAME,
@@ -263,12 +279,18 @@ def transcript(source: Path, transcriber: Transcriber | None) -> str:
         write_text_cache,
     )
 
-    cached = read_text_cache(source, return_meta=True)
+    cached = (
+        (
+            (captured.cached_text.text, captured.cached_text.identity)
+            if captured.cached_text
+            else None
+        )
+        if captured is not None
+        else read_text_cache(source, return_meta=True)
+    )
     if cached is not None:
         method = str(cached[1].get("method") or "")
-        if method == getattr(transcriber, "identity", None) or (
-            transcriber is None and method.startswith(f"{METHOD_PREFIX}:")
-        ):
+        if accepts_transcript(method, transcriber):
             return cached[0]
     if transcriber is None:
         message = (
@@ -276,6 +298,8 @@ def transcript(source: Path, transcriber: Transcriber | None) -> str:
             f"`{CONFIG_KEY}: <tier>` (a models: alias) to the run config"
         )
         raise TranscriptionError(message)
-    text = transcriber.transcribe(source, source.parent / TEXT_CACHE_DIRNAME)
-    write_text_cache(source, text, method=transcriber.identity)
+    text = transcriber.transcribe(
+        captured.path if captured else source, source.parent / TEXT_CACHE_DIRNAME
+    )
+    write_text_cache(source, text, method=transcriber.identity, source=captured)
     return text

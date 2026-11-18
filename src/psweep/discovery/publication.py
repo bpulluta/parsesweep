@@ -24,7 +24,7 @@ from collections.abc import Iterable, Iterator, Mapping
 
 from psweep.extraction.document_utils import (
     read_text_cache,
-    text_cache_paths,
+    text_cache_files,
     write_text_cache,
 )
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
@@ -514,11 +514,9 @@ def _stage_curated(documents_dir: Path, records: list[dict[str, object]], destin
         seen.add(rel)
         dest = destination / rel
         _link(source, dest)
-        for cache, curated_cache in zip(
-            text_cache_paths(source), text_cache_paths(dest), strict=True
-        ):
+        for cache in text_cache_files(source):
             if cache.is_file():
-                _link(cache, curated_cache)
+                _link(cache, dest.parent / cache.relative_to(source.parent))
         count += 1
     return count
 
@@ -594,9 +592,11 @@ def _merged_index(
     """Merge run provenance; return the index and the withdrawn paths removed.
 
     A path is only replaced or withdrawn by its owner (``document_owner``),
-    and each owner keeps at most one path. Outside blocked partitions an
-    unpromoted row is withdrawn when its owner was promoted elsewhere, is in
-    ``withdrawn``, or belongs to a ``completed`` target or source.
+    and each owner keeps at most one path. An unpromoted row is withdrawn
+    when its owner was promoted elsewhere or is in ``withdrawn``: both are
+    final per-document decisions, so they apply in blocked partitions too.
+    Absence is only an inference outside blocked partitions: a row whose
+    owner belongs to a ``completed`` target or source goes only there.
     """
     fieldnames, existing = _csv_read(domain_index) if domain_index.exists() else ([], [])
     if run_content is None:
@@ -634,10 +634,10 @@ def _merged_index(
         if _under(rel.parent, replaced_partitions):
             continue
         owner = document_owner(row)
-        if (
-            key not in promoted
-            and not is_blocked(rel.parent)
-            and (owner in promoted_owners or owner in withdrawn or owner[0] in completed)
+        if key not in promoted and (
+            owner in promoted_owners
+            or owner in withdrawn
+            or (owner[0] in completed and not is_blocked(rel.parent))
         ):
             removed.add(key)
             continue
@@ -722,19 +722,33 @@ def _inherit_text_caches(source: Path, curated: Path, replaced: set[Path]) -> No
     inherit_text_caches(new, outgoing)
 
 
+def _ocr_entries(document: Path) -> list[Path]:
+    return [path for path in text_cache_files(document) if path.parent.name.endswith(".ocr")]
+
+
 def inherit_text_caches(targets: Iterable[Path], donors: Iterable[Path]) -> None:
-    """Copy a donor's valid text cache to each uncached target with the same SHA-256."""
+    """Copy a donor's valid text cache and OCR page entries to each target with the same SHA-256."""
     cached = {}
+    ocr_donors: dict[str, list[Path]] = {}
     for old in donors:
-        hit = read_text_cache(old, return_meta=True) if old.is_file() else None
+        if not old.is_file():
+            continue
+        hit = read_text_cache(old, return_meta=True)
         if hit:
             cached[hit[1]["source_sha256"]] = hit
-    if not cached:
+        if entries := _ocr_entries(old):
+            ocr_donors.setdefault(artifact_sha256(old), []).extend(entries)
+    if not cached and not ocr_donors:
         return
     for path in targets:
-        if read_text_cache(path) is None and (hit := cached.get(artifact_sha256(path))):
+        digest = artifact_sha256(path) if path.is_file() else None
+        if read_text_cache(path) is None and (hit := cached.get(digest)):
             text, meta = hit
             write_text_cache(path, text, meta["method"], page_count=meta.get("page_count"))
+        for entry in ocr_donors.get(digest, ()):
+            target = path.parent / ".text" / f"{path.name}.ocr" / entry.name
+            if not target.exists():
+                _link(entry, target)
 
 
 def _stage_promotion(
@@ -820,7 +834,7 @@ def _stage_promotion(
         for key in sorted(removed):
             document = root / "curated" / key
             swaps.extend(
-                (path, None) for path in (document, *text_cache_paths(document)) if _exists(path)
+                (path, None) for path in (document, *text_cache_files(document)) if _exists(path)
             )
         staged_index = staging / "index"
         atomic_write(staged_index, content)
@@ -837,7 +851,8 @@ def promote_curated(
     run_index: Path | None = None,
 ) -> None:
     """Publish run curation and its consolidated provenance; blocked
-    partitions are published additively.
+    partitions are published additively, except that an owner renamed by this
+    run keeps only its new path.
     """
     root = Path(domain_dir).resolve()
     source = Path(run_curated_dir).resolve()
@@ -895,7 +910,9 @@ def publish_manual_curation(
     _lock_held: bool = False,
 ) -> tuple[Path, int]:
     """Publish local/consolidated human curation and its provenance
-    together; ``completed`` targets/sources reconcile their documents.
+    together. Final per-document decisions (human reject, final
+    non-selection) apply in blocked partitions as well; ``completed``
+    targets/sources reconcile their documents outside blocked partitions.
     """
     root = paths.domain_dir
     if paths.run_curated_dir == root / "curated":

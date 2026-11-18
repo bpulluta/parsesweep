@@ -6,19 +6,26 @@ from types import SimpleNamespace
 
 from click.testing import CliRunner
 import pytest
+from psweep.extraction.prepared_document import input_provenance as _input_provenance
 
 from _helpers import write_json as _write_json
+from psweep.utils.file_io import artifact_sha256
 from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
     _should_fail_on_suspicious,
 )
 from psweep.extraction.schema_utils import load_schema
 from psweep.extraction.record_writer import write_extraction_record
+from psweep.extraction.schema_utils import build_schema_validator
 from psweep.cli.main import cli
 from psweep.utils.schema_metadata import SchemaMetadata
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def text_input():
+    return _input_provenance("text", {}, [])
 
 
 def _write_file(path: Path, content: str) -> None:
@@ -807,13 +814,16 @@ def test_write_extraction_record_includes_lineage_fields(
 
     document = tmp_path / "example.pdf"
     document.write_bytes(b"synthetic source")
-    count = write_extraction_record(
+    count, digest = write_extraction_record(
         tmp_path / "example.json",
+        input_provenance=text_input(),
         doc_path=document,
+        source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",
         result=result,
         model="gpt-5",
         schema_metadata=writer_metadata,
+        payload_validator=build_schema_validator(writer_metadata.schema),
         runtime_artifact=runtime_artifact,
         run_id="run://deterministic1234",
         provider="azure",
@@ -821,10 +831,11 @@ def test_write_extraction_record_includes_lineage_fields(
     )
 
     assert count == 2
+    assert digest == artifact_sha256(tmp_path / "example.json")
 
     output_path = tmp_path / "example.json"
     saved = json.loads(output_path.read_text(encoding="utf-8"))
-    assert saved["contract_version"] == "2.0.0"
+    assert saved["contract_version"] == "3.0.0"
     assert saved["record_id"].startswith("record://deterministic1234/")
     assert len(saved["record_id"].rsplit("/", 1)[1]) == 64
     assert saved["document"]["source_filename"] == "example.pdf"
@@ -873,11 +884,14 @@ def test_write_extraction_record_persists_structured_processing_errors(
     document.write_bytes(b"synthetic source")
     write_extraction_record(
         tmp_path / "example.json",
+        input_provenance=text_input(),
         doc_path=document,
+        source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",
         result=result,
         model="gpt-5",
         schema_metadata=writer_metadata,
+        payload_validator=build_schema_validator(writer_metadata.schema),
         runtime_artifact=None,
         run_id="run://deterministic1234",
         provider="azure",

@@ -47,10 +47,10 @@ pixi run psweep discover --config config/<domain>/run.yaml --show-effective-conf
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `domain` | required | Names the run; every output is derived under `outputs/<domain>/`. |
+| `domain` | required | Names the run; every output is derived under `outputs/<domain>/`. `--domain KEY` on `discover`, `extract`, `compile`, `validate` and `run` replaces it for that invocation (`--show-effective-config` shows `domain ... (cli)`). `run --domain` forwards it to every stage. Explicit `PATH`/`--output` still win. `curate` and `gc` take the same key as their positional argument. |
 | `schema` | `schema.json` beside the config | Extraction schema path. |
 | `models` | — | Alias → model-name map. Stages reference aliases (`primary`, `secondary`, …) so a model is changed in one place. |
-| `model_context_windows` | — | Model name → context window (positive integer) for models the runtime does not know. |
+| `model_context_windows` | — | Model name → input window in tokens (positive integer) for models the runtime does not know. See [LLM calls](#llm-calls). |
 | `reasoning_models` | — | Model names to treat as reasoning models (sent without `temperature`; JSON mode stays on). |
 | `discovery` | — | [Discovery](#discovery). |
 | `extraction` | — | [Extraction](#extraction). |
@@ -136,7 +136,7 @@ query variants of a configured page (its pagination), which belong to that page.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `runtime.max_files` | unbounded | Download budget per run; configured URLs never count. |
+| `runtime.max_files` | unbounded | Download budget per run; configured URLs never count, and neither do linked documents that selection eligibility drops after crawling. |
 | `runtime.timeout_seconds` | engine default | Request timeout, and the stall limit (time without data) for file downloads. |
 | `runtime.max_concurrent_downloads` | `2` | Parallel downloads. |
 | `runtime.min_request_interval_ms` | `0` | Minimum delay between outbound requests. |
@@ -260,7 +260,8 @@ must satisfy every mandatory requirement in `document_description`; 'partial'
 means missing optional detail, not missing required evidence. The reason quotes
 the deciding source content or identifies what is absent. In
 `review.csv`, `relevance` = grade / 4 and `llm_is_primary` = grade ≥ 3;
-selection keeps at most `keep_top` non-redundant primaries per target. Without
+`llm_selected` is blank for documents no review graded (use `curated_selected`
+for what was published); selection keeps at most `keep_top` non-redundant primaries per target. Without
 coverage, grades then reproducible provenance break ties (with `prefer_newest`,
 provably older dated editions are excluded first). With coverage, newly
 covered verified labels take priority, then grade; supported publication dates
@@ -269,7 +270,31 @@ Grades are cached by content and grading inputs in
 `discovered/.review_cache/` and reused across runs. Recordings are graded on
 their transcript: a run's copy inherits the curated copy's transcript (matched
 by SHA-256) before review. A recording not yet transcribed (first run) is kept
-without review and transcribed at extraction. Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
+without review and transcribed at extraction.
+
+A grade whose quotes are not found contiguously in one excerpt segment is
+repaired once, then settled. The repair is ONE same-model request that repeats
+the rejected quote and the failing evidence paths and restates the copy rule; it
+never supplies or fuzzy-matches text, is not used with `escalate_model` or after
+a provider error, and is a metered review attempt (a failing grade costs at most
+one extra call). If it also fails (with `escalate_model`: if both routes fail),
+the document is `review_unverifiable`: held and not curated, a terminal outcome
+whose reason shows in `review.csv` `llm_reason`. It is stored as a negative
+entry in `discovered/.review_cache/` under the grade's own key, so the same
+bytes and grading inputs are never billed again and the partition completes
+(worst case 2 calls per unique document per grading-input version). Changing a
+grading input (model, description, prompt, keywords, `max_chars`) changes the
+key and retries it; provider, transport and attempt-budget failures stay
+retryable. `human_decision` `keep`/`reject` resolves a held document.
+
+The record's `review_initial_error` reads `invalid document grade evidence:
+ungrounded <path>` (`contract` for a malformed grade). `review_initial_failure`
+(`review_escalation_failure` for the escalation route) holds the kind, failing
+evidence paths and each rejected quote truncated to 300 characters, and
+`review_initial_repair` marks a grade that was repaired; these stay only in the
+local discovery manifest.
+
+Edit `human_decision` (`keep`/`reject`) in `review.csv` and run
 `psweep curate --config …` to republish the curated selection; the next
 `psweep extract` withdraws the records of documents it dropped.
 
@@ -408,14 +433,33 @@ positionally) and writes one JSON record per document to
 |-----|---------|---------|
 | `model` | [default model](#environment-variables) | `models:` alias or model name. |
 | `provider` | `auto` | `openai`, `azure`, `anthropic`, `gemini` or `auto`. |
+| `input_mode` | `text` | PDF modality: `text` (text only), `auto` (also attach images of pages no parser could read as text or OCR), `vision` (attach images of every non-blank selected page). See [Selected-page vision](#selected-page-vision). |
 | `transcription_model` | — | `models:` alias that transcribes audio; required when audio is present. |
 | `limit` | — | Process only the first N documents. |
 | `skip_existing` | `true` | Reuse verified records (see [Reuse](#runs-reuse-and-exit-codes)). |
-| `max_context` | `600000` | Characters sent per call. With automatic targeting this is a hard limit on the final prepared input, source hints and candidate context included (characters, not tokens); otherwise longer input is truncated and reported. |
+| `max_context` | `600000` | Characters sent per call. A hard limit on the final prepared input on every path (automatic targeting, CSV/`pages.range` scope, or no targeting), source hints and candidate context included (characters, not tokens). Longer input is held, never cut to a prefix. |
 | `max_concurrent` | `4` | Documents extracted in parallel (also concurrent transcription chunks). |
 | `timeout_seconds` | `120` (`LLM_TIMEOUT`) | Per-request LLM timeout. |
-| `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR text only. |
+| `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR-derived pages only; native text layers are never corrected. |
 | `pages` | — | Page selection for large documents (below). |
+
+### Units, limits and unknowns
+
+| Setting | Unit |
+|---|---|
+| `max_context`, `pages.auto_locate.trigger_chars` | Characters of the final prepared text. Not tokens. |
+| `pages.*`, `max_selected_pages`, `coverage` page lists | PDF pages, 1-based, original numbering. |
+| `model_context_windows` | Tokens of input per model name. |
+| Request estimate | Text: 3 UTF-8 bytes per token plus message overhead, on purpose high. Images: pixels / 750 + 256 per image. |
+| Output cap | The route's output-token limit from LiteLLM's pinned local catalog, sent as `max_tokens` on extraction and locator calls. |
+| Attempts | 4 physical provider attempts per document (see [LLM calls](#llm-calls)). |
+
+A limit that cannot be established stays unknown and is never replaced by a
+guess. An unknown input window is not guarded. An unknown output limit sends no
+`max_tokens`; a truncated answer is still rejected after the fact
+(`response_truncated`). A route not known to accept images holds an image
+request. No request probes a provider for capabilities, and nothing is fetched
+from a URL.
 
 ### Page selection
 
@@ -428,7 +472,7 @@ extraction:
       trigger_chars: 200000       # default; only larger documents are targeted
       max_selected_pages: 30      # default; total, referenced pages included
       keywords: [rate schedule]   # optional cheap pre-filter
-      model: secondary            # optional locator model
+      model: secondary            # required when enabled; not the extraction model
       save_discovered: true       # write found ranges for review
 ```
 
@@ -439,12 +483,21 @@ working directory). A row's `file_path` matches a document by path, by path
 relative to the input folder, or by file name; give a file one row per range.
 CSV rows win; leave both pages empty to force the full document. `pages.range`
 (or `--pages 27,68-73`) selects pages for a single file: comma-separated pages
-and inclusive ranges.
+and inclusive ranges. Setting `pages.csv` and `pages.range` together in the config
+fails at load (the range would be ignored); the `--pages` flag still yields to a
+configured CSV.
+
+**Scope precedence**, highest first: (1) a `pages.csv` row, or a blank row for
+the full document; (2) `pages.range` / `--pages`, used only when no CSV applies; (3) `auto_locate` for a governed document without either; (4) the whole
+document. Roster-anchored extraction chooses its own windows. Whichever scope
+wins, the final input must still fit `max_context`; a manual scope controls
+which pages are read, never whether the budget applies.
 
 Targeting normally runs within each bounded extraction worker, so a slow
 locator doesn't hold up every other document. A fresh run with existing output
 performs bounded targeting preflight before deleting old records. Its `model`
-is independent of `extraction.model`; when omitted it inherits that model.
+is required when `auto_locate` is enabled and must resolve to a different
+provider/model than `extraction.model`; it is never inherited.
 Target-scoped selections retain subject identity/header context. The subject
 comes from the last configured `partition_by` field (the roster's name field),
 not from parsing a display label or guessing metadata fields. Discovery labels
@@ -456,18 +509,23 @@ and navigation do not turn a short article into a paid locator call.
 
 Automatic targeting fails closed. A document it governs (enabled, a supported
 type, no CSV row, not handled by the roster bypasses) is extracted only from a
-bounded selection, or whole when its readable text is at most `trigger_chars`.
+bounded selection, or whole when its readable text is at most `trigger_chars`
+(or `max_context` when that is smaller, so a document that cannot fit is never
+left untargeted just because it is under `trigger_chars`).
 The exact final input must fit `max_context` (equal is allowed). Otherwise the
 document is held before any extraction request: a failed outcome with category
 `targeting` and code `targeting_no_usable_scope` (the locator failed, found
-nothing, or the PDF had no readable native text) or
+nothing, or no page of the PDF could be read as text or OCR) or
 `targeting_context_budget_exceeded`. The prior record is left untouched, the
 extract stage ends `failed` (exit 1) even when other documents succeeded, so
 `run` stops before compiling; `psweep compile` can still be run by hand on the
 historical records. A CSV row, including a blank one that forces the full
-document, or `pages.range` bypasses targeting for every supported type; the
-full-document text is then truncated at `max_context` and reported. Scanned
-PDFs with no native text need such a row. `--fresh` runs the same checks
+document, or `pages.range` bypasses targeting for every supported type but not
+the budget: an input over `max_context` is held with
+`targeting_context_budget_exceeded` (also when targeting is disabled or the type
+is unsupported), never truncated. A PDF that no parser or OCR could read at all
+needs such a row (and `input_mode: auto` or `vision`) to be extracted from page
+images. `--fresh` runs the same checks
 before deleting any output and, on a hold, keeps the previous records.
 
 `auto_locate` shows the locator model the opening lines of each candidate page
@@ -482,11 +540,15 @@ marks each skipped stretch with `[Omitted pages: 28-67]`. Pages naming the
 target in a repeated header or footer count once toward the mandatory identity
 pages (the earliest occurrence is kept); pages naming it in the body all stay.
 A malformed page-range answer is rejected whole, not partly used.
+If the candidate index itself is too large for the locator's route, it is split
+in halves and the answers are combined, so every candidate is still shown; more
+than 8 index requests for one document, or one candidate that cannot be sent
+alone, holds the document.
 
 Selections are cached in `.pages/` beside the document. If a reference pass
 fails, the pages found so far are extracted with
-`coverage.targeting_incomplete` and a warning in the record; such a record and
-any record truncated at `max_context` are never reused, and the document is
+`coverage.targeting_incomplete` and a warning in the record; such a record
+is never reused, and the document is
 located again on the next run.
 With `save_discovered`, `extracted/discovered_page_ranges.csv` (the `pages.csv`
 columns, one row per range) lists the pages behind every current record, reused
@@ -502,6 +564,214 @@ connections — is retried up to 4 attempts in total with exponential backoff
 retry logs a warning with the model, the failure category and the attempt,
 prefixed with the document being processed; provider error text is never
 logged.
+
+#### Request admission
+
+Every request is measured as sent (messages, response schema, images) before a
+physical attempt, and nothing is sent or metered when it is refused. All callers
+are checked against `model_context_windows`. Extraction and locator requests are
+also checked against the pinned catalog and capped at the route's output limit
+(see [Units](#units-limits-and-unknowns)); discovery, reconciliation and audio
+transcription keep their own handling. A refusal is a failed document with
+`request_not_admitted` or `context_window_exceeded` and the prior record is
+left untouched. There is no fallback to another model.
+
+#### Schema contract: provider strict mode versus local validation
+
+The domain `schema.json` is the contract and is never rewritten to suit a
+provider. Strict provider `json_schema` mode is used only on a direct provider
+route (no endpoint override) whose model supports response schemas, and only
+when the original schema fits it (every object closed with all properties
+required, no unsupported keywords). Otherwise the request uses JSON-object mode
+with the schema in the prompt. A schema with optional properties, conditionals
+or composition therefore runs in JSON mode; that is expected, not a downgrade.
+In both modes the answer is validated locally with the format-aware validator,
+and the finalized payload is validated again before publication (see
+[Final payload acceptance](#final-payload-acceptance)). Local validation is
+authoritative: a provider accepting an answer proves nothing.
+
+#### Response outcomes and one schema-feedback generation
+
+The model's answer is classified before it is accepted. These outcomes are
+explicit failures (error `category` `model_response`) and are **never
+regenerated**, because a second paid call cannot repair them:
+
+| `code` | Meaning |
+|---|---|
+| `response_truncated` | The provider stopped at its output length limit; even schema-valid JSON is incomplete. |
+| `response_refused` | The provider refused (a `refusal` field or `content_filter` termination). |
+
+An empty answer (`response_empty`), a non-JSON answer (`response_not_json`) or a
+JSON answer the schema rejects (`schema_validation_failed`) earns **at most one**
+feedback generation. It resends the original request unchanged (same schema,
+response format, selected evidence and output cap) plus the rejected answer and
+bounded diagnostics: failing path, rule, missing/unexpected key names, expected
+type, never document or answer values. A second invalid answer fails the
+document. A repaired record carries a `schema_feedback` validation note.
+Quote/evidence authenticity failures are never regenerated; they follow the
+existing verification path. A valid `[]` abstention is final.
+
+Each document has one allowance of 4 physical provider attempts (the transient
+retry count above, not a new setting) shared by the original generation,
+the feedback generation, transport retries and the temperature fallback. A
+feedback generation runs only if an attempt remains; the failed answer's cost
+stays in the failure's usage. Roster candidate windows are separate extraction
+requests and each has its own allowance. Locator, discovery, reconciliation and
+audio-transcription requests keep their own existing semantics.
+
+The prompt states that conversions or normalization happen only when a schema
+field description explicitly requires them, that unsupported conversions yield
+`null`, and that quotes stay verbatim.
+
+### Selected-page vision
+
+`extraction.input_mode` is a PDF-only policy; other document types and the
+roster-anchored path stay text-only. Pages are rendered at full size
+(144 dpi PNG) from the captured source and sent after the text through the same
+request path, each preceded by `[Image of PDF page N]` with its original number.
+Only the pages in scope are rendered; nothing is cropped or dropped to fit.
+
+- `auto` attaches only `unreadable` pages (visual content that neither native
+  text nor OCR could read). Clean documents stay text-only and cost the same.
+  A document with no readable text at all proceeds on images instead of
+  failing, once its scope is set (see [Page selection](#page-selection)).
+- **Re-run cost.** A record with unreadable pages is `parser_partial` and is
+  never reused, even when images covered those pages. A domain that sets `auto`
+  or `vision` therefore pays again, including image input, on every re-run of
+  a document with unreadable pages. There is no switch to accept such a record
+  as final.
+- `vision` attaches every non-blank selected page, alongside its text. Use page
+  targeting or ranges; an unscoped long PDF is held by a known context window.
+- The route must be known to accept images (LiteLLM's pinned catalog,
+  checked on the model name and the resolved model). An unmapped proxy alias
+  holds with `request_not_admitted` before any request; there is no fallback
+  to another model. Image size is estimated from each PNG's own dimensions
+  (pixels / 750 + 256 per image, high on purpose) and counted against known
+  input windows.
+- Quotes are still verified against text only. Content that exists only in an
+  image has no text to match, so a quote taken from it is rejected like any
+  other unverifiable quote. The record's `input` block states the mode, the
+  per-page representation, `visual_pages` and `render_dpi`; coverage
+  `image_only_pages` lists sent pages that had no readable text, with a matching
+  warning that their values rest on page images alone. A page that has text
+  (`vision` mode) is not image-only.
+- Native PDF transport is not implemented.
+- A non-`text` mode joins the extraction fingerprint (mode and dpi), so
+  switching modes re-extracts. `text` adds nothing to it.
+
+### Record input provenance
+
+Every record has an `input` block (record contract 3.0.0), outside the domain
+payload and bounded to metadata (no rendered bytes):
+`input_mode` (the mode in effect; the roster path and non-PDF documents are
+`text`), `pages` (each selected PDF page with `status`, `chars`,
+`image_fraction` and, when OCR output was obtained for it, `ocr_sha256`),
+`visual_pages` and `render_dpi` (only when images were sent). Coverage gains
+`unreadable_pages` (the selected pages no parser could read) and
+`image_only_pages`; the `parser_partial` warning names the unreadable pages
+(`PDF pages 4,7 could not be read as text or OCR`). Coverage has no
+`context_truncated` key: an oversized input is held, never truncated. Records
+declare `contract_version` `3.0.0`; records of any other version are not read
+and are re-extracted.
+
+**Reuse proof for OCR.** A record is reusable only while every valid OCR page
+entry in the cache agrees with the `ocr_sha256` the record used for that page.
+A missing entry is unknown and regenerable, so it keeps reuse (no provider call);
+a present entry that differs, or one for a page the record could not read, makes
+the record stale; entries for pages outside the record's selection are ignored.
+Transcripts carry a `derived_text_sha256` proof in the run manifest instead. The
+check repeats at consumption.
+
+### Source identity
+
+Each extracted record describes the exact bytes that were read. Extraction
+snapshots the source into a private temporary directory while hashing the same
+bytes, requires that digest to equal the one fingerprinted during preparation,
+and uses the snapshot for every read, quote check, and the record's
+`document.source_sha256`. If the file changed after preparation the document
+fails with `source_changed` before any paid request and nothing is published;
+rerun extraction. The original path remains the provenance path. Snapshots exist
+only for active consumers (including one-at-a-time roster scans and bounded
+fresh preflight workers), are owner-only, and are removed when the consumer
+finishes or is interrupted. Capture occurs **before** targeting: locator indexes,
+filtered sections, candidate windows, quote checks, and publication share the
+captured source and verified effective text. Original paths still key provenance
+and `.pages/` / `.sections/` sidecars.
+
+Preparation retains compact method/text/representation identities. Missing or
+changed authoritative browser/API text cannot fall back to native text under its
+old fingerprint. Transcripts must match the source and transcriber identity. Raw
+OCR is derived from the source per page (see **Caches**); each record stores the
+digest of the OCR text it used per page (see **Record input provenance**).
+Derived OCR/transcript caches can be created without perpetual re-extraction;
+changed verified derived text rejects reuse.
+Roster/no-match decisions and reused records are rechecked at consumption.
+Fresh preflight releases captures promptly and rechecks retained scope identities
+inside workers. Prior records survive a mismatch; stale-product cleanup occurs
+only after every fresh document succeeds (successful siblings may still publish).
+An empty fresh inventory leaves prior outputs intact. Saved page scopes exclude
+failed reuse as well as failed new extraction. Cached-only audio uses the same
+transcript acceptance rule as configured transcription; newly appearing derived
+text must match the selected record's consumption proof before reporting reuse.
+Manifest record digests come from the exact bytes atomically published by the
+writer (which returns item count plus SHA-256), never a later live-output hash.
+
+### Final payload acceptance
+
+The domain schema is the contract for what is published, not only for what the
+model returned. After every mutation (normalization, roster filtering, quote and
+evidence verification) the record writer validates the finalized payload against
+the resolved schema, then the record envelope, then publishes atomically. If
+quote filtering removes the only row of a `minItems: 1` array, or evidence
+nulling breaks a composite constraint, the document fails with
+`schema_contract` and any previous record is left untouched. Unsupported claims
+are never reinstated or invented to satisfy the schema. Arrays that the schema
+allows to be empty still publish empty after filtering.
+
+### Current admission versus preserved history
+
+Record bytes under `extracted/` are history; compilation reads only what the
+output's **current admission** admits. Every extraction invocation publishes
+`run_manifests/current_admission.json` atomically (not a `*.manifest.json` run
+manifest) with a disposition for each document in its scope, taken *before*
+`limit`: `new` or `reused` (admitted, with the exact `record_sha256` published
+or verified), `failed`, or `deferred` (not admitted). A scoped run (single file,
+subtree) replaces only its own documents and keeps other entries while their
+record file exists. A failed or deferred document's previous record is
+**preserved on disk but not admitted**, so a partial run compiles its succeeded
+and verified-reused siblings and never a stale sibling. Terminal targeting holds
+stay failures. Admission is never inherited from an earlier globally successful
+run.
+
+Extraction holds a single-writer lock per output (`.<output>.publication.lock`,
+beside the output directory); a second concurrent extraction into the same
+output is rejected. Reuse decided at preparation is re-verified against the
+record's proof digest once the lock is held; a record replaced in between fails
+that document (rerun extraction).
+
+Each admitted pointer entry carries the record digest plus the consumed
+`source_sha256` and `input_fingerprint`. A run marks the documents it will
+rewrite `deferred` before writing, so an interrupted run leaves them excluded
+from compilation until `psweep extract` is rerun.
+
+`psweep compile` (and `compile_extractions`) select admitted records through one
+selector shared by provenance checks, row/roster/reconciliation compilation,
+dry-run, and the build fingerprint, and read exactly the bytes whose digest
+admission recorded. Fail-closed cases: unreadable/malformed pointer, an admitted
+record that is missing or whose bytes changed, and an extraction directory with
+run manifests but no admission (rerun `psweep extract`). Excluded preserved
+records are reported as a count, not a warning, so `provenance_policy` cannot
+readmit them. A standalone directory with no run evidence compiles as
+`historical_unverified` (recorded in the compile manifest as
+`outputs.admission.qualification`; `current` otherwise). The build fingerprint
+includes the qualification and admitted digests, so a change in admission makes
+a compiled table stale even when record bytes are unchanged.
+
+When every admitted record is a valid empty result and nothing failed, an empty
+table is a successful result. If failed documents exist and the compiled table
+has no rows, compile status is `failed` (nonzero exit) instead of a clean
+success; the table is still written. The extraction manifest `status` adds
+`items` and `zero_item_records`. Admission never calls a model.
 
 ### Roster-anchored extraction
 
@@ -697,7 +967,7 @@ Supported inputs (discovery downloads exactly these; extraction reads them):
 
 | Kind | Extensions | Read as |
 |------|-----------|---------|
-| Documents | `.pdf` `.doc` `.docx` `.txt` | Text, with OCR for scanned PDFs |
+| Documents | `.pdf` `.doc` `.docx` `.txt` | Text; PDFs are judged page by page (below) |
 | Web pages | `.html` `.htm` | Main text |
 | Data | `.csv` `.xlsx` `.json` | One `Header: value \| …` line per record (CSV, each sheet, JSON record arrays such as Socrata/ArcGIS/GeoJSON/CKAN); other JSON as indented text |
 | Audio | `.mp3` `.m4a` `.wav` `.ogg` `.flac` | Transcript ([Audio](#audio)) |
@@ -746,7 +1016,14 @@ that target; changing a target's `urls` or rendered queries re-runs it.
   additively, and the next run re-fetches the listing, reuses every earlier
   download whose SHA-256 still matches (no request, no `max_files` slot),
   skips terminal outcomes (e.g. 404) and fetches only the rest. A capped
-  listing converges batch by batch.
+  listing converges batch by batch. An incomplete partition never removes a
+  document the run did not decide, but every final per-document decision still
+  applies to the consolidated `curated/` and `download_index.csv`: a human
+  `reject` (`psweep curate`), a final non-selection (review `keep_top`,
+  `max_per_target`, a rejected grade) and a document republished under a new
+  name. Only "this completed target no longer lists the document" waits for the
+  partition to complete. Extraction records of a removed document become
+  historical; nothing under `extracted/` is deleted by discovery.
 - **Transient** failures (timeouts, connection errors, truncated streams, HTTP
   408/429/5xx) are retried in the run and leave the item incomplete. **Bot
   challenges** (429/5xx with `cf-mitigated`, `x-vercel-mitigated` or
@@ -758,7 +1035,16 @@ that target; changing a target's `urls` or rendered queries re-runs it.
 
 **Extraction reuse.** A record is reused only when source, schema, resolved
 model and settings, and record bytes still match; otherwise it is re-extracted.
-Reuse needs no credentials. A record whose source document no longer exists
+The settings are the consumed source and effective-text digests, the locator
+configuration and behaviour version, a non-`text` `input_mode` with its render
+dpi, the extraction behaviour version (prompt and one-feedback-generation
+policy) and, for PDFs only, the OCR and page-representation versions. Changing
+a PDF-only version never re-extracts other formats, and `input_mode: text`
+adds nothing to the fingerprint. A record is also never reused when it is
+`parser_partial`, has `targeting_incomplete` under automatic targeting, has a
+different `contract_version`, or disagrees with a present OCR page entry (see
+[Record input provenance](#record-input-provenance)). Reuse needs no
+credentials. A record whose source document no longer exists
 under the input folder is withdrawn: extract deletes it, names it in the
 summary and lists it under `withdrawn` in the run manifest, so compile drops
 its rows. Records from other input folders are left alone, and `validate`
@@ -767,9 +1053,34 @@ the output after a successful preflight. `compile --fresh` clears stale
 compiled files; `validate --fresh` clears `validated/`. `run --fresh` passes
 `--fresh` to every stage.
 
-**Caches.** OCR text and transcripts: `.text/<filename>.txt` + `.meta.json`
-beside the document, verified by size, mtime and SHA-256 and carried to a
-re-downloaded file with the same SHA-256. Page/section targeting: `.pages/`,
+**PDF page representation.** Each selected page is judged on its own, never by
+a document total. A page with a text layer is `native`. A page mostly covered
+by raster images (at least half its area) with under 500 characters of text,
+or with no text and visible images or drawings, is OCR-ed locally and marked
+`ocr`. A page with nothing to read is `blank` (OCR is never attempted and it
+counts as covered); decorative images such as logos do not change that. A
+raster page that OCR cannot read (or when OCR is unavailable) is `unreadable`.
+Only `native`, `ocr` and `blank` pages count as `extracted_pages`, so an
+unreadable selected page makes the record's coverage `parser_partial` with a
+warning instead of being certified as extracted. The per-page status is in the
+extraction metadata under `pages` and keeps the original page numbers; the
+page locator's index OCRs raster pages too, so scans can be targeted.
+`ocr_corrections` apply only to OCR pages, each time the text is read.
+`pdf_inspection` and discovery screening read native text only.
+
+**Caches.** Raw OCR: one entry per page in `.text/<filename>.ocr/<page>.json`,
+keyed by the source SHA-256, the page number and the OCR engine/render version,
+and shared by the page locator's index, page-range runs and whole-document
+extraction, so a raster page is OCR-ed once. Entries hold raw text only (the
+configured corrections are applied on read) and are replaced atomically; an
+unreadable, mismatched or tampered entry is a miss and is rewritten. The entry
+key includes the PyMuPDF version but not the Tesseract version, so upgrading
+Tesseract keeps existing OCR text until the `.ocr` directories are deleted.
+Discovery moves entries with their document (into `curated/`, to a same-SHA
+re-download, and out on removal). Transcripts
+and browser/API renders: `.text/<filename>.txt` + `.meta.json` beside the
+document, verified by size, mtime and SHA-256 and carried to a re-downloaded file
+with the same SHA-256. Page/section targeting: `.pages/`,
 `.sections/`. Review grades: `discovered/.review_cache/`. Delete a cache
 directory to force that work again.
 
@@ -786,6 +1097,17 @@ outputs/<domain>/
 ├── compiled/                    # <domain>.csv/.xlsx, run_accounting.json
 └── validated/                   # cells.csv, summary.csv, summary.json, <alias>/
 ```
+
+## Offline verification
+
+Testing is controlled by pytest/Pixi, not by domain `run.yaml` settings.
+`pixi run --locked -e dev test` remains the complete offline CI gate, including
+real local TLS, subprocess CLI, ffmpeg, and large-scale regressions.
+`pixi run --locked -e dev test-fast` is an optional development loop excluding
+explicit `integration`, `slow`, and `live` markers; unmarked tests still run.
+Unknown markers fail collection. Neither command enables external endpoints
+or changes extraction/review caches. See [Contributing](contributing.md) for
+focused commands and the explicitly opt-in live layer.
 
 ## Environment variables
 

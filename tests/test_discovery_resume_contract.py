@@ -695,6 +695,9 @@ def test_owner_whose_name_changes_keeps_one_curated_path(monkeypatch, tmp_path):
     cache = text_cache_paths(old)[0]
     cache.parent.mkdir(exist_ok=True)
     cache.write_text("cached")
+    ocr_entry = old.parent / ".text" / "old-slug.pdf.ocr" / "1.json"
+    ocr_entry.parent.mkdir()
+    ocr_entry.write_text("{}")
     assert old.is_file()
 
     landing["https://a.gov/doc"] = "https://a.gov/files/new-slug.pdf"
@@ -704,6 +707,7 @@ def test_owner_whose_name_changes_keeps_one_curated_path(monkeypatch, tmp_path):
     DiscoveryEngine().run(request)
     assert {p.name for p in curated.glob("*.pdf")} == {"new-slug.pdf", "b.pdf"}
     assert not cache.exists()
+    assert not ocr_entry.exists()
     rows = [row for row in _index_rows(tmp_path) if row["url"] == "https://a.gov/doc"]
     assert [row["relative_path"] for row in rows] == ["by_label/target/new-slug.pdf"]
 
@@ -1137,3 +1141,22 @@ def test_policy_denial_stays_a_selection_skip(monkeypatch, tmp_path):
     assert result.status == "success" and manifest["errors"] == []
     assert records["a.pdf"]["status"] == "skipped_selection_filter"
     assert "non-public" in records["a.pdf"]["reason"]
+
+
+def test_excluded_link_prefix_cannot_starve_a_later_wanted_link(monkeypatch, tmp_path):
+    """Links excluded only after crawling must not consume the raw-link budget forever."""
+    unwanted = [f"https://agency.gov/docs/guideline-{n}.pdf" for n in range(6)]
+    wanted = "https://agency.gov/docs/permit-11541.pdf"
+    listing, _fetched = _listing(monkeypatch, [*unwanted, wanted])
+    request = _listing_request(
+        tmp_path,
+        listing,
+        max_files=5,
+        selection_relevance_exclude_any_terms=["guideline"],
+    )
+    shared = tmp_path / DOMAIN_DIR / "curated/_shared"
+    for _run in range(4):
+        DiscoveryEngine().run(request)
+        if (shared / "permit-11541.pdf").is_file():
+            break
+    assert sorted(p.name for p in shared.iterdir()) == ["permit-11541.pdf", "permits.html"]

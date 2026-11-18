@@ -32,6 +32,11 @@
         "maxItems": 2,
         "items": {"type": "integer", "minimum": 1}
       }
+    },
+    "page_list": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "integer", "minimum": 1}
     }
   },
   "properties": {
@@ -47,7 +52,7 @@
     },
     "contract_version": {
       "type": "string",
-      "const": "2.0.0",
+      "const": "3.0.0",
       "description": "Version of this extraction record contract."
     },
     "document": {
@@ -138,6 +143,46 @@
         "extracted_at": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_mode", "pages", "visual_pages"],
+      "description": "How the source was read: mode, per-page representation and image use. Metadata only; no rendered bytes.",
+      "properties": {
+        "input_mode": {
+          "enum": ["text", "auto", "vision"]
+        },
+        "pages": {
+          "type": "array",
+          "description": "Selected PDF pages as represented to the model; empty for other documents.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["page", "status", "chars", "image_fraction"],
+            "properties": {
+              "page": {"type": "integer", "minimum": 1},
+              "status": {"enum": ["native", "ocr", "blank", "unreadable"]},
+              "chars": {"type": "integer", "minimum": 0},
+              "image_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+              "ocr_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+                "description": "Digest of the raw OCR text used for this page; reuse is stale when the cached entry differs."
+              }
+            }
+          }
+        },
+        "visual_pages": {
+          "$ref": "#/definitions/page_list",
+          "description": "Original page numbers also sent as images."
+        },
+        "render_dpi": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rendering resolution of the sent images; present only when images were sent."
         }
       }
     },
@@ -245,9 +290,6 @@
               "type": "integer",
               "minimum": 0
             },
-            "context_truncated": {
-              "type": "boolean"
-            },
             "selected_page_ranges": {
               "$ref": "#/definitions/page_ranges"
             },
@@ -271,6 +313,14 @@
             },
             "parser_partial": {
               "type": "boolean"
+            },
+            "unreadable_pages": {
+              "$ref": "#/definitions/page_list",
+              "description": "Selected PDF pages neither native text nor OCR could read."
+            },
+            "image_only_pages": {
+              "$ref": "#/definitions/page_list",
+              "description": "Pages sent as images with no readable text, so their quotes have no text to be checked against."
             }
           }
         },
@@ -294,6 +344,7 @@
     "contract_version",
     "document",
     "lineage",
+    "input",
     "payload"
   ]
 }

@@ -7,6 +7,7 @@ the content-addressed grade cache, and graceful skips.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from discovery_helpers import MeteredReviewClient
@@ -27,6 +28,11 @@ def _fake_model_resolution(monkeypatch):
         "resolve_llm_kwargs",
         lambda *_args, **_kwargs: {"model": "fixture", "provider": "fixture"},
     )
+
+
+def _cached_grades(cache: Path) -> list[Path]:
+    """Cache entries that hold a grade; a terminal negative entry never counts."""
+    return [p for p in cache.glob("*.json") if "llm" in json.loads(p.read_text())]
 
 
 def _record(tmp_path: Path, name: str, label: str) -> dict:
@@ -789,7 +795,7 @@ def test_invalid_primary_evidence_is_pending_without_success_cache(tmp_path, mon
     reviewer._client = Client()
     reviewer.review([record], [])
     assert record["review_failed"] and not record["review_selected"]
-    assert not list((tmp_path / "cache").glob("*.json"))
+    assert not _cached_grades(tmp_path / "cache")
 
 
 _TOC = "1. Territory to Which the Rate Schedule Applies ........ 12\nNONRESIDENTIAL ........ 100"
@@ -1165,3 +1171,422 @@ def test_forged_cached_quote_is_not_a_successful_reuse(tmp_path, monkeypatch):
     assert record["review_selected"] and not record["review_cached"]
     assert len(reviewer._client.prompts) == 2
     assert not reviewer._grade_memo and not reviewer._dedup_memo
+
+
+def _shared_records(tmp_path, names):
+    """Source-only records: no roster, no target metadata, one shared group."""
+    records = [_record(tmp_path, name, "unused") for name in names]
+    for record in records:
+        record.pop("target_metadata")
+        record.pop("target_label")
+    return records
+
+
+def _primary(relevance=0.9):
+    return {"is_primary": True, "relevance": relevance, "doc_kind": "permit", "reason": "fixture"}
+
+
+def _guidance():
+    return {"is_primary": False, "relevance": 0.1, "doc_kind": "guidance", "reason": "fixture"}
+
+
+def test_source_only_group_qualifies_independent_permits_and_rejects_guidance(tmp_path):
+    permits = [f"permit-{n}.pdf" for n in range(1, 4)]
+    guidance = ["guidelines.pdf", "policy.pdf"]
+    records = _shared_records(tmp_path, [*guidance[:1], *permits, *guidance[1:]])
+    reviewer = DocumentReviewer(
+        document_description="issued permits", keep_top=5, deduplicate_redundant=False
+    )
+    _stub_grades(
+        reviewer, {**{n: _primary() for n in permits}, **{n: _guidance() for n in guidance}}
+    )
+    reviewer.review(records, [])
+    selected = {Path(r["path"]).name for r in records if r["review_selected"]}
+    assert selected == set(permits)
+    assert not any(r.get("review_redundant") for r in records)
+
+
+def test_source_only_group_cap_is_one_shared_keep_top(tmp_path):
+    """keep_top bounds the whole shared group, not each facility."""
+    names = [f"permit-{n}.pdf" for n in range(1, 7)]
+    records = _shared_records(tmp_path, names)
+    reviewer = DocumentReviewer(
+        document_description="issued permits", keep_top=5, deduplicate_redundant=False
+    )
+    _stub_grades(reviewer, {n: _primary(0.9 - i / 100) for i, n in enumerate(names)})
+    reviewer.review(records, [])
+    selected = [Path(r["path"]).name for r in records if r["review_selected"]]
+    assert len(selected) == 5 and "permit-6.pdf" not in selected
+
+
+def test_source_only_default_keep_top_keeps_a_single_permit(tmp_path):
+    """The default cap is why a shared collection must configure keep_top deliberately."""
+    names = ["permit-1.pdf", "permit-2.pdf"]
+    records = _shared_records(tmp_path, names)
+    reviewer = DocumentReviewer(document_description="issued permits", deduplicate_redundant=False)
+    _stub_grades(reviewer, {n: _primary() for n in names})
+    reviewer.review(records, [])
+    assert sum(r["review_selected"] for r in records) == 1
+
+
+# --- Step 12b R1: diagnosable grounding failures -------------------------------------------
+
+
+def _grounding_failure(segments, **evidence_overrides):
+    reviewer = DocumentReviewer(document_description="records", coverage={"role": "need"})
+    evidence = _evidence("anchor")
+    evidence.update(evidence_overrides)
+    with pytest.raises(document_reviewer.ReviewError) as caught:
+        reviewer._verify_evidence({**_equal_grade(1.0), "evidence": evidence}, segments)
+    return caught.value
+
+
+def test_ungrounded_quote_names_kind_and_path_but_keeps_text_out_of_the_message():
+    error = _grounding_failure(["anchor text"], content_quote="fabricated words")
+    assert str(error) == "invalid document grade evidence: ungrounded evidence.content_quote"
+    assert error.failure == {
+        "kind": "ungrounded",
+        "paths": ["evidence.content_quote"],
+        "quotes": {"evidence.content_quote": "fabricated words"},
+    }
+
+
+def test_every_failing_path_is_named_including_structured_and_coverage_quotes():
+    error = _grounding_failure(
+        ["anchor text"],
+        scope={"value": "s", "quote": "invented scope"},
+        coverage={"role": {"quote": "invented coverage", "scope": "s"}},
+    )
+    assert error.failure["paths"] == ["evidence.scope", "evidence.coverage.role"]
+    assert str(error).endswith("ungrounded evidence.scope, evidence.coverage.role")
+
+
+@pytest.mark.parametrize(
+    ("segments", "quote"),
+    [
+        (["anchor alpha The Regu", "la tion beta"], "The Regula"),  # straddles a sample boundary
+        (["anchor alpha The Regu", "la tion beta"], "The Regulation"),  # word completed past a cut
+    ],
+)
+def test_quote_across_a_sample_boundary_is_ungrounded(segments, quote):
+    error = _grounding_failure(segments, content_quote=quote)
+    assert error.failure["kind"] == "ungrounded"
+    assert error.failure["paths"] == ["evidence.content_quote"]
+
+
+def test_contract_mismatch_is_distinct_from_an_ungrounded_quote():
+    reviewer = DocumentReviewer(document_description="records")
+    grade = {**_equal_grade(0.25), "evidence": _evidence("anchor")}  # is_primary contradicts level
+    with pytest.raises(document_reviewer.ReviewError) as caught:
+        reviewer._verify_evidence(grade, ["anchor text"])
+    assert str(caught.value) == "invalid document grade evidence: contract"
+    assert caught.value.failure == {"kind": "contract", "paths": [], "quotes": {}}
+
+
+def test_rejected_quote_text_is_truncated_to_300_characters():
+    error = _grounding_failure(["anchor text"], content_quote="x" * 400)
+    assert error.failure["quotes"]["evidence.content_quote"] == "x" * 300
+
+
+def _grounding_client(quote: str):
+    class Client(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            evidence = _evidence("source evidence")
+            evidence["content_quote"] = quote
+            return {"data": {"grade": 4, "doc_kind": "source", "reason": "r", "evidence": evidence}}
+
+    return Client()
+
+
+def test_review_audit_keeps_failure_detail_and_notes_count_grounding_failures(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        document_utils, "extract_text_from_document", lambda _p: "source evidence " * 100
+    )
+    record = _record(tmp_path, "source.txt", "A")
+    reviewer = DocumentReviewer(document_description="records", cache_dir=tmp_path / "cache")
+    reviewer._client = _grounding_client("document dated")
+    notes: list[str] = []
+    reviewer.review([record], notes)
+    assert record["review_failed"] and record["review_retryable"] is False
+    assert record["review_initial_error"] == (
+        "invalid document grade evidence: ungrounded evidence.content_quote"
+    )
+    assert record["review_error"] == "review unverifiable: " + record["review_initial_error"]
+    assert record["review_initial_failure"] == {
+        "kind": "ungrounded",
+        "paths": ["evidence.content_quote"],
+        "quotes": {"evidence.content_quote": "document dated"},
+    }
+    assert any("0 repaired, 1 unverifiable" in note for note in notes)
+    assert not _cached_grades(tmp_path / "cache")
+
+
+def test_a_grounding_failure_costs_one_call_plus_one_repair_and_a_malformed_one_two(
+    tmp_path, monkeypatch
+):
+    """Pin the metering contract: a grounding failure gets one repair; malformed replies a retry."""
+    monkeypatch.setattr(
+        document_utils, "extract_text_from_document", lambda _p: "source evidence " * 100
+    )
+    record = _record(tmp_path, "source.txt", "A")
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._client = _grounding_client("invented")
+    reviewer.review([record], [])
+    assert reviewer.get_costs()["llm_calls"] == 2 and record["review_failed"]
+
+    malformed = _record(tmp_path, "malformed.txt", "B")
+    replies = iter([{"data": {"grade": 9}}, None])
+
+    class Flaky(MeteredReviewClient):
+        def respond(self, **_kwargs):
+            return next(replies) or {
+                "data": {
+                    "grade": 4,
+                    "doc_kind": "k",
+                    "reason": "r",
+                    "evidence": _evidence("source evidence"),
+                }
+            }
+
+    other = DocumentReviewer(document_description="records")
+    other._client = Flaky()
+    other.review([malformed], [])
+    assert malformed["review_selected"] and other.get_costs()["llm_calls"] == 2
+
+
+# --- Step 12b R2: one bounded grounding repair ------------------------------------------------
+
+_RUN_TOGETHER = "The permit documentdated May 2008 authorizes operation. "
+
+
+class _RepairClient(MeteredReviewClient):
+    """First answer is paraphrased (``document dated``); a repair may answer verbatim."""
+
+    def __init__(self, *quotes: str) -> None:
+        super().__init__()
+        self.quotes = list(quotes)
+        self.follow_ups: list = []
+
+    def respond(self, *, text, schema, system_prompt, user_prompt, follow_up=None):
+        self.follow_ups.append(follow_up)
+        quote = self.quotes.pop(0)
+        evidence = _evidence("documentdated")
+        evidence["content_quote"] = quote
+        return {"data": {"grade": 4, "doc_kind": "permit", "reason": "r", "evidence": evidence}}
+
+
+def _repair_review(tmp_path, monkeypatch, client, **kwargs):
+    monkeypatch.setattr(document_utils, "extract_text_from_document", lambda _p: _RUN_TOGETHER * 30)
+    record = _record(tmp_path, "permit.txt", "A")
+    reviewer = DocumentReviewer(
+        document_description="permits", cache_dir=tmp_path / "cache", **kwargs
+    )
+    reviewer._client = client
+    notes: list[str] = []
+    reviewer.review([record], notes)
+    return reviewer, record, notes
+
+
+def test_one_repair_turns_a_paraphrased_quote_into_a_verbatim_grade(tmp_path, monkeypatch):
+    client = _RepairClient("document dated", "documentdated")
+    reviewer, record, notes = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_selected"] and not record.get("review_failed")
+    assert len(client.follow_ups) == 2 and client.follow_ups[0] is None
+    assert reviewer.get_costs()["llm_calls"] == 2
+    assert record["review_initial_repair"]["kind"] == "ungrounded"
+    assert record["review_initial_repair"]["quotes"] == {"evidence.content_quote": "document dated"}
+    assert any("1 repaired" in note for note in notes)
+
+
+def test_repair_names_the_rejected_text_but_never_supplies_source_text(tmp_path, monkeypatch):
+    client = _RepairClient("document dated", "documentdated")
+    _repair_review(tmp_path, monkeypatch, client)
+    assistant, user = client.follow_ups[1]
+    assert assistant["role"] == "assistant" and "document dated" in assistant["content"]
+    assert user["role"] == "user"
+    for expected in ("evidence.content_quote", "document dated", "character for character"):
+        assert expected in user["content"]
+    assert "documentdated" not in user["content"]
+    assert "[...]" in user["content"]
+
+
+def test_repaired_grade_is_cached_under_the_unchanged_key_and_reused_free(tmp_path, monkeypatch):
+    _repair_review(tmp_path, monkeypatch, _RepairClient("document dated", "documentdated"))
+    repaired = {p.name for p in (tmp_path / "cache").glob("*.json")}
+    clean_root = tmp_path / "clean"
+    clean_root.mkdir()
+    _repair_review(clean_root, monkeypatch, _RepairClient("documentdated"))
+    assert repaired == {p.name for p in (clean_root / "cache").glob("*.json")}
+    assert len(repaired) == 1
+    again = _RepairClient()  # a second run must not call the model
+    _, record, _ = _repair_review(tmp_path, monkeypatch, again)
+    assert record["review_cached"] and record["review_selected"] and not again.follow_ups
+
+
+def test_a_second_ungrounded_answer_fails_closed_after_exactly_two_calls(tmp_path, monkeypatch):
+    client = _RepairClient("document dated", "documents dated")
+    reviewer, record, notes = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_failed"] and not record["review_selected"]
+    assert record["review_error"].endswith("ungrounded evidence.content_quote")
+    assert reviewer.get_costs()["llm_calls"] == 2
+    assert not _cached_grades(tmp_path / "cache")
+    assert any("0 repaired, 1 unverifiable" in note for note in notes)
+
+
+def test_a_malformed_repair_answer_keeps_the_original_grounding_failure(tmp_path, monkeypatch):
+    class Client(_RepairClient):
+        def respond(self, **kwargs):
+            if kwargs.get("follow_up"):
+                self.follow_ups.append(kwargs["follow_up"])
+                return {"data": {"grade": 9}}
+            return super().respond(**kwargs)
+
+    client = Client("document dated")
+    _, record, _ = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_failed"]
+    assert record["review_error"].endswith("ungrounded evidence.content_quote")
+
+
+def test_repair_draws_on_the_attempt_budget(tmp_path, monkeypatch):
+    from psweep.discovery.attempt_budget import AttemptBudget
+
+    client = _RepairClient("document dated", "documentdated")
+    reviewer, record, _ = _repair_review(
+        tmp_path, monkeypatch, client, attempt_budget=AttemptBudget(max_review_calls=1)
+    )
+    assert record["review_failed"] and record["review_budget_exhausted"]
+    assert reviewer.get_costs()["llm_calls"] == 1
+
+
+def test_provider_errors_are_not_repaired(tmp_path, monkeypatch):
+    class Client(_RepairClient):
+        def respond(self, **kwargs):
+            self.follow_ups.append(kwargs.get("follow_up"))
+            raise RuntimeError("provider down")
+
+    client = Client()
+    _, record, _ = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_failed"] and "LLM grade call failed" in record["review_error"]
+    assert len(client.follow_ups) == 1
+
+
+def test_a_valid_first_answer_is_never_repaired(tmp_path, monkeypatch):
+    client = _RepairClient("documentdated")
+    reviewer, record, _ = _repair_review(tmp_path, monkeypatch, client)
+    assert record["review_selected"] and "review_initial_repair" not in record
+    assert reviewer.get_costs()["llm_calls"] == 1
+
+
+# --- Step 12b R3: convergent terminal outcome ---------------------------------------------
+
+
+def _cached_run(tmp_path, monkeypatch, client, *, description="permits", **kwargs):
+    """Review one unchanged document against a shared cache directory."""
+    monkeypatch.setattr(document_utils, "extract_text_from_document", lambda _p: _RUN_TOGETHER * 30)
+    record = _record(tmp_path, "permit.txt", "A")
+    reviewer = DocumentReviewer(
+        document_description=description, cache_dir=tmp_path / "cache", **kwargs
+    )
+    reviewer._client = client
+    notes: list[str] = []
+    reviewer.review([record], notes)
+    return reviewer, record, notes
+
+
+def test_a_failed_repair_is_a_terminal_visible_unverifiable_outcome(tmp_path, monkeypatch):
+    from psweep.utils.retry import is_retryable
+
+    client = _RepairClient("document dated", "documents dated")
+    reviewer, record, notes = _cached_run(tmp_path, monkeypatch, client)
+    assert record["review_failed"] and record["review_unverifiable"]
+    assert record["review_retryable"] is False and not is_retryable(record)
+    assert not record["review_selected"]
+    assert record["review_error"].startswith("review unverifiable: invalid document grade evidence")
+    assert "unverifiable" in record["review_reason"]  # visible in review.csv `llm_reason`
+    assert record["review_initial_failure"]["kind"] == "ungrounded"
+    assert any("0 repaired, 1 unverifiable" in note for note in notes)
+    (entry,) = (tmp_path / "cache").glob("*.json")
+    assert entry.stem == reviewer._cache_key(
+        str(tmp_path / "permit.txt"), "", record["review_target_context"]
+    )
+    assert "llm" not in json.loads(entry.read_text())
+
+
+def test_the_same_inputs_are_never_billed_again_and_the_partition_can_complete(
+    tmp_path, monkeypatch
+):
+    from psweep.utils.retry import is_retryable
+
+    _cached_run(tmp_path, monkeypatch, _RepairClient("document dated", "documents dated"))
+    again = _RepairClient()
+    reviewer, record, _ = _cached_run(tmp_path, monkeypatch, again)
+    assert not again.follow_ups and reviewer.get_costs()["llm_calls"] == 0
+    assert record["review_unverifiable"] and not is_retryable(record)
+    assert record["review_initial_failure"]["quotes"] == {
+        "evidence.content_quote": "documents dated"
+    }
+
+
+def test_a_changed_grading_input_retries_automatically(tmp_path, monkeypatch):
+    _cached_run(tmp_path, monkeypatch, _RepairClient("document dated", "documents dated"))
+    retry = _RepairClient("documentdated")
+    _, record, _ = _cached_run(tmp_path, monkeypatch, retry, description="issued air permits")
+    assert record["review_selected"] and not record.get("review_unverifiable")
+    assert len(retry.follow_ups) == 1
+
+
+def test_provider_failure_and_budget_exhaustion_stay_retryable_with_no_negative_entry(
+    tmp_path, monkeypatch
+):
+    from psweep.discovery.attempt_budget import AttemptBudget
+
+    class Down(_RepairClient):
+        def respond(self, **_kwargs):
+            raise RuntimeError("provider down")
+
+    _, record, _ = _cached_run(tmp_path, monkeypatch, Down())
+    assert record["review_retryable"] is True and "review_unverifiable" not in record
+    other = tmp_path / "budget"
+    other.mkdir()
+    _, record, _ = _cached_run(
+        other,
+        monkeypatch,
+        _RepairClient("document dated", "documentdated"),
+        attempt_budget=AttemptBudget(max_review_calls=1),
+    )
+    assert record["review_retryable"] is True and "review_unverifiable" not in record
+    assert not list((tmp_path / "cache").glob("*.json"))
+    assert not list((other / "cache").glob("*.json"))
+
+
+def test_an_unverifiable_document_with_an_escalation_route_is_also_terminal(tmp_path, monkeypatch):
+    monkeypatch.setattr(document_utils, "extract_text_from_document", lambda _p: _RUN_TOGETHER * 30)
+
+    def review(small, large):
+        record = _record(tmp_path, "permit.txt", "A")
+        reviewer = DocumentReviewer(
+            document_description="permits", escalate_model="large", cache_dir=tmp_path / "cache"
+        )
+        reviewer._client, reviewer._escalation_client = small, large
+        reviewer.review([record], [])
+        return record
+
+    small, large = _RepairClient("document dated"), _RepairClient("documents dated")
+    record = review(small, large)
+    assert record["review_unverifiable"] and record["review_retryable"] is False
+    assert small.follow_ups == [None] and large.follow_ups == [None]  # no repair with escalation
+    again = _RepairClient()
+    second = review(again, again)
+    assert second["review_unverifiable"] and not again.follow_ups
+
+
+@pytest.mark.parametrize(("decision", "curated"), [("keep", True), ("reject", False)])
+def test_human_decision_resolves_an_unverifiable_document(tmp_path, monkeypatch, decision, curated):
+    _, record, _ = _cached_run(
+        tmp_path, monkeypatch, _RepairClient("document dated", "documents dated")
+    )
+    assert not record_is_curated(record, review_ran=True)
+    record["human_decision"] = decision
+    assert record_is_curated(record, review_ran=True) is curated

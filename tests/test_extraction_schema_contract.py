@@ -5,13 +5,19 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from psweep.extraction.prepared_document import input_provenance as _input_provenance
 
+from psweep.utils.file_io import artifact_sha256
 from psweep.exceptions import SchemaValidationError
 from psweep.extraction.document_extractor import DocumentExtractor
 from psweep.extraction.schema_utils import build_schema_validator
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.pipeline import _extract_one_document
+
+
+def text_input():
+    return _input_provenance("text", {}, [])
 
 
 @pytest.fixture(autouse=True)
@@ -235,6 +241,9 @@ def _plan(tmp_path, document, schema, schema_path, metadata):
         "evidence_paths": [],
         "quote_rows": None,
         "fingerprints": {document: "a" * 64},
+        "source_digests": {document: artifact_sha256(document)},
+        "effective_inputs": {document: None},
+        "validator": build_schema_validator(schema),
     }
 
 
@@ -307,35 +316,17 @@ def test_invalid_schema_preflight_preserves_fresh_output(tmp_path, schema, comma
     assert validation.exit_code != 0
 
 
-def test_context_truncation_survives_canonical_record(tmp_path, schema, payload):
-    from psweep.extraction.record_writer import build_extraction_record
+def test_oversized_text_is_rejected_not_sliced(schema, payload):
+    from psweep.exceptions import ExtractionError
 
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini", max_context_chars=5)
     with patch.object(
         extractor.client, "extract", return_value={"data": payload, "cost": 0.0}
     ) as client:
-        result = extractor.extract("long source text", schema)
-    assert client.call_args.args[0] == "long "
-    assert any("truncated" in note for note in result.validation_notes)
-    document = tmp_path / "doc.txt"
-    document.write_text("long source text")
-    schema_path = tmp_path / "schema.json"
-    schema_path.write_text(json.dumps(schema))
-    record, count = build_extraction_record(
-        doc_path=document,
-        source_document_id="doc.txt",
-        result=result,
-        model="gpt-4o-mini",
-        provider="openai",
-        schema_metadata=SchemaMetadata(schema_path),
-    )
-    assert count == record["item_count"] == 1
-    assert record["processing_metrics"]["coverage"] == {
-        "input_characters": 16,
-        "extracted_characters": 5,
-        "context_truncated": True,
-    }
-    assert any("truncated" in note for note in record["quality"]["warnings"])
+        with pytest.raises(ExtractionError, match="context_window_exceeded"):
+            extractor.extract("long source text", schema)
+        client.assert_not_called()
+        assert "context_truncated" not in extractor.extract("12345", schema).coverage
 
 
 def test_incomplete_bounded_targeting_survives_canonical_record(tmp_path, schema, payload):
@@ -356,7 +347,9 @@ def test_incomplete_bounded_targeting_survives_canonical_record(tmp_path, schema
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema))
     record, _ = build_extraction_record(
+        input_provenance=text_input(),
         doc_path=document,
+        source_sha256=artifact_sha256(document),
         source_document_id="doc.txt",
         result=result,
         model="gpt-4o-mini",
@@ -459,7 +452,7 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
     )
     monkeypatch.setattr(
         "psweep.extraction.llm_client.LLMClient.extract",
-        lambda *args: {"data": deepcopy(data), "cost": 0.0},
+        lambda *args, **kwargs: {"data": deepcopy(data), "cost": 0.0},
     )
     run = extract_documents(
         documents, schema_path, output_dir=extracted, provider="openai", pages_csv=pages_csv
@@ -543,10 +536,237 @@ def test_pipeline_does_not_write_invalid_extraction(tmp_path, monkeypatch, schem
     output = tmp_path / "output"
     monkeypatch.setattr(
         "psweep.extraction.llm_client.LLMClient.extract",
-        lambda *args: {"data": {"items": []}, "cost": 0.0},
+        lambda *args, **kwargs: {"data": {"items": []}, "cost": 0.0},
     )
     result = extract_documents(documents, schema_path, output_dir=output, provider="openai")
     assert result.failed == 1
     assert result.successful == 0
     assert not (output / "doc.json").exists()
     assert "schema" in result.errors[0]["error"].lower()
+
+
+# ── authenticity filtering must not publish a contract-invalid payload ──────
+
+
+def _publish(tmp_path, schema, data, source_text, *, quote_rows=None, evidence=()):
+    document = tmp_path / "document.txt"
+    document.write_text(source_text)
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(json.dumps(schema))
+    metadata = SchemaMetadata(schema_path)
+    plan = _plan(tmp_path, document, schema, schema_path, metadata)
+    plan["quote_rows"] = quote_rows
+    plan["evidence_paths"] = list(evidence)
+    extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
+    with patch.object(extractor.client, "extract", return_value={"data": data, "cost": 0.0}):
+        result = _extract_one_document(document, plan, extractor=extractor, run_id="run://c")
+    return result, tmp_path / "document.json"
+
+
+@pytest.fixture
+def min_one_schema(schema):
+    schema["properties"]["items"]["minItems"] = 1
+    return schema
+
+
+def test_sole_unquoted_row_cannot_publish_empty_array_under_min_items(
+    tmp_path, min_one_schema, payload
+):
+    """Quote filtering that empties a minItems=1 array is a contract failure."""
+    from psweep.extraction.roster import QuoteRows
+
+    result, record = _publish(
+        tmp_path,
+        min_one_schema,
+        payload,
+        "Entirely different source text",
+        quote_rows=QuoteRows("items", None, "quote"),
+    )
+    assert result["success"] is False
+    assert result["errors"][0]["category"] == "schema_contract"
+    assert not record.exists()
+
+
+def test_filtering_without_cardinality_constraint_still_publishes_empty_array(
+    tmp_path, schema, payload
+):
+    from psweep.extraction.roster import QuoteRows
+
+    result, record = _publish(
+        tmp_path,
+        schema,
+        payload,
+        "Entirely different source text",
+        quote_rows=QuoteRows("items", None, "quote"),
+    )
+    assert result["success"] is True
+    assert json.loads(record.read_text())["payload"]["items"] == []
+
+
+def test_supported_quote_row_survives_min_items(tmp_path, min_one_schema, payload):
+    from psweep.extraction.roster import QuoteRows
+
+    result, record = _publish(
+        tmp_path,
+        min_one_schema,
+        payload,
+        "Quoted evidence appears here",
+        quote_rows=QuoteRows("items", None, "quote"),
+    )
+    assert result["success"] is True
+    assert len(json.loads(record.read_text())["payload"]["items"]) == 1
+
+
+def test_evidence_nulling_that_violates_composite_constraint_fails(tmp_path):
+    """Nulling an unsupported {value, quote} must not break value/quote coupling."""
+    evidence = {
+        "type": "object",
+        "required": ["value", "quote"],
+        "properties": {
+            "value": {"type": ["string", "null"]},
+            "quote": {"type": ["string", "null"]},
+        },
+    }
+    # Forbid a null fact value, so evidence-nulling would break the contract.
+    contract = {
+        "$metadata": {"extraction": {"main_data_array": "rows"}},
+        "type": "object",
+        "required": ["fact"],
+        "properties": {"fact": evidence, "rows": {"type": "array"}},
+        "not": {"properties": {"fact": {"properties": {"value": {"type": "null"}}}}},
+    }
+    from psweep.extraction.schema_utils import evidence_paths
+
+    result, record = _publish(
+        tmp_path,
+        contract,
+        {"fact": {"value": "x", "quote": "not in source"}, "rows": []},
+        "Unrelated source text",
+        evidence=evidence_paths(contract),
+    )
+    assert result["success"] is False
+    assert result["errors"][0]["category"] == "schema_contract"
+    assert not record.exists()
+
+
+def test_valid_nulled_evidence_is_still_published(tmp_path):
+    evidence = {
+        "type": "object",
+        "required": ["value", "quote"],
+        "properties": {
+            "value": {"type": ["string", "null"]},
+            "quote": {"type": ["string", "null"]},
+        },
+    }
+    contract = {
+        "$metadata": {"extraction": {"main_data_array": "rows"}},
+        "type": "object",
+        "required": ["fact"],
+        "properties": {"fact": evidence, "rows": {"type": "array"}},
+    }
+    from psweep.extraction.schema_utils import evidence_paths
+
+    result, record = _publish(
+        tmp_path,
+        contract,
+        {"fact": {"value": "x", "quote": "not in source"}, "rows": []},
+        "Unrelated source text",
+        evidence=evidence_paths(contract),
+    )
+    assert result["success"] is True
+    assert json.loads(record.read_text())["payload"]["fact"] == {"value": None, "quote": None}
+
+
+@pytest.fixture
+def permit_schema():
+    """Synthetic permit contract: required-but-nullable dates, nonblank identity."""
+    nullable_number = {"type": ["number", "null"]}
+    return {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$metadata": {
+            "extraction": {"main_data_array": "units", "context_objects": ["permit"]},
+        },
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["permit", "units"],
+        "properties": {
+            "permit": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["number", "issued", "expires", "facility"],
+                "properties": {
+                    "number": {"type": "string", "pattern": r"\S"},
+                    "issued": {"type": ["string", "null"], "format": "date"},
+                    "expires": {"type": ["string", "null"], "format": "date"},
+                    "facility": {"type": "string", "pattern": r"\S"},
+                },
+            },
+            "units": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["reference", "make", "kw", "bhp"],
+                    "properties": {
+                        "reference": {"type": "string", "pattern": r"\S"},
+                        "make": {"type": ["string", "null"]},
+                        "kw": nullable_number,
+                        "bhp": nullable_number,
+                        "hp": nullable_number,
+                        "count": nullable_number,
+                    },
+                },
+            },
+        },
+    }
+
+
+@pytest.fixture
+def permit_payload():
+    return {
+        "permit": {
+            "number": "11541",
+            "issued": "2008-05-16",
+            "expires": None,
+            "facility": "Example Data Center",
+        },
+        "units": [{"reference": "3", "make": "Caterpillar", "kw": 1500, "bhp": 2500}],
+    }
+
+
+def test_permit_dates_are_required_but_may_be_null(permit_schema, permit_payload):
+    result = extract_reply(permit_schema, permit_payload)
+    assert result.data["permit"]["expires"] is None
+    del permit_payload["permit"]["expires"]
+    with pytest.raises(SchemaValidationError):
+        extract_reply(permit_schema, permit_payload)
+
+
+@pytest.mark.parametrize("blank", ["", "  ", "\t\n"])
+@pytest.mark.parametrize("field", ["number", "facility"])
+def test_permit_identity_rejects_blank_strings(permit_schema, permit_payload, field, blank):
+    permit_payload["permit"][field] = blank
+    with pytest.raises(SchemaValidationError):
+        extract_reply(permit_schema, permit_payload)
+
+
+@pytest.mark.parametrize("date", ["", "unknown", "2008-13-01"])
+def test_permit_date_cannot_be_blank_or_invalid_text(permit_schema, permit_payload, date):
+    permit_payload["permit"]["expires"] = date
+    with pytest.raises(SchemaValidationError):
+        extract_reply(permit_schema, permit_payload)
+
+
+def test_unknown_capacities_stay_null_and_are_never_converted(permit_schema, permit_payload):
+    permit_payload["units"][0].update(kw=None, bhp=None, hp=4060, count=6)
+    unit = extract_reply(permit_schema, permit_payload).data["units"][0]
+    assert (unit["kw"], unit["bhp"], unit["hp"], unit["count"]) == (None, None, 4060, 6)
+    permit_payload["units"][0]["make"] = None
+    assert extract_reply(permit_schema, permit_payload).data["units"][0]["make"] is None
+
+
+def test_empty_units_is_valid_unless_the_domain_requires_a_unit(permit_schema, permit_payload):
+    permit_payload["units"] = []
+    assert extract_reply(permit_schema, permit_payload).data["units"] == []
+    permit_schema["properties"]["units"]["minItems"] = 1
+    with pytest.raises(SchemaValidationError):
+        extract_reply(permit_schema, permit_payload)

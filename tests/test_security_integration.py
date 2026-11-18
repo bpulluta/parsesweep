@@ -23,10 +23,11 @@ pytestmark = pytest.mark.integration
 PAYLOAD = {"items": [{"name": "synthetic", "value": 42}]}
 
 
-@pytest.fixture
-def tls_server(tmp_path):
-    """Run a local HTTPS origin with an ephemeral, explicitly trusted test CA."""
-    cert, key = tmp_path / "ca.pem", tmp_path / "key.pem"
+@pytest.fixture(scope="module")
+def tls_certificate(tmp_path_factory):
+    """Share only immutable CA files; each test still owns its server and calls."""
+    root = tmp_path_factory.mktemp("tls-certificate")
+    cert, key = root / "ca.pem", root / "key.pem"
     subprocess.run(  # noqa: S603 - fixed argv, no shell
         [  # noqa: S607 - openssl is resolved from the test environment PATH
             "openssl",
@@ -49,6 +50,13 @@ def tls_server(tmp_path):
         check=True,
         capture_output=True,
     )
+    return cert, key
+
+
+@pytest.fixture
+def tls_server(tls_certificate):
+    """Run an isolated local HTTPS origin with an explicitly trusted test CA."""
+    cert, key = tls_certificate
     calls = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -113,7 +121,9 @@ def tls_server(tmp_path):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert, key)
     server.socket = context.wrap_socket(server.socket, server_side=True)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
     thread.start()
     try:
         yield server.server_address[1], cert, calls

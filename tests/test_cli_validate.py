@@ -516,6 +516,7 @@ def test_s4_focus_fields(s3, fake):
     assert outputs() == full
 
 
+@pytest.mark.integration
 def test_s7_converge_to_min_accuracy(fake):
     bench = Bench(fake, 4, fields=("x", "y", "z"))
     truth = {t: s3_values(t) for t in bench.targets}

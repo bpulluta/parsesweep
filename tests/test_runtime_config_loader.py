@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import yaml
 import pytest
@@ -318,24 +319,16 @@ def test_load_runtime_config_file_rejects_invalid_browser_escalation(
         load_runtime_config_file(config_path)
 
 
-@pytest.mark.parametrize(
-    "override_body",
-    [
-        "output_dir: processed/from-override\nmax_context: 222222\n",
-        "extraction:\n  output_dir: processed/from-override\n",
-    ],
-)
-def test_load_runtime_config_file_rejects_split_processing_override(
-    tmp_path: Path,
-    override_body: str,
-):
-    """Flat and wrapped overrides must be migrated into the run config."""
+def test_load_runtime_config_file_rejects_split_processing_override(tmp_path: Path):
+    """Report both paths; adjacent-file contents never affect rejection."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
         "schema: config/my_domain/schema.json\nextraction:\n  skip_existing: true\n",
         encoding="utf-8",
     )
-    (tmp_path / "extraction.yaml").write_text(override_body, encoding="utf-8")
+    (tmp_path / "extraction.yaml").write_text(
+        "output_dir: processed/from-override\n", encoding="utf-8"
+    )
 
     with pytest.raises(
         RuntimeConfigError,
@@ -732,6 +725,18 @@ def test_processing_validator_rejects_invalid_fields(tmp_path: Path, snippet: st
         "schema: s.json\nextraction:\n  skip_existing: true\n  " + snippet,
     )
     with pytest.raises(RuntimeConfigError, match=match):
+        load_runtime_config_file(cfg)
+
+
+def test_pages_csv_and_range_together_fail_at_load(tmp_path: Path):
+    """`range` would be silently ignored beside a CSV, so the pair is a config error."""
+    cfg = _write(
+        tmp_path,
+        "schema: s.json\nextraction:\n  pages:\n    csv: ranges.csv\n    range: '1-3'\n",
+    )
+    with pytest.raises(
+        RuntimeConfigError, match=r"pages\.csv.*pages\.range|pages\.range.*pages\.csv"
+    ):
         load_runtime_config_file(cfg)
 
 
@@ -1326,8 +1331,7 @@ def test_validation_rows_mode_rejects(tmp_path: Path, validation, message):
         _resolve_validate(_validation_config(tmp_path, validation, rows=True))
 
 
-@pytest.mark.parametrize("command", ["validate", "extract"])
-def test_schema_aware_validation_checks_run_for_stages_that_use_them(tmp_path: Path, command: str):
+def test_extraction_runs_schema_aware_validation_checks(tmp_path: Path):
     """``extract`` consumes validation.quote_field, so it gets the checks too."""
     cfg = load_runtime_config_file(
         _validation_config(
@@ -1337,7 +1341,7 @@ def test_schema_aware_validation_checks_run_for_stages_that_use_them(tmp_path: P
         )
     )
     with pytest.raises(RuntimeConfigError, match="'verbatm' is not an item field"):
-        resolve_command_config(command=command, cli_values={}, config_data=cfg)
+        resolve_command_config(command="extract", cli_values={}, config_data=cfg)
 
 
 @pytest.mark.parametrize(
@@ -1390,3 +1394,62 @@ def test_rows_quote_field_reaches_extraction(tmp_path: Path, validation, expecte
     assert extract.get("quote_field") == expected
     if expected:
         assert extract["_config_sources"]["quote_field"] == "config.validation.quote_field"
+
+
+SOURCE_ONLY_REVIEW_YAML = """
+models:
+  primary: gpt-6.1-sol
+  secondary: claude-haiku-5-5
+discovery:
+  sources:
+    - https://example.org/permits
+  selection:
+    max_per_target: 5
+    exclude:
+      - guideline
+      - policy
+  document_review:
+    model: secondary
+    document_description: An issued permit identifying its permit number.
+    keep_top: 5
+    deduplicate_redundant: false
+"""
+
+
+def _resolve_discover(tmp_path: Path, body: str) -> dict[str, Any]:
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(body, encoding="utf-8")
+    return resolve_command_config(
+        command="discover", cli_values={}, config_data=load_runtime_config_file(run_path)
+    )
+
+
+def test_source_only_review_settings_resolve_without_targets(tmp_path: Path):
+    """A shared-source domain (no targets) can qualify linked documents by review."""
+    resolved = _resolve_discover(tmp_path, SOURCE_ONLY_REVIEW_YAML)
+    assert resolved["selection_primary_per_target"] == 5
+    assert resolved["selection_relevance_exclude_any_terms"] == ["guideline", "policy"]
+    review = resolved["document_review"]
+    assert (review["keep_top"], review["deduplicate_redundant"]) == (5, False)
+    assert review["model"] == "secondary"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "match"),
+    [
+        ("keep_top: 5", "keep_top: 6", r"selection\.max_per_target' must be >="),
+        ("keep_top: 5", "keep_top: 0", "keep_top"),
+        ("keep_top: 5", "keep_top: 5\n    keep_tpo: 1", "keep_tpo"),
+        ("deduplicate_redundant: false", "deduplicate_redundant: maybe", "deduplicate"),
+        ("      - guideline\n", "", None),
+    ],
+)
+def test_source_only_review_settings_fail_strictly(tmp_path: Path, old, new, match):
+    body = SOURCE_ONLY_REVIEW_YAML.replace(old, new)
+    if match is None:
+        assert _resolve_discover(tmp_path, body)["selection_relevance_exclude_any_terms"] == [
+            "policy"
+        ]
+        return
+    with pytest.raises(RuntimeConfigError, match=match):
+        _resolve_discover(tmp_path, body)

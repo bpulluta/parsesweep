@@ -33,7 +33,9 @@ from pathlib import Path
 from typing import Any
 
 from psweep.exceptions import APIKeyError
+from .request_policy import RequestNotAdmittedError
 from .provenance import SourceContext
+from .prepared_document import CapturedSource
 from .page_locator import (
     DEFAULT_PAGE_TRIGGER_CHARS,
     _BaseLocator,
@@ -372,7 +374,17 @@ class SectionLocator(_BaseLocator):
     # -- LLM confirmation --------------------------------------------------
 
     def _confirm_with_llm(self, chunks: list[_Chunk], candidates: list[int]) -> list[int] | None:
-        """Ask the LLM which candidate section indices (0-indexed) are relevant."""
+        """Ask the LLM which candidate section indices (0-indexed) are relevant.
+
+        An index the route cannot admit is split; every candidate is still shown.
+        """
+        answers = self._ask_in_batches(candidates, lambda batch: self._confirm_batch(chunks, batch))
+        if answers is None:
+            return None
+        return sorted(set(answers))
+
+    def _confirm_batch(self, chunks: list[_Chunk], candidates: list[int]) -> list[int] | None:
+        """One index request; ``[]`` is a valid absence, ``None`` a failure."""
         index_lines = []
         for idx in candidates:
             chunk = chunks[idx]
@@ -400,8 +412,9 @@ class SectionLocator(_BaseLocator):
                 system_prompt=_LOCATE_SYSTEM,
                 user_prompt=user_prompt,
                 suppress_errors=True,
+                admit=True,
             )
-        except APIKeyError:
+        except (APIKeyError, RequestNotAdmittedError):
             raise
         except Exception as exc:  # noqa: BLE001 - fall back to full extraction
             logger.debug("Section locator LLM call failed: %s", exc)
@@ -427,13 +440,13 @@ class SectionLocator(_BaseLocator):
             cache_dir / f"{file_path.name}.txt",
         )
 
-    def _read_cache(self, file_path: Path) -> str | None:
-        meta_path, text_path = self._cache_paths(file_path)
+    def _read_cache(self, source: CapturedSource) -> str | None:
+        meta_path, text_path = self._cache_paths(source.original)
         if not meta_path.exists() or not text_path.exists():
             return None
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            if not self._cache_matches(file_path, meta):
+            if not self._cache_matches(source, meta):
                 return None
             text_bytes = text_path.read_bytes()
             if meta.get("text_sha256") != hashlib.sha256(text_bytes).hexdigest():
@@ -442,12 +455,12 @@ class SectionLocator(_BaseLocator):
         except Exception:  # noqa: BLE001 - a bad cache must never break extraction
             return None
 
-    def _write_cache(self, file_path: Path, text: str) -> None:
-        meta_path, text_path = self._cache_paths(file_path)
+    def _write_cache(self, source: CapturedSource, text: str) -> None:
+        meta_path, text_path = self._cache_paths(source.original)
         try:
             text_bytes = text.encode("utf-8")
             meta = {
-                **self._cache_metadata(file_path),
+                **self._cache_metadata(source),
                 "text_sha256": hashlib.sha256(text_bytes).hexdigest(),
                 "method": "heuristic+llm",
             }
@@ -458,11 +471,11 @@ class SectionLocator(_BaseLocator):
                 ]
             )
         except (OSError, TypeError, ValueError):
-            logger.debug("Section cache write failed for %s", file_path, exc_info=True)
+            logger.debug("Section cache write failed for %s", source.original, exc_info=True)
 
-    def locate_cached(self, file_path: str | Path) -> str | None:
-        """Return verified section text without document parsing."""
-        file_path = Path(file_path)
+    def locate_cached(self, source: CapturedSource) -> str | None:
+        """Return section text verified against the captured version."""
+        file_path = source.original
         if file_path.suffix.lower() not in {
             ".html",
             ".htm",
@@ -471,11 +484,11 @@ class SectionLocator(_BaseLocator):
             ".txt",
         }:
             return None
-        return self._read_cache(file_path)
+        return self._read_cache(source)
 
     # -- entry point -------------------------------------------------------
 
-    def locate(self, file_path: str | Path) -> str | None:
+    def locate(self, source: CapturedSource) -> str | None:
         """Return filtered section text for the document, or None.
 
         Returns ``None`` for PDF, XLSX, CSV (unsupported or delegated), for
@@ -483,7 +496,7 @@ class SectionLocator(_BaseLocator):
         signalling the caller to fall back to full-document extraction.
         """
         self.incomplete = False
-        file_path = Path(file_path)
+        file_path = source.path
         ext = file_path.suffix.lower()
 
         # Unsupported types: delegate PDF to PageLocator; XLSX/CSV always full.
@@ -493,7 +506,7 @@ class SectionLocator(_BaseLocator):
         if ext not in {".html", ".htm", ".docx", ".doc", ".txt"}:
             return None
 
-        cached = self.locate_cached(file_path)
+        cached = self.locate_cached(source)
         if cached is not None:
             logger.debug("Section targeting cache hit for %s", file_path.name)
             return cached
@@ -511,7 +524,14 @@ class SectionLocator(_BaseLocator):
 
         # Split into chunks.
         try:
-            if ext in {".html", ".htm"}:
+            if source.cached_text is not None:
+                from .document_utils import extract_text_from_document
+
+                raw_text = extract_text_from_document(source.original, source=source)
+                if len(raw_text) <= self.trigger_chars:
+                    return None
+                chunks = split_text_sections(raw_text)
+            elif ext in {".html", ".htm"}:
                 raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
                 if len(raw_text) <= self.trigger_chars:
                     return None
@@ -559,5 +579,5 @@ class SectionLocator(_BaseLocator):
             chunks[i].to_text() for i in sorted(set(relevant_indices) | set(subject))
         )
 
-        self._write_cache(file_path, filtered_text)
+        self._write_cache(source, filtered_text)
         return filtered_text

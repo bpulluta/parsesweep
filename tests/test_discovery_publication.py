@@ -374,6 +374,7 @@ def _hold_lock(root: str, connection):
     connection.close()
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("abrupt", [False, True])
 def test_separate_process_lock_rejects_active_and_releases_after_exit(
     tmp_path,
@@ -445,7 +446,7 @@ def test_atomic_json_failure_keeps_prior_bytes(tmp_path, monkeypatch):
 @pytest.mark.parametrize("blocked", [False, True])
 def test_merged_index_keeps_one_path_per_owner(tmp_path, blocked):
     """Renamed and unselected owners lose their old path whatever its name,
-    except in blocked partitions.
+    in blocked partitions too (a final decision); only a rename needs a promotion.
     """
     index = tmp_path / "download_index.csv"
     index.write_text(
@@ -465,7 +466,7 @@ def test_merged_index_keeps_one_path_per_owner(tmp_path, blocked):
     )
     paths = {row.split(",")[0] for row in content.splitlines()[1:]}
     if blocked:
-        assert not removed and paths == {"p/old-slug.pdf", "p/held.pdf", "p/other.pdf"}
+        assert removed == {"p/held.pdf"} and paths == {"p/old-slug.pdf", "p/other.pdf"}
     else:
         assert removed == {"p/old-slug.pdf", "p/held.pdf"}
         assert paths == {"p/new-slug.pdf", "p/other.pdf"}
@@ -500,3 +501,228 @@ def test_query_variants_of_one_shared_page_get_distinct_stable_names(tmp_path):
     rerun = records([3, 1, 0, 2])
     pub.assign_document_names(rerun, index, set())
     assert {r["url"]: r["relative_path"] for r in rerun} == names
+
+
+def _ocr_pdf(path: Path, content: bytes) -> Path:
+    from psweep.extraction.pdf_utils import OcrPageCache
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    import hashlib
+
+    OcrPageCache(
+        path.parent / ".text" / f"{path.name}.ocr", hashlib.sha256(content).hexdigest()
+    ).put(1, "raw ocr")
+    return path
+
+
+def _entry_names(pdf: Path) -> list[str]:
+    return sorted(p.name for p in (pdf.parent / ".text" / f"{pdf.name}.ocr").glob("*.json"))
+
+
+def test_promotion_removal_swaps_remove_page_entries_with_the_document(tmp_path):
+    """A renamed owner's old consolidated document takes its OCR entries along."""
+    domain, run = tmp_path / "domain", tmp_path / "domain/runs/r1"
+    old = _ocr_pdf(domain / "curated/county/old.pdf", b"old")
+    (run / "curated/county").mkdir(parents=True)
+    (run / "curated/county/new.pdf").write_bytes(b"new")
+    _index(domain / "download_index.csv", [{"relative_path": "county/old.pdf", "url": "u"}])
+    _index(run / "download_index.csv", [{"relative_path": "county/new.pdf", "url": "u"}])
+    assert _entry_names(old) == ["1.json"]
+    pub.promote_curated(
+        run_curated_dir=run / "curated", domain_dir=domain, run_index=run / "download_index.csv"
+    )
+    assert not old.exists()
+    assert not list((domain / "curated/county/.text").glob("old.pdf.ocr/*"))
+
+
+@pytest.mark.parametrize("same_bytes", [True, False])
+def test_inherit_carries_page_entries_only_to_identical_bytes(tmp_path, same_bytes):
+    """A same-SHA re-download inherits OCR pages; a different file does not."""
+    old = _ocr_pdf(tmp_path / "old/report.pdf", b"v1")
+    new = tmp_path / "new/report.pdf"
+    new.parent.mkdir()
+    new.write_bytes(b"v1" if same_bytes else b"v2")
+    pub.inherit_text_caches([new], [old])
+    assert _entry_names(new) == (["1.json"] if same_bytes else [])
+
+
+def test_review_ledger_leaves_llm_selected_blank_when_no_review_ran(tmp_path):
+    """A downloaded status is not an LLM verdict; only a real review fills the column."""
+    import csv
+
+    from psweep.discovery import DiscoveryEngine
+
+    def record(name, **review):
+        path = tmp_path / name
+        path.write_bytes(b"%PDF-1.4")
+        return {
+            "path": str(path),
+            "relative_path": f"_shared/{name}",
+            "status": "downloaded",
+            "target_label": "t",
+            **review,
+        }
+
+    def rows(records):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(exist_ok=True)
+        review = DiscoveryEngine._write_review_index(download_records=records, run_dir=run_dir)
+        with review.open(newline="") as handle:
+            return {r["relative_path"]: r for r in csv.DictReader(handle)}
+
+    unreviewed = rows([record("a.pdf")])
+    assert unreviewed["_shared/a.pdf"]["llm_selected"] == ""
+    assert unreviewed["_shared/a.pdf"]["curated_selected"] == "True"
+
+    mixed = rows(
+        [
+            record("a.pdf", review_selected=True),
+            record("b.pdf", review_selected=False),
+            record("c.pdf"),
+        ]
+    )
+    assert mixed["_shared/a.pdf"]["llm_selected"] == "True"
+    assert mixed["_shared/b.pdf"]["llm_selected"] == "False"
+
+
+_SHARED_URLS = {
+    name: f"https://site.gov/{name}" for name in ("keep", "reject", "drop", "failed", "old")
+}
+
+
+def _blocked_corpus(tmp_path: Path):
+    """A consolidated `_shared` partition holding five documents of one source."""
+    domain = tmp_path / "domain"
+    rows = []
+    for name, url in _SHARED_URLS.items():
+        document = domain / f"curated/_shared/{name}.pdf"
+        document.parent.mkdir(parents=True, exist_ok=True)
+        document.write_bytes(name.encode())
+        rows.append(
+            {"relative_path": f"_shared/{name}.pdf", "url": url, "source_url": "https://site.gov"}
+        )
+    (domain / "download_index.csv").write_text(
+        pub.csv_content(["relative_path", "url", "source_url"], rows), encoding="utf-8"
+    )
+    return domain
+
+
+def _decide(tmp_path: Path, domain: Path, decisions: dict[str, dict]):
+    """Publish a run in which each named document carries its own record fields."""
+    from psweep.discovery.publication import publish_manual_curation, resolve_publication_paths
+
+    run = domain / "runs/r2"
+    documents = run / "documents"
+    records = []
+    for name, fields in decisions.items():
+        source = documents / f"_shared/{name}.pdf"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(name.encode())
+        records.append(
+            {
+                "status": "downloaded",
+                "relative_path": f"_shared/{name}.pdf",
+                "path": str(source),
+                "url": _SHARED_URLS.get(name, f"https://site.gov/{name}"),
+                "source_url": "https://site.gov",
+                **fields,
+            }
+        )
+    paths = resolve_publication_paths(
+        documents, run / "manifest.json", "example", domain_dir=domain
+    )
+    content = pub.csv_content(
+        ["relative_path", "url", "source_url"],
+        [r for r in records if pub.record_is_curated(r, review_ran=True)],
+    )
+    publish_manual_curation(
+        paths=paths,
+        download_records=records,
+        run_index=paths.run_index,
+        run_index_content=content,
+        metadata_updates={},
+        blocked_partitions={Path("_shared")},
+        attempted_partitions={Path("_shared")},
+    )
+    with (domain / "download_index.csv").open() as handle:
+        indexed = {Path(row["relative_path"]).stem for row in csv.DictReader(handle)}
+    return {p.stem for p in (domain / "curated/_shared").glob("*.pdf")}, indexed
+
+
+_KEEP = {"review_selected": True}
+
+
+def test_final_decisions_withdraw_consolidated_documents_in_a_blocked_partition(tmp_path):
+    """A human reject or a final non-selection applies even though another
+    document in the partition failed; a retryable failure and a document this
+    run never saw stay.
+    """
+    domain = _blocked_corpus(tmp_path)
+    files, indexed = _decide(
+        tmp_path,
+        domain,
+        {
+            "keep": _KEEP,
+            "reject": {**_KEEP, "human_decision": "reject"},
+            "drop": {"review_selected": False},
+            "failed": {"review_failed": True, "review_retryable": True},
+        },
+    )
+    assert files == indexed == {"keep", "failed", "old"}
+
+
+def test_blocked_partition_does_not_infer_absence_for_completed_targets(tmp_path):
+    """Only a decision about a document applies; 'completed means gone' does not."""
+    from psweep.discovery.publication import publish_manual_curation, resolve_publication_paths
+
+    domain = _blocked_corpus(tmp_path)
+    run = domain / "runs/r2"
+    paths = resolve_publication_paths(
+        run / "documents", run / "manifest.json", "example", domain_dir=domain
+    )
+    publish_manual_curation(
+        paths=paths,
+        download_records=[],
+        run_index=paths.run_index,
+        run_index_content="relative_path,url,source_url\n",
+        metadata_updates={},
+        blocked_partitions={Path("_shared")},
+        completed={pub.owner_key("", "https://site.gov")},
+    )
+    assert {p.stem for p in (domain / "curated/_shared").glob("*.pdf")} == set(_SHARED_URLS)
+
+
+def test_blocked_partition_promotion_removes_the_old_path_of_a_renamed_owner(tmp_path):
+    """The discover path: one URL published under a new name leaves one document."""
+    domain, run = tmp_path / "domain", tmp_path / "domain/runs/r1"
+    old = domain / "curated/_shared/old-slug.pdf"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"old")
+    other = domain / "curated/_shared/other.pdf"
+    other.write_bytes(b"other")
+    _index(
+        domain / "download_index.csv",
+        [
+            {"relative_path": "_shared/old-slug.pdf", "url": "u"},
+            {"relative_path": "_shared/other.pdf", "url": "o"},
+        ],
+    )
+    (run / "curated/_shared").mkdir(parents=True)
+    (run / "curated/_shared/new-slug.pdf").write_bytes(b"new")
+    _index(run / "download_index.csv", [{"relative_path": "_shared/new-slug.pdf", "url": "u"}])
+    pub.promote_curated(
+        run_curated_dir=run / "curated",
+        domain_dir=domain,
+        blocked_partitions={Path("_shared")},
+        run_index=run / "download_index.csv",
+    )
+    assert sorted(p.name for p in (domain / "curated/_shared").glob("*.pdf")) == [
+        "new-slug.pdf",
+        "other.pdf",
+    ]
+    with (domain / "download_index.csv").open() as handle:
+        assert {row["relative_path"] for row in csv.DictReader(handle)} == {
+            "_shared/new-slug.pdf",
+            "_shared/other.pdf",
+        }

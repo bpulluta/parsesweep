@@ -340,3 +340,81 @@ def test_extraction_error_records_classify_provider_failures(monkeypatch, failur
     assert record["category"] == "extraction"
     assert record["message"].startswith("LLM request failed: ")
     assert "sk-123" not in record["message"] and "://" not in record["message"]
+
+
+# --- Step 8: explicit response outcomes (opt-in, extraction only) -------------
+
+
+def _extract(client, reply, **kwargs):
+    with (
+        patch("psweep.extraction.llm_client.completion", return_value=reply) as sent,
+        patch("psweep.extraction.llm_client.completion_cost", return_value=0.02),
+    ):
+        return client.extract("text", {"type": "object", "properties": {}}, **kwargs), sent
+
+
+@pytest.mark.parametrize(
+    ("finish", "refusal", "code"),
+    [
+        ("length", None, "response_truncated"),
+        ("stop", "I cannot help with that", "response_refused"),
+        ("content_filter", None, "response_refused"),
+    ],
+)
+def test_strict_extraction_rejects_truncated_and_refused_answers_with_usage(finish, refusal, code):
+    from psweep.exceptions import ResponseOutcomeError
+
+    client = _proxy()
+    reply = _reply(content='{"items": []}', finish=finish)
+    reply.choices[0].message.refusal = refusal
+    with pytest.raises(ResponseOutcomeError) as caught:
+        _extract(client, reply, strict_outcomes=True)
+    assert caught.value.code == code
+    assert not caught.value.repairable
+    assert caught.value.usage == {"cost": 0.02, "input_tokens": 10, "output_tokens": 5}
+    assert "cannot help" not in str(caught.value)  # provider text is never echoed
+    assert client.usage["cost"] == 0.02
+
+
+def test_other_callers_keep_accepting_length_terminated_json():
+    """Discovery, reconciliation and judges do not opt in; their semantics are unchanged."""
+    out, _ = _extract(_proxy(), _reply(content='{"items": []}', finish="length"))
+    assert out["data"] == {"items": []}
+
+
+@pytest.mark.parametrize(
+    ("content", "code"), [(None, "response_empty"), ("not json", "response_not_json")]
+)
+def test_strict_extraction_classifies_unusable_answers_as_repairable(content, code):
+    from psweep.exceptions import ResponseOutcomeError
+
+    with pytest.raises(ResponseOutcomeError) as caught:
+        _extract(_proxy(), _reply(content=content), strict_outcomes=True)
+    assert (caught.value.code, caught.value.repairable) == (code, True)
+    assert caught.value.usage["cost"] == 0.02
+
+
+@pytest.mark.parametrize("content", [None, "not json"])
+def test_non_strict_unusable_answers_stay_plain_extraction_errors(content):
+    from psweep.exceptions import ResponseOutcomeError
+
+    with pytest.raises(ExtractionError) as caught:
+        _extract(_proxy(), _reply(content=content))
+    assert not isinstance(caught.value, ResponseOutcomeError)
+
+
+def test_follow_up_messages_follow_the_unchanged_original_request():
+    follow_up = [{"role": "user", "content": "Fix: items required."}]
+    _, sent = _extract(_proxy(), _reply(content="{}"), follow_up=follow_up)
+    plain_messages = _extract(_proxy(), _reply(content="{}"))[1].call_args.kwargs["messages"]
+    messages = sent.call_args.kwargs["messages"]
+    assert messages[:-1] == plain_messages
+    assert messages[-1] == follow_up[0]
+
+
+def test_extraction_prompt_states_schema_authorized_conversion_precedence():
+    prompt = LLMClient._build_extraction_prompt("BODY", SCHEMA)
+    lowered = prompt.lower()
+    assert "unless a schema field description explicitly requires" in lowered
+    assert "quote" in lowered and "verbatim" in lowered
+    assert "never invent" in lowered

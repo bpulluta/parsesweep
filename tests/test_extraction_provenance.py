@@ -183,3 +183,111 @@ def test_conflicting_path_metadata_fails_and_ambiguous_basename_never_matches(
     )
     with pytest.raises(ValueError, match="Conflicting discovery provenance"):
         build_source_context_map(index.parent)
+
+
+# --- Captured source identity -------------------------------------------------
+
+
+def _sha(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+def test_capture_hashes_the_bytes_it_snapshots(tmp_path):
+    """The digest describes the snapshot, even if the live path changes later."""
+    from psweep.extraction.prepared_document import capture_source
+
+    doc = tmp_path / "in" / "alpha.txt"
+    doc.parent.mkdir()
+    doc.write_bytes(b"version A")
+    with capture_source(doc) as source:
+        doc.write_bytes(b"version B")
+        assert source.sha256 == _sha(b"version A")
+        assert source.path.read_bytes() == b"version A"
+        assert source.path.suffix == ".txt"
+        assert source.original == doc
+        assert source.path != doc
+        assert source.path.parent.stat().st_mode & 0o077 == 0
+        snapshot_dir = source.path.parent
+    assert not snapshot_dir.exists()
+
+
+def test_capture_rejects_changed_source_and_cleans_up(tmp_path, monkeypatch):
+    """A digest that differs from the prepared identity is never consumed."""
+    from psweep.exceptions import SourceChangedError
+    from psweep.extraction.prepared_document import capture_source
+
+    scratch = tmp_path / "snapshots"
+    scratch.mkdir()
+    monkeypatch.setattr("tempfile.tempdir", str(scratch))
+    doc = tmp_path / "alpha.txt"
+    doc.write_bytes(b"version B")
+    with pytest.raises(SourceChangedError), capture_source(doc, expected=_sha(b"version A")):
+        pytest.fail("a changed source must not be consumed")
+    assert list(scratch.iterdir()) == []
+
+
+def test_capture_cleans_up_on_consumer_failure(tmp_path, monkeypatch):
+    from psweep.extraction.prepared_document import capture_source
+
+    scratch = tmp_path / "snapshots"
+    scratch.mkdir()
+    monkeypatch.setattr("tempfile.tempdir", str(scratch))
+    doc = tmp_path / "alpha.txt"
+    doc.write_bytes(b"A")
+    with pytest.raises(RuntimeError), capture_source(doc, expected=_sha(b"A")):
+        raise RuntimeError("consumer failed")
+    assert list(scratch.iterdir()) == []
+
+
+def test_text_cache_is_judged_against_the_captured_digest(tmp_path):
+    """Cache evidence follows the captured bytes, not a live-path reopen."""
+    from psweep.extraction.document_utils import read_text_cache, write_text_cache
+    from psweep.extraction.prepared_document import capture_source
+
+    doc = tmp_path / "page.html"
+    doc.write_bytes(b"<p>A</p>")
+    write_text_cache(doc, "rendered A", method="browser_render")
+    with capture_source(doc) as source:
+        doc.write_bytes(b"<p>B</p>")
+        assert read_text_cache(doc) is None
+        assert read_text_cache(doc, source_sha256=source.sha256) == "rendered A"
+    doc.write_bytes(b"<p>B</p>")
+    with capture_source(doc) as changed:
+        assert read_text_cache(doc, source_sha256=changed.sha256) is None
+
+
+@pytest.mark.parametrize("method", ["browser_render", "api", "transcript:model:v1"])
+def test_effective_product_stays_frozen(tmp_path, method):
+    from psweep.extraction.document_utils import extract_text_from_document, write_text_cache
+    from psweep.extraction.prepared_document import capture_source
+
+    document = tmp_path / ("doc.mp3" if method.startswith("transcript:") else "doc.txt")
+    document.write_bytes(b"source A")
+    write_text_cache(document, "A evidence", method=method)
+    with capture_source(document) as source:
+        write_text_cache(document, "B evidence", method=method)
+        assert extract_text_from_document(document, source=source) == "A evidence"
+        assert source.cached_text.text == "A evidence"
+
+
+def test_capture_cleans_up_on_cancellation(tmp_path):
+    from psweep.extraction.prepared_document import capture_source
+
+    document = tmp_path / "doc.txt"
+    document.write_text("A")
+    with pytest.raises(KeyboardInterrupt), capture_source(document) as source:
+        directory = source.path.parent
+        raise KeyboardInterrupt
+    assert not directory.exists()
+
+
+def test_record_cannot_certify_a_different_digest(tmp_path):
+    """The writer records the captured digest and requires it explicitly."""
+    import inspect
+
+    from psweep.extraction.record_writer import build_extraction_record
+
+    parameter = inspect.signature(build_extraction_record).parameters["source_sha256"]
+    assert parameter.default is inspect.Parameter.empty

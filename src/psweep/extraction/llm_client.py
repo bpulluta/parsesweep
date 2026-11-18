@@ -34,10 +34,17 @@ from psweep.security import (
     resolve_tls_verification,
     tls_context,
 )
-from psweep.exceptions import ExtractionError
+from psweep.exceptions import ExtractionError, ResponseOutcomeError
 from psweep.exceptions import AttemptBudgetExceeded
 from .llm_factory import DEFAULT_MODEL, detect_provider
 from psweep.utils.retry import compute_backoff, is_transient_error
+from .request_policy import (
+    RequestNotAdmittedError,
+    RouteLimits,
+    assess_request,
+    image_block,
+    route_limits,
+)
 from .schema_utils import strict_compatible
 from .text_processor import find_data_arrays
 
@@ -72,6 +79,7 @@ class Completion:
     content: str | None
     finish_reason: str | None
     usage: dict[str, Any]
+    refused: bool = False
 
 
 class LLMClient:
@@ -81,8 +89,6 @@ class LLMClient:
     Uses LiteLLM for unified interface across all providers.
     Automatically tracks costs and handles provider-specific parameters.
     """
-
-    CONTEXT_RESPONSE_RESERVE_TOKENS = 4096
 
     DEFAULT_TIMEOUT = 120  # seconds; overridable via LLM_TIMEOUT env var
 
@@ -365,7 +371,12 @@ class LLMClient:
             return None
 
     def complete(
-        self, messages: list[dict[str, Any]], *, before_request=None, **params: Any
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        before_request=None,
+        admit: bool = False,
+        **params: Any,
     ) -> Completion:
         """Send one chat request and account for it.
 
@@ -373,7 +384,18 @@ class LLMClient:
         sanitized ``ExtractionError`` failures; ``params`` are request
         options such as ``temperature`` or ``response_format``. A reply
         without choices raises ``ExtractionError`` carrying its usage.
+
+        The exact request is admitted before any attempt: it must fit the
+        operator's ``model_context_windows``. With ``admit=True`` (extraction
+        and locator callers) the pinned catalog limits also apply and the
+        output is capped at the route's output limit, sent as ``max_tokens``.
         """
+        limits = self._route_limits(admit)
+        output_cap = limits.output_tokens if admit else None
+        if admit or all(isinstance(m.get("content"), str) for m in messages):
+            assess_request(messages, params.get("response_format"), limits, output_cap=output_cap)
+        if output_cap is not None:
+            params = {**params, "max_tokens": output_cap}
         if before_request is not None:
             before_request()
         request = {**self._route(), "messages": messages, **params}
@@ -463,10 +485,13 @@ class LLMClient:
             error.usage = measured
             error.provider_failure = True
             raise error
+        message = choices[0].message
+        finish_reason = getattr(choices[0], "finish_reason", None)
         return Completion(
-            content=choices[0].message.content,
-            finish_reason=getattr(choices[0], "finish_reason", None),
+            content=message.content,
+            finish_reason=finish_reason,
             usage=measured,
+            refused=bool(getattr(message, "refusal", None)) or finish_reason == "content_filter",
         )
 
     def extract(
@@ -477,9 +502,22 @@ class LLMClient:
         user_prompt: str | None = None,
         suppress_errors: bool = False,
         before_request=None,
+        admit: bool = False,
+        *,
+        strict_outcomes: bool = False,
+        follow_up: list[dict[str, Any]] | None = None,
+        page_images: list | None = None,
     ) -> dict[str, Any]:
         """
         Extract structured data using LLM.
+
+        ``strict_outcomes`` (primary extraction only) rejects refused and
+        length-terminated answers, and raises empty/non-JSON answers as
+        ``ResponseOutcomeError``; other callers keep accepting what they always
+        did. ``follow_up`` messages are appended after the unchanged request.
+        ``page_images`` (rendered PDF pages) are sent after the text through the
+        same ``complete`` path, each labeled with its original page number; a
+        route not known to accept images holds before any request.
 
         Parameters
         ----------
@@ -512,8 +550,6 @@ class LLMClient:
             {"role": "user", "content": user_prompt},
         ]
 
-        self._validate_context_budget(messages)
-
         # Reasoning models reject a non-default temperature; JSON mode stays on
         # for every model (LiteLLM's drop_params removes it where unsupported).
         is_reasoning_model = any(x in self.model.lower() for x in self.reasoning_model_markers)
@@ -521,13 +557,30 @@ class LLMClient:
         if not is_reasoning_model:
             params["temperature"] = 0
         # Azure's json_object mode requires the word JSON in the messages.
-        all_content = " ".join(m["content"] for m in messages)
+        all_content = " ".join(m["content"] for m in messages if isinstance(m["content"], str))
         if "json" not in all_content.lower():
             messages[-1]["content"] += (
                 "\n\nRespond with ONLY a raw JSON object. "
                 "No markdown, no code fences, no explanation."
             )
 
+        if page_images:
+            self._require_vision()
+            messages[-1]["content"] = [
+                {"type": "text", "text": messages[-1]["content"]},
+                *(
+                    block
+                    for image in page_images
+                    for block in (
+                        {"type": "text", "text": f"[Image of PDF page {image.page}]"},
+                        image_block(image),
+                    )
+                ),
+            ]
+
+        messages.extend(follow_up or [])
+        if admit:
+            params["admit"] = True
         reply = (
             self.complete(messages, before_request=before_request, **params)
             if before_request is not None
@@ -537,7 +590,26 @@ class LLMClient:
         cost = measured["cost"]
         input_tokens = measured["input_tokens"]
         output_tokens = measured["output_tokens"]
+
+        def rejected(message: str, code: str) -> ExtractionError:
+            return (
+                ResponseOutcomeError(message, code=code)
+                if strict_outcomes
+                else ExtractionError(message)
+            )
+
         try:
+            if strict_outcomes and reply.refused:
+                message = (
+                    f"Model refused the request (provider={self.provider}, model={self.model})"
+                )
+                raise ResponseOutcomeError(message, code="response_refused")
+            if strict_outcomes and reply.finish_reason == "length":
+                message = (
+                    "Model output was truncated at its length limit "
+                    f"(provider={self.provider}, model={self.model}); the answer is incomplete"
+                )
+                raise ResponseOutcomeError(message, code="response_truncated")
             content = self._clean_json_content(reply.content)
             if not content:
                 (logger.debug if suppress_errors else logger.error)(
@@ -545,7 +617,7 @@ class LLMClient:
                     self.model,
                 )
                 message = f"Empty response from provider={self.provider}, model={self.model}"
-                raise ExtractionError(message)
+                raise rejected(message, "response_empty")
 
             # Parse JSON while retaining usage on a rejected response.
             try:
@@ -572,7 +644,7 @@ class LLMClient:
                         "Model returned non-JSON content "
                         f"(provider={self.provider}, model={self.model}): {e}"
                     )
-                    raise ExtractionError(message) from None
+                    raise rejected(message, "response_not_json") from None
 
         except ExtractionError as exc:
             exc.usage = measured
@@ -594,6 +666,20 @@ class LLMClient:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         }
+
+    def _require_vision(self) -> None:
+        """Hold unless the pinned catalog says this route accepts images."""
+        for name in (self.model, self.raw_model):
+            try:
+                if litellm.supports_vision(model=name):
+                    return
+            except Exception:  # noqa: BLE001, S112 - unmapped route: support stays unknown
+                continue
+        message = (
+            f"request_not_admitted: route {self.model!r} is not known to accept image "
+            "input (vision); use a vision-capable model or extraction.input_mode: text"
+        )
+        raise RequestNotAdmittedError(message)
 
     def _response_format(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Use strict json_schema only when the provider and schema both allow it."""
@@ -659,43 +745,16 @@ class LLMClient:
             token in message for token in ("deprecated", "unsupported", "invalid_request_error")
         )
 
-    def _get_context_window_tokens(self) -> int | None:
-        """Return the configured context window (prompt tokens) for this model.
-
-        Sourced from the caller-supplied ``context_windows`` map only (populated
-        from ``model_context_windows`` in run.yaml). No model names are
-        hardcoded; models absent from the map are simply not guarded.
-        """
-        for candidate in (self.model, self.raw_model):
-            if candidate in self.context_windows:
-                return self.context_windows[candidate]
-        return None
-
-    def _estimate_message_tokens(self, messages: list[dict[str, str]]) -> int:
-        """Estimate prompt token usage conservatively from message content."""
-        content_tokens = sum((len(message.get("content", "")) + 3) // 4 for message in messages)
-        per_message_overhead = 16 * len(messages)
-        return content_tokens + per_message_overhead
-
-    def _validate_context_budget(self, messages: list[dict[str, str]]) -> None:
-        """Fail fast when the estimated request exceeds a known model context window."""
-        context_window = self._get_context_window_tokens()
-        if context_window is None:
-            return
-
-        estimated_prompt_tokens = self._estimate_message_tokens(messages)
-        estimated_total_tokens = estimated_prompt_tokens + self.CONTEXT_RESPONSE_RESERVE_TOKENS
-        if estimated_total_tokens <= context_window:
-            return
-
-        raise ExtractionError(
-            "context_window_exceeded: estimated request size "
-            f"{estimated_prompt_tokens} prompt tokens + "
-            f"{self.CONTEXT_RESPONSE_RESERVE_TOKENS} reserved output tokens "
-            f"exceeds model context window {context_window} for "
-            f"provider={self.provider}, model={self.model}. "
-            "Reduce max_context_chars or use page ranges/chunking for large documents."
+    def _route_limits(self, admit: bool) -> RouteLimits:
+        """Known limits: operator windows always; pinned catalog only when ``admit``."""
+        names = (self.model, self.raw_model)
+        if admit:
+            return route_limits(*names, configured_windows=self.context_windows)
+        configured = route_limits(
+            *(n for n in names if n in self.context_windows),
+            configured_windows=self.context_windows,
         )
+        return RouteLimits(input_tokens=configured.input_tokens)
 
     @staticmethod
     def _build_extraction_prompt(text: str, schema: dict[str, Any]) -> str:
@@ -705,10 +764,14 @@ class LLMClient:
         return f"""Extract {target} from the document text into JSON matching the schema below.
 
 RULES
-1. Extract exactly as written; do not normalize, convert units, paraphrase, or infer.
+1. Extract exactly as written. Do not normalize, convert units, paraphrase, or infer
+   unless a schema field description explicitly requires that conversion; then apply
+   only that conversion to a value the document states.
 2. Search the entire document, including tables, lists, and appendices.
-3. Follow the schema descriptions; use null where the document does not state a value.
-4. Blocks marked "added by ParseSweep" are guidance, not document content.
+3. Follow the schema descriptions; use null where the document does not state a value
+   or a required conversion cannot be made from stated values. Never invent a value.
+4. Evidence quotes are always verbatim document text, never converted or reworded.
+5. Blocks marked "added by ParseSweep" are guidance, not document content.
 
 JSON SCHEMA
 {json.dumps(prompt_schema(schema), indent=2)}

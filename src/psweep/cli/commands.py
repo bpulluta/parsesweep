@@ -27,6 +27,19 @@ from psweep.config import (
 from psweep.utils.log_context import current_document
 
 
+def domain_option(command):
+    """The one ``--domain`` workspace override shared by every config-driven stage."""
+    return click.option(
+        "--domain",
+        type=str,
+        default=None,
+        help=(
+            "Domain key for the output workspace (overrides config `domain:`; "
+            "every derived path follows it)."
+        ),
+    )(command)
+
+
 def _explicit_cli_overrides(param_names: list[str]) -> dict[str, Any]:
     """Return only values that were explicitly provided on the command line."""
     ctx = click.get_current_context(silent=True)
@@ -63,7 +76,7 @@ def _resolve_runtime_command_inputs(
     config_data = None
 
     if config_path:
-        config_data = load_runtime_config_file(Path(config_path))
+        config_data = load_runtime_config_file(Path(config_path), domain=cli_values.get("domain"))
 
     result = resolve_command_config(
         command=command_name,

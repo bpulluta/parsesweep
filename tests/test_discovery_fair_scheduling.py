@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-import tracemalloc
 from collections import Counter
 
 import pytest
@@ -64,7 +62,7 @@ def test_query_slots_keep_initial_target_order_and_skip_exhausted_owners():
     assert [(idx, item.queries) for idx, item in jobs] == [(0, ["A1"]), (1, ["B1"]), (0, ["A2"])]
 
 
-@pytest.mark.parametrize("size", [20, 1000, 10000])
+@pytest.mark.parametrize("size", [20, 1000, pytest.param(10000, marks=pytest.mark.slow)])
 def test_nonempty_synthetic_work_is_bounded_and_resume_reuses_success(monkeypatch, size):
     from psweep.discovery.connectors import serpapi_seeker
 
@@ -122,12 +120,7 @@ def test_nonempty_synthetic_work_is_bounded_and_resume_reuses_success(monkeypatc
     engine = DiscoveryEngine()
     engine._attempt_budget = AttemptBudget(max_search_calls=req.max_search_calls)
     state = {"enabled": True, "available": True}
-    tracemalloc.start()
-    start = time.monotonic()
     first, _, errors, _, metrics, physical = engine._run_seeker(req, state, [], [], query_slot=True)
-    elapsed = time.monotonic() - start
-    _, peak_bytes = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
     assert physical == size + 7 and sum(calls.values()) == size + 7
     assert errors and len(first) == size * 3
     assert sum(metric.get("search_complete") is False for metric in metrics) == size - 7
@@ -150,7 +143,3 @@ def test_nonempty_synthetic_work_is_bounded_and_resume_reuses_success(monkeypatc
     # workers really do run discover() at once) -- the real invariant is that
     # concurrency stays within the configured cap, not that it never happens.
     assert 0 < peak_jobs <= DEFAULT_MAX_CONCURRENT_DOWNLOADS and largest_pool == 11
-    print(
-        f"synthetic={size} elapsed={elapsed:.3f}s peak={peak_bytes / 1024 / 1024:.1f}MiB "
-        f"physical={size * 2} reused={size + 7} in_flight={peak_jobs} selected={len(second)}"
-    )

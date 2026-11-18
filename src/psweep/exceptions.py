@@ -75,6 +75,27 @@ class ExtractionError(ParseSweepError):
         self.document = document
 
 
+class ResponseOutcomeError(ExtractionError):
+    """The model's answer was rejected as an explicit outcome.
+
+    ``code`` is stable and machine-readable (``response_truncated``,
+    ``response_refused``, ``response_empty``, ``response_not_json``); the message
+    never carries provider or document text. Only empty and non-JSON answers are
+    ``repairable``: truncation and refusal are never blindly regenerated.
+    """
+
+    REPAIRABLE = frozenset({"response_empty", "response_not_json"})
+
+    def __init__(self, message: str, *, code: str, document: str | None = None) -> None:
+        super().__init__(message, document=document)
+        self.code = code
+
+    @property
+    def repairable(self) -> bool:
+        """True when one schema-feedback generation may fix this outcome."""
+        return self.code in self.REPAIRABLE
+
+
 class TargetingSafetyError(ExtractionError):
     """Raised when automatic targeting leaves no safe input for the primary request.
 
@@ -84,6 +105,10 @@ class TargetingSafetyError(ExtractionError):
     def __init__(self, message: str, *, code: str, document: str | None = None) -> None:
         super().__init__(message, document=document)
         self.code = code
+
+
+class SourceChangedError(ExtractionError):
+    """Raised when a source no longer matches the identity extraction was prepared for."""
 
 
 class CompilationError(ParseSweepError):

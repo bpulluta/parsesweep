@@ -52,9 +52,10 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    """Register test layers without requiring an additional runner."""
+    """Register validation layers and expensive cases without another runner."""
     for marker in ("unit", "contract", "integration", "live"):
         config.addinivalue_line("markers", f"{marker}: {marker} validation layer")
+    config.addinivalue_line("markers", "slow: large-scale regression excluded from the fast loop")
 
 
 def pytest_collection_modifyitems(config, items):

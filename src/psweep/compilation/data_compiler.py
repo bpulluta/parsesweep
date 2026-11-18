@@ -21,7 +21,7 @@ from .deduplicator import (
     Deduplicator,
 )
 from .excel_formatter import ExcelFormatter
-from .input_provenance import list_compile_record_files, read_compile_record
+from .input_provenance import CompileInputs, read_compile_record, select_compile_inputs
 from .roster import compile_roster
 from psweep.discovery.targets import iter_targets
 from psweep.exceptions import SchemaMetadataError
@@ -75,10 +75,13 @@ class DataCompiler:
         self.reconciliation_policy = policy_contract(schema_metadata, self.inputs, self.roster)
         self.reconciliation_stats: dict[str, int] = {}
         self.reconciliation_costs: dict[str, Any] = {}
+        self.compile_inputs: CompileInputs | None = None
 
     @property
     def status(self) -> str:
-        """Unresolved reconciliation is never certified as a successful build."""
+        """Unresolved reconciliation or an empty table beside failed documents is no success."""
+        if self.compile_inputs and self.compile_inputs.failed_documents and not self.total_items:
+            return "failed"
         if not self.reconciliation_stats.get("unresolved"):
             return "success"
         return (
@@ -92,9 +95,10 @@ class DataCompiler:
         """Compilation mode: ``roster`` when a roster is configured, else ``rows``."""
         return "rows" if self.roster is None else "roster"
 
-    def fingerprint(self, json_dir: Path) -> str:
-        """Build fingerprint: schema bytes, compile overlay, roster targets, record bytes."""
+    def fingerprint(self, json_dir: Path, *, inputs: CompileInputs | None = None) -> str:
+        """Build fingerprint: schema, compile overlay, roster, admitted record bytes."""
         json_dir = Path(json_dir)
+        inputs = inputs or select_compile_inputs(json_dir)
         compilation = dict(self.schema_metadata.metadata.get("compilation") or {})
         output = {
             key: value
@@ -124,18 +128,18 @@ class DataCompiler:
             "schema_sha256": artifact_sha256(self.schema_metadata.schema_path),
             "compilation": compilation,
             "roster": roster,
+            "qualification": inputs.qualification,
             "records": [
-                [path.relative_to(json_dir).as_posix(), artifact_sha256(path)]
-                for path in list_compile_record_files(json_dir)
+                [path.relative_to(json_dir).as_posix(), digest] for path, digest in inputs.records
             ],
         }
         return hashlib.sha256(
             json.dumps(identity, sort_keys=True, default=str).encode()
         ).hexdigest()
 
-    def _records(self, files: list[Path]) -> Iterator[dict[str, Any]]:
-        for path in files:
-            record = read_compile_record(path)
+    def _records(self, records: tuple[tuple[Path, str], ...]) -> Iterator[dict[str, Any]]:
+        for path, digest in records:
+            record = read_compile_record(path, sha256=digest)
             try:
                 self.payload_validator.validate(record["payload"])
             except ValidationError as exc:
@@ -149,6 +153,7 @@ class DataCompiler:
         self,
         json_dir: Path,
         *,
+        inputs: CompileInputs | None = None,
         apply_deduplication: bool = True,
         allow_model: bool = True,
     ) -> tuple[pd.DataFrame, dict[str, Any]]:
@@ -156,10 +161,11 @@ class DataCompiler:
         from psweep.security import validate_protected_paths
 
         validate_protected_paths({"input_dir": json_dir})
-        files = list_compile_record_files(json_dir)
-        if not files:
-            raise ValueError(f"No extraction records found in {json_dir}")
-        self.file_count = len(files)
+        self.compile_inputs = inputs or select_compile_inputs(json_dir)
+        records = self.compile_inputs.records
+        if not records:
+            raise ValueError(self.compile_inputs.empty_message(json_dir))
+        self.file_count = len(records)
         main = self.schema_metadata.get_main_data_array()
         schema_info = {
             "type": self.schema_metadata.metadata.get("extraction", {}).get(
@@ -189,17 +195,20 @@ class DataCompiler:
                     allow_model=allow_model,
                 )
                 df, self.roster_stats, self.reconciliation_stats, self.reconciliation_costs = (
-                    reconciler.compile(self._records(files))
+                    reconciler.compile(self._records(records))
                 )
             else:
                 df, self.roster_stats = compile_roster(
-                    self._records(files), self.schema_metadata, self.roster, self.inputs["targets"]
+                    self._records(records),
+                    self.schema_metadata,
+                    self.roster,
+                    self.inputs["targets"],
                 )
             self.total_items = len(df)
             self.duplicates_removed = 0
             return df, schema_info
 
-        df = self._item_rows(files, main)
+        df = self._item_rows(records, main)
         for field in (
             self.schema_metadata.get_deduplication_key_fields()
             + self.schema_metadata.get_deduplication_partition_fields()
@@ -221,12 +230,12 @@ class DataCompiler:
             print(f"\n[DEBUG] Shape: {df.shape[0]} rows × {df.shape[1]} columns")  # noqa: RUF001
         return df, schema_info
 
-    def _item_rows(self, files: list[Path], main: str) -> pd.DataFrame:
+    def _item_rows(self, records: tuple[tuple[Path, str], ...], main: str) -> pd.DataFrame:
         row_array = self.schema_metadata.get_row_array()
         contexts = self.schema_metadata.get_context_objects()
         flatten = self.flattener.flatten_item
         rows = []
-        for path, record in zip(files, self._records(files), strict=True):
+        for (path, _), record in zip(records, self._records(records), strict=True):
             payload = record["payload"]
             context = {
                 key: to_cell(value)

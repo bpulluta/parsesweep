@@ -38,7 +38,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from psweep.utils.file_io import artifact_sha256, staged_file
+from psweep.utils.file_io import staged_file
+from .prepared_document import CapturedSource
 from psweep.utils.page_range import (
     PageRanges,
     count_pages,
@@ -48,13 +49,17 @@ from psweep.utils.page_range import (
     ranges_from_pages,
 )
 from psweep.exceptions import APIKeyError
+from . import pdf_utils
+from .request_policy import RequestNotAdmittedError
 from .llm_factory import resolve_llm_kwargs
 from .provenance import SourceContext, prepend_source_context
 
 logger = logging.getLogger(__name__)
 
 PAGE_CACHE_DIRNAME = ".pages"
-LOCATOR_BEHAVIOR_VERSION = "subject-aware-v3"
+LOCATOR_BEHAVIOR_VERSION = "captured-scope-v4"
+# Bound on index requests per document when a candidate index must be split.
+MAX_INDEX_REQUESTS = 8
 
 # Single source of truth for the ``pages.auto_locate`` defaults, shared by the
 # CLI resolver and PageLocator so ``--help``/docs and runtime never drift.
@@ -216,6 +221,35 @@ class _BaseLocator:
     def _scope_prompt(self, prompt: str) -> str:
         return prepend_source_context(prompt, self._source_context)
 
+    def _ask_in_batches(self, candidates: list[int], ask) -> list | None:
+        """Run ``ask(batch)`` over candidates, halving a batch the route cannot admit.
+
+        Every candidate is shown to the model in some admitted request, in page
+        order. Returns the concatenated answers, or ``None`` if any batch failed,
+        a single candidate is itself not admitted, or more than
+        ``MAX_INDEX_REQUESTS`` requests would be needed: a partial index is
+        never treated as authoritative.
+        """
+        pending, answers, requests = [list(candidates)], [], 0
+        while pending:
+            batch = pending.pop(0)
+            requests += 1
+            if requests > MAX_INDEX_REQUESTS:
+                logger.debug("Locator index needs more than %d requests", MAX_INDEX_REQUESTS)
+                return None
+            try:
+                answer = ask(batch)
+            except RequestNotAdmittedError:
+                if len(batch) == 1:
+                    return None
+                middle = len(batch) // 2
+                pending[:0] = [batch[:middle], batch[middle:]]
+                continue
+            if answer is None:
+                return None
+            answers.extend(answer)
+        return answers
+
     def _derive_keywords(self) -> list[str]:
         """Pull content words from the section description as default keywords."""
         words = re.findall(r"[a-zA-Z][a-zA-Z/]{2,}", self._description.lower())
@@ -293,20 +327,24 @@ class _BaseLocator:
             },
         }
         if isinstance(self, PageLocator):
-            settings.update(max_pages=self._max_pages, context_pages=self._context)
+            # The index is built from page text, so OCR and page rules change it.
+            settings.update(
+                max_pages=self._max_pages,
+                context_pages=self._context,
+                ocr_page_version=pdf_utils.OCR_PAGE_VERSION,
+                page_representation_version=pdf_utils.PAGE_REPRESENTATION_VERSION,
+            )
         return hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()
 
-    def _cache_metadata(self, file_path: Path) -> dict:
-        stat = file_path.stat()
+    def _cache_metadata(self, source: CapturedSource) -> dict:
         return {
-            "source_size": stat.st_size,
-            "source_mtime_ns": stat.st_mtime_ns,
-            "source_sha256": artifact_sha256(file_path),
+            "source_sha256": source.sha256,
+            "effective_text": source.cached_text.identity if source.cached_text else None,
             "fingerprint": self._fingerprint(),
         }
 
-    def _cache_matches(self, file_path: Path, meta: dict) -> bool:
-        expected = self._cache_metadata(file_path)
+    def _cache_matches(self, source: CapturedSource, meta: dict) -> bool:
+        expected = self._cache_metadata(source)
         return all(meta.get(key) == value for key, value in expected.items())
 
     @staticmethod
@@ -431,8 +469,9 @@ class PageLocator(_BaseLocator):
                 system_prompt=system,
                 user_prompt=user_prompt,
                 suppress_errors=True,
+                admit=True,
             )
-        except APIKeyError:
+        except (APIKeyError, RequestNotAdmittedError):
             raise
         except Exception as exc:  # noqa: BLE001 - fall back to no targeting
             logger.debug("Page locator LLM call failed: %s", exc)
@@ -455,6 +494,11 @@ class PageLocator(_BaseLocator):
 
     def _confirm_with_llm(self, pages: list[str], candidates: list[int]) -> list[int] | None:
         """Ask which candidate pages hold the section; return them in page order."""
+        answers = self._ask_in_batches(candidates, lambda batch: self._confirm_batch(pages, batch))
+        return page_numbers(normalize_page_ranges(answers)) if answers is not None else None
+
+    def _confirm_batch(self, pages: list[str], candidates: list[int]):
+        """One index request over ``candidates``; ``None`` on failure."""
         index_lines = []
         for idx in candidates:
             snippet = " ".join(pages[idx].split())[: self._snippet_chars]
@@ -473,8 +517,7 @@ class PageLocator(_BaseLocator):
             '{"ranges": [{"start": N, "end": M}]}.\n\n'
             f"CANDIDATE PAGES:\n{index_text}"
         )
-        ranges = self._ask_ranges(len(pages), system=_LOCATE_SYSTEM, user_prompt=user_prompt)
-        return page_numbers(normalize_page_ranges(ranges)) if ranges is not None else None
+        return self._ask_ranges(len(pages), system=_LOCATE_SYSTEM, user_prompt=user_prompt)
 
     @staticmethod
     def _outline(pages: list[str]) -> str:
@@ -518,7 +561,12 @@ class PageLocator(_BaseLocator):
                 '{"ranges": [{"start": N, "end": M}]}.\n\n'
                 f"SELECTED PAGE TEXT:\n{frontier_text}\n\nDOCUMENT OUTLINE:\n{outline}"
             )
-            ranges = self._ask_ranges(len(pages), system=_REFERENCE_SYSTEM, user_prompt=user_prompt)
+            try:
+                ranges = self._ask_ranges(
+                    len(pages), system=_REFERENCE_SYSTEM, user_prompt=user_prompt
+                )
+            except RequestNotAdmittedError:
+                ranges = None
             if ranges is None:
                 self.incomplete = True
                 break
@@ -542,13 +590,13 @@ class PageLocator(_BaseLocator):
     def _cache_path(pdf_path: Path) -> Path:
         return pdf_path.parent / PAGE_CACHE_DIRNAME / f"{pdf_path.stem}.json"
 
-    def _read_cache(self, pdf_path: Path) -> PageSelection | None:
-        cache = self._cache_path(pdf_path)
+    def _read_cache(self, source: CapturedSource) -> PageSelection | None:
+        cache = self._cache_path(source.original)
         if not cache.exists():
             return None
         try:
             meta = json.loads(cache.read_text(encoding="utf-8"))
-            if not self._cache_matches(pdf_path, meta):
+            if not self._cache_matches(source, meta):
                 return None
             ranges = normalize_page_ranges(meta["ranges"])
             omitted = normalize_page_ranges(meta["omitted"])
@@ -564,10 +612,12 @@ class PageLocator(_BaseLocator):
         else:
             return PageSelection(ranges, omitted)
 
-    def _write_cache(self, pdf_path: Path, selection: PageSelection, page_count: int) -> None:
+    def _write_cache(
+        self, source: CapturedSource, selection: PageSelection, page_count: int
+    ) -> None:
         try:
             meta = {
-                **self._cache_metadata(pdf_path),
+                **self._cache_metadata(source),
                 "ranges": [list(rng) for rng in selection.ranges],
                 "omitted": [list(rng) for rng in selection.omitted],
                 "page_count": page_count,
@@ -576,45 +626,43 @@ class PageLocator(_BaseLocator):
             self._publish_cache(
                 [
                     (
-                        self._cache_path(pdf_path),
+                        self._cache_path(source.original),
                         json.dumps(meta, indent=2).encode(),
                     )
                 ]
             )
         except (OSError, TypeError, ValueError):
-            logger.debug("Page cache write failed for %s", pdf_path, exc_info=True)
+            logger.debug("Page cache write failed for %s", source.original, exc_info=True)
 
-    def locate_cached(self, pdf_path: str | Path) -> PageSelection | None:
-        """Return a verified selection without parsing or client setup."""
-        pdf_path = Path(pdf_path)
-        return self._read_cache(pdf_path) if pdf_path.suffix.lower() == ".pdf" else None
+    def locate_cached(self, source: CapturedSource) -> PageSelection | None:
+        """Return a selection verified against the consumed version."""
+        return self._read_cache(source) if source.original.suffix.lower() == ".pdf" else None
 
     # -- entry point -------------------------------------------------------
 
-    def locate(self, pdf_path: str | Path, pages: list[str] | None = None) -> PageSelection | None:
-        """Return the pages for the section and the parts it refers to, or None."""
+    def locate(self, source: CapturedSource) -> PageSelection | None:
+        """Return a scope from captured pages, retaining original cache locations."""
         self.incomplete = False
-        pdf_path = Path(pdf_path)
+        pdf_path = source.path
 
         if pdf_path.suffix.lower() != ".pdf":
             return None
-        cached = self.locate_cached(pdf_path)
+        cached = self.locate_cached(source)
         if cached is not None:
             logger.debug("Page targeting cache hit for %s", pdf_path.name)
             return cached
 
-        if pages is None:
-            from .pdf_utils import extract_pages_text
+        from .document_utils import ocr_page_cache
+        from .pdf_utils import extract_pages_text
 
-            pages = extract_pages_text(pdf_path)
-            loaded = True
-        else:
-            loaded = False
+        pages = extract_pages_text(
+            pdf_path, ocr=True, ocr_cache=ocr_page_cache(source.original, source.sha256)
+        )
         # Unreadable native text is unknown, not a harmless small document.
         if not any(page.strip() for page in pages):
             self.incomplete = True
             return None
-        if loaded and sum(map(len, pages)) <= self.trigger_chars:
+        if sum(map(len, pages)) <= self.trigger_chars:
             return None
 
         subject = [index + 1 for index in self._mandatory_indices(pages)]
@@ -645,5 +693,5 @@ class PageLocator(_BaseLocator):
         )
         selection = PageSelection(ranges_from_pages(chosen), ranges_from_pages(omitted))
         if not self.incomplete:
-            self._write_cache(pdf_path, selection, page_count=len(pages))
+            self._write_cache(source, selection, page_count=len(pages))
         return selection

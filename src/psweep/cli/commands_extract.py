@@ -10,6 +10,7 @@ import click
 from dotenv import load_dotenv
 from rich.markup import escape
 
+from psweep.cli.commands import domain_option
 from psweep.config import RuntimeConfigError
 from psweep.exceptions import ParseSweepError
 from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
@@ -121,6 +122,7 @@ def _render_extraction(plan, view):
     "Valid raw OCR (.text) and targeting (.pages/.sections) "
     "caches are reused.",
 )
+@domain_option
 @click.option(
     "--max-context",
     type=click.IntRange(min=1),
@@ -154,6 +156,7 @@ def extract(
     provider: str,
     limit: int | None,  # noqa: ARG001 - read via _explicit_cli_overrides
     fresh: bool,
+    domain: str | None,  # noqa: ARG001 - read via _explicit_cli_overrides
     max_context: int,
     quiet: bool,
     verbose: bool,
@@ -201,6 +204,7 @@ def extract(
             "limit",
             "max_context",
             "fresh",
+            "domain",
         ]
     )
 

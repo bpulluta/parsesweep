@@ -1,9 +1,12 @@
 """PDF text extraction with native parsers and scoped OCR fallback."""
 
 import contextlib
+import hashlib
+import json
 import logging
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 try:
@@ -22,6 +25,7 @@ except ImportError:
     PYPDF_AVAILABLE = False
     PdfReader = None
 
+from psweep.utils.file_io import staged_file
 from psweep.utils.page_range import (
     PageRanges,
     format_page_ranges,
@@ -30,7 +34,103 @@ from psweep.utils.page_range import (
 )
 
 logger = logging.getLogger(__name__)
-_MIN_NATIVE_CHARS = 500
+_MIN_NATIVE_CHARS = 500  # a mostly-raster page with less text than this needs OCR
+_RASTER_PAGE_FRACTION = 0.5  # image coverage that makes a page raster-dominated
+_VISUAL_FRACTION = 0.05  # below this, images are decoration (logos), not content
+NATIVE, OCR, BLANK, UNREADABLE = "native", "ocr", "blank", "unreadable"
+REPRESENTED = frozenset({NATIVE, OCR, BLANK})
+# Names the raw-OCR page cache format and rendering; bump it when OCR output changes.
+OCR_PAGE_VERSION = "ocr-page-v1"
+# Names the per-page decision rules (native vs OCR vs blank vs unreadable) and the
+# joined page text; bump it when those rules change what a page contributes.
+PAGE_REPRESENTATION_VERSION = "pdf-pages-v1"
+RENDER_DPI = 144  # legible small print without oversized images
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def ocr_reuse_conflict(pages: list[dict], entries: dict[int, str]) -> bool:
+    """True when a present OCR entry disagrees with what a record's pages used.
+
+    ``pages`` are a record's per-page provenance; ``entries`` map page numbers to
+    the text digests of the valid cache entries now present. A missing entry is
+    unknown and regenerable, so it never conflicts. A present entry conflicts
+    when the record's page carries another digest, or none (a page the record
+    could not read has become readable). Entries for pages the record did not
+    select are outside its scope.
+    """
+    recorded = {entry["page"]: entry.get("ocr_sha256") for entry in pages}
+    return any(page in recorded and recorded[page] != digest for page, digest in entries.items())
+
+
+class OcrPageCache:
+    """Raw OCR text per original page, keyed by source digest, page and engine.
+
+    One file per page, replaced atomically, so a page-range run, the locator
+    index and a whole-document run share OCR work. Entries hold raw text only;
+    configured corrections are applied by the reader. Any entry that is
+    unreadable, from another source or engine version, or whose text no longer
+    matches its digest is a miss.
+    """
+
+    def __init__(self, directory: Path, source_sha256: str):
+        self.directory = Path(directory)
+        self.source_sha256 = source_sha256
+
+    def _path(self, page: int) -> Path:
+        return self.directory / f"{page}.json"
+
+    def _engine(self) -> str:
+        return f"{OCR_PAGE_VERSION}:pymupdf-{getattr(pymupdf, 'VersionBind', '')}"
+
+    def _read(self, path: Path, page: int) -> tuple[str, str] | None:
+        """Return ``(text, text digest)`` for a valid entry, else ``None``."""
+        try:
+            entry = json.loads(path.read_text(encoding="utf-8"))
+            text = entry["text"]
+            valid = (
+                entry["engine"] == self._engine()
+                and entry["source_sha256"] == self.source_sha256
+                and entry["page"] == page
+                and isinstance(text, str)
+            )
+            digest = _sha(text)
+            if valid and entry["text_sha256"] == digest:
+                return text, digest
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            pass
+        return None
+
+    def get(self, page: int) -> str | None:
+        """Return the cached raw OCR text of *page*, or ``None`` on a miss."""
+        hit = self._read(self._path(page), page)
+        return hit[0] if hit else None
+
+    def put(self, page: int, text: str) -> None:
+        """Atomically publish *page*; a failed write leaves any prior entry intact."""
+        entry = {
+            "engine": self._engine(),
+            "source_sha256": self.source_sha256,
+            "page": page,
+            "text_sha256": _sha(text),
+            "text": text,
+        }
+        destination = self._path(page)
+        try:
+            with staged_file(destination, json.dumps(entry).encode("utf-8")) as staged:
+                staged.replace(destination)
+        except OSError:
+            logger.debug("OCR page cache write failed for page %s", page, exc_info=True)
+
+    def entries(self) -> dict[int, str]:
+        """Map every valid cached page to the digest of its text."""
+        found = {}
+        for path in self.directory.glob("*.json") if self.directory.is_dir() else ():
+            if path.stem.isdecimal() and (hit := self._read(path, int(path.stem))):
+                found[int(path.stem)] = hit[1]
+        return found
 
 
 def _checked_ranges(page_ranges) -> PageRanges:
@@ -68,32 +168,64 @@ def validate_pdf_scope(pdf_path: Path, page_ranges: PageRanges) -> PageRanges:
     return ranges_from_pages(pages)
 
 
+@dataclass(frozen=True)
+class PageRepresentation:
+    """How one original PDF page is represented as evidence.
+
+    ``native``: the embedded text layer is the evidence. ``ocr``: local OCR
+    supplied the text because the page is mostly raster. ``blank``: nothing to
+    read. ``unreadable``: the page has visual content no parser could turn into
+    text (including a raster page whose OCR failed), so its text, if any, is
+    known to be incomplete. Later steps route ``unreadable`` pages to visuals.
+    """
+
+    page: int
+    status: str
+    chars: int
+    image_fraction: float
+    ocr_sha256: str | None = None  # digest of the raw OCR text, when OCR output was obtained
+
+    def as_dict(self) -> dict:
+        """Return a JSON-safe record with the original 1-indexed page number."""
+        entry = {
+            "page": self.page,
+            "status": self.status,
+            "chars": self.chars,
+            "image_fraction": round(self.image_fraction, 3),
+        }
+        if self.ocr_sha256:
+            entry["ocr_sha256"] = self.ocr_sha256
+        return entry
+
+
 def _scope_meta(
     page_count: int | None,
     selected: list[int],
-    extracted: list[int],
-    used_ocr: bool = False,
+    pages: list[PageRepresentation],
 ) -> dict:
-    """Describe the selected pages and those a parser actually read."""
+    """Describe the selected pages and which of them are actually represented."""
+    extracted = [rep.page for rep in pages if rep.status in REPRESENTED]
     return {
-        "used_ocr": used_ocr,
+        "used_ocr": any(rep.status == OCR for rep in pages),
         "page_count": page_count,
         "page_ranges": ranges_from_pages(selected) or None,
         "selected_pages": selected,
         "extracted_pages": extracted,
+        "pages": [rep.as_dict() for rep in pages],
     }
 
 
-def _join_pages(parts: list[tuple[int, str]]) -> str:
-    """Join page texts, marking pages left out between them."""
-    if not any(text.strip() for _, text in parts):
+def _join_pages(parts: list[tuple[int, str, bool]], rules: list | None = None) -> str:
+    """Join page texts, marking omitted pages; configured corrections touch OCR pages only."""
+    if not any(text.strip() for _, text, _ in parts):
         return ""
-    chunks, previous = [], None
-    for page, text in parts:
+    chunks: list[str] = []
+    previous = None
+    for page, text, is_ocr in parts:
         if previous is not None and page > previous + 1:
             gap = format_page_ranges(((previous + 1, page - 1),))
             chunks.append(f"[Omitted pages: {gap}]\n")
-        chunks.append(text + "\n")
+        chunks.append((_cleanup_ocr_errors(text, rules) if is_ocr else text) + "\n")
         previous = page
     return "".join(chunks)
 
@@ -113,70 +245,96 @@ def _quiet_tesseract():
                 os.close(old_stderr)
 
 
-def _extract_with_ocr(
-    pdf_path: Path,
-    page_ranges: PageRanges | None = None,
-    return_meta: bool = False,
-):
-    """Extract raw OCR text from the selected pages, best-effort."""
-    text, meta = "", _scope_meta(None, [], [])
-    if not PYMUPDF_AVAILABLE:
-        logger.warning("PyMuPDF not available for OCR extraction")
-        return (text, meta) if return_meta else text
-    try:
-        doc = pymupdf.open(str(pdf_path))
-    except Exception:
-        logger.exception("Error opening %s for OCR", pdf_path)
-        return (text, meta) if return_meta else text
-
-    with doc:
-        selected = _selected_pages(len(doc), page_ranges)
-        parts = []
-        logger.info("Performing OCR on %s selected pages", len(selected))
-        with _quiet_tesseract():
-            for page_num in selected:
-                try:
-                    page = doc[page_num - 1]
-                    textpage = page.get_textpage_ocr()
-                    if textpage:
-                        parts.append((page_num, page.get_text(textpage=textpage) or ""))
-                except AttributeError:
-                    logger.warning("PyMuPDF OCR requires Tesseract")
-                    break
-                except (OSError, RuntimeError, ValueError) as exc:
-                    # Keep healthy pages when one scan fails OCR.
-                    logger.debug("OCR skipped page %s: %s", page_num, exc)
-        text = _join_pages(parts)
-        extracted = [page for page, _ in parts]
-        meta = _scope_meta(len(doc), selected, extracted, used_ocr=bool(text))
-    return (text, meta) if return_meta else text
+def _ocr_page(page) -> str:
+    """OCR raster areas of one page, merged with its native text layer."""
+    with _quiet_tesseract():
+        textpage = page.get_textpage_ocr()
+        return (page.get_text(textpage=textpage) if textpage else "") or ""
 
 
-def _extract_native(
+def _image_fraction(page) -> float:
+    """Share of the page area covered by embedded raster images (rotation-safe)."""
+    area = page.rect.get_area()
+    covered = sum(pymupdf.Rect(info["bbox"]).get_area() for info in page.get_image_info())
+    return min(1.0, covered / area) if area > 0 else 0.0
+
+
+def _represent_page(page, number: int, state: dict) -> tuple[str, PageRepresentation, bool]:
+    """Decide one page's evidence from that page alone, never from document totals."""
+    native = (page.get_text() or "").strip()
+    chars, fraction = len(native), _image_fraction(page)
+    visual = fraction >= _VISUAL_FRACTION
+    if chars == 0 and not visual:
+        visual = bool(page.get_drawings())
+    raster = fraction >= _RASTER_PAGE_FRACTION and chars < _MIN_NATIVE_CHARS
+    if not (raster or (chars == 0 and visual)):
+        status = NATIVE if chars else BLANK
+        return native, PageRepresentation(number, status, chars, fraction), False
+    cache = state.get("cache")
+    recognized = cache.get(number) if cache else None
+    if recognized is None:
+        try:
+            recognized = _ocr_page(page)
+        except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+            if not state.get("ocr_failed"):
+                logger.warning("OCR unavailable or failed for a raster page: %s", exc)
+                state["ocr_failed"] = True
+        else:
+            if cache:
+                cache.put(number, recognized)
+    digest = None if recognized is None else _sha(recognized)
+    ocr_chars = len((recognized or "").strip())
+    if ocr_chars > chars:
+        return recognized, PageRepresentation(number, OCR, ocr_chars, fraction, digest), True
+    return native, PageRepresentation(number, UNREADABLE, chars, fraction, digest), False
+
+
+def _read_pymupdf(
     pdf_path: Path,
     page_ranges: PageRanges | None,
-    *,
-    use_pypdf: bool = False,
+    rules: list | None,
+    cache: OcrPageCache | None,
 ) -> tuple[str, dict]:
-    """Run either parser with identical selection/failure semantics."""
+    """Read selected pages with PyMuPDF, assessing and OCR-ing each page on its own."""
+    try:
+        document = pymupdf.open(str(pdf_path))
+    except Exception:
+        logger.exception("Error opening PDF %s", pdf_path)
+        return "", _scope_meta(None, [], [])
+    with document:
+        selected = _selected_pages(len(document), page_ranges)
+        parts, reps, state = [], [], {"cache": cache}
+        try:
+            for number in selected:
+                text, rep, is_ocr = _represent_page(document[number - 1], number, state)
+                parts.append((number, text, is_ocr))
+                reps.append(rep)
+        except Exception:
+            logger.exception("Error extracting native PDF text from %s", pdf_path)
+            return "", _scope_meta(len(document), selected, [])
+        text = _join_pages(parts, rules)
+        return text, _scope_meta(len(document), selected, reps)
+
+
+def _read_pypdf(pdf_path: Path, page_ranges: PageRanges | None) -> tuple[str, dict]:
+    """Fallback text layer only; without visual evidence an empty page is unreadable."""
     with contextlib.ExitStack() as stack:
         try:
-            if use_pypdf:
-                handle = stack.enter_context(pdf_path.open("rb"))
-                pages = PdfReader(handle).pages
-            else:
-                pages = stack.enter_context(pymupdf.open(str(pdf_path)))
+            pages = PdfReader(stack.enter_context(pdf_path.open("rb"))).pages
         except Exception:
             logger.exception("Error opening PDF %s", pdf_path)
             return "", _scope_meta(None, [], [])
         selected = _selected_pages(len(pages), page_ranges)
-        read = (lambda page: page.extract_text()) if use_pypdf else (lambda page: page.get_text())
         try:
-            text = _join_pages([(n, read(pages[n - 1]) or "") for n in selected])
+            texts = [(n, (pages[n - 1].extract_text() or "").strip()) for n in selected]
         except Exception:
             logger.exception("Error extracting native PDF text from %s", pdf_path)
             return "", _scope_meta(len(pages), selected, [])
-        return text, _scope_meta(len(pages), selected, selected)
+    reps = [
+        PageRepresentation(n, NATIVE if text else UNREADABLE, len(text), 0.0) for n, text in texts
+    ]
+    text = _join_pages([(n, t, False) for n, t in texts])
+    return text, _scope_meta(len(pages), selected, reps)
 
 
 def extract_text_from_pdf(
@@ -184,59 +342,88 @@ def extract_text_from_pdf(
     page_ranges: PageRanges | None = None,
     return_meta: bool = False,
     ocr_corrections: list | None = None,
+    ocr_cache: OcrPageCache | None = None,
 ):
-    """Extract selected pages with native, pypdf, then OCR fallbacks.
+    """Extract selected pages, deciding native text versus OCR per page.
 
     ``page_ranges`` holds 1-indexed inclusive ``(start, end)`` pairs; ``None``
     reads the whole PDF. Ranges running past the last page are clamped; invalid
     selections raise ValueError. Every parser honors the selection and marks
-    pages left out between selected ones. ``return_meta`` always returns a pair,
-    including on failure. Metadata describes the clamped ``page_ranges`` and
-    ``selected_pages``, total ``page_count``, and ``extracted_pages`` (OCR can
-    skip failed pages). OCR also returns ``raw_ocr_text`` for caching before
-    applying current corrections.
+    pages left out between them. ``return_meta`` always returns a pair, also on
+    failure. Metadata carries the clamped ``page_ranges`` and ``selected_pages``,
+    total ``page_count``, a ``pages`` list of :class:`PageRepresentation` records
+    keyed by original page number, and ``extracted_pages``: the pages whose
+    content is represented (native, OCR or blank), never merely iterated.
+    ``ocr_cache`` supplies and receives raw OCR per page; each page that had OCR
+    output carries that text's ``ocr_sha256``. Configured corrections touch only
+    OCR pages and are applied here, never stored.
     """
     pdf_path = Path(pdf_path)
     if page_ranges is not None:
         page_ranges = _checked_ranges(page_ranges)
     text, meta = "", _scope_meta(None, [], [])
     if PYMUPDF_AVAILABLE:
-        text, meta = _extract_native(pdf_path, page_ranges)
-    if not text.strip() and PYPDF_AVAILABLE and PdfReader is not None:
-        fallback_text, fallback_meta = _extract_native(
-            pdf_path,
-            page_ranges,
-            use_pypdf=True,
-        )
-        if fallback_meta["page_count"] is not None:
+        text, meta = _read_pymupdf(pdf_path, page_ranges, ocr_corrections, ocr_cache)
+    if not meta["extracted_pages"] and PYPDF_AVAILABLE and PdfReader is not None:
+        fallback_text, fallback_meta = _read_pypdf(pdf_path, page_ranges)
+        if len(fallback_meta["extracted_pages"]) > len(meta["extracted_pages"]):
             text, meta = fallback_text, fallback_meta
-    if len(text.strip()) < _MIN_NATIVE_CHARS:
-        logger.warning(
-            "Very little text extracted from %s; attempting scoped OCR",
-            pdf_path.name,
-        )
-        ocr_text, ocr_meta = _extract_with_ocr(
-            pdf_path,
-            page_ranges,
-            return_meta=True,
-        )
-        if ocr_text.strip() and len(ocr_text) > len(text):
-            text = _cleanup_ocr_errors(ocr_text, ocr_corrections)
-            meta = {**ocr_meta, "raw_ocr_text": ocr_text}
     return (text, meta) if return_meta else text
 
 
-def extract_pages_text(pdf_path: Path) -> list[str]:
-    """Return plain text per page (index 0 = page 1), best-effort."""
+def extract_pages_text(
+    pdf_path: Path, *, ocr: bool = False, ocr_cache: OcrPageCache | None = None
+) -> list[str]:
+    """Return text per page (index 0 = page 1), best-effort.
+
+    Native text only by default (cheap discovery screening). ``ocr=True`` also
+    OCRs raster pages, for the page locator's index, sharing ``ocr_cache``
+    with extraction. Text is raw: corrections apply only when extraction reads.
+    """
     if not PYMUPDF_AVAILABLE:
         logger.warning("PyMuPDF not available; cannot read per-page text")
         return []
     try:
         with pymupdf.open(str(pdf_path)) as doc:
-            return [page.get_text() or "" for page in doc]
+            if not ocr:
+                return [page.get_text() or "" for page in doc]
+            state: dict = {"cache": ocr_cache}
+            return [_represent_page(page, number, state)[0] for number, page in enumerate(doc, 1)]
     except Exception:
         logger.exception("Error reading per-page text from %s", pdf_path)
         return []
+
+
+@dataclass(frozen=True)
+class PageImage:
+    """One rendered PDF page for visual extraction (original 1-indexed number)."""
+
+    page: int
+    png: bytes
+    width: int
+    height: int
+
+
+def render_pages(pdf_path: Path, pages: list[int]) -> list[PageImage]:
+    """Render only the requested pages, in page order, at full page size.
+
+    Pages are never cropped, resized to fit a budget, or dropped: a page that
+    cannot be sent is the request policy's decision, not this renderer's.
+    """
+    if not PYMUPDF_AVAILABLE:
+        message = "PyMuPDF is required to render PDF pages"
+        raise RuntimeError(message)
+    wanted = sorted(set(pages))
+    with pymupdf.open(str(pdf_path)) as document:
+        beyond = [page for page in wanted if page < 1 or page > document.page_count]
+        if beyond:
+            message = f"Pages {beyond} are beyond the {document.page_count}-page PDF"
+            raise ValueError(message)
+        rendered = []
+        for number in wanted:
+            pixmap = document[number - 1].get_pixmap(dpi=RENDER_DPI)
+            rendered.append(PageImage(number, pixmap.tobytes("png"), pixmap.width, pixmap.height))
+    return rendered
 
 
 def _cleanup_ocr_errors(text: str, rules: list | None = None) -> str:

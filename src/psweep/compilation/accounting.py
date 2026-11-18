@@ -99,6 +99,35 @@ def _reconciliation_receipts(domain: str, warnings: list[str]) -> dict[str, dict
     return receipts
 
 
+_STAGE_STATUS = {
+    "success": "completed",
+    "reused": "completed",
+    "empty": "completed",
+    "partial_failure": "completed_with_errors",
+    "failed": "failed",
+}
+
+
+def _current_admission(extraction_dir: Path, warnings: list[str]) -> dict[str, Any] | None:
+    """Counts of the output's current admission, or ``None`` when unknown."""
+    from psweep.extraction.admission import ADMITTED_DISPOSITIONS, AdmissionError, load_admission
+
+    try:
+        records = load_admission(extraction_dir)
+    except AdmissionError as exc:
+        warnings.append(f"admission_unreadable: {exc}")
+        return None
+    if records is None:
+        return None
+    admitted = [e for e in records.values() if e["disposition"] in ADMITTED_DISPOSITIONS]
+    return {
+        "documents_admitted": len(admitted),
+        "documents_failed": sum(e["disposition"] == "failed" for e in records.values()),
+        "documents_deferred": sum(e["disposition"] == "deferred" for e in records.values()),
+        "items_admitted": sum(int(e.get("items") or 0) for e in admitted),
+    }
+
+
 def build_pipeline_accounting(
     *,
     domain: str,
@@ -123,7 +152,8 @@ def build_pipeline_accounting(
     total_tokens: int = 0
     total_search_queries: int = 0
     search_api_provider: str | None = None
-    total_docs_extracted: int = 0
+    total_docs_billed: int = 0
+    current: dict[str, Any] | None = None
     total_extraction_runs: int = 0
     extraction_cost_total: float = 0.0
     discovery_completed_at: str | None = None
@@ -435,8 +465,15 @@ def build_pipeline_accounting(
             if run_completed:
                 run_completed_ats.append(run_completed)
 
+            run_status = mf.get("status") or {}
             run_record: dict[str, Any] = {
                 "run_id": run_id,
+                "result": run_status.get("result"),
+                "documents_processed": run_status.get("total_processed"),
+                "documents_succeeded": run_status.get("successful"),
+                "documents_failed": run_status.get("failed"),
+                "items": run_status.get("items"),
+                "zero_item_records": run_status.get("zero_item_records"),
                 "documents_billed": run_docs,
                 "llm_calls": run_calls,
                 "unknown_cost_calls": run_unknown,
@@ -448,7 +485,9 @@ def build_pipeline_accounting(
                     if run_cost > 0
                     else "provider reported zero billable cost"
                 ),
-                "cost_per_document_usd": (_round_cost(run_cost / run_docs) if run_docs else 0.0),
+                "cost_per_billed_document_usd": (
+                    _round_cost(run_cost / run_docs) if run_docs else 0.0
+                ),
                 "input_tokens": run_input,
                 "output_tokens": run_output,
                 "tokens": run_input + run_output,
@@ -479,8 +518,12 @@ def build_pipeline_accounting(
         if run_completed_ats:
             earliest_extraction_completed_at = min(run_completed_ats)
 
+        current = _current_admission(extraction_dir, warnings)
         stage_payload: dict[str, Any] = {
-            "status": "completed",
+            "status": _STAGE_STATUS.get(runs_data[-1]["result"], "unknown")
+            if runs_data
+            else "unknown",
+            "current": current,
             "cost_model": "per_document_llm_extraction",
             "documents_billed": ext_docs_billed,
             "cost_usd": ext_cost,
@@ -491,7 +534,7 @@ def build_pipeline_accounting(
                 if ext_cost > 0
                 else "no documents billed"
             ),
-            "cost_per_document_usd": (
+            "cost_per_billed_document_usd": (
                 _round_cost(ext_cost / ext_docs_billed) if ext_docs_billed else 0.0
             ),
             "input_tokens": ext_input_tokens,
@@ -524,7 +567,7 @@ def build_pipeline_accounting(
         total_llm_cost = _round_cost(math.fsum([total_llm_cost, ext_cost]))
         total_llm_calls += ext_calls
         total_tokens += ext_tokens
-        total_docs_extracted = ext_docs_billed
+        total_docs_billed = ext_docs_billed
         total_extraction_runs = len(runs_data)
         extraction_cost_total = ext_cost
 
@@ -666,7 +709,7 @@ def build_pipeline_accounting(
             total_llm_cost = _round_cost(math.fsum([total_llm_cost, ext_cost_fallback]))
             total_llm_calls += ext_calls
             total_tokens += ext_tokens
-            total_docs_extracted = doc_total
+            total_docs_billed = doc_total
             extraction_cost_total = ext_cost_fallback
 
     # ------------------------------------------------------------------
@@ -780,11 +823,17 @@ def build_pipeline_accounting(
     summary: dict[str, Any] = {
         "total_cost_usd": total_llm_cost,
         "cost_scope": "metered_llm_only",
-        "documents_extracted": total_docs_extracted,
-        "cost_per_document_usd": (
-            _round_cost(extraction_cost_total / total_docs_extracted)
-            if total_docs_extracted
-            else 0.0
+        "documents_billed": total_docs_billed,
+        "documents_admitted": (current or {}).get("documents_admitted"),
+        "documents_failed": (current or {}).get("documents_failed"),
+        "items_admitted": (current or {}).get("items_admitted"),
+        "cost_per_billed_document_usd": (
+            _round_cost(extraction_cost_total / total_docs_billed) if total_docs_billed else 0.0
+        ),
+        "cost_per_admitted_document_usd": (
+            _round_cost(extraction_cost_total / current["documents_admitted"])
+            if current and current["documents_admitted"]
+            else None
         ),
         "llm_calls_total": total_llm_calls,
         "tokens_total": total_tokens,
@@ -826,7 +875,7 @@ def build_pipeline_accounting(
     # Final structure
     # ------------------------------------------------------------------
     output: dict[str, Any] = {
-        "accounting_version": "2.0.0",
+        "accounting_version": "3.0.0",
         "domain_schema_version": domain_schema_version,
         "domain": domain,
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),

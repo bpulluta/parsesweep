@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 
 from psweep import __version__
+from psweep.cli.commands import domain_option
 from psweep.cli.commands_compile import compile as compile_command
 from psweep.cli.commands_curate import curate
 from psweep.cli.commands_discover import discover
@@ -55,6 +56,7 @@ def cli() -> None:
     type=click.IntRange(min=1),
     help="Use only the first N targets (pilot runs).",
 )
+@domain_option
 @click.option("--skip-discover", is_flag=True, help="Use existing curated documents.")
 @click.option("--skip-extract", is_flag=True, help="Compile existing extracted records.")
 @click.option(
@@ -71,6 +73,7 @@ def run(
     config_path: Path,
     fresh: bool = False,
     target_limit: int | None = None,
+    domain: str | None = None,
     skip_discover: bool = False,
     skip_extract: bool = False,
     validate_config_only: bool = False,
@@ -111,13 +114,12 @@ def run(
     view = RunView("run", verbosity=resolved_verbosity)
 
     try:
-        cfg = load_runtime_config_file(config_path)
+        cfg = load_runtime_config_file(config_path, domain=domain)
     except RuntimeConfigError as exc:
         view.error("Runtime config validation failed", str(exc))
         raise click.exceptions.Exit(1) from None
 
-    domain = cfg["domain"]
-    workspace = Workspace(domain)
+    workspace = Workspace(cfg["domain"])  # the override, when given, was applied at load
     discovery_enabled = resolve_run_discovery_enabled(config_path)
 
     preflight_commands: list[str] = []
@@ -195,7 +197,7 @@ def run(
 
     # Show run plan
     view.header()
-    plan_rows: dict[str, str] = {"Domain": domain}
+    plan_rows: dict[str, str] = {"Domain": cfg["domain"]}
     if not discovery_enabled:
         plan_rows["Targets"] = "n/a (discovery not configured)"
     elif discover_fields is None:
@@ -268,6 +270,7 @@ def run(
             else None
         ),
         extra_flags=flags,
+        domain=domain,
     )
 
     stage_labels = {

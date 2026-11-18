@@ -337,8 +337,8 @@ def test_curate_missing_manifest_is_not_legacy_ledger_fallback(tmp_path):
 @pytest.mark.parametrize("review_only", [True, False])
 def test_human_keep_releases_only_review_failure_blocks(tmp_path, review_only):
     """Human review cannot release search/download incompleteness: a kept
-    document is published either way, but only a released partition
-    withdraws its owner's stale path.
+    document is published either way, and its owner's stale path is withdrawn
+    either way, because a rename is a final per-document decision.
     """
     run, _, _, review = _curation_fixture(tmp_path)
     stale = tmp_path / "domain/curated/old-report.pdf"
@@ -374,4 +374,4 @@ def test_human_keep_releases_only_review_failure_blocks(tmp_path, review_only):
     assert result.exit_code == 0, result.output
     assert (run / "curated/report.pdf").exists()
     assert (tmp_path / "domain/curated/report.pdf").exists()
-    assert stale.exists() is not review_only
+    assert not stale.exists()

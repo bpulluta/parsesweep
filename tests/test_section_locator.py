@@ -6,6 +6,7 @@ import logging
 import os
 from dataclasses import replace
 
+from psweep.extraction.prepared_document import capture_source
 from psweep.extraction.provenance import SourceContext
 from psweep.extraction import page_locator
 
@@ -79,6 +80,25 @@ class _FakeClient:
 # ---------------------------------------------------------------------------
 
 
+def test_effective_text_and_cache_share_capture_identity(tmp_path, monkeypatch):
+    from psweep.extraction.document_utils import write_text_cache
+
+    document = tmp_path / "doc.html"
+    document.write_text("<html>native unrelated</html>")
+    write_text_cache(document, "Section 1 Rates\nA rates evidence", method="browser_render")
+    locator = SectionLocator("rates", trigger_chars=1)
+    client = _FakeClient([1])
+    monkeypatch.setattr(locator, "_ensure_client", lambda: client)
+    with capture_source(document) as source:
+        document.write_text("B live source")
+        write_text_cache(document, "B rates evidence", method="browser_render")
+        text = locator.locate(source)
+        assert "A rates evidence" in text
+        assert "B" not in text
+        assert locator.locate_cached(source) == text
+    assert (tmp_path / ".sections/doc.html.json").exists()
+
+
 class TestHtmlSplitPreservesTables:
     def test_table_appears_as_markdown_pipes(self):
         locator = SectionLocator("rate schedule")
@@ -141,17 +161,20 @@ class TestXlsxCsvReturnNone:
     def test_xlsx_returns_none(self, tmp_path):
         xlsx = tmp_path / "data.xlsx"
         xlsx.write_bytes(b"PK fake xlsx")
-        assert SectionLocator("any section").locate(xlsx) is None
+        with capture_source(xlsx) as source:
+            assert SectionLocator("any section").locate(source) is None
 
     def test_csv_returns_none(self, tmp_path):
         csv_file = tmp_path / "data.csv"
         csv_file.write_text("col1,col2\nval1,val2")
-        assert SectionLocator("any section").locate(csv_file) is None
+        with capture_source(csv_file) as source:
+            assert SectionLocator("any section").locate(source) is None
 
     def test_pdf_returns_none(self, tmp_path):
         pdf = tmp_path / "doc.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
-        assert SectionLocator("any section").locate(pdf) is None
+        with capture_source(pdf) as source:
+            assert SectionLocator("any section").locate(source) is None
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +189,8 @@ class TestTriggerCharsSkipsSmallDoc:
         called = []
         locator = SectionLocator("rate schedule", trigger_chars=1_000_000)
         monkeypatch.setattr(locator, "_ensure_client", lambda: called.append(1) or _FakeClient([1]))
-        result = locator.locate(small_html)
+        with capture_source(small_html) as source:
+            result = locator.locate(source)
         assert result is None
         assert called == []  # LLM never invoked
 
@@ -182,7 +206,8 @@ class TestTriggerCharsSkipsSmallDoc:
             locator, "_ensure_client", lambda: pytest.fail("small article called locator model")
         )
         assert source.stat().st_size > locator.trigger_chars
-        assert locator.locate(source) is None
+        with capture_source(source) as captured:
+            assert locator.locate(captured) is None
 
     def test_large_readable_html_still_uses_locator(self, tmp_path, monkeypatch):
         source = tmp_path / "large.html"
@@ -190,7 +215,8 @@ class TestTriggerCharsSkipsSmallDoc:
         locator = SectionLocator("data center timeline", trigger_chars=60_000)
         client = _FakeClient([1])
         monkeypatch.setattr(locator, "_ensure_client", lambda: client)
-        assert locator.locate(source) is not None
+        with capture_source(source) as captured:
+            assert locator.locate(captured) is not None
         assert client.calls == 1
 
     def test_small_txt_skipped(self, tmp_path, monkeypatch):
@@ -199,7 +225,8 @@ class TestTriggerCharsSkipsSmallDoc:
         called = []
         locator = SectionLocator("rate schedule", trigger_chars=1_000_000)
         monkeypatch.setattr(locator, "_ensure_client", lambda: called.append(1) or _FakeClient([1]))
-        result = locator.locate(small_txt)
+        with capture_source(small_txt) as source:
+            result = locator.locate(source)
         assert result is None
         assert called == []
 
@@ -219,23 +246,27 @@ class TestCacheRoundTrip:
         html = self._html_file(tmp_path)
         locator = SectionLocator("rate schedule")
         expected = "Rate Schedule\nThe following rates apply."
-        locator._write_cache(html, expected)
-        assert locator._read_cache(html) == expected
+        with capture_source(html) as source:
+            locator._write_cache(source, expected)
+            assert locator._read_cache(source) == expected
 
     def test_cache_miss_when_description_changes(self, tmp_path):
         html = self._html_file(tmp_path)
         locator = SectionLocator("rate schedule")
-        locator._write_cache(html, "cached text")
-        locator2 = SectionLocator("completely different description")
-        assert locator2._read_cache(html) is None
+        with capture_source(html) as source:
+            locator._write_cache(source, "cached text")
+            locator2 = SectionLocator("completely different description")
+            assert locator2._read_cache(source) is None
 
     def test_cache_miss_when_file_modified(self, tmp_path):
         html = self._html_file(tmp_path)
         locator = SectionLocator("rate schedule")
-        locator._write_cache(html, "cached text")
+        with capture_source(html) as source:
+            locator._write_cache(source, "cached text")
         # Overwrite file to change mtime/size
         html.write_text(HTML_WITH_TABLE + "<!-- extra -->")
-        assert locator._read_cache(html) is None
+        with capture_source(html) as source:
+            assert locator._read_cache(source) is None
 
     def test_cache_hit_skips_llm(self, tmp_path, monkeypatch):
         html = self._html_file(tmp_path)
@@ -243,8 +274,9 @@ class TestCacheRoundTrip:
         fake = _FakeClient([2])
         monkeypatch.setattr(locator, "_ensure_client", lambda: fake)
         # Seed cache directly
-        locator._write_cache(html, "cached content")
-        result = locator._read_cache(html)
+        with capture_source(html) as source:
+            locator._write_cache(source, "cached content")
+            result = locator._read_cache(source)
         assert result == "cached content"
         assert fake.calls == 0
 
@@ -266,25 +298,33 @@ class TestSectionCacheIntegrity:
         for source, text in zip(sources, ("HTML", "TXT"), strict=True):
             source.write_bytes(b"same")
             os.utime(source, ns=(1000000000, 1000000000))
-            loc._write_cache(source, text)
-        assert [loc._read_cache(s) for s in sources] == ["HTML", "TXT"]
+            with capture_source(source) as captured:
+                loc._write_cache(captured, text)
+        cached = []
+        for source in sources:
+            with capture_source(source) as captured:
+                cached.append(loc._read_cache(captured))
+        assert cached == ["HTML", "TXT"]
         assert len(list((tmp_path / ".sections").iterdir())) == 4
 
     def test_text_digest_rejects_tampering(self, tmp_path):
         source = self._source(tmp_path)
         loc = SectionLocator("rates")
-        loc._write_cache(source, "cached")
-        loc._cache_paths(source)[1].write_text("broken")
-        assert loc._read_cache(source) is None
+        with capture_source(source) as captured:
+            loc._write_cache(captured, "cached")
+            loc._cache_paths(source)[1].write_text("broken")
+            assert loc._read_cache(captured) is None
 
     def test_source_digest_invalidates_same_stat(self, tmp_path):
         source = self._source(tmp_path)
         loc = SectionLocator("rates")
-        loc._write_cache(source, "cached")
+        with capture_source(source) as captured:
+            loc._write_cache(captured, "cached")
         stat = source.stat()
         source.write_text(HTML_WITH_TABLE.replace("100", "101"))
         os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        assert loc._read_cache(source) is None
+        with capture_source(source) as captured:
+            assert loc._read_cache(captured) is None
 
     @pytest.mark.parametrize(
         "changed",
@@ -297,9 +337,10 @@ class TestSectionCacheIntegrity:
     )
     def test_settings_invalidate_cache(self, tmp_path, changed):
         source = self._source(tmp_path)
-        SectionLocator("rates", model="gpt-4o")._write_cache(source, "cached")
-        kwargs = {"model": "gpt-4o", **changed}
-        assert SectionLocator("rates", **kwargs)._read_cache(source) is None
+        with capture_source(source) as captured:
+            SectionLocator("rates", model="gpt-4o")._write_cache(captured, "cached")
+            kwargs = {"model": "gpt-4o", **changed}
+            assert SectionLocator("rates", **kwargs)._read_cache(captured) is None
 
     def test_explicit_empty_keywords_respected(self):
         loc = SectionLocator("rate schedule", keywords=[])
@@ -308,48 +349,50 @@ class TestSectionCacheIntegrity:
     def test_metadata_last_staging_and_cached_lookup(self, tmp_path, monkeypatch):
         source = self._source(tmp_path)
         loc = SectionLocator("rates", trigger_chars=1)
-        loc._write_cache(source, "before")
-        meta_path, text_path = loc._cache_paths(source)
-        original_replace = Path.replace
-        destinations = []
+        with capture_source(source) as captured:
+            loc._write_cache(captured, "before")
+            meta_path, text_path = loc._cache_paths(source)
+            original_replace = Path.replace
+            destinations = []
 
-        def observe(staged, destination):
-            assert staged.parent == destination.parent
-            if destination == meta_path:
-                assert text_path.read_text() == "after"
-                assert loc._read_cache(source) is None
-            destinations.append(destination)
-            return original_replace(staged, destination)
+            def observe(staged, destination):
+                assert staged.parent == destination.parent
+                if destination == meta_path:
+                    assert text_path.read_text() == "after"
+                    assert loc._read_cache(captured) is None
+                destinations.append(destination)
+                return original_replace(staged, destination)
 
-        monkeypatch.setattr(Path, "replace", observe)
-        loc._write_cache(source, "after")
-        assert destinations == [text_path, meta_path]
-        monkeypatch.setattr(
-            loc,
-            "_split_html_sections",
-            lambda _t: pytest.fail("parsed cache hit"),
-        )
-        assert loc.locate_cached(source) == "after"
-        assert loc.locate(source) == "after"
-        assert len(list(meta_path.parent.iterdir())) == 2
+            monkeypatch.setattr(Path, "replace", observe)
+            loc._write_cache(captured, "after")
+            assert destinations == [text_path, meta_path]
+            monkeypatch.setattr(
+                loc,
+                "_split_html_sections",
+                lambda _t: pytest.fail("parsed cache hit"),
+            )
+            assert loc.locate_cached(captured) == "after"
+            assert loc.locate(captured) == "after"
+            assert len(list(meta_path.parent.iterdir())) == 2
 
     @pytest.mark.parametrize("failed_index", [0, 1])
     def test_interruption_never_serves_mismatched_pair(self, tmp_path, monkeypatch, failed_index):
         source = self._source(tmp_path)
         loc = SectionLocator("rates")
-        loc._write_cache(source, "before")
-        meta_path, text_path = loc._cache_paths(source)
-        original_replace = Path.replace
+        with capture_source(source) as captured:
+            loc._write_cache(captured, "before")
+            meta_path, text_path = loc._cache_paths(source)
+            original_replace = Path.replace
 
-        def fail(staged, destination):
-            if destination == (text_path, meta_path)[failed_index]:
-                raise OSError("interrupted")
-            return original_replace(staged, destination)
+            def fail(staged, destination):
+                if destination == (text_path, meta_path)[failed_index]:
+                    raise OSError("interrupted")
+                return original_replace(staged, destination)
 
-        monkeypatch.setattr(Path, "replace", fail)
-        loc._write_cache(source, "after")
-        assert loc._read_cache(source) == ("before" if failed_index == 0 else None)
-        assert len(list(meta_path.parent.iterdir())) == 2
+            monkeypatch.setattr(Path, "replace", fail)
+            loc._write_cache(captured, "after")
+            assert loc._read_cache(captured) == ("before" if failed_index == 0 else None)
+            assert len(list(meta_path.parent.iterdir())) == 2
 
 
 class TestSectionResponses:
@@ -373,8 +416,8 @@ class TestLlmFailureReturnsNoneNoErrorLog:
         locator = SectionLocator("rate schedule", trigger_chars=100)
         monkeypatch.setattr(locator, "_ensure_client", _FailClient)
 
-        with caplog.at_level(logging.ERROR):
-            result = locator.locate(html)
+        with capture_source(html) as source, caplog.at_level(logging.ERROR):
+            result = locator.locate(source)
 
         assert result is None
         # No ERROR-level records allowed — failures must be DEBUG only
@@ -387,7 +430,8 @@ class TestLlmFailureReturnsNoneNoErrorLog:
 
         locator = SectionLocator("rate schedule", trigger_chars=100)
         monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([]))
-        result = locator.locate(html)
+        with capture_source(html) as source:
+            result = locator.locate(source)
         assert result is None
 
 
@@ -463,7 +507,8 @@ class TestSubjectTargeting:
                 return {"data": {"relevant_sections": [5]}}
 
         monkeypatch.setattr(locator, "_ensure_client", Client)
-        text = locator.locate(source)
+        with capture_source(source) as captured:
+            text = locator.locate(captured)
         assert text is not None
         assert "Alluvion" in text
         assert "withdrawn in 2024" in text
@@ -493,7 +538,8 @@ class TestSubjectTargeting:
             source_context=SourceContext(None, "target", "1", "Subject Alpha", {}),
         )
         monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([3]))
-        text = locator.locate(source)
+        with capture_source(source) as captured:
+            text = locator.locate(captured)
         assert text is not None
         assert "Subject Alpha" in text
         assert "Authorization withdrawn in 2024" in text
@@ -512,7 +558,8 @@ class TestSubjectTargeting:
             source_context=SourceContext(None, "target", "1", "Subject Alpha", {}),
         )
         monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([3]))
-        text = locator.locate(source)
+        with capture_source(source) as captured:
+            text = locator.locate(captured)
         assert text is not None
         assert "Subject Alpha" in text
         assert "Authorization withdrawn in 2024" in text
@@ -522,11 +569,12 @@ class TestSubjectTargeting:
         source.write_text("Subject evidence")
         context = SourceContext(None, "target", "1", "Subject Alpha", {})
         locator = SectionLocator("evidence", source_context=context)
-        locator._write_cache(source, "Subject Alpha evidence")
-        locator.incomplete = True
-        locator.set_source_context(replace(context, target_label="Subject Beta"))
-        assert not locator.incomplete
-        assert locator.locate_cached(source) is None
+        with capture_source(source) as captured:
+            locator._write_cache(captured, "Subject Alpha evidence")
+            locator.incomplete = True
+            locator.set_source_context(replace(context, target_label="Subject Beta"))
+            assert not locator.incomplete
+            assert locator.locate_cached(captured) is None
 
     def test_unknown_subject_falls_back_without_authoritative_cache(self, tmp_path, monkeypatch):
         source = tmp_path / "unrelated.html"
@@ -537,7 +585,8 @@ class TestSubjectTargeting:
             source_context=SourceContext(None, "target", "1", "Missing subject", {}),
         )
         monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([1]))
-        assert locator.locate(source) is None
+        with capture_source(source) as captured:
+            assert locator.locate(captured) is None
         assert locator.incomplete
         assert not locator._cache_paths(source)[0].exists()
 
@@ -547,15 +596,18 @@ class TestSubjectTargeting:
         source.write_text("<h1>Subject Alpha</h1><p>evidence.</p>")
         context = SourceContext(None, "target", "1", "Subject Alpha", {"zone": "North"})
         locator = SectionLocator("evidence", source_context=context)
-        locator._write_cache(source, "Subject Alpha evidence")
-        assert SectionLocator("evidence", source_context=context).locate_cached(source)
-        if change == "version":
-            monkeypatch.setattr(page_locator, "LOCATOR_BEHAVIOR_VERSION", "future")
-        elif change == "label":
-            context = replace(context, target_label="Subject Beta")
-        else:
-            context = replace(context, target_metadata={"zone": "South"})
-        assert SectionLocator("evidence", source_context=context).locate_cached(source) is None
+        with capture_source(source) as captured:
+            locator._write_cache(captured, "Subject Alpha evidence")
+            assert SectionLocator("evidence", source_context=context).locate_cached(captured)
+            if change == "version":
+                monkeypatch.setattr(page_locator, "LOCATOR_BEHAVIOR_VERSION", "future")
+            elif change == "label":
+                context = replace(context, target_label="Subject Beta")
+            else:
+                context = replace(context, target_metadata={"zone": "South"})
+            assert (
+                SectionLocator("evidence", source_context=context).locate_cached(captured) is None
+            )
 
     def test_header_without_usable_subject_context_falls_back(self, tmp_path, monkeypatch):
         source = tmp_path / "subject.html"
@@ -568,7 +620,8 @@ class TestSubjectTargeting:
             source_context=SourceContext(None, "target", "1", "Subject Alpha", {}),
         )
         monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([2]))
-        assert locator.locate(source) is None
+        with capture_source(source) as captured:
+            assert locator.locate(captured) is None
         assert locator.incomplete
         assert not locator._cache_paths(source)[0].exists()
 
@@ -611,7 +664,8 @@ class TestSubjectTargeting:
         source.write_text("<h1>Evidence</h1><p>evidence " * 20 + "</p>")
         locator = SectionLocator("evidence", trigger_chars=1)
         monkeypatch.setattr(locator, "_ensure_client", lambda: _FakeClient([]))
-        assert locator.locate(source) is None
+        with capture_source(source) as captured:
+            assert locator.locate(captured) is None
         assert not locator.incomplete
         assert not locator._cache_paths(source)[0].exists()
 
@@ -679,3 +733,27 @@ class TestDocxTableSerializerExactOutput:
         table_chunks = [c for c in chunks if "|" in c.text]
         assert len(table_chunks) == 1
         assert table_chunks[0].text == "| A | B |\n| 1 |  |"
+
+
+def test_oversized_section_index_is_split_without_dropping_candidates(monkeypatch):
+    import re
+
+    from psweep.extraction.request_policy import RequestNotAdmittedError
+    from psweep.extraction.section_locator import _Chunk
+
+    shown: list[list[int]] = []
+
+    class Client:
+        def extract(self, *, user_prompt, **_kwargs):
+            listed = [int(n) for n in re.findall(r"\[section (\d+)\]", user_prompt)]
+            if len(listed) > 2:
+                raise RequestNotAdmittedError("context_window_exceeded: test")
+            shown.append(listed)
+            return {"data": {"relevant_sections": [n for n in listed if n in {2, 6}]}}
+
+    client = Client()
+    locator = SectionLocator("timeline")
+    monkeypatch.setattr(locator, "_ensure_client", lambda: client)
+    chunks = [_Chunk(f"H{i}", f"body {i}") for i in range(6)]
+    assert locator._confirm_with_llm(chunks, list(range(6))) == [1, 5]
+    assert sorted(n for batch in shown for n in batch) == [1, 2, 3, 4, 5, 6]

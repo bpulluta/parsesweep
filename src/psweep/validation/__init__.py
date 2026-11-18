@@ -47,9 +47,9 @@ def _quiet(_message: str) -> None:
     return None
 
 
-def _preflight(config_path: Path) -> dict:
+def _preflight(config_path: Path, domain: str | None = None) -> dict:
     """Config, primary extraction and table freshness, reference headers; no LLM call."""
-    cfg = load_runtime_config_file(config_path)
+    cfg = load_runtime_config_file(config_path, domain=domain)
     if not cfg.get("validation"):
         raise ValueError(f"{config_path} has no validation: section")
     settings = resolve_command_config(command="validate", cli_values={}, config_data=cfg)[
@@ -79,6 +79,7 @@ def _preflight(config_path: Path) -> dict:
         compile_inputs["schema"],
         config_path=config_path,
         output_dir=compile_inputs["output"],
+        domain=cfg["domain"],
     ):
         raise ValueError(
             f"compiled table is stale or missing; run psweep compile --config {config_path}"
@@ -149,7 +150,11 @@ def _challenger(
             costs = json.loads(Path(result.manifest_path).read_text(encoding="utf-8"))["costs"]
             calls, cost = costs["llm_calls"], costs["total_cost_usd"] or 0.0
     if not compiled_table_fresh(
-        root / "extracted", ctx["schema"], config_path=config_path, output_dir=root
+        root / "extracted",
+        ctx["schema"],
+        config_path=config_path,
+        output_dir=root,
+        domain=ctx["cfg"]["domain"],
     ):
         compiled = compile_extractions(
             root / "extracted",
@@ -157,6 +162,7 @@ def _challenger(
             config_path=config_path,
             output_dir=root,
             report_format="csv",
+            domain=ctx["cfg"]["domain"],
         )
         calls += compiled.costs.get("llm_calls", 0)
         cost += compiled.costs.get("total_cost_usd", 0) or 0.0
@@ -170,13 +176,15 @@ def _data_rows(path: Path) -> int:
         return max(sum(1 for _ in csv.reader(handle)) - 1, 0)
 
 
-def run_validation(config_path: Path, *, fresh: bool = False, notify: Notify = _quiet) -> dict:
+def run_validation(
+    config_path: Path, *, fresh: bool = False, notify: Notify = _quiet, domain: str | None = None
+) -> dict:
     """Score the primary against challengers and references; returns ``summary.json``.
 
     One run per domain at a time: the lock spans ``--fresh``, challenger work and staging.
     """
     config_path = Path(config_path)
-    ctx = _preflight(config_path)
+    ctx = _preflight(config_path, domain)
     validated = ctx["workspace"].validated
     with publication_lock(validated.parent / f".{validated.name}-publication.lock"):
         return _run(ctx, config_path, fresh=fresh, notify=notify)
@@ -335,9 +343,16 @@ def _sample(ctx: dict, n: int, seed: int, notify: Notify) -> list[list[str]]:
     return rows
 
 
-def write_sample(config_path: Path, *, n: int, seed: int = 0, notify: Notify = _quiet) -> Path:
+def write_sample(
+    config_path: Path,
+    *,
+    n: int,
+    seed: int = 0,
+    notify: Notify = _quiet,
+    domain: str | None = None,
+) -> Path:
     """Write ``validated/sample_<n>.csv`` for blind labelling; no LLM call."""
-    ctx = _preflight(Path(config_path))
+    ctx = _preflight(Path(config_path), domain)
     buffer = io.StringIO(newline="")
     csv.writer(buffer, lineterminator="\n").writerows(_sample(ctx, n, seed, notify))
     path = ctx["workspace"].validated / f"sample_{n}.csv"

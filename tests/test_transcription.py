@@ -16,6 +16,7 @@ import litellm
 import pytest
 import yaml
 
+from psweep.utils.file_io import artifact_sha256
 from psweep.config.runtime_config_loader import (
     RuntimeConfigError,
     load_runtime_config_file,
@@ -446,7 +447,7 @@ class FakeTranscriber:
 
     def transcribe(self, source, workdir):
         self.calls += 1
-        assert workdir == source.parent / ".text"
+        assert workdir.name == ".text"
         return self.text
 
 
@@ -569,7 +570,19 @@ def _fingerprints(tmp_path, documents, transcriber):
     schema.write_text("{}", encoding="utf-8")
     llm = {"model": "m", "provider": "openai"}
     return pipeline._extraction_fingerprints(
-        {}, llm, None, schema, documents, {}, {}, None, {}, transcriber
+        {},
+        llm,
+        None,
+        schema,
+        documents,
+        {doc: artifact_sha256(doc) for doc in documents},
+        {},
+        {},
+        None,
+        {},
+        dict.fromkeys(documents),
+        {},
+        transcriber,
     )
 
 
@@ -642,7 +655,9 @@ def test_extraction_reads_transcripts_and_bills_transcription(monkeypatch, tmp_p
     result = pipeline._execute_extraction(pipeline._prepare_extraction(inputs))
     assert result.successful == 1
     assert seen == ["[00:00:00] I support the project."]
-    manifest = json.loads(next((tmp_path / "out" / "run_manifests").glob("*.json")).read_text())
+    manifest = json.loads(
+        next((tmp_path / "out" / "run_manifests").glob("*.manifest.json")).read_text()
+    )
     costs = manifest["costs"]
     assert costs["total_cost_usd"] == pytest.approx(0.75)
     assert costs["llm_calls"] == 4
@@ -658,6 +673,7 @@ def test_extraction_reads_transcripts_and_bills_transcription(monkeypatch, tmp_p
 # -------------------------------------------------------------- integration
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 def test_real_ffmpeg_cuts_at_silence(monkeypatch, tmp_path, priced):
     source = tmp_path / "tone.wav"

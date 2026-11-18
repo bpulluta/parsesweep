@@ -1,6 +1,7 @@
 """Offline regressions for effective compilation preflight and export writes."""
 
 import json
+from pathlib import Path
 from unittest.mock import Mock
 
 import pandas as pd
@@ -188,8 +189,6 @@ def test_export_prepares_once_and_checks_excel_limit_before_either_write(
 def test_compiler_reads_each_input_once_and_skips_internal_sidecars(
     tmp_path, contract_schema, monkeypatch
 ):
-    import psweep.compilation.input_provenance as module
-
     directory = tmp_path / "records"
     directory.mkdir()
     (directory / "record.json").write_text(
@@ -205,13 +204,18 @@ def test_compiler_reads_each_input_once_and_skips_internal_sidecars(
     sidecars = directory / "validation"
     sidecars.mkdir()
     (sidecars / "record.json").write_text("must not read")
-    original = module.json.load
-    loads = Mock(side_effect=original)
-    monkeypatch.setattr(module.json, "load", loads)
+    original = Path.read_bytes
+    reads = []
+
+    def read_bytes(self):
+        reads.append(self.name)
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
     compiler = DataCompiler(SchemaMetadata(contract_schema), verbose=False)
     frame, _ = compiler.compile_from_directory(directory)
     assert len(frame) == 1
-    assert loads.call_count == 1
+    assert reads == ["record.json"]
 
 
 def test_wrapper_volatility_does_not_hide_nested_evidence_conflicts(tmp_path, contract_schema):

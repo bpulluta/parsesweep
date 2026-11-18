@@ -78,6 +78,13 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
                 "(.mp3 .m4a .wav .ogg .flac); required for audio."
             ),
         ),
+        "input_mode": (
+            "optional",
+            (
+                "PDF modality: text (default), auto (page images only for pages with no "
+                "readable text), vision (page images of every meaningful selected page)."
+            ),
+        ),
         "limit": ("optional", "Process only the first N files."),
         "max_context": ("advanced", "Maximum characters to pass to extraction context."),
         "max_concurrent": ("advanced", "Documents extracted in parallel (default: 4)."),
@@ -218,6 +225,7 @@ _AUTO_LOCATE_KEYS = (
     "save_discovered",
 )
 
+INPUT_MODES = ("text", "auto", "vision")
 _ALLOWED_PROVENANCE_POLICIES = {"warn", "fail"}
 
 _SECTION_NAMES = ("discovery", "extraction", "compilation")
@@ -322,6 +330,11 @@ def _normalize_pages_block(extraction: dict[str, Any], config_path: Path) -> Non
         )
     reject_unknown_keys(pages, _PAGES_KEYS, "extraction.pages", where)
     extraction.pop("pages")
+    if "csv" in pages and "range" in pages:
+        raise RuntimeConfigError(
+            "extraction.pages.csv and extraction.pages.range cannot be combined: "
+            "CSV rows take precedence, so the range would be ignored"
+        )
     if "csv" in pages:
         csv_path = pages["csv"]
         if not isinstance(csv_path, str) or not csv_path.strip():
@@ -355,6 +368,12 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
     for name in ("max_context", "max_concurrent", "limit", "timeout_seconds"):
         if name in extraction and extraction[name] is not None:
             _require_positive_int(name, extraction[name])
+
+    mode = extraction.get("input_mode")
+    if mode is not None and mode not in INPUT_MODES:
+        raise RuntimeConfigError(
+            f"extraction.input_mode must be one of: {', '.join(INPUT_MODES)} (got {mode!r})"
+        )
 
     if extraction.get("skip_existing") is not None and not isinstance(
         extraction["skip_existing"], bool
@@ -856,8 +875,14 @@ def _reject_derived_path_keys(config_data: dict[str, Any], config_path: Path) ->
         raise RuntimeConfigError(msg)
 
 
-def _resolve_workspace_keys(config_data: dict[str, Any], config_path: Path) -> None:
-    """Default ``domain`` to the config directory name and type-check ``schema``."""
+def _resolve_workspace_keys(
+    config_data: dict[str, Any], config_path: Path, domain_override: str | None
+) -> None:
+    """Resolve ``domain`` (override, config key, else the config directory name)
+    and type-check ``schema``.
+    """
+    if domain_override is not None:
+        config_data["domain"] = domain_override
     domain = config_data.setdefault("domain", config_path.parent.name)
     try:
         Workspace(domain)
@@ -869,8 +894,12 @@ def _resolve_workspace_keys(config_data: dict[str, Any], config_path: Path) -> N
     config_data["_config_path"] = config_path.as_posix()
 
 
-def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
-    """Load a run-level or section-level runtime config file."""
+def load_runtime_config_file(config_path: Path, *, domain: str | None = None) -> dict[str, Any]:
+    """Load a run-level or section-level runtime config file.
+
+    ``domain`` (the ``--domain`` workspace override) replaces the config's
+    ``domain`` here, once, so every reader of ``cfg["domain"]`` agrees.
+    """
     if not config_path.exists():
         msg = f"Config file not found: {config_path.as_posix()}"
         raise RuntimeConfigError(msg)
@@ -880,7 +909,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
 
     reject_unknown_keys(config_data, _ALLOWED_TOP_LEVEL, config_path=config_path.as_posix())
     _reject_derived_path_keys(config_data, config_path)
-    _resolve_workspace_keys(config_data, config_path)
+    _resolve_workspace_keys(config_data, config_path, domain)
 
     _validate_models_block(config_data.get("models"))
     _validate_model_context_windows_block(config_data.get("model_context_windows"))
@@ -972,6 +1001,7 @@ _FIELD_MAP: dict[str, str] = {
     "provider": "provider",
     "model": "model",
     "transcription_model": "transcription_model",
+    "input_mode": "input_mode",
     "limit": "limit",
     "skip_existing": "skip_existing",
     "max_context": "max_context",

@@ -8,8 +8,10 @@ from collections.abc import Iterable
 from psweep.exceptions import (
     CompilationError,
     ExtractionError,
+    ResponseOutcomeError,
     SchemaMetadataError,
     SchemaValidationError,
+    SourceChangedError,
     TargetingSafetyError,
 )
 from psweep.utils.retry import CONNECTION_ERRORS, http_status, is_transient_error
@@ -32,6 +34,9 @@ def build_error_record(
     if isinstance(exc, TargetingSafetyError):
         category = "targeting"
         code = exc.code
+    elif isinstance(exc, ResponseOutcomeError):
+        category = "model_response"
+        code = exc.code
     elif (
         "context_window_exceeded" in lowered_message
         or "context_length_exceeded" in lowered_message
@@ -39,6 +44,9 @@ def build_error_record(
     ):
         category = "context_budget"
         code = "context_window_exceeded"
+    elif isinstance(exc, SourceChangedError):
+        category = "document_io"
+        code = "source_changed"
     elif isinstance(exc, FileNotFoundError):
         category = "document_io"
         code = "document_not_found"
