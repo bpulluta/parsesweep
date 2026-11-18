@@ -371,6 +371,12 @@
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="unreleased">
 <h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<section id="security">
+<h3>Security<a class="headerlink" href="#security" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Locked <code class="docutils literal notranslate"><span class="pre">soupsieve</span></code> (transitive via <code class="docutils literal notranslate"><span class="pre">beautifulsoup4</span></code>) moves from 3.0.4 to 4.1.2, fixing CVE-2026-126190 (polynomial-time descendant-combinator matching) reported by the dependency audit. <code class="docutils literal notranslate"><span class="pre">pixi.lock</span></code> only; no other package moved, no config, cache or cost impact.</p></li>
+</ul>
+</section>
 <section id="fixed-extraction-targeting-safety">
 <h3>Fixed (extraction targeting safety)<a class="headerlink" href="#fixed-extraction-targeting-safety" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -809,6 +815,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
             <ul>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li><a class="reference internal" href="#security">Security</a></li>
 <li><a class="reference internal" href="#fixed-extraction-targeting-safety">Fixed (extraction targeting safety)</a></li>
 <li><a class="reference internal" href="#changed-breaking-config">Changed (breaking config)</a></li>
 <li><a class="reference internal" href="#fixed">Fixed</a></li>
