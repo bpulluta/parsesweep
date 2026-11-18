@@ -811,6 +811,17 @@ outputs/<domain>/
 └── validated/                   # cells.csv, summary.csv, summary.json, <alias>/
 ```
 
+## Offline verification
+
+Testing is controlled by pytest/Pixi, not by domain `run.yaml` settings.
+`pixi run --locked -e dev test` remains the complete offline CI gate, including
+real local TLS, subprocess CLI, ffmpeg, and large-scale regressions.
+`pixi run --locked -e dev test-fast` is an optional development loop excluding
+explicit `integration`, `slow`, and `live` markers; unmarked tests still run.
+Unknown markers fail collection. Neither command enables external endpoints
+or changes extraction/review caches. See [Contributing](contributing.md) for
+focused commands and the explicitly opt-in live layer.
+
 ## Environment variables
 
 | Variable | Purpose |

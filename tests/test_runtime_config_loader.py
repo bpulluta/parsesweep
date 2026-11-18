@@ -318,24 +318,16 @@ def test_load_runtime_config_file_rejects_invalid_browser_escalation(
         load_runtime_config_file(config_path)
 
 
-@pytest.mark.parametrize(
-    "override_body",
-    [
-        "output_dir: processed/from-override\nmax_context: 222222\n",
-        "extraction:\n  output_dir: processed/from-override\n",
-    ],
-)
-def test_load_runtime_config_file_rejects_split_processing_override(
-    tmp_path: Path,
-    override_body: str,
-):
-    """Flat and wrapped overrides must be migrated into the run config."""
+def test_load_runtime_config_file_rejects_split_processing_override(tmp_path: Path):
+    """Report both paths; adjacent-file contents never affect rejection."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
         "schema: config/my_domain/schema.json\nextraction:\n  skip_existing: true\n",
         encoding="utf-8",
     )
-    (tmp_path / "extraction.yaml").write_text(override_body, encoding="utf-8")
+    (tmp_path / "extraction.yaml").write_text(
+        "output_dir: processed/from-override\n", encoding="utf-8"
+    )
 
     with pytest.raises(
         RuntimeConfigError,
@@ -1326,8 +1318,7 @@ def test_validation_rows_mode_rejects(tmp_path: Path, validation, message):
         _resolve_validate(_validation_config(tmp_path, validation, rows=True))
 
 
-@pytest.mark.parametrize("command", ["validate", "extract"])
-def test_schema_aware_validation_checks_run_for_stages_that_use_them(tmp_path: Path, command: str):
+def test_extraction_runs_schema_aware_validation_checks(tmp_path: Path):
     """``extract`` consumes validation.quote_field, so it gets the checks too."""
     cfg = load_runtime_config_file(
         _validation_config(
@@ -1337,7 +1328,7 @@ def test_schema_aware_validation_checks_run_for_stages_that_use_them(tmp_path: P
         )
     )
     with pytest.raises(RuntimeConfigError, match="'verbatm' is not an item field"):
-        resolve_command_config(command=command, cli_values={}, config_data=cfg)
+        resolve_command_config(command="extract", cli_values={}, config_data=cfg)
 
 
 @pytest.mark.parametrize(

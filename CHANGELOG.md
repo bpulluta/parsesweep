@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (test efficiency)
+- The full offline suite and CI retain all distinct regression scenarios;
+  two duplicate config-validation parameter cases are consolidated into
+  existing stronger checks. Scheduling scale tests no longer collect
+  unasserted allocation/timing diagnostics. TLS tests
+  share immutable certificate files, keep isolated servers/call histories, and
+  shut down without the default half-second polling delay.
+- `pixi run --locked -e dev test-fast` is an optional local loop excluding
+  explicit `integration`, `slow`, and `live` cases. The ordinary `test` task
+  still runs real CLI/TLS/ffmpeg checks and the largest scale cases. Pytest
+  defaults to concise output and rejects unknown markers; `-v` remains available.
+- Runtime/config contracts and extraction/review caches are unchanged; no
+  re-extraction, re-screening, or paid regrading is triggered.
+
 ### Fixed (extraction source identity)
 - Extraction now consumes one verified version of each source. Preparation
   fingerprints the source digest; extraction stream-copies the document into a

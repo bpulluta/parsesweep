@@ -374,6 +374,7 @@ def _hold_lock(root: str, connection):
     connection.close()
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("abrupt", [False, True])
 def test_separate_process_lock_rejects_active_and_releases_after_exit(
     tmp_path,

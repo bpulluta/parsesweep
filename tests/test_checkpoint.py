@@ -46,7 +46,7 @@ def _count_checkpoint_hash_work(monkeypatch):
 
 
 class TestCheckpointHashScale:
-    @pytest.mark.parametrize("owners", [20, 1000, 10000])
+    @pytest.mark.parametrize("owners", [20, 1000, pytest.param(10000, marks=pytest.mark.slow)])
     def test_shared_artifacts_hash_once_per_load(self, tmp_path, monkeypatch, owners):
         common = _evidence(tmp_path, "common")
         entries = {}

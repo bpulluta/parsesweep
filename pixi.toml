@@ -36,9 +36,10 @@ lint = "ruff check src tests && ruff format --check src tests"
 psweep = { path = ".", editable = true, extras = ["docs"] }
 
 [tasks]
-# `python -m pytest` works in every env; the bare `pytest` console script is not
-# on the default env's PATH. Run the full suite with `pixi run test`.
+# The default and CI gate always run the full offline suite, including slow cases.
 test = "python -m pytest"
+# Opt-in local loop; run `test` before opening a PR.
+test-fast = "python -m pytest -m 'not integration and not slow and not live'"
 
 # Docs tasks live in the docs feature, so `pixi run docs-build` selects that env.
 [feature.docs.tasks]

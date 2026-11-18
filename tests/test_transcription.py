@@ -669,6 +669,7 @@ def test_extraction_reads_transcripts_and_bills_transcription(monkeypatch, tmp_p
 # -------------------------------------------------------------- integration
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 def test_real_ffmpeg_cuts_at_silence(monkeypatch, tmp_path, priced):
     source = tmp_path / "tone.wav"
