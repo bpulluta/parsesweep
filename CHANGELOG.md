@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed (scope budgeting, explicit locator)
+- Targeting now triggers at `min(trigger_chars, max_context)`: a document too
+  large for `max_context` is targeted even when under `trigger_chars` (it was
+  previously held untargeted). A locator candidate index the route cannot
+  admit is split in halves (at most 8 requests) instead of failing the
+  document; any unsendable remainder holds it. Section/page cache entries are
+  unchanged. Cost: a few extra locator calls only for oversized indexes.
 - `extraction.max_context` is now enforced on every path, including CSV and
   `pages.range` scope, disabled targeting and unsupported types. Oversized
   input is held (`targeting_context_budget_exceeded`) and the primary is not
@@ -25,7 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attempt, for every caller, replacing the extract-only chars/4 check. Primary
   extraction and locator calls additionally use LiteLLM's pinned local catalog
   and send the route's output limit as `max_tokens`. Estimates are
-  conservative (3 UTF-8 bytes/token). Unknown limits are not guarded. A
+  conservative (3 UTF-8 bytes/token). Unknown limits are not guarded: a
+  custom route with no known output limit is sent without `max_tokens`
+  (never blocked, never a guessed constant); truncation is rejected after
+  the fact by the response-outcome check. A
   rejected request sends and meters nothing. Discovery, reconciliation and
   transcription get no catalog guard or output cap.
 - No cache, record, or discovery impact; very large inputs on known routes

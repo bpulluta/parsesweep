@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -786,3 +787,51 @@ class TestWorkerLocalState:
         with capture_source(good) as source:
             assert locator.locate(source) == PageSelection(((1, 1),))
         assert not locator.incomplete
+
+
+class _CapacityClient:
+    """Rejects any locator index naming more than ``capacity`` candidate pages."""
+
+    def __init__(self, capacity, answer):
+        self.capacity, self.answer, self.sizes = capacity, answer, []
+
+    def extract(self, *, user_prompt, **_kwargs):
+        from psweep.extraction.request_policy import RequestNotAdmittedError
+
+        if "CANDIDATE PAGES:" not in user_prompt:
+            return {"data": {"ranges": []}}  # reference-following request
+        index = user_prompt.split("CANDIDATE PAGES:")[1]
+        listed = [int(n) for n in re.findall(r"\[page (\d+)\]", index)]
+        self.sizes.append(len(listed))
+        if len(listed) > self.capacity:
+            raise RequestNotAdmittedError("context_window_exceeded: test")
+        return {"data": {"ranges": [{"start": n, "end": n} for n in listed if n in self.answer]}}
+
+
+def _locate_with(tmp_path, monkeypatch, client, pages):
+    source = tmp_path / "big.pdf"
+    source.write_bytes(b"fixture")
+    locator = PageLocator("rate schedule", trigger_chars=0, context_pages=0)
+    monkeypatch.setattr(locator, "_ensure_client", lambda: client)
+    monkeypatch.setattr("psweep.extraction.pdf_utils.extract_pages_text", lambda _p: pages)
+    with capture_source(source) as captured:
+        return locator, locator.locate(captured)
+
+
+def test_oversized_candidate_index_is_split_without_dropping_candidates(tmp_path, monkeypatch):
+    pages = _pages_with_section(set(range(8)), 8)
+    client = _CapacityClient(3, answer={1, 5, 8})
+    locator, selection = _locate_with(tmp_path, monkeypatch, client, pages)
+    assert selection == PageSelection(((1, 1), (5, 5), (8, 8)))
+    assert not locator.incomplete
+    assert max(size for size in client.sizes if size <= 3) <= 3
+    # every candidate page was shown to the model in some admitted request
+    assert sum(size for size in client.sizes if size <= 3) == 8
+
+
+def test_index_that_cannot_be_split_enough_is_held_incomplete(tmp_path, monkeypatch):
+    pages = _pages_with_section(set(range(40)), 40)
+    client = _CapacityClient(1, answer={1})  # needs 40 admitted requests
+    locator, selection = _locate_with(tmp_path, monkeypatch, client, pages)
+    assert selection is None
+    assert locator.incomplete

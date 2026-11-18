@@ -733,3 +733,27 @@ class TestDocxTableSerializerExactOutput:
         table_chunks = [c for c in chunks if "|" in c.text]
         assert len(table_chunks) == 1
         assert table_chunks[0].text == "| A | B |\n| 1 |  |"
+
+
+def test_oversized_section_index_is_split_without_dropping_candidates(monkeypatch):
+    import re
+
+    from psweep.extraction.request_policy import RequestNotAdmittedError
+    from psweep.extraction.section_locator import _Chunk
+
+    shown: list[list[int]] = []
+
+    class Client:
+        def extract(self, *, user_prompt, **_kwargs):
+            listed = [int(n) for n in re.findall(r"\[section (\d+)\]", user_prompt)]
+            if len(listed) > 2:
+                raise RequestNotAdmittedError("context_window_exceeded: test")
+            shown.append(listed)
+            return {"data": {"relevant_sections": [n for n in listed if n in {2, 6}]}}
+
+    client = Client()
+    locator = SectionLocator("timeline")
+    monkeypatch.setattr(locator, "_ensure_client", lambda: client)
+    chunks = [_Chunk(f"H{i}", f"body {i}") for i in range(6)]
+    assert locator._confirm_with_llm(chunks, list(range(6))) == [1, 5]
+    assert sorted(n for batch in shown for n in batch) == [1, 2, 3, 4, 5, 6]

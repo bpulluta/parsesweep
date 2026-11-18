@@ -102,6 +102,13 @@ def test_admitted_extraction_request_is_capped_at_the_route_output_limit():
     assert send.call_args.args[0]["max_tokens"] == route_limits("gpt-4o").output_tokens
 
 
+def test_admitted_request_on_a_route_with_no_known_output_limit_is_sent_uncapped():
+    client = LLMClient(api_key="k", model="my-proxy-alias", base_url=BASE_URL)
+    with patch.object(client, "_complete", return_value=_reply()) as send:
+        client.complete(_msgs("hi"), admit=True)
+    assert "max_tokens" not in send.call_args.args[0]
+
+
 def test_non_extraction_callers_get_no_output_cap_or_catalog_guard():
     client = _client()
     with patch.object(client, "_complete", return_value=_reply()) as send:

@@ -647,6 +647,18 @@ def _require_extraction_credentials(llm, locator):
             raise APIKeyError
 
 
+def _targeting_trigger(inputs: dict) -> int:
+    """Characters above which targeting runs: never above the extraction budget.
+
+    A document that cannot fit ``max_context`` must be targeted even when it is
+    below the configured ``trigger_chars``.
+    """
+    configured = (inputs.get("page_targeting") or {}).get(
+        "trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS
+    )
+    return min(configured, inputs.get("max_context", DEFAULT_MAX_CONTEXT))
+
+
 def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
     """Validate targeting policy and resolve locator routing."""
     targeting = inputs.get("page_targeting") or {}
@@ -860,9 +872,7 @@ def _prepared_input(doc_path, plan, page_ranges, section_text, source=None):
     if anchors := plan["anchors"].get(doc_path):
         prompt = candidates_block(plan["roster"], anchors) + prompt
     if protected:
-        trigger = (inputs.get("page_targeting") or {}).get(
-            "trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS
-        )
+        trigger = _targeting_trigger(inputs)
         if not scoped and len(text) > trigger:
             message = (
                 f"{name} has {len(text)} readable characters (pages.auto_locate.trigger_chars "
@@ -1174,7 +1184,7 @@ def _target_extraction_inputs(plan: dict):
                 "default_model": llm["model"],
                 "llm_config": (inputs.get("llm_config") if targeting.get("model") else llm),
                 "keywords": targeting.get("keywords"),
-                "trigger_chars": targeting.get("trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS),
+                "trigger_chars": _targeting_trigger(inputs),
             }
             if locator_type is PageLocator:
                 options["max_selected_pages"] = targeting.get(

@@ -49,6 +49,7 @@ from psweep.utils.page_range import (
     ranges_from_pages,
 )
 from psweep.exceptions import APIKeyError
+from .request_policy import RequestNotAdmittedError
 from .llm_factory import resolve_llm_kwargs
 from .provenance import SourceContext, prepend_source_context
 
@@ -56,6 +57,8 @@ logger = logging.getLogger(__name__)
 
 PAGE_CACHE_DIRNAME = ".pages"
 LOCATOR_BEHAVIOR_VERSION = "captured-scope-v4"
+# Bound on index requests per document when a candidate index must be split.
+MAX_INDEX_REQUESTS = 8
 
 # Single source of truth for the ``pages.auto_locate`` defaults, shared by the
 # CLI resolver and PageLocator so ``--help``/docs and runtime never drift.
@@ -216,6 +219,35 @@ class _BaseLocator:
 
     def _scope_prompt(self, prompt: str) -> str:
         return prepend_source_context(prompt, self._source_context)
+
+    def _ask_in_batches(self, candidates: list[int], ask) -> list | None:
+        """Run ``ask(batch)`` over candidates, halving a batch the route cannot admit.
+
+        Every candidate is shown to the model in some admitted request, in page
+        order. Returns the concatenated answers, or ``None`` if any batch failed,
+        a single candidate is itself not admitted, or more than
+        ``MAX_INDEX_REQUESTS`` requests would be needed: a partial index is
+        never treated as authoritative.
+        """
+        pending, answers, requests = [list(candidates)], [], 0
+        while pending:
+            batch = pending.pop(0)
+            requests += 1
+            if requests > MAX_INDEX_REQUESTS:
+                logger.debug("Locator index needs more than %d requests", MAX_INDEX_REQUESTS)
+                return None
+            try:
+                answer = ask(batch)
+            except RequestNotAdmittedError:
+                if len(batch) == 1:
+                    return None
+                middle = len(batch) // 2
+                pending[:0] = [batch[:middle], batch[middle:]]
+                continue
+            if answer is None:
+                return None
+            answers.extend(answer)
+        return answers
 
     def _derive_keywords(self) -> list[str]:
         """Pull content words from the section description as default keywords."""
@@ -432,7 +464,7 @@ class PageLocator(_BaseLocator):
                 suppress_errors=True,
                 admit=True,
             )
-        except APIKeyError:
+        except (APIKeyError, RequestNotAdmittedError):
             raise
         except Exception as exc:  # noqa: BLE001 - fall back to no targeting
             logger.debug("Page locator LLM call failed: %s", exc)
@@ -455,6 +487,11 @@ class PageLocator(_BaseLocator):
 
     def _confirm_with_llm(self, pages: list[str], candidates: list[int]) -> list[int] | None:
         """Ask which candidate pages hold the section; return them in page order."""
+        answers = self._ask_in_batches(candidates, lambda batch: self._confirm_batch(pages, batch))
+        return page_numbers(normalize_page_ranges(answers)) if answers is not None else None
+
+    def _confirm_batch(self, pages: list[str], candidates: list[int]):
+        """One index request over ``candidates``; ``None`` on failure."""
         index_lines = []
         for idx in candidates:
             snippet = " ".join(pages[idx].split())[: self._snippet_chars]
@@ -473,8 +510,7 @@ class PageLocator(_BaseLocator):
             '{"ranges": [{"start": N, "end": M}]}.\n\n'
             f"CANDIDATE PAGES:\n{index_text}"
         )
-        ranges = self._ask_ranges(len(pages), system=_LOCATE_SYSTEM, user_prompt=user_prompt)
-        return page_numbers(normalize_page_ranges(ranges)) if ranges is not None else None
+        return self._ask_ranges(len(pages), system=_LOCATE_SYSTEM, user_prompt=user_prompt)
 
     @staticmethod
     def _outline(pages: list[str]) -> str:
@@ -518,7 +554,12 @@ class PageLocator(_BaseLocator):
                 '{"ranges": [{"start": N, "end": M}]}.\n\n'
                 f"SELECTED PAGE TEXT:\n{frontier_text}\n\nDOCUMENT OUTLINE:\n{outline}"
             )
-            ranges = self._ask_ranges(len(pages), system=_REFERENCE_SYSTEM, user_prompt=user_prompt)
+            try:
+                ranges = self._ask_ranges(
+                    len(pages), system=_REFERENCE_SYSTEM, user_prompt=user_prompt
+                )
+            except RequestNotAdmittedError:
+                ranges = None
             if ranges is None:
                 self.incomplete = True
                 break

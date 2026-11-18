@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from psweep.exceptions import APIKeyError
+from .request_policy import RequestNotAdmittedError
 from .provenance import SourceContext
 from .prepared_document import CapturedSource
 from .page_locator import (
@@ -373,7 +374,17 @@ class SectionLocator(_BaseLocator):
     # -- LLM confirmation --------------------------------------------------
 
     def _confirm_with_llm(self, chunks: list[_Chunk], candidates: list[int]) -> list[int] | None:
-        """Ask the LLM which candidate section indices (0-indexed) are relevant."""
+        """Ask the LLM which candidate section indices (0-indexed) are relevant.
+
+        An index the route cannot admit is split; every candidate is still shown.
+        """
+        answers = self._ask_in_batches(candidates, lambda batch: self._confirm_batch(chunks, batch))
+        if answers is None:
+            return None
+        return sorted(set(answers))
+
+    def _confirm_batch(self, chunks: list[_Chunk], candidates: list[int]) -> list[int] | None:
+        """One index request; ``[]`` is a valid absence, ``None`` a failure."""
         index_lines = []
         for idx in candidates:
             chunk = chunks[idx]
@@ -403,7 +414,7 @@ class SectionLocator(_BaseLocator):
                 suppress_errors=True,
                 admit=True,
             )
-        except APIKeyError:
+        except (APIKeyError, RequestNotAdmittedError):
             raise
         except Exception as exc:  # noqa: BLE001 - fall back to full extraction
             logger.debug("Section locator LLM call failed: %s", exc)

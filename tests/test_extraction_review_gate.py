@@ -1019,7 +1019,7 @@ def test_final_prompt_boundary_is_exact(reviewed_inputs, monkeypatch, limit, hel
     inputs, provider = reviewed_inputs  # the source text is exactly 15 characters
     inputs["max_context"] = limit
     _targeting(inputs, trigger_chars=1000)
-    _sections(monkeypatch)
+    _sections(monkeypatch, default="Source evidence")  # selected scope, exactly 15 characters
     outcome = _execute_extraction(_prepare_extraction(inputs))
     if held:
         assert _codes(outcome) == ["targeting_context_budget_exceeded"]
@@ -1029,14 +1029,24 @@ def test_final_prompt_boundary_is_exact(reviewed_inputs, monkeypatch, limit, hel
         assert provider.call_args.args[0].count("Source evidence") == 1
 
 
-def test_trigger_above_max_context_still_holds_an_oversized_input(reviewed_inputs, monkeypatch):
-    inputs, provider = reviewed_inputs
+def test_targeting_triggers_at_max_context_when_trigger_is_larger(reviewed_inputs, monkeypatch):
+    from psweep.extraction.section_locator import SectionLocator
+
+    inputs, provider = reviewed_inputs  # 15 characters of source text
     inputs["max_context"] = 5
     _targeting(inputs, trigger_chars=10_000)
     _sections(monkeypatch)
-    assert _codes(_execute_extraction(_prepare_extraction(inputs))) == [
-        "targeting_context_budget_exceeded"
-    ]
+    seen = []
+    original = SectionLocator.__init__
+
+    def record(self, *args, **kwargs):
+        seen.append(kwargs["trigger_chars"])
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(SectionLocator, "__init__", record)
+    # Targeting selects nothing for a document over the budget: held, not sliced or sent.
+    assert _codes(_execute_extraction(_prepare_extraction(inputs))) == ["targeting_no_usable_scope"]
+    assert seen == [5]
     provider.assert_not_called()
 
 

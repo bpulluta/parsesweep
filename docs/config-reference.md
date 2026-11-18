@@ -457,7 +457,9 @@ and navigation do not turn a short article into a paid locator call.
 
 Automatic targeting fails closed. A document it governs (enabled, a supported
 type, no CSV row, not handled by the roster bypasses) is extracted only from a
-bounded selection, or whole when its readable text is at most `trigger_chars`.
+bounded selection, or whole when its readable text is at most `trigger_chars`
+(or `max_context` when that is smaller, so a document that cannot fit is never
+left untargeted just because it is under `trigger_chars`).
 The exact final input must fit `max_context` (equal is allowed). Otherwise the
 document is held before any extraction request: a failed outcome with category
 `targeting` and code `targeting_no_usable_scope` (the locator failed, found
@@ -485,6 +487,10 @@ marks each skipped stretch with `[Omitted pages: 28-67]`. Pages naming the
 target in a repeated header or footer count once toward the mandatory identity
 pages (the earliest occurrence is kept); pages naming it in the body all stay.
 A malformed page-range answer is rejected whole, not partly used.
+If the candidate index itself is too large for the locator's route, it is split
+in halves and the answers are combined, so every candidate is still shown; more
+than 8 index requests for one document, or one candidate that cannot be sent
+alone, holds the document.
 
 Selections are cached in `.pages/` beside the document. If a reference pass
 fails, the pages found so far are extracted with
