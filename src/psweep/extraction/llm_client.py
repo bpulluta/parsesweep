@@ -34,7 +34,7 @@ from psweep.security import (
     resolve_tls_verification,
     tls_context,
 )
-from psweep.exceptions import ExtractionError
+from psweep.exceptions import ExtractionError, ResponseOutcomeError
 from psweep.exceptions import AttemptBudgetExceeded
 from .llm_factory import DEFAULT_MODEL, detect_provider
 from psweep.utils.retry import compute_backoff, is_transient_error
@@ -73,6 +73,7 @@ class Completion:
     content: str | None
     finish_reason: str | None
     usage: dict[str, Any]
+    refused: bool = False
 
 
 class LLMClient:
@@ -478,10 +479,13 @@ class LLMClient:
             error.usage = measured
             error.provider_failure = True
             raise error
+        message = choices[0].message
+        finish_reason = getattr(choices[0], "finish_reason", None)
         return Completion(
-            content=choices[0].message.content,
-            finish_reason=getattr(choices[0], "finish_reason", None),
+            content=message.content,
+            finish_reason=finish_reason,
             usage=measured,
+            refused=bool(getattr(message, "refusal", None)) or finish_reason == "content_filter",
         )
 
     def extract(
@@ -493,9 +497,17 @@ class LLMClient:
         suppress_errors: bool = False,
         before_request=None,
         admit: bool = False,
+        *,
+        strict_outcomes: bool = False,
+        follow_up: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
         Extract structured data using LLM.
+
+        ``strict_outcomes`` (primary extraction only) rejects refused and
+        length-terminated answers, and raises empty/non-JSON answers as
+        ``ResponseOutcomeError``; other callers keep accepting what they always
+        did. ``follow_up`` messages are appended after the unchanged request.
 
         Parameters
         ----------
@@ -542,6 +554,7 @@ class LLMClient:
                 "No markdown, no code fences, no explanation."
             )
 
+        messages.extend(follow_up or [])
         if admit:
             params["admit"] = True
         reply = (
@@ -553,7 +566,26 @@ class LLMClient:
         cost = measured["cost"]
         input_tokens = measured["input_tokens"]
         output_tokens = measured["output_tokens"]
+
+        def rejected(message: str, code: str) -> ExtractionError:
+            return (
+                ResponseOutcomeError(message, code=code)
+                if strict_outcomes
+                else ExtractionError(message)
+            )
+
         try:
+            if strict_outcomes and reply.refused:
+                message = (
+                    f"Model refused the request (provider={self.provider}, model={self.model})"
+                )
+                raise ResponseOutcomeError(message, code="response_refused")
+            if strict_outcomes and reply.finish_reason == "length":
+                message = (
+                    "Model output was truncated at its length limit "
+                    f"(provider={self.provider}, model={self.model}); the answer is incomplete"
+                )
+                raise ResponseOutcomeError(message, code="response_truncated")
             content = self._clean_json_content(reply.content)
             if not content:
                 (logger.debug if suppress_errors else logger.error)(
@@ -561,7 +593,7 @@ class LLMClient:
                     self.model,
                 )
                 message = f"Empty response from provider={self.provider}, model={self.model}"
-                raise ExtractionError(message)
+                raise rejected(message, "response_empty")
 
             # Parse JSON while retaining usage on a rejected response.
             try:
@@ -588,7 +620,7 @@ class LLMClient:
                         "Model returned non-JSON content "
                         f"(provider={self.provider}, model={self.model}): {e}"
                     )
-                    raise ExtractionError(message) from None
+                    raise rejected(message, "response_not_json") from None
 
         except ExtractionError as exc:
             exc.usage = measured
@@ -694,10 +726,14 @@ class LLMClient:
         return f"""Extract {target} from the document text into JSON matching the schema below.
 
 RULES
-1. Extract exactly as written; do not normalize, convert units, paraphrase, or infer.
+1. Extract exactly as written. Do not normalize, convert units, paraphrase, or infer
+   unless a schema field description explicitly requires that conversion; then apply
+   only that conversion to a value the document states.
 2. Search the entire document, including tables, lists, and appendices.
-3. Follow the schema descriptions; use null where the document does not state a value.
-4. Blocks marked "added by ParseSweep" are guidance, not document content.
+3. Follow the schema descriptions; use null where the document does not state a value
+   or a required conversion cannot be made from stated values. Never invent a value.
+4. Evidence quotes are always verbatim document text, never converted or reworded.
+5. Blocks marked "added by ParseSweep" are guidance, not document content.
 
 JSON SCHEMA
 {json.dumps(prompt_schema(schema), indent=2)}

@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from psweep.exceptions import (
     CompilationError,
     ExtractionError,
+    ResponseOutcomeError,
     SchemaMetadataError,
     SchemaValidationError,
     SourceChangedError,
@@ -32,6 +33,9 @@ def build_error_record(
 
     if isinstance(exc, TargetingSafetyError):
         category = "targeting"
+        code = exc.code
+    elif isinstance(exc, ResponseOutcomeError):
+        category = "model_response"
         code = exc.code
     elif (
         "context_window_exceeded" in lowered_message

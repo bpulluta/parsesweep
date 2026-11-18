@@ -19,7 +19,7 @@ from psweep.extraction.llm_factory import (
     build_llm_client,
     resolve_llm_kwargs,
 )
-from psweep.extraction.schema_utils import build_schema_validator
+from psweep.extraction.schema_utils import build_schema_validator, schema_diagnostics
 from psweep.utils.file_io import atomic_json, publication_lock
 from psweep.utils.item_matcher import get_nested_value
 from .data_flattener import to_cell
@@ -228,15 +228,7 @@ class Reconciler:
                 )
                 if not errors:
                     return ["selections: invalid observation ownership or eligibility"]
-        diagnostics = []
-        for error in errors[:8]:
-            path = ".".join(map(str, error.absolute_path)) or "answer"
-            if error.validator == "required" and isinstance(error.instance, dict):
-                missing = sorted(set(error.validator_value) - set(error.instance))
-                diagnostics.append(f"{path}: required {', '.join(missing)}")
-            else:
-                diagnostics.append(f"{path}: {error.validator}")
-        return diagnostics
+        return schema_diagnostics(errors)
 
     def _prompt_fits(self, prompt, response_schema):
         return len(prompt) + len(_SYSTEM) + len(json.dumps(response_schema)) <= self.policy.get(

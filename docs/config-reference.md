@@ -512,6 +512,39 @@ retry logs a warning with the model, the failure category and the attempt,
 prefixed with the document being processed; provider error text is never
 logged.
 
+#### Response outcomes and one schema-feedback generation
+
+The model's answer is classified before it is accepted. These outcomes are
+explicit failures (error `category` `model_response`) and are **never
+regenerated**, because a second paid call cannot repair them:
+
+| `code` | Meaning |
+|---|---|
+| `response_truncated` | The provider stopped at its output length limit; even schema-valid JSON is incomplete. |
+| `response_refused` | The provider refused (a `refusal` field or `content_filter` termination). |
+
+An empty answer (`response_empty`), a non-JSON answer (`response_not_json`) or a
+JSON answer the schema rejects (`schema_validation_failed`) earns **at most one**
+feedback generation. It resends the original request unchanged (same schema,
+response format, selected evidence and output cap) plus the rejected answer and
+bounded diagnostics: failing path, rule, missing/unexpected key names, expected
+type, never document or answer values. A second invalid answer fails the
+document. A repaired record carries a `schema_feedback` validation note.
+Quote/evidence authenticity failures are never regenerated; they follow the
+existing verification path. A valid `[]` abstention is final.
+
+Each document has one allowance of 4 physical provider attempts (the transient
+retry count above, not a new setting) shared by the original generation,
+the feedback generation, transport retries and the temperature fallback. A
+feedback generation runs only if an attempt remains; the failed answer's cost
+stays in the failure's usage. Roster candidate windows are separate extraction
+requests and each has its own allowance. Locator, discovery, reconciliation and
+audio-transcription requests keep their own existing semantics.
+
+The prompt states that conversions or normalization happen only when a schema
+field description explicitly requires them, that unsupported conversions yield
+`null`, and that quotes stay verbatim.
+
 ### Source identity
 
 Each extracted record describes the exact bytes that were read. Extraction

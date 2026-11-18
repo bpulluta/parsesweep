@@ -3,15 +3,17 @@
 Structural validation does not certify source grounding or accuracy.
 """
 
+import json
 import logging
 import time
 from typing import Any
 from dataclasses import dataclass
 
-from psweep.exceptions import ExtractionError
-from psweep.extraction.schema_utils import validate_payload
-from .llm_client import LLMClient
+from psweep.exceptions import ExtractionError, ResponseOutcomeError, SchemaValidationError
+from psweep.extraction.schema_utils import schema_diagnostics, validate_payload
+from .llm_client import RETRY_ATTEMPTS, LLMClient
 from .llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
+from .request_policy import AttemptAllowance
 from .text_processor import (
     calculate_completeness,
     normalize_string_fields,
@@ -19,6 +21,47 @@ from .text_processor import (
 )
 
 logger = logging.getLogger(__name__)
+
+_USAGE_KEYS = ("cost", "input_tokens", "output_tokens")
+
+
+def _total_usage(spent: list[dict[str, Any] | None]) -> dict[str, Any] | None:
+    """Sum billed generations; an unknown part keeps the total unknown (``None``)."""
+    billed = [usage for usage in spent if usage]
+    if not billed:
+        return None
+    return {
+        key: None
+        if any(usage.get(key) is None for usage in billed)
+        else sum(u[key] for u in billed)
+        for key in _USAGE_KEYS
+    }
+
+
+def _feedback(failure: Exception, answer: Any, validator) -> list[dict[str, str]]:
+    """Follow-up turns for one feedback generation against the unchanged request."""
+    if isinstance(failure, SchemaValidationError):
+        problems = "\n".join(
+            f"- {line}" for line in schema_diagnostics(validator.iter_errors(answer))
+        )
+        reason = f"did not satisfy the JSON schema:\n{problems}"
+        turns = [{"role": "assistant", "content": json.dumps(answer)}]
+    else:
+        reason = "was empty or not a single valid JSON object."
+        turns = []
+    return [
+        *turns,
+        {
+            "role": "user",
+            "content": (
+                f"Your previous answer {reason}\n"
+                "Return the complete corrected JSON object for the same document and schema. "
+                "Use only values the document states; use null where the schema allows instead "
+                "of inventing one, and add no keys the schema does not define. "
+                "Return ONLY valid JSON."
+            ),
+        },
+    ]
 
 
 @dataclass
@@ -167,25 +210,14 @@ class DocumentExtractor:
 
         validator = build_schema_validator(schema)
 
-        # Stage 1: LLM Structured Extraction
+        # Stage 1: LLM Structured Extraction (one document-local attempt allowance)
         logger.info("🤖 Stage 1: LLM Structured Extraction")
-        extraction = self.client.extract(excerpt, schema, admit=True)
-        try:
-            validated_data = extraction["data"]
-
-            # Validate before normalization hides contract violations.
-            self._validate_payload(validated_data, validator)
-
-            # Stage 2: Post-extraction normalization
-            validated_data = normalize_with_schema(validated_data, schema, validator=validator)
-            validated_data = normalize_string_fields(validated_data)
-            self._validate_payload(validated_data, validator)
-
-        except Exception as exc:
-            exc.usage = {
-                key: extraction.get(key) for key in ("cost", "input_tokens", "output_tokens")
-            }
-            raise
+        validated_data, usage, repaired = self._generate(excerpt, schema, validator)
+        if repaired:
+            validation_notes.append(
+                "schema_feedback: first answer was rejected by the schema; accepted after "
+                "one feedback generation"
+            )
 
         processing_time = time.time() - start_time
 
@@ -194,13 +226,56 @@ class DocumentExtractor:
         return ExtractionResult(
             data=validated_data,
             completeness_score=completeness,
-            cost=extraction.get("cost"),
+            cost=usage["cost"],
             processing_time=processing_time,
             validation_notes=validation_notes,
-            input_tokens=extraction.get("input_tokens"),
-            output_tokens=extraction.get("output_tokens"),
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
             coverage=coverage,
         )
+
+    def _generate(self, excerpt, schema, validator):
+        """Return ``(validated payload, total usage, repaired)``.
+
+        The original generation plus at most one feedback generation against the
+        same contract and evidence, all drawing on one allowance. Truncation,
+        refusal and provider failures are never regenerated; every billed
+        generation stays in the usage attached to a failure.
+        """
+        allowance = AttemptAllowance(RETRY_ATTEMPTS)
+        spent: list[dict[str, Any] | None] = []
+        follow_up = None
+        for generation in (1, 2):
+            answer = None
+            try:
+                extraction = self.client.extract(
+                    excerpt,
+                    schema,
+                    admit=True,
+                    strict_outcomes=True,
+                    before_request=allowance.reserve,
+                    **({"follow_up": follow_up} if follow_up else {}),
+                )
+                spent.append({key: extraction.get(key) for key in _USAGE_KEYS})
+                answer = extraction["data"]
+                # Validate before normalization hides contract violations.
+                self._validate_payload(answer, validator)
+                validated = normalize_with_schema(answer, schema, validator=validator)
+                validated = normalize_string_fields(validated)
+                self._validate_payload(validated, validator)
+                return validated, _total_usage(spent), generation == 2
+            except Exception as exc:
+                if answer is None:  # the request itself failed: its usage rides on the error
+                    spent.append(getattr(exc, "usage", None))
+                repairable = isinstance(exc, SchemaValidationError) or (
+                    isinstance(exc, ResponseOutcomeError) and exc.repairable
+                )
+                if generation == 2 or not repairable or allowance.remaining < 1:
+                    if (total := _total_usage(spent)) is not None:
+                        exc.usage = total
+                    raise
+                follow_up = _feedback(exc, answer, validator)
+        raise AssertionError("unreachable")  # pragma: no cover
 
     @staticmethod
     def _validate_payload(data, validator) -> None:

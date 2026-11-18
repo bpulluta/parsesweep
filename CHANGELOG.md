@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (response outcomes, one schema-feedback generation)
+- Primary extraction now rejects length-terminated (`response_truncated`) and
+  refused (`response_refused`) answers as explicit `model_response` failures
+  instead of accepting them (a schema-valid `items: []` with
+  `finish_reason=length` used to pass). They are never regenerated.
+- An empty, non-JSON or schema-invalid answer gets at most one feedback
+  generation: the original request, unchanged, plus the rejected answer and
+  bounded path/rule diagnostics (no values). It draws on one per-document
+  allowance of 4 physical attempts (`RETRY_ATTEMPTS`) shared with transport
+  retries and the temperature fallback; the allowance is document-local and is
+  not stored on the shared client. Both generations' cost and tokens are in the
+  record and in failures. New `ResponseOutcomeError` and `AttemptAllowance`;
+  `schema_diagnostics` is shared with reconciliation (its repair diagnostics now
+  also name unexpected keys and expected types).
+- The extraction prompt now says conversions apply only where a schema field
+  description explicitly requires them, that unsupported conversions are
+  `null`, and that evidence quotes stay verbatim.
+- Discovery, reconciliation, locators, judges and transcription keep their
+  previous response handling.
+- Cost/cache impact: an invalid answer that used to fail now costs one more
+  paid call (a full input resend; providers' prompt caching may discount it).
+  The prompt text and repair behavior are not part of the extraction
+  fingerprint, so no existing record is invalidated or regraded and no
+  discovery cache changes; records produced before this change are reused until
+  the Step 9 fingerprint change (use `--fresh` to re-extract).
+
 ### Changed (per-page PDF representation)
 - PDF text extraction decides native text versus OCR per page instead of from
   an aggregate 500-character total, so a raster rate table can no longer be

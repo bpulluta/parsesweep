@@ -182,6 +182,33 @@ def validate_payload(data: Any, validator: Any) -> None:
         raise SchemaValidationError(message) from None
 
 
+def schema_diagnostics(errors, *, limit: int = 8, width: int = 120) -> list[str]:
+    """Bounded structural diagnostics for schema errors, never echoing values.
+
+    Each line names the failing path and rule (plus missing/unexpected key names
+    and the expected type); at most ``limit`` lines of ``width`` characters.
+    """
+    lines = []
+    for error in list(errors)[:limit]:
+        path = ".".join(map(str, error.absolute_path)) or "answer"
+        instance = error.instance if isinstance(error.instance, dict) else {}
+        if error.validator == "required":
+            missing = sorted(set(error.validator_value) - set(instance))
+            line = f"{path}: required {', '.join(missing)}"
+        elif error.validator == "additionalProperties":
+            allowed = (error.schema or {}).get("properties") or {}
+            extra = sorted(str(key)[:40] for key in set(instance) - set(allowed))[:5]
+            line = f"{path}: additionalProperties not allowed ({', '.join(extra)})"
+        elif error.validator == "type":
+            expected = error.validator_value
+            expected = expected if isinstance(expected, str) else "/".join(map(str, expected))
+            line = f"{path}: type (expected {expected})"
+        else:
+            line = f"{path}: {error.validator}"
+        lines.append(line[:width])
+    return lines
+
+
 @lru_cache(maxsize=1)
 def record_validator():
     """Load the canonical record-envelope validator once per process."""

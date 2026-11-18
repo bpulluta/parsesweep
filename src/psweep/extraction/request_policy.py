@@ -15,7 +15,7 @@ from typing import Any
 
 import litellm
 
-from psweep.exceptions import ExtractionError
+from psweep.exceptions import AttemptBudgetExceeded, ExtractionError
 
 # English averages ~4 characters per token; dense or non-Latin text can
 # approach one token per UTF-8 character. Three bytes per token is safe for
@@ -26,6 +26,31 @@ PER_MESSAGE_OVERHEAD_TOKENS = 16
 
 class RequestNotAdmittedError(ExtractionError):
     """The request cannot fit the route's known limits; nothing was sent."""
+
+
+class AttemptAllowance:
+    """Physical provider attempts one document may still send.
+
+    Passed as ``before_request`` for every request of that document, so the
+    original generation, a feedback generation, transport retries and the
+    temperature fallback all draw from one count. It is created per document
+    and never stored on a shared client.
+    """
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self.used = 0
+
+    @property
+    def remaining(self) -> int:
+        """Attempts still available to this document."""
+        return self.limit - self.used
+
+    def reserve(self) -> None:
+        """Reserve one attempt immediately before it is sent, or send nothing."""
+        if self.remaining <= 0:
+            raise AttemptBudgetExceeded("Extraction attempt allowance exhausted for document")
+        self.used += 1
 
 
 @dataclass(frozen=True)
