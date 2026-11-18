@@ -7,200 +7,146 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed (record contract 3.0.0: persisted input provenance, versioned reuse)
-- Every extraction record has an `input` block: `input_mode`, per-page PDF
-  representation (`status`, `chars`, `image_fraction`, and `ocr_sha256` where OCR
-  output was obtained), `visual_pages` and `render_dpi`. Coverage adds
-  `unreadable_pages` and `image_only_pages` (sent pages with no readable text,
-  whose quotes cannot be checked against text, with a warning); the
-  `parser_partial` warning names unreadable pages. The always-false
-  `coverage.context_truncated` key is removed. `contract_version` is `3.0.0`;
-  older records are not read and are re-extracted.
-- OCR reuse proof is per page. A record is stale when a present OCR page entry
-  disagrees with the digest the record used (or the record could not read that
-  page); a missing entry still reuses with no provider call. PDFs no longer write
-  `derived_text_sha256` to the run manifest (transcripts keep it). Page-range
-  runs are now checked against their own pages, and auto-targeted runs no longer
-  fail reuse by being compared against the whole-document cache.
-- The extraction fingerprint binds the prompt/repair behavior version for every
-  document and the OCR and page-representation versions for PDFs only; the page
-  locator fingerprint binds the same PDF versions. New `PAGE_REPRESENTATION_VERSION`.
-- Cost/cache impact against `main`: none beyond what this PR already causes
-  (`captured-input-v1` and `captured-scope-v4` already force one paid
-  re-extraction and one paid re-location of everything, and the record contract
-  moves 2.0.0 to 3.0.0 in the same rollout). Relative to the intermediate
-  branch commits, records written before this change are re-extracted once and
-  saved page scopes are re-located once. Text-only runs add no image cost; no
-  discovery regrade; no local re-OCR (entries are unchanged). Later bumps of
-  `OCR_PAGE_VERSION`, `PAGE_REPRESENTATION_VERSION` or the extraction behavior
-  version re-extract PDFs only (behavior version: every document). A record
-  with unreadable pages stays non-reusable (`parser_partial`), as before.
+### Upgrade impact vs main
+- One paid re-extraction of every document: the consumed-input fingerprint
+  (`captured-input-v1`), record contract 3.0.0 and the extraction behavior
+  versions all change the fingerprint, and older records are not read.
+- One paid re-location wherever page/section targeting is enabled
+  (`captured-scope-v4`).
+- One local re-OCR of scanned PDFs into the per-page cache (Tesseract, no LLM
+  cost).
+- No discovery regrade.
+- No image cost for `input_mode: text` (the default).
+- Older records are not read: there is no legacy layer.
 
 ### Added (selected-page vision, opt-in)
 - `extraction.input_mode: text | auto | vision` (default `text`; unknown values
   fail at load). `auto` sends images of PDF pages that neither native text nor
   OCR could read; `vision` sends images of every non-blank selected page. Images
-  go through the same `complete` path as text as labeled inline PNG blocks, with
+  go through the same request path as text as labeled inline PNG blocks, with
   original page numbers. A route not known to accept images holds before any
   request; image tokens are estimated from PNG dimensions and counted against
-  known windows. Typed content blocks reach `LLMClient.extract` via
-  `page_images`.
-- Cost/cache: none for `text` (fingerprints unchanged). Other modes add image
-  input cost and re-extract once (mode and dpi join the fingerprint). Image-only
-  content has no text to verify quotes against (recorded in the contract-3.0.0
-  `input` block and coverage, above); native PDF transport is deferred.
+  known windows. A record with unreadable pages is never reused, so `auto` and
+  `vision` domains pay again on every re-run of such a document.
+- Image-only content has no text to verify quotes against; records say so
+  (`input` block, `image_only_pages` coverage and a warning). Native PDF
+  transport is not implemented.
+
+### Changed (record contract 3.0.0: input provenance)
+- Every extraction record has an `input` block: `input_mode`, per-page PDF
+  representation (`status`, `chars`, `image_fraction`, and `ocr_sha256` where OCR
+  output was obtained), `visual_pages` and `render_dpi`. Coverage adds
+  `unreadable_pages` and `image_only_pages`; the `parser_partial` warning names
+  the unreadable pages. The always-false `coverage.context_truncated` key is
+  removed. `contract_version` is `3.0.0`.
+- OCR reuse is proved per page. A record is stale when a present OCR page entry
+  disagrees with the digest the record used (or the record could not read that
+  page); a missing entry still reuses with no provider call. Transcripts carry
+  `derived_text_sha256` in the run manifest.
+- The extraction fingerprint binds the prompt/repair behavior version for every
+  document and the OCR and page-representation versions for PDFs only; the page
+  locator fingerprint binds the same PDF versions.
 
 ### Changed (response outcomes, one schema-feedback generation)
-- Primary extraction now rejects length-terminated (`response_truncated`) and
+- Primary extraction rejects length-terminated (`response_truncated`) and
   refused (`response_refused`) answers as explicit `model_response` failures
   instead of accepting them (a schema-valid `items: []` with
   `finish_reason=length` used to pass). They are never regenerated.
 - An empty, non-JSON or schema-invalid answer gets at most one feedback
   generation: the original request, unchanged, plus the rejected answer and
   bounded path/rule diagnostics (no values). It draws on one per-document
-  allowance of 4 physical attempts (`RETRY_ATTEMPTS`) shared with transport
-  retries and the temperature fallback; the allowance is document-local and is
-  not stored on the shared client. Both generations' cost and tokens are in the
-  record and in failures. New `ResponseOutcomeError` and `AttemptAllowance`;
-  `schema_diagnostics` is shared with reconciliation (its repair diagnostics now
-  also name unexpected keys and expected types).
-- The extraction prompt now says conversions apply only where a schema field
+  allowance of 4 physical attempts shared with transport retries and the
+  temperature fallback; the allowance is document-local. Both generations' cost
+  and tokens are in the record and in failures. `schema_diagnostics` is shared
+  with reconciliation, whose repair diagnostics also name unexpected keys and
+  expected types.
+- The extraction prompt says conversions apply only where a schema field
   description explicitly requires them, that unsupported conversions are
   `null`, and that evidence quotes stay verbatim.
 - Discovery, reconciliation, locators, judges and transcription keep their
-  previous response handling.
-- Cost/cache impact: an invalid answer that used to fail now costs one more
-  paid call (a full input resend; providers' prompt caching may discount it).
-  The prompt text and repair behavior are not part of the extraction
-  fingerprint, so no existing record is invalidated or regraded and no
-  discovery cache changes; records produced before this change are reused until
-  the Step 9 fingerprint change (use `--fresh` to re-extract).
+  response handling.
 
-### Changed (per-page raw-OCR cache)
-- OCR is cached once per page (`.text/<file>.ocr/<page>.json`), keyed by the
-  source SHA-256, page number and OCR engine/render version, instead of as one
-  whole-document text. The page locator's index, page-range runs and
-  whole-document extraction share it, so a raster page is OCR-ed once per source
-  instead of again for each stage or page selection. Entries are raw text
-  written atomically; `ocr_corrections` are applied on every read. A corrupt,
-  tampered or other-source/engine entry is a miss. A record's reuse proof is the
-  per-page `ocr_sha256` of the OCR text it used (see the contract-3.0.0 entry);
-  character offsets (`ocr_spans`), `raw_text` and
-  whole-document OCR entries are removed, and an old whole-document OCR entry is
-  ignored.
-- Cache/cost impact: scanned PDFs are OCR-ed once more locally (Tesseract, no LLM
-  cost). Removing `ocr_raw` changes the `effective_text` identity of documents
-  with a browser/API text product, which re-extracts them once; against `main`
-  that change is subsumed by `captured-input-v1` and `captured-scope-v4`, so it
-  adds no further cost. No discovery regrade; existing
-  records are reused while no page cache exists for the document. Once a
-  document has page entries, a record made from a different set of OCR pages is
-  re-extracted rather than reused (e.g. after deleting only some entries). The
-  page locator's scope version is unchanged, so no locator calls are repeated.
-  Old `.text/*.txt` OCR pairs are left in place, unused.
-- Discovery carries the OCR page entries with their document: they are linked
-  into `curated/`, inherited by a same-SHA re-download (never by a different
-  file), protected with a kept or held document, and removed with the document
-  (retention cleanup, publication swaps, old-run pruning). A scanned PDF OCR-ed
-  during discovery review is therefore not OCR-ed again by extraction from
-  `curated/`, which restores `main`'s OCR-once behaviour. No LLM cost, no regrade.
-
-### Changed (per-page PDF representation)
+### Changed (per-page PDF representation and OCR cache)
 - PDF text extraction decides native text versus OCR per page instead of from
   an aggregate 500-character total, so a raster rate table can no longer be
   hidden behind a readable cover page. Each selected page is recorded as
-  `native`, `ocr`, `blank` or `unreadable` with its original page number
-  (`pages` in the extraction metadata). Blank pages are covered and never
-  OCR-ed; a raster page OCR cannot read is `unreadable` and no longer counted
-  in `extracted_pages`, so the record reports `parser_partial` with a warning.
-  Mixed documents are parsed and cached together; `ocr_corrections` now touch
-  OCR pages only, not native pages of the same document.
+  `native`, `ocr`, `blank` or `unreadable` with its original page number. Blank
+  pages are covered and never OCR-ed; a raster page OCR cannot read is
+  `unreadable`, is not counted in `extracted_pages`, and makes the record
+  `parser_partial` with a warning. `ocr_corrections` touch OCR pages only.
 - The page locator's index OCRs raster pages, so scanned documents can be
   targeted instead of being held as unreadable.
-- Cache/cost impact: OCR text caches written before this change lack per-page
-  offsets and are treated as misses, so scanned PDFs are OCR-ed once more
-  (local Tesseract, no LLM cost). Existing extraction records are not
-  invalidated by this step alone: for a mixed PDF the new text differs but the
-  source bytes do not, so such records are reused until the Step 9 fingerprint
-  change (re-extract them with `--fresh` to pick up the OCR-ed pages). No
-  discovery regrade; `pdf_inspection` is unchanged.
+- OCR is cached once per page (`.text/<file>.ocr/<page>.json`), keyed by the
+  source SHA-256, page number and OCR engine/render version. The locator index,
+  page-range runs and whole-document extraction share it, so a raster page is
+  OCR-ed once per source. Entries are raw text written atomically;
+  `ocr_corrections` are applied on every read. A corrupt, tampered or
+  other-source entry is a miss.
+- Discovery carries the OCR page entries with their document: they are linked
+  into `curated/`, inherited by a same-SHA re-download (never by a different
+  file), protected with a kept or held document, and removed with the document.
+  A scanned PDF OCR-ed during discovery review is not OCR-ed again by extraction.
 
 ### Changed (scope budgeting, explicit locator)
-- Targeting now triggers at `min(trigger_chars, max_context)`: a document too
-  large for `max_context` is targeted even when under `trigger_chars` (it was
-  previously held untargeted). A locator candidate index the route cannot
-  admit is split in halves (at most 8 requests) instead of failing the
-  document; any unsendable remainder holds it. Section/page cache entries are
-  unchanged. Cost: a few extra locator calls only for oversized indexes.
-- `extraction.max_context` is now enforced on every path, including CSV and
+- Targeting triggers at `min(trigger_chars, max_context)`: a document too large
+  for `max_context` is targeted even when under `trigger_chars`. A locator
+  candidate index the route cannot admit is split in halves (at most 8
+  requests); any unsendable remainder holds the document.
+- `extraction.max_context` is enforced on every path, including CSV and
   `pages.range` scope, disabled targeting and unsupported types. Oversized
   input is held (`targeting_context_budget_exceeded`) and the primary is not
-  called; `DocumentExtractor.extract` rejects it instead of slicing a prefix.
-  Records that were truncated at `max_context` can no longer be produced.
+  called; input is never sliced to a prefix.
 - `pages.auto_locate.model` is required when auto-locate is enabled and must
   resolve to a different provider/model than `extraction.model`; the silent
   inherit-the-primary default is removed. Configs that enabled auto-locate
-  without a model now fail validation. No record, fingerprint or cache impact;
-  documents that were previously truncated will hold until a scope is chosen.
+  without a model now fail validation.
 
 ### Fixed (central request admission)
-- `LLMClient.complete` now admits the exact final request (messages plus
-  response schema) against `model_context_windows` before any provider
-  attempt, for every caller, replacing the extract-only chars/4 check. Primary
-  extraction and locator calls additionally use LiteLLM's pinned local catalog
-  and send the route's output limit as `max_tokens`. Estimates are
-  conservative (3 UTF-8 bytes/token). Unknown limits are not guarded: a
-  custom route with no known output limit is sent without `max_tokens`
-  (never blocked, never a guessed constant); truncation is rejected after
-  the fact by the response-outcome check. A
+- `LLMClient.complete` admits the exact final request (messages plus response
+  schema) against `model_context_windows` before any provider attempt, for
+  every caller. Extraction and locator calls additionally use LiteLLM's pinned
+  local catalog and send the route's output limit as `max_tokens`. Estimates
+  are conservative (3 UTF-8 bytes per token). Unknown limits are not guarded: a
+  custom route with no known output limit is sent without `max_tokens`, and
+  truncation is rejected after the fact by the response-outcome check. A
   rejected request sends and meters nothing. Discovery, reconciliation and
-  transcription get no catalog guard or output cap.
-- No cache, record, or discovery impact; very large inputs on known routes
-  now hold earlier with `context_window_exceeded`.
+  transcription get no catalog guard or output cap. Very large inputs on known
+  routes hold with `context_window_exceeded`.
 
 ### Changed (test efficiency)
 - The full offline suite and CI retain all distinct regression scenarios;
   two duplicate config-validation parameter cases are consolidated into
   existing stronger checks. Scheduling scale tests no longer collect
-  unasserted allocation/timing diagnostics. TLS tests
-  share immutable certificate files, keep isolated servers/call histories, and
-  shut down without the default half-second polling delay.
+  unasserted allocation/timing diagnostics. TLS tests share immutable
+  certificate files, keep isolated servers/call histories, and shut down
+  without the default half-second polling delay.
 - `pixi run --locked -e dev test-fast` is an optional local loop excluding
   explicit `integration`, `slow`, and `live` cases. The ordinary `test` task
   still runs real CLI/TLS/ffmpeg checks and the largest scale cases. Pytest
   defaults to concise output and rejects unknown markers; `-v` remains available.
-- Runtime/config contracts and extraction/review caches are unchanged; no
-  re-extraction, re-screening, or paid regrading is triggered.
 
 ### Fixed (extraction admission and outcomes)
 - Preserved historical records no longer enter a current compilation.
   Extraction publishes an atomic `run_manifests/current_admission.json` with a
   per-document disposition (`new`, `reused`, `failed`, `deferred`) and the exact
-  record digest for admitted records, scoped to the invocation (before `limit`)
-  and merged with prior qualification. Failed or deferred documents keep their
-  old bytes on disk but are not admitted; succeeded and verified-reused siblings
-  of a partial run are. Previously a changed document that failed re-extraction
-  compiled alongside new siblings with no warning. Extraction holds a per-output
-  single-writer lock. Records judged reusable at preparation are re-hashed
-  under that lock; one replaced in between fails that document instead of
-  being admitted as reused. No cache or cost impact.
-- Admission pointer is now version 2.0.0: each admitted entry also records the
-  consumed `source_sha256` and `input_fingerprint`. Before rewriting records, a
-  run marks its pending documents `deferred`, so an interrupted run excludes
-  them from compilation instead of leaving new bytes under an old digest;
-  `psweep extract` again re-admits them (documents finished before the
-  interruption are re-extracted, since reuse proof is written only at run end).
-  Pointers published by the earlier draft format are rejected as malformed:
-  rerun `psweep extract` once. No discovery regrade.
+  record digest, source digest and input fingerprint for admitted records,
+  scoped to the invocation (before `limit`) and merged with prior qualification.
+  Failed or deferred documents keep their old bytes on disk but are not
+  admitted; succeeded and verified-reused siblings of a partial run are.
+  Previously a changed document that failed re-extraction compiled alongside
+  new siblings with no warning. A run marks its pending documents `deferred`
+  before rewriting records, so an interrupted run excludes them until
+  `psweep extract` is rerun. Extraction holds a per-output single-writer lock,
+  and records judged reusable at preparation are re-hashed under it.
 - Compilation, dry-run, `compiled_table_fresh`, provenance and the build
-  fingerprint share one selector (`select_compile_inputs`) that verifies and
-  reads the same admitted bytes; broken, missing or contradicted admission fails
-  closed. `analyze_compile_input_provenance` now takes the selection and the
-  orphan-record warning is replaced by exclusion. Standalone directories without
-  run evidence compile as `historical_unverified`. Compile manifests record
-  `outputs.admission`.
-- A compiled table with zero rows beside failed documents now has status
-  `failed`; valid all-empty results remain successful.
+  fingerprint share one selector that verifies and reads the same admitted
+  bytes; broken, missing or contradicted admission fails closed, and excluded
+  records are a count rather than a warning. Standalone directories without run
+  evidence compile as `historical_unverified`; a directory with run manifests
+  but no admission is refused until `psweep extract` publishes one. Compile
+  manifests record `outputs.admission`.
+- A compiled table with zero rows beside failed documents has status `failed`;
+  valid all-empty results remain successful.
 - `run_accounting.json` is version 3.0.0: runs carry result and
   processed/succeeded/failed/item counts, extraction `status` follows the latest
   run (`completed`, `completed_with_errors`, `failed`, `unknown`), and a
@@ -210,51 +156,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `documents_admitted`/`documents_failed`/`items_admitted`/
   `cost_per_admitted_document_usd` (null when unknown). Billed attempts are no
   longer presented as successful extractions.
-- Cache/cost impact: no re-extraction, regrade or model call. Existing extraction
-  directories must run `psweep extract` once to publish an admission before they
-  compile (records invalidated by the source-identity change above are
-  re-extracted then); compiled tables become stale once (fingerprint now includes
-  the admission qualification).
 
 ### Fixed (extraction source identity)
-- Extraction now consumes one verified version of each source. Preparation
+- Extraction consumes one verified version of each source. Preparation
   fingerprints the source digest; extraction stream-copies the document into a
   private, owner-only, per-document snapshot (removed on success, failure, or
   interruption), compares that digest with the prepared one, and reads only the
-  snapshot (including text-cache and transcript evidence). A source that changed
+  snapshot, including text-cache and transcript evidence. A source that changed
   in between fails that document with `document_io/source_changed` before any
   paid request, and the record's `document.source_sha256` is the consumed
-  digest rather than a later hash of the live path. Previously a document
-  prepared as A but read as B could publish a B-derived payload under A's
-  fingerprint and be reused when the file returned to A. Roster scans use the
-  same verified version, including empty no-match decisions. Capture now precedes
-  page/section targeting and freezes verified browser/API text, raw OCR, and
-  matching-model transcripts; all consumers use that version. Retained fresh
-  scopes are identity-checked again; stale-input failures preserve prior output.
-  Fresh cleanup removes stale products only after all fresh documents succeed;
-  an empty input inventory preserves previous outputs. Saved scopes exclude failed
-  reused documents. Transcript acceptance is shared across preparation/capture,
-  including cached-only audio; newly appearing derived text is checked against
-  the selected reuse proof. Page locators no longer accept unbound page text.
-  `build_extraction_record` and `write_extraction_record` require `source_sha256`.
-  The writer returns `(item_count, record_sha256)` for the exact serialized bytes
-  atomically published; manifests never rehash a later replacement as proof.
-  Rollout: `captured-input-v1` fingerprints and manifest consumption proofs reject
-  all pre-fix extraction records (later runs pay for re-extraction). Locator
-  behavior `captured-scope-v4` invalidates old page/section caches (paid re-location
-  only when needed), retaining original sidecar locations. Valid browser/API,
-  raw OCR, and matching-model transcript caches remain usable; creation of derived
-  caches does not invalidate the next run, but changed derived text does. Record
-  contract remains 2.0.0; no discovery review-cache change or discovery regrade.
+  digest. Previously a document prepared as A but read as B could publish a
+  B-derived payload under A's fingerprint and be reused when the file returned
+  to A.
+- Capture precedes page/section targeting and freezes verified browser/API
+  text, raw OCR and matching-model transcripts; roster scans, no-match
+  decisions, locator caches and reuse all use that version. Fresh preflight
+  keeps captures bounded, rechecks retained scopes, and preserves prior output
+  on a mismatch; stale products are cleaned only after all fresh documents
+  succeed, and an empty input inventory preserves previous outputs.
+- The record writer returns the item count and SHA-256 of the exact bytes it
+  published; manifests never rehash a later replacement as proof.
 
 ### Fixed (extraction publication)
-- `write_extraction_record` now validates the finalized payload against the
+- `write_extraction_record` validates the finalized payload against the
   resolved domain schema after roster filtering and quote verification and
   before publishing. Previously a sole unsupported row removed by quote
   filtering published `items: []` under a `minItems: 1` contract. Such a
-  document now fails with `schema_contract` and keeps its prior record. Direct
-  writer callers must pass `payload_validator`. No cache impact for valid
-  records: reuse is unchanged and nothing is re-extracted or regraded.
+  document now fails with `schema_contract` and keeps its prior record.
 
 ### Fixed (extraction targeting safety)
 - A running header naming the target no longer makes every page mandatory:
@@ -268,8 +196,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `targeting_context_budget_exceeded`, category `targeting`) instead of sending
   the whole document or a silently sliced prefix. A hold ends the extract stage
   `failed` (exit 1), so `run` does not compile historical records. A
-  document with no readable native PDF text is now held too (use a blank CSV
-  row to force OCR of the full document).
+  PDF with no page readable as text or OCR is now held too.
 - `--fresh` runs these checks before deleting output and keeps previous records
   when a document is held; blocked documents report no primary calls or tokens.
 - The final selected reference frontier is read even when the page cap is full,

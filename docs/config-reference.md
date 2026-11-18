@@ -50,7 +50,7 @@ pixi run psweep discover --config config/<domain>/run.yaml --show-effective-conf
 | `domain` | required | Names the run; every output is derived under `outputs/<domain>/`. |
 | `schema` | `schema.json` beside the config | Extraction schema path. |
 | `models` | — | Alias → model-name map. Stages reference aliases (`primary`, `secondary`, …) so a model is changed in one place. |
-| `model_context_windows` | — | Model name → input window in tokens (positive integer). Every request is checked against it, schema included, before sending; extraction and locator requests also use the pinned LiteLLM catalog and cap output at the route's output limit. Unknown limits are not guarded. |
+| `model_context_windows` | — | Model name → input window in tokens (positive integer) for models the runtime does not know. See [LLM calls](#llm-calls). |
 | `reasoning_models` | — | Model names to treat as reasoning models (sent without `temperature`; JSON mode stays on). |
 | `discovery` | — | [Discovery](#discovery). |
 | `extraction` | — | [Extraction](#extraction). |
@@ -418,6 +418,24 @@ positionally) and writes one JSON record per document to
 | `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR-derived pages only; native text layers are never corrected. |
 | `pages` | — | Page selection for large documents (below). |
 
+### Units, limits and unknowns
+
+| Setting | Unit |
+|---|---|
+| `max_context`, `pages.auto_locate.trigger_chars` | Characters of the final prepared text. Not tokens. |
+| `pages.*`, `max_selected_pages`, `coverage` page lists | PDF pages, 1-based, original numbering. |
+| `model_context_windows` | Tokens of input per model name. |
+| Request estimate | Text: 3 UTF-8 bytes per token plus message overhead, on purpose high. Images: pixels / 750 + 256 per image. |
+| Output cap | The route's output-token limit from LiteLLM's pinned local catalog, sent as `max_tokens` on extraction and locator calls. |
+| Attempts | 4 physical provider attempts per document (see [LLM calls](#llm-calls)). |
+
+A limit that cannot be established stays unknown and is never replaced by a
+guess. An unknown input window is not guarded. An unknown output limit sends no
+`max_tokens`; a truncated answer is still rejected after the fact
+(`response_truncated`). A route not known to accept images holds an image
+request. No request probes a provider for capabilities, and nothing is fetched
+from a URL.
+
 ### Page selection
 
 ```yaml
@@ -442,6 +460,13 @@ CSV rows win; leave both pages empty to force the full document. `pages.range`
 (or `--pages 27,68-73`) selects pages for a single file: comma-separated pages
 and inclusive ranges.
 
+**Scope precedence**, highest first: (1) a `pages.csv` row, or a blank row for
+the full document; (2) `pages.range` / `--pages`, used only when `pages.csv` is
+not set; (3) `auto_locate` for a governed document without either; (4) the whole
+document. Roster-anchored extraction chooses its own windows. Whichever scope
+wins, the final input must still fit `max_context`; a manual scope controls
+which pages are read, never whether the budget applies.
+
 Targeting normally runs within each bounded extraction worker, so a slow
 locator doesn't hold up every other document. A fresh run with existing output
 performs bounded targeting preflight before deleting old records. Its `model`
@@ -464,7 +489,7 @@ left untargeted just because it is under `trigger_chars`).
 The exact final input must fit `max_context` (equal is allowed). Otherwise the
 document is held before any extraction request: a failed outcome with category
 `targeting` and code `targeting_no_usable_scope` (the locator failed, found
-nothing, or the PDF had no readable native text) or
+nothing, or no page of the PDF could be read as text or OCR) or
 `targeting_context_budget_exceeded`. The prior record is left untouched, the
 extract stage ends `failed` (exit 1) even when other documents succeeded, so
 `run` stops before compiling; `psweep compile` can still be run by hand on the
@@ -472,8 +497,9 @@ historical records. A CSV row, including a blank one that forces the full
 document, or `pages.range` bypasses targeting for every supported type but not
 the budget: an input over `max_context` is held with
 `targeting_context_budget_exceeded` (also when targeting is disabled or the type
-is unsupported), never truncated. Scanned PDFs with no native text need such a
-row. `--fresh` runs the same checks
+is unsupported), never truncated. A PDF that no parser or OCR could read at all
+needs such a row (and `input_mode: auto` or `vision`) to be extracted from page
+images. `--fresh` runs the same checks
 before deleting any output and, on a hold, keeps the previous records.
 
 `auto_locate` shows the locator model the opening lines of each candidate page
@@ -512,6 +538,31 @@ connections — is retried up to 4 attempts in total with exponential backoff
 retry logs a warning with the model, the failure category and the attempt,
 prefixed with the document being processed; provider error text is never
 logged.
+
+#### Request admission
+
+Every request is measured as sent (messages, response schema, images) before a
+physical attempt, and nothing is sent or metered when it is refused. All callers
+are checked against `model_context_windows`. Extraction and locator requests are
+also checked against the pinned catalog and capped at the route's output limit
+(see [Units](#units-limits-and-unknowns)); discovery, reconciliation and audio
+transcription keep their own handling. A refusal is a failed document with
+`request_not_admitted` or `context_window_exceeded` and the prior record is
+left untouched. There is no fallback to another model.
+
+#### Schema contract: provider strict mode versus local validation
+
+The domain `schema.json` is the contract and is never rewritten to suit a
+provider. Strict provider `json_schema` mode is used only on a direct provider
+route (no endpoint override) whose model supports response schemas, and only
+when the original schema fits it (every object closed with all properties
+required, no unsupported keywords). Otherwise the request uses JSON-object mode
+with the schema in the prompt. A schema with optional properties, conditionals
+or composition therefore runs in JSON mode; that is expected, not a downgrade.
+In both modes the answer is validated locally with the format-aware validator,
+and the finalized payload is validated again before publication (see
+[Final payload acceptance](#final-payload-acceptance)). Local validation is
+authoritative: a provider accepting an answer proves nothing.
 
 #### Response outcomes and one schema-feedback generation
 
@@ -556,7 +607,13 @@ Only the pages in scope are rendered; nothing is cropped or dropped to fit.
 
 - `auto` attaches only `unreadable` pages (visual content that neither native
   text nor OCR could read). Clean documents stay text-only and cost the same.
-  A document with no readable text at all proceeds on images instead of failing.
+  A document with no readable text at all proceeds on images instead of
+  failing, once its scope is set (see [Page selection](#page-selection)).
+- **Re-run cost.** A record with unreadable pages is `parser_partial` and is
+  never reused, even when images covered those pages. A domain that sets `auto`
+  or `vision` therefore pays again, including image input, on every re-run of
+  a document with unreadable pages. There is no switch to accept such a record
+  as final.
 - `vision` attaches every non-blank selected page, alongside its text. Use page
   targeting or ranges; an unscoped long PDF is held by a known context window.
 - The route must be known to accept images (LiteLLM's pinned catalog,
@@ -574,7 +631,7 @@ Only the pages in scope are rendered; nothing is cropped or dropped to fit.
   (`vision` mode) is not image-only.
 - Native PDF transport is not implemented.
 - A non-`text` mode joins the extraction fingerprint (mode and dpi), so
-  switching modes re-extracts; `text` keeps existing fingerprints.
+  switching modes re-extracts. `text` adds nothing to it.
 
 ### Record input provenance
 
@@ -586,24 +643,18 @@ payload and bounded to metadata (no rendered bytes):
 `visual_pages` and `render_dpi` (only when images were sent). Coverage gains
 `unreadable_pages` (the selected pages no parser could read) and
 `image_only_pages`; the `parser_partial` warning names the unreadable pages
-(`PDF pages 4,7 could not be read as text or OCR`). The always-false
-`context_truncated` coverage key is removed: an oversized input is held, never
-truncated.
+(`PDF pages 4,7 could not be read as text or OCR`). Coverage has no
+`context_truncated` key: an oversized input is held, never truncated. Records
+declare `contract_version` `3.0.0`; records of any other version are not read
+and are re-extracted.
 
 **Reuse proof for OCR.** A record is reusable only while every valid OCR page
 entry in the cache agrees with the `ocr_sha256` the record used for that page.
 A missing entry is unknown and regenerable, so it keeps reuse (no provider call);
 a present entry that differs, or one for a page the record could not read, makes
 the record stale; entries for pages outside the record's selection are ignored.
-Transcripts keep their own `derived_text_sha256` proof in the run manifest; PDFs
-no longer write one. The check repeats at consumption.
-
-**Behaviour versions in the extraction fingerprint.** `extraction-behavior-v1`
-(prompt and one-feedback-generation policy) joins every fingerprint. PDFs also
-bind `OCR_PAGE_VERSION` and `PAGE_REPRESENTATION_VERSION`; other formats do not
-change when those are bumped. The page locator's settings fingerprint binds the
-same two PDF versions, so a changed OCR call or page rule re-locates scanned
-PDFs.
+Transcripts carry a `derived_text_sha256` proof in the run manifest instead. The
+check repeats at consumption.
 
 ### Source identity
 
@@ -636,18 +687,8 @@ An empty fresh inventory leaves prior outputs intact. Saved page scopes exclude
 failed reuse as well as failed new extraction. Cached-only audio uses the same
 transcript acceptance rule as configured transcription; newly appearing derived
 text must match the selected record's consumption proof before reporting reuse.
-Page locators read the snapshot only, with no unbound pre-parsed page override.
 Manifest record digests come from the exact bytes atomically published by the
 writer (which returns item count plus SHA-256), never a later live-output hash.
-
-**Rollout/cache cost:** `captured-input-v1` fingerprints and manifest consumption
-proofs reject all pre-fix records because they cannot prove which inputs were
-consumed. A later extraction run pays to re-extract those records. Locator version
-`captured-scope-v4` rejects old page/section cache entries, causing paid re-location
-only where selection is needed. Valid text/OCR/transcript products are retained.
-The canonical record contract is 3.0.0 (adds `input`, removes
-`coverage.context_truncated`); there is no reader for older records, which are
-re-extracted. No discovery regrading is triggered.
 
 ### Final payload acceptance
 
@@ -704,14 +745,7 @@ When every admitted record is a valid empty result and nothing failed, an empty
 table is a successful result. If failed documents exist and the compiled table
 has no rows, compile status is `failed` (nonzero exit) instead of a clean
 success; the table is still written. The extraction manifest `status` adds
-`items` and `zero_item_records`.
-
-**Rollout/cache cost:** none for records or reuse. Output directories written
-before this change have run manifests but no admission; compile refuses them
-until `psweep extract` publishes one (records already invalidated by source
-identity are re-extracted at that time; no discovery regrade, no model calls
-are added by this change). Compiled tables become stale once because the
-fingerprint gains the qualification field.
+`items` and `zero_item_records`. Admission never calls a model.
 
 ### Roster-anchored extraction
 
@@ -968,7 +1002,16 @@ that target; changing a target's `urls` or rendered queries re-runs it.
 
 **Extraction reuse.** A record is reused only when source, schema, resolved
 model and settings, and record bytes still match; otherwise it is re-extracted.
-Reuse needs no credentials. A record whose source document no longer exists
+The settings are the consumed source and effective-text digests, the locator
+configuration and behaviour version, a non-`text` `input_mode` with its render
+dpi, the extraction behaviour version (prompt and one-feedback-generation
+policy) and, for PDFs only, the OCR and page-representation versions. Changing
+a PDF-only version never re-extracts other formats, and `input_mode: text`
+adds nothing to the fingerprint. A record is also never reused when it is
+`parser_partial`, has `targeting_incomplete` under automatic targeting, has a
+different `contract_version`, or disagrees with a present OCR page entry (see
+[Record input provenance](#record-input-provenance)). Reuse needs no
+credentials. A record whose source document no longer exists
 under the input folder is withdrawn: extract deletes it, names it in the
 summary and lists it under `withdrawn` in the run manifest, so compile drops
 its rows. Records from other input folders are left alone, and `validate`
@@ -990,7 +1033,7 @@ warning instead of being certified as extracted. The per-page status is in the
 extraction metadata under `pages` and keeps the original page numbers; the
 page locator's index OCRs raster pages too, so scans can be targeted.
 `ocr_corrections` apply only to OCR pages, each time the text is read.
-`pdf_inspection` and discovery screening are unchanged and stay native-only.
+`pdf_inspection` and discovery screening read native text only.
 
 **Caches.** Raw OCR: one entry per page in `.text/<filename>.ocr/<page>.json`,
 keyed by the source SHA-256, the page number and the OCR engine/render version,
