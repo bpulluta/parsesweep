@@ -18,7 +18,9 @@ Functions
    psweep.extraction.schema_utils.evidence_paths
    psweep.extraction.schema_utils.load_schema
    psweep.extraction.schema_utils.record_validator
+   psweep.extraction.schema_utils.schema_diagnostics
    psweep.extraction.schema_utils.strict_compatible
+   psweep.extraction.schema_utils.validate_payload
 
 
 Module Contents
@@ -56,8 +58,23 @@ Module Contents
    Load the canonical record-envelope validator once per process.
 
 
+.. py:function:: schema_diagnostics(errors, *, limit: int = 8, width: int = 120) -> list[str]
+
+   Bounded structural diagnostics for schema errors, never echoing values.
+
+   Each line names the failing path and rule (plus missing/unexpected key names
+   and the expected type); at most ``limit`` lines of ``width`` characters.
+
+
 .. py:function:: strict_compatible(node: Any) -> bool
 
    True when every object is closed and fully required, without unsupported keywords.
+
+
+.. py:function:: validate_payload(data: Any, validator: Any) -> None
+
+   Raise a sanitized ``SchemaValidationError`` when ``data`` violates ``validator``.
+
+   The diagnostic names the failing schema path and rule only, never the value.
 
 

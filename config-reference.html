@@ -275,6 +275,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/exceptions/index.html">psweep.exceptions</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/admission/index.html">psweep.extraction.admission</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -282,8 +283,10 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/prepared_document/index.html">psweep.extraction.prepared_document</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/request_policy/index.html">psweep.extraction.request_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
@@ -454,7 +457,7 @@ pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">domain</span></code></p></td>
 <td><p>required</p></td>
-<td><p>Names the run; every output is derived under <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/</span></code>.</p></td>
+<td><p>Names the run; every output is derived under <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/</span></code>. <code class="docutils literal notranslate"><span class="pre">--domain</span> <span class="pre">KEY</span></code> on <code class="docutils literal notranslate"><span class="pre">discover</span></code>, <code class="docutils literal notranslate"><span class="pre">extract</span></code>, <code class="docutils literal notranslate"><span class="pre">compile</span></code>, <code class="docutils literal notranslate"><span class="pre">validate</span></code> and <code class="docutils literal notranslate"><span class="pre">run</span></code> replaces it for that invocation (<code class="docutils literal notranslate"><span class="pre">--show-effective-config</span></code> shows <code class="docutils literal notranslate"><span class="pre">domain</span> <span class="pre">...</span> <span class="pre">(cli)</span></code>). <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--domain</span></code> forwards it to every stage. Explicit <code class="docutils literal notranslate"><span class="pre">PATH</span></code>/<code class="docutils literal notranslate"><span class="pre">--output</span></code> still win. <code class="docutils literal notranslate"><span class="pre">curate</span></code> and <code class="docutils literal notranslate"><span class="pre">gc</span></code> take the same key as their positional argument.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">schema</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">schema.json</span></code> beside the config</p></td>
@@ -466,7 +469,7 @@ pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model_context_windows</span></code></p></td>
 <td><p>—</p></td>
-<td><p>Model name → context window (positive integer) for models the runtime does not know.</p></td>
+<td><p>Model name → input window in tokens (positive integer) for models the runtime does not know. See <a class="reference internal" href="#llm-calls">LLM calls</a>.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reasoning_models</span></code></p></td>
 <td><p>—</p></td>
@@ -657,7 +660,7 @@ query variants of a configured page (its pagination), which belong to that page.
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">runtime.max_files</span></code></p></td>
 <td><p>unbounded</p></td>
-<td><p>Download budget per run; configured URLs never count.</p></td>
+<td><p>Download budget per run; configured URLs never count, and neither do linked documents that selection eligibility drops after crawling.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">runtime.timeout_seconds</span></code></p></td>
 <td><p>engine default</p></td>
@@ -937,7 +940,8 @@ must satisfy every mandatory requirement in <code class="docutils literal notran
 means missing optional detail, not missing required evidence. The reason quotes
 the deciding source content or identifies what is absent. In
 <code class="docutils literal notranslate"><span class="pre">review.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">relevance</span></code> = grade / 4 and <code class="docutils literal notranslate"><span class="pre">llm_is_primary</span></code> = grade ≥ 3;
-selection keeps at most <code class="docutils literal notranslate"><span class="pre">keep_top</span></code> non-redundant primaries per target. Without
+<code class="docutils literal notranslate"><span class="pre">llm_selected</span></code> is blank for documents no review graded (use <code class="docutils literal notranslate"><span class="pre">curated_selected</span></code>
+for what was published); selection keeps at most <code class="docutils literal notranslate"><span class="pre">keep_top</span></code> non-redundant primaries per target. Without
 coverage, grades then reproducible provenance break ties (with <code class="docutils literal notranslate"><span class="pre">prefer_newest</span></code>,
 provably older dated editions are excluded first). With coverage, newly
 covered verified labels take priority, then grade; supported publication dates
@@ -946,7 +950,27 @@ Grades are cached by content and grading inputs in
 <code class="docutils literal notranslate"><span class="pre">discovered/.review_cache/</span></code> and reused across runs. Recordings are graded on
 their transcript: a run’s copy inherits the curated copy’s transcript (matched
 by SHA-256) before review. A recording not yet transcribed (first run) is kept
-without review and transcribed at extraction. Edit <code class="docutils literal notranslate"><span class="pre">human_decision</span></code> (<code class="docutils literal notranslate"><span class="pre">keep</span></code>/<code class="docutils literal notranslate"><span class="pre">reject</span></code>) in <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> and run
+without review and transcribed at extraction.</p>
+<p>A grade whose quotes are not found contiguously in one excerpt segment is
+repaired once, then settled. The repair is ONE same-model request that repeats
+the rejected quote and the failing evidence paths and restates the copy rule; it
+never supplies or fuzzy-matches text, is not used with <code class="docutils literal notranslate"><span class="pre">escalate_model</span></code> or after
+a provider error, and is a metered review attempt (a failing grade costs at most
+one extra call). If it also fails (with <code class="docutils literal notranslate"><span class="pre">escalate_model</span></code>: if both routes fail),
+the document is <code class="docutils literal notranslate"><span class="pre">review_unverifiable</span></code>: held and not curated, a terminal outcome
+whose reason shows in <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> <code class="docutils literal notranslate"><span class="pre">llm_reason</span></code>. It is stored as a negative
+entry in <code class="docutils literal notranslate"><span class="pre">discovered/.review_cache/</span></code> under the grade’s own key, so the same
+bytes and grading inputs are never billed again and the partition completes
+(worst case 2 calls per unique document per grading-input version). Changing a
+grading input (model, description, prompt, keywords, <code class="docutils literal notranslate"><span class="pre">max_chars</span></code>) changes the
+key and retries it; provider, transport and attempt-budget failures stay
+retryable. <code class="docutils literal notranslate"><span class="pre">human_decision</span></code> <code class="docutils literal notranslate"><span class="pre">keep</span></code>/<code class="docutils literal notranslate"><span class="pre">reject</span></code> resolves a held document.</p>
+<p>The record’s <code class="docutils literal notranslate"><span class="pre">review_initial_error</span></code> reads <code class="docutils literal notranslate"><span class="pre">invalid</span> <span class="pre">document</span> <span class="pre">grade</span> <span class="pre">evidence:</span> <span class="pre">ungrounded</span> <span class="pre">&lt;path&gt;</span></code> (<code class="docutils literal notranslate"><span class="pre">contract</span></code> for a malformed grade). <code class="docutils literal notranslate"><span class="pre">review_initial_failure</span></code>
+(<code class="docutils literal notranslate"><span class="pre">review_escalation_failure</span></code> for the escalation route) holds the kind, failing
+evidence paths and each rejected quote truncated to 300 characters, and
+<code class="docutils literal notranslate"><span class="pre">review_initial_repair</span></code> marks a grade that was repaired; these stay only in the
+local discovery manifest.</p>
+<p>Edit <code class="docutils literal notranslate"><span class="pre">human_decision</span></code> (<code class="docutils literal notranslate"><span class="pre">keep</span></code>/<code class="docutils literal notranslate"><span class="pre">reject</span></code>) in <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> and run
 <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span> <span class="pre">--config</span> <span class="pre">…</span></code> to republish the curated selection; the next
 <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span></code> withdraws the records of documents it dropped.</p>
 </section>
@@ -1109,41 +1133,83 @@ positionally) and writes one JSON record per document to
 <td><p><code class="docutils literal notranslate"><span class="pre">auto</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">openai</span></code>, <code class="docutils literal notranslate"><span class="pre">azure</span></code>, <code class="docutils literal notranslate"><span class="pre">anthropic</span></code>, <code class="docutils literal notranslate"><span class="pre">gemini</span></code> or <code class="docutils literal notranslate"><span class="pre">auto</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">transcription_model</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">input_mode</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">text</span></code></p></td>
+<td><p>PDF modality: <code class="docutils literal notranslate"><span class="pre">text</span></code> (text only), <code class="docutils literal notranslate"><span class="pre">auto</span></code> (also attach images of pages no parser could read as text or OCR), <code class="docutils literal notranslate"><span class="pre">vision</span></code> (attach images of every non-blank selected page). See <a class="reference internal" href="#selected-page-vision">Selected-page vision</a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">transcription_model</span></code></p></td>
 <td><p>—</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">models:</span></code> alias that transcribes audio; required when audio is present.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">limit</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">limit</span></code></p></td>
 <td><p>—</p></td>
 <td><p>Process only the first N documents.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">skip_existing</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">skip_existing</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Reuse verified records (see <a class="reference internal" href="#runs-reuse-and-exit-codes">Reuse</a>).</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_context</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_context</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">600000</span></code></p></td>
-<td><p>Characters sent per call. With automatic targeting this is a hard limit on the final prepared input, source hints and candidate context included (characters, not tokens); otherwise longer input is truncated and reported.</p></td>
+<td><p>Characters sent per call. A hard limit on the final prepared input on every path (automatic targeting, CSV/<code class="docutils literal notranslate"><span class="pre">pages.range</span></code> scope, or no targeting), source hints and candidate context included (characters, not tokens). Longer input is held, never cut to a prefix.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_concurrent</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_concurrent</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">4</span></code></p></td>
 <td><p>Documents extracted in parallel (also concurrent transcription chunks).</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">120</span></code> (<code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code>)</p></td>
 <td><p>Per-request LLM timeout.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code></p></td>
 <td><p>—</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">[{pattern,</span> <span class="pre">replacement,</span> <span class="pre">ignore_case}]</span></code> regex fixes applied to OCR text only.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[{pattern,</span> <span class="pre">replacement,</span> <span class="pre">ignore_case}]</span></code> regex fixes applied to OCR-derived pages only; native text layers are never corrected.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pages</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pages</span></code></p></td>
 <td><p>—</p></td>
 <td><p>Page selection for large documents (below).</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<section id="units-limits-and-unknowns">
+<h3>Units, limits and unknowns<a class="headerlink" href="#units-limits-and-unknowns" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Setting</p></th>
+<th class="head"><p>Unit</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_context</span></code>, <code class="docutils literal notranslate"><span class="pre">pages.auto_locate.trigger_chars</span></code></p></td>
+<td><p>Characters of the final prepared text. Not tokens.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pages.*</span></code>, <code class="docutils literal notranslate"><span class="pre">max_selected_pages</span></code>, <code class="docutils literal notranslate"><span class="pre">coverage</span></code> page lists</p></td>
+<td><p>PDF pages, 1-based, original numbering.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model_context_windows</span></code></p></td>
+<td><p>Tokens of input per model name.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Request estimate</p></td>
+<td><p>Text: 3 UTF-8 bytes per token plus message overhead, on purpose high. Images: pixels / 750 + 256 per image.</p></td>
+</tr>
+<tr class="row-even"><td><p>Output cap</p></td>
+<td><p>The route’s output-token limit from LiteLLM’s pinned local catalog, sent as <code class="docutils literal notranslate"><span class="pre">max_tokens</span></code> on extraction and locator calls.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Attempts</p></td>
+<td><p>4 physical provider attempts per document (see <a class="reference internal" href="#llm-calls">LLM calls</a>).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A limit that cannot be established stays unknown and is never replaced by a
+guess. An unknown input window is not guarded. An unknown output limit sends no
+<code class="docutils literal notranslate"><span class="pre">max_tokens</span></code>; a truncated answer is still rejected after the fact
+(<code class="docutils literal notranslate"><span class="pre">response_truncated</span></code>). A route not known to accept images holds an image
+request. No request probes a provider for capabilities, and nothing is fetched
+from a URL.</p>
+</section>
 <section id="page-selection">
 <h3>Page selection<a class="headerlink" href="#page-selection" title="Link to this heading">¶</a></h3>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">extraction</span><span class="p">:</span>
@@ -1154,7 +1220,7 @@ positionally) and writes one JSON record per document to
 <span class="w">      </span><span class="nt">trigger_chars</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200000</span><span class="w">       </span><span class="c1"># default; only larger documents are targeted</span>
 <span class="w">      </span><span class="nt">max_selected_pages</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span><span class="w">      </span><span class="c1"># default; total, referenced pages included</span>
 <span class="w">      </span><span class="nt">keywords</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">rate schedule</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># optional cheap pre-filter</span>
-<span class="w">      </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secondary</span><span class="w">            </span><span class="c1"># optional locator model</span>
+<span class="w">      </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secondary</span><span class="w">            </span><span class="c1"># required when enabled; not the extraction model</span>
 <span class="w">      </span><span class="nt">save_discovered</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">       </span><span class="c1"># write found ranges for review</span>
 </pre></div>
 </div>
@@ -1165,11 +1231,19 @@ working directory). A row’s <code class="docutils literal notranslate"><span c
 relative to the input folder, or by file name; give a file one row per range.
 CSV rows win; leave both pages empty to force the full document. <code class="docutils literal notranslate"><span class="pre">pages.range</span></code>
 (or <code class="docutils literal notranslate"><span class="pre">--pages</span> <span class="pre">27,68-73</span></code>) selects pages for a single file: comma-separated pages
-and inclusive ranges.</p>
+and inclusive ranges. Setting <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">pages.range</span></code> together in the config
+fails at load (the range would be ignored); the <code class="docutils literal notranslate"><span class="pre">--pages</span></code> flag still yields to a
+configured CSV.</p>
+<p><strong>Scope precedence</strong>, highest first: (1) a <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code> row, or a blank row for
+the full document; (2) <code class="docutils literal notranslate"><span class="pre">pages.range</span></code> / <code class="docutils literal notranslate"><span class="pre">--pages</span></code>, used only when no CSV applies; (3) <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> for a governed document without either; (4) the whole
+document. Roster-anchored extraction chooses its own windows. Whichever scope
+wins, the final input must still fit <code class="docutils literal notranslate"><span class="pre">max_context</span></code>; a manual scope controls
+which pages are read, never whether the budget applies.</p>
 <p>Targeting normally runs within each bounded extraction worker, so a slow
 locator doesn’t hold up every other document. A fresh run with existing output
 performs bounded targeting preflight before deleting old records. Its <code class="docutils literal notranslate"><span class="pre">model</span></code>
-is independent of <code class="docutils literal notranslate"><span class="pre">extraction.model</span></code>; when omitted it inherits that model.
+is required when <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> is enabled and must resolve to a different
+provider/model than <code class="docutils literal notranslate"><span class="pre">extraction.model</span></code>; it is never inherited.
 Target-scoped selections retain subject identity/header context. The subject
 comes from the last configured <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> field (the roster’s name field),
 not from parsing a display label or guessing metadata fields. Discovery labels
@@ -1180,18 +1254,23 @@ section text against <code class="docutils literal notranslate"><span class="pre
 and navigation do not turn a short article into a paid locator call.</p>
 <p>Automatic targeting fails closed. A document it governs (enabled, a supported
 type, no CSV row, not handled by the roster bypasses) is extracted only from a
-bounded selection, or whole when its readable text is at most <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code>.
+bounded selection, or whole when its readable text is at most <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code>
+(or <code class="docutils literal notranslate"><span class="pre">max_context</span></code> when that is smaller, so a document that cannot fit is never
+left untargeted just because it is under <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code>).
 The exact final input must fit <code class="docutils literal notranslate"><span class="pre">max_context</span></code> (equal is allowed). Otherwise the
 document is held before any extraction request: a failed outcome with category
 <code class="docutils literal notranslate"><span class="pre">targeting</span></code> and code <code class="docutils literal notranslate"><span class="pre">targeting_no_usable_scope</span></code> (the locator failed, found
-nothing, or the PDF had no readable native text) or
+nothing, or no page of the PDF could be read as text or OCR) or
 <code class="docutils literal notranslate"><span class="pre">targeting_context_budget_exceeded</span></code>. The prior record is left untouched, the
 extract stage ends <code class="docutils literal notranslate"><span class="pre">failed</span></code> (exit 1) even when other documents succeeded, so
 <code class="docutils literal notranslate"><span class="pre">run</span></code> stops before compiling; <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">compile</span></code> can still be run by hand on the
 historical records. A CSV row, including a blank one that forces the full
-document, or <code class="docutils literal notranslate"><span class="pre">pages.range</span></code> bypasses targeting for every supported type; the
-full-document text is then truncated at <code class="docutils literal notranslate"><span class="pre">max_context</span></code> and reported. Scanned
-PDFs with no native text need such a row. <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> runs the same checks
+document, or <code class="docutils literal notranslate"><span class="pre">pages.range</span></code> bypasses targeting for every supported type but not
+the budget: an input over <code class="docutils literal notranslate"><span class="pre">max_context</span></code> is held with
+<code class="docutils literal notranslate"><span class="pre">targeting_context_budget_exceeded</span></code> (also when targeting is disabled or the type
+is unsupported), never truncated. A PDF that no parser or OCR could read at all
+needs such a row (and <code class="docutils literal notranslate"><span class="pre">input_mode:</span> <span class="pre">auto</span></code> or <code class="docutils literal notranslate"><span class="pre">vision</span></code>) to be extracted from page
+images. <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> runs the same checks
 before deleting any output and, on a hold, keeps the previous records.</p>
 <p><code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> shows the locator model the opening lines of each candidate page
 and asks for the pages of the described section. It then reads those pages in
@@ -1204,11 +1283,15 @@ recorded in the record’s <code class="docutils literal notranslate"><span clas
 marks each skipped stretch with <code class="docutils literal notranslate"><span class="pre">[Omitted</span> <span class="pre">pages:</span> <span class="pre">28-67]</span></code>. Pages naming the
 target in a repeated header or footer count once toward the mandatory identity
 pages (the earliest occurrence is kept); pages naming it in the body all stay.
-A malformed page-range answer is rejected whole, not partly used.</p>
+A malformed page-range answer is rejected whole, not partly used.
+If the candidate index itself is too large for the locator’s route, it is split
+in halves and the answers are combined, so every candidate is still shown; more
+than 8 index requests for one document, or one candidate that cannot be sent
+alone, holds the document.</p>
 <p>Selections are cached in <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> beside the document. If a reference pass
 fails, the pages found so far are extracted with
-<code class="docutils literal notranslate"><span class="pre">coverage.targeting_incomplete</span></code> and a warning in the record; such a record and
-any record truncated at <code class="docutils literal notranslate"><span class="pre">max_context</span></code> are never reused, and the document is
+<code class="docutils literal notranslate"><span class="pre">coverage.targeting_incomplete</span></code> and a warning in the record; such a record
+is never reused, and the document is
 located again on the next run.
 With <code class="docutils literal notranslate"><span class="pre">save_discovered</span></code>, <code class="docutils literal notranslate"><span class="pre">extracted/discovered_page_ranges.csv</span></code> (the <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code>
 columns, one row per range) lists the pages behind every current record, reused
@@ -1224,6 +1307,218 @@ connections — is retried up to 4 attempts in total with exponential backoff
 retry logs a warning with the model, the failure category and the attempt,
 prefixed with the document being processed; provider error text is never
 logged.</p>
+<section id="request-admission">
+<h4>Request admission<a class="headerlink" href="#request-admission" title="Link to this heading">¶</a></h4>
+<p>Every request is measured as sent (messages, response schema, images) before a
+physical attempt, and nothing is sent or metered when it is refused. All callers
+are checked against <code class="docutils literal notranslate"><span class="pre">model_context_windows</span></code>. Extraction and locator requests are
+also checked against the pinned catalog and capped at the route’s output limit
+(see <a class="reference internal" href="#units-limits-and-unknowns">Units</a>); discovery, reconciliation and audio
+transcription keep their own handling. A refusal is a failed document with
+<code class="docutils literal notranslate"><span class="pre">request_not_admitted</span></code> or <code class="docutils literal notranslate"><span class="pre">context_window_exceeded</span></code> and the prior record is
+left untouched. There is no fallback to another model.</p>
+</section>
+<section id="schema-contract-provider-strict-mode-versus-local-validation">
+<h4>Schema contract: provider strict mode versus local validation<a class="headerlink" href="#schema-contract-provider-strict-mode-versus-local-validation" title="Link to this heading">¶</a></h4>
+<p>The domain <code class="docutils literal notranslate"><span class="pre">schema.json</span></code> is the contract and is never rewritten to suit a
+provider. Strict provider <code class="docutils literal notranslate"><span class="pre">json_schema</span></code> mode is used only on a direct provider
+route (no endpoint override) whose model supports response schemas, and only
+when the original schema fits it (every object closed with all properties
+required, no unsupported keywords). Otherwise the request uses JSON-object mode
+with the schema in the prompt. A schema with optional properties, conditionals
+or composition therefore runs in JSON mode; that is expected, not a downgrade.
+In both modes the answer is validated locally with the format-aware validator,
+and the finalized payload is validated again before publication (see
+<a class="reference internal" href="#final-payload-acceptance">Final payload acceptance</a>). Local validation is
+authoritative: a provider accepting an answer proves nothing.</p>
+</section>
+<section id="response-outcomes-and-one-schema-feedback-generation">
+<h4>Response outcomes and one schema-feedback generation<a class="headerlink" href="#response-outcomes-and-one-schema-feedback-generation" title="Link to this heading">¶</a></h4>
+<p>The model’s answer is classified before it is accepted. These outcomes are
+explicit failures (error <code class="docutils literal notranslate"><span class="pre">category</span></code> <code class="docutils literal notranslate"><span class="pre">model_response</span></code>) and are <strong>never
+regenerated</strong>, because a second paid call cannot repair them:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">code</span></code></p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">response_truncated</span></code></p></td>
+<td><p>The provider stopped at its output length limit; even schema-valid JSON is incomplete.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">response_refused</span></code></p></td>
+<td><p>The provider refused (a <code class="docutils literal notranslate"><span class="pre">refusal</span></code> field or <code class="docutils literal notranslate"><span class="pre">content_filter</span></code> termination).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>An empty answer (<code class="docutils literal notranslate"><span class="pre">response_empty</span></code>), a non-JSON answer (<code class="docutils literal notranslate"><span class="pre">response_not_json</span></code>) or a
+JSON answer the schema rejects (<code class="docutils literal notranslate"><span class="pre">schema_validation_failed</span></code>) earns <strong>at most one</strong>
+feedback generation. It resends the original request unchanged (same schema,
+response format, selected evidence and output cap) plus the rejected answer and
+bounded diagnostics: failing path, rule, missing/unexpected key names, expected
+type, never document or answer values. A second invalid answer fails the
+document. A repaired record carries a <code class="docutils literal notranslate"><span class="pre">schema_feedback</span></code> validation note.
+Quote/evidence authenticity failures are never regenerated; they follow the
+existing verification path. A valid <code class="docutils literal notranslate"><span class="pre">[]</span></code> abstention is final.</p>
+<p>Each document has one allowance of 4 physical provider attempts (the transient
+retry count above, not a new setting) shared by the original generation,
+the feedback generation, transport retries and the temperature fallback. A
+feedback generation runs only if an attempt remains; the failed answer’s cost
+stays in the failure’s usage. Roster candidate windows are separate extraction
+requests and each has its own allowance. Locator, discovery, reconciliation and
+audio-transcription requests keep their own existing semantics.</p>
+<p>The prompt states that conversions or normalization happen only when a schema
+field description explicitly requires them, that unsupported conversions yield
+<code class="docutils literal notranslate"><span class="pre">null</span></code>, and that quotes stay verbatim.</p>
+</section>
+</section>
+<section id="selected-page-vision">
+<h3>Selected-page vision<a class="headerlink" href="#selected-page-vision" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">extraction.input_mode</span></code> is a PDF-only policy; other document types and the
+roster-anchored path stay text-only. Pages are rendered at full size
+(144 dpi PNG) from the captured source and sent after the text through the same
+request path, each preceded by <code class="docutils literal notranslate"><span class="pre">[Image</span> <span class="pre">of</span> <span class="pre">PDF</span> <span class="pre">page</span> <span class="pre">N]</span></code> with its original number.
+Only the pages in scope are rendered; nothing is cropped or dropped to fit.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">auto</span></code> attaches only <code class="docutils literal notranslate"><span class="pre">unreadable</span></code> pages (visual content that neither native
+text nor OCR could read). Clean documents stay text-only and cost the same.
+A document with no readable text at all proceeds on images instead of
+failing, once its scope is set (see <a class="reference internal" href="#page-selection">Page selection</a>).</p></li>
+<li><p><strong>Re-run cost.</strong> A record with unreadable pages is <code class="docutils literal notranslate"><span class="pre">parser_partial</span></code> and is
+never reused, even when images covered those pages. A domain that sets <code class="docutils literal notranslate"><span class="pre">auto</span></code>
+or <code class="docutils literal notranslate"><span class="pre">vision</span></code> therefore pays again, including image input, on every re-run of
+a document with unreadable pages. There is no switch to accept such a record
+as final.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">vision</span></code> attaches every non-blank selected page, alongside its text. Use page
+targeting or ranges; an unscoped long PDF is held by a known context window.</p></li>
+<li><p>The route must be known to accept images (LiteLLM’s pinned catalog,
+checked on the model name and the resolved model). An unmapped proxy alias
+holds with <code class="docutils literal notranslate"><span class="pre">request_not_admitted</span></code> before any request; there is no fallback
+to another model. Image size is estimated from each PNG’s own dimensions
+(pixels / 750 + 256 per image, high on purpose) and counted against known
+input windows.</p></li>
+<li><p>Quotes are still verified against text only. Content that exists only in an
+image has no text to match, so a quote taken from it is rejected like any
+other unverifiable quote. The record’s <code class="docutils literal notranslate"><span class="pre">input</span></code> block states the mode, the
+per-page representation, <code class="docutils literal notranslate"><span class="pre">visual_pages</span></code> and <code class="docutils literal notranslate"><span class="pre">render_dpi</span></code>; coverage
+<code class="docutils literal notranslate"><span class="pre">image_only_pages</span></code> lists sent pages that had no readable text, with a matching
+warning that their values rest on page images alone. A page that has text
+(<code class="docutils literal notranslate"><span class="pre">vision</span></code> mode) is not image-only.</p></li>
+<li><p>Native PDF transport is not implemented.</p></li>
+<li><p>A non-<code class="docutils literal notranslate"><span class="pre">text</span></code> mode joins the extraction fingerprint (mode and dpi), so
+switching modes re-extracts. <code class="docutils literal notranslate"><span class="pre">text</span></code> adds nothing to it.</p></li>
+</ul>
+</section>
+<section id="record-input-provenance">
+<h3>Record input provenance<a class="headerlink" href="#record-input-provenance" title="Link to this heading">¶</a></h3>
+<p>Every record has an <code class="docutils literal notranslate"><span class="pre">input</span></code> block (record contract 3.0.0), outside the domain
+payload and bounded to metadata (no rendered bytes):
+<code class="docutils literal notranslate"><span class="pre">input_mode</span></code> (the mode in effect; the roster path and non-PDF documents are
+<code class="docutils literal notranslate"><span class="pre">text</span></code>), <code class="docutils literal notranslate"><span class="pre">pages</span></code> (each selected PDF page with <code class="docutils literal notranslate"><span class="pre">status</span></code>, <code class="docutils literal notranslate"><span class="pre">chars</span></code>,
+<code class="docutils literal notranslate"><span class="pre">image_fraction</span></code> and, when OCR output was obtained for it, <code class="docutils literal notranslate"><span class="pre">ocr_sha256</span></code>),
+<code class="docutils literal notranslate"><span class="pre">visual_pages</span></code> and <code class="docutils literal notranslate"><span class="pre">render_dpi</span></code> (only when images were sent). Coverage gains
+<code class="docutils literal notranslate"><span class="pre">unreadable_pages</span></code> (the selected pages no parser could read) and
+<code class="docutils literal notranslate"><span class="pre">image_only_pages</span></code>; the <code class="docutils literal notranslate"><span class="pre">parser_partial</span></code> warning names the unreadable pages
+(<code class="docutils literal notranslate"><span class="pre">PDF</span> <span class="pre">pages</span> <span class="pre">4,7</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">read</span> <span class="pre">as</span> <span class="pre">text</span> <span class="pre">or</span> <span class="pre">OCR</span></code>). Coverage has no
+<code class="docutils literal notranslate"><span class="pre">context_truncated</span></code> key: an oversized input is held, never truncated. Records
+declare <code class="docutils literal notranslate"><span class="pre">contract_version</span></code> <code class="docutils literal notranslate"><span class="pre">3.0.0</span></code>; records of any other version are not read
+and are re-extracted.</p>
+<p><strong>Reuse proof for OCR.</strong> A record is reusable only while every valid OCR page
+entry in the cache agrees with the <code class="docutils literal notranslate"><span class="pre">ocr_sha256</span></code> the record used for that page.
+A missing entry is unknown and regenerable, so it keeps reuse (no provider call);
+a present entry that differs, or one for a page the record could not read, makes
+the record stale; entries for pages outside the record’s selection are ignored.
+Transcripts carry a <code class="docutils literal notranslate"><span class="pre">derived_text_sha256</span></code> proof in the run manifest instead. The
+check repeats at consumption.</p>
+</section>
+<section id="source-identity">
+<h3>Source identity<a class="headerlink" href="#source-identity" title="Link to this heading">¶</a></h3>
+<p>Each extracted record describes the exact bytes that were read. Extraction
+snapshots the source into a private temporary directory while hashing the same
+bytes, requires that digest to equal the one fingerprinted during preparation,
+and uses the snapshot for every read, quote check, and the record’s
+<code class="docutils literal notranslate"><span class="pre">document.source_sha256</span></code>. If the file changed after preparation the document
+fails with <code class="docutils literal notranslate"><span class="pre">source_changed</span></code> before any paid request and nothing is published;
+rerun extraction. The original path remains the provenance path. Snapshots exist
+only for active consumers (including one-at-a-time roster scans and bounded
+fresh preflight workers), are owner-only, and are removed when the consumer
+finishes or is interrupted. Capture occurs <strong>before</strong> targeting: locator indexes,
+filtered sections, candidate windows, quote checks, and publication share the
+captured source and verified effective text. Original paths still key provenance
+and <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> / <code class="docutils literal notranslate"><span class="pre">.sections/</span></code> sidecars.</p>
+<p>Preparation retains compact method/text/representation identities. Missing or
+changed authoritative browser/API text cannot fall back to native text under its
+old fingerprint. Transcripts must match the source and transcriber identity. Raw
+OCR is derived from the source per page (see <strong>Caches</strong>); each record stores the
+digest of the OCR text it used per page (see <strong>Record input provenance</strong>).
+Derived OCR/transcript caches can be created without perpetual re-extraction;
+changed verified derived text rejects reuse.
+Roster/no-match decisions and reused records are rechecked at consumption.
+Fresh preflight releases captures promptly and rechecks retained scope identities
+inside workers. Prior records survive a mismatch; stale-product cleanup occurs
+only after every fresh document succeeds (successful siblings may still publish).
+An empty fresh inventory leaves prior outputs intact. Saved page scopes exclude
+failed reuse as well as failed new extraction. Cached-only audio uses the same
+transcript acceptance rule as configured transcription; newly appearing derived
+text must match the selected record’s consumption proof before reporting reuse.
+Manifest record digests come from the exact bytes atomically published by the
+writer (which returns item count plus SHA-256), never a later live-output hash.</p>
+</section>
+<section id="final-payload-acceptance">
+<h3>Final payload acceptance<a class="headerlink" href="#final-payload-acceptance" title="Link to this heading">¶</a></h3>
+<p>The domain schema is the contract for what is published, not only for what the
+model returned. After every mutation (normalization, roster filtering, quote and
+evidence verification) the record writer validates the finalized payload against
+the resolved schema, then the record envelope, then publishes atomically. If
+quote filtering removes the only row of a <code class="docutils literal notranslate"><span class="pre">minItems:</span> <span class="pre">1</span></code> array, or evidence
+nulling breaks a composite constraint, the document fails with
+<code class="docutils literal notranslate"><span class="pre">schema_contract</span></code> and any previous record is left untouched. Unsupported claims
+are never reinstated or invented to satisfy the schema. Arrays that the schema
+allows to be empty still publish empty after filtering.</p>
+</section>
+<section id="current-admission-versus-preserved-history">
+<h3>Current admission versus preserved history<a class="headerlink" href="#current-admission-versus-preserved-history" title="Link to this heading">¶</a></h3>
+<p>Record bytes under <code class="docutils literal notranslate"><span class="pre">extracted/</span></code> are history; compilation reads only what the
+output’s <strong>current admission</strong> admits. Every extraction invocation publishes
+<code class="docutils literal notranslate"><span class="pre">run_manifests/current_admission.json</span></code> atomically (not a <code class="docutils literal notranslate"><span class="pre">*.manifest.json</span></code> run
+manifest) with a disposition for each document in its scope, taken <em>before</em>
+<code class="docutils literal notranslate"><span class="pre">limit</span></code>: <code class="docutils literal notranslate"><span class="pre">new</span></code> or <code class="docutils literal notranslate"><span class="pre">reused</span></code> (admitted, with the exact <code class="docutils literal notranslate"><span class="pre">record_sha256</span></code> published
+or verified), <code class="docutils literal notranslate"><span class="pre">failed</span></code>, or <code class="docutils literal notranslate"><span class="pre">deferred</span></code> (not admitted). A scoped run (single file,
+subtree) replaces only its own documents and keeps other entries while their
+record file exists. A failed or deferred document’s previous record is
+<strong>preserved on disk but not admitted</strong>, so a partial run compiles its succeeded
+and verified-reused siblings and never a stale sibling. Terminal targeting holds
+stay failures. Admission is never inherited from an earlier globally successful
+run.</p>
+<p>Extraction holds a single-writer lock per output (<code class="docutils literal notranslate"><span class="pre">.&lt;output&gt;.publication.lock</span></code>,
+beside the output directory); a second concurrent extraction into the same
+output is rejected. Reuse decided at preparation is re-verified against the
+record’s proof digest once the lock is held; a record replaced in between fails
+that document (rerun extraction).</p>
+<p>Each admitted pointer entry carries the record digest plus the consumed
+<code class="docutils literal notranslate"><span class="pre">source_sha256</span></code> and <code class="docutils literal notranslate"><span class="pre">input_fingerprint</span></code>. A run marks the documents it will
+rewrite <code class="docutils literal notranslate"><span class="pre">deferred</span></code> before writing, so an interrupted run leaves them excluded
+from compilation until <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span></code> is rerun.</p>
+<p><code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">compile</span></code> (and <code class="docutils literal notranslate"><span class="pre">compile_extractions</span></code>) select admitted records through one
+selector shared by provenance checks, row/roster/reconciliation compilation,
+dry-run, and the build fingerprint, and read exactly the bytes whose digest
+admission recorded. Fail-closed cases: unreadable/malformed pointer, an admitted
+record that is missing or whose bytes changed, and an extraction directory with
+run manifests but no admission (rerun <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span></code>). Excluded preserved
+records are reported as a count, not a warning, so <code class="docutils literal notranslate"><span class="pre">provenance_policy</span></code> cannot
+readmit them. A standalone directory with no run evidence compiles as
+<code class="docutils literal notranslate"><span class="pre">historical_unverified</span></code> (recorded in the compile manifest as
+<code class="docutils literal notranslate"><span class="pre">outputs.admission.qualification</span></code>; <code class="docutils literal notranslate"><span class="pre">current</span></code> otherwise). The build fingerprint
+includes the qualification and admitted digests, so a change in admission makes
+a compiled table stale even when record bytes are unchanged.</p>
+<p>When every admitted record is a valid empty result and nothing failed, an empty
+table is a successful result. If failed documents exist and the compiled table
+has no rows, compile status is <code class="docutils literal notranslate"><span class="pre">failed</span></code> (nonzero exit) instead of a clean
+success; the table is still written. The extraction manifest <code class="docutils literal notranslate"><span class="pre">status</span></code> adds
+<code class="docutils literal notranslate"><span class="pre">items</span></code> and <code class="docutils literal notranslate"><span class="pre">zero_item_records</span></code>. Admission never calls a model.</p>
 </section>
 <section id="roster-anchored-extraction">
 <h3>Roster-anchored extraction<a class="headerlink" href="#roster-anchored-extraction" title="Link to this heading">¶</a></h3>
@@ -1514,7 +1809,7 @@ LLM calls. Outputs in <code class="docutils literal notranslate"><span class="pr
 <tbody>
 <tr class="row-even"><td><p>Documents</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">.pdf</span></code> <code class="docutils literal notranslate"><span class="pre">.doc</span></code> <code class="docutils literal notranslate"><span class="pre">.docx</span></code> <code class="docutils literal notranslate"><span class="pre">.txt</span></code></p></td>
-<td><p>Text, with OCR for scanned PDFs</p></td>
+<td><p>Text; PDFs are judged page by page (below)</p></td>
 </tr>
 <tr class="row-odd"><td><p>Web pages</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">.html</span></code> <code class="docutils literal notranslate"><span class="pre">.htm</span></code></p></td>
@@ -1594,7 +1889,14 @@ search, <code class="docutils literal notranslate"><span class="pre">max_pages</
 additively, and the next run re-fetches the listing, reuses every earlier
 download whose SHA-256 still matches (no request, no <code class="docutils literal notranslate"><span class="pre">max_files</span></code> slot),
 skips terminal outcomes (e.g. 404) and fetches only the rest. A capped
-listing converges batch by batch.</p></li>
+listing converges batch by batch. An incomplete partition never removes a
+document the run did not decide, but every final per-document decision still
+applies to the consolidated <code class="docutils literal notranslate"><span class="pre">curated/</span></code> and <code class="docutils literal notranslate"><span class="pre">download_index.csv</span></code>: a human
+<code class="docutils literal notranslate"><span class="pre">reject</span></code> (<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span></code>), a final non-selection (review <code class="docutils literal notranslate"><span class="pre">keep_top</span></code>,
+<code class="docutils literal notranslate"><span class="pre">max_per_target</span></code>, a rejected grade) and a document republished under a new
+name. Only “this completed target no longer lists the document” waits for the
+partition to complete. Extraction records of a removed document become
+historical; nothing under <code class="docutils literal notranslate"><span class="pre">extracted/</span></code> is deleted by discovery.</p></li>
 <li><p><strong>Transient</strong> failures (timeouts, connection errors, truncated streams, HTTP
 408/429/5xx) are retried in the run and leave the item incomplete. <strong>Bot
 challenges</strong> (429/5xx with <code class="docutils literal notranslate"><span class="pre">cf-mitigated</span></code>, <code class="docutils literal notranslate"><span class="pre">x-vercel-mitigated</span></code> or
@@ -1606,7 +1908,16 @@ replaces the curated partitions of the targets it processes.</p></li>
 </ul>
 <p><strong>Extraction reuse.</strong> A record is reused only when source, schema, resolved
 model and settings, and record bytes still match; otherwise it is re-extracted.
-Reuse needs no credentials. A record whose source document no longer exists
+The settings are the consumed source and effective-text digests, the locator
+configuration and behaviour version, a non-<code class="docutils literal notranslate"><span class="pre">text</span></code> <code class="docutils literal notranslate"><span class="pre">input_mode</span></code> with its render
+dpi, the extraction behaviour version (prompt and one-feedback-generation
+policy) and, for PDFs only, the OCR and page-representation versions. Changing
+a PDF-only version never re-extracts other formats, and <code class="docutils literal notranslate"><span class="pre">input_mode:</span> <span class="pre">text</span></code>
+adds nothing to the fingerprint. A record is also never reused when it is
+<code class="docutils literal notranslate"><span class="pre">parser_partial</span></code>, has <code class="docutils literal notranslate"><span class="pre">targeting_incomplete</span></code> under automatic targeting, has a
+different <code class="docutils literal notranslate"><span class="pre">contract_version</span></code>, or disagrees with a present OCR page entry (see
+<a class="reference internal" href="#record-input-provenance">Record input provenance</a>). Reuse needs no
+credentials. A record whose source document no longer exists
 under the input folder is withdrawn: extract deletes it, names it in the
 summary and lists it under <code class="docutils literal notranslate"><span class="pre">withdrawn</span></code> in the run manifest, so compile drops
 its rows. Records from other input folders are left alone, and <code class="docutils literal notranslate"><span class="pre">validate</span></code>
@@ -1614,9 +1925,33 @@ reports a primary with records to withdraw as stale. <code class="docutils liter
 the output after a successful preflight. <code class="docutils literal notranslate"><span class="pre">compile</span> <span class="pre">--fresh</span></code> clears stale
 compiled files; <code class="docutils literal notranslate"><span class="pre">validate</span> <span class="pre">--fresh</span></code> clears <code class="docutils literal notranslate"><span class="pre">validated/</span></code>. <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--fresh</span></code> passes
 <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to every stage.</p>
-<p><strong>Caches.</strong> OCR text and transcripts: <code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.txt</span></code> + <code class="docutils literal notranslate"><span class="pre">.meta.json</span></code>
-beside the document, verified by size, mtime and SHA-256 and carried to a
-re-downloaded file with the same SHA-256. Page/section targeting: <code class="docutils literal notranslate"><span class="pre">.pages/</span></code>,
+<p><strong>PDF page representation.</strong> Each selected page is judged on its own, never by
+a document total. A page with a text layer is <code class="docutils literal notranslate"><span class="pre">native</span></code>. A page mostly covered
+by raster images (at least half its area) with under 500 characters of text,
+or with no text and visible images or drawings, is OCR-ed locally and marked
+<code class="docutils literal notranslate"><span class="pre">ocr</span></code>. A page with nothing to read is <code class="docutils literal notranslate"><span class="pre">blank</span></code> (OCR is never attempted and it
+counts as covered); decorative images such as logos do not change that. A
+raster page that OCR cannot read (or when OCR is unavailable) is <code class="docutils literal notranslate"><span class="pre">unreadable</span></code>.
+Only <code class="docutils literal notranslate"><span class="pre">native</span></code>, <code class="docutils literal notranslate"><span class="pre">ocr</span></code> and <code class="docutils literal notranslate"><span class="pre">blank</span></code> pages count as <code class="docutils literal notranslate"><span class="pre">extracted_pages</span></code>, so an
+unreadable selected page makes the record’s coverage <code class="docutils literal notranslate"><span class="pre">parser_partial</span></code> with a
+warning instead of being certified as extracted. The per-page status is in the
+extraction metadata under <code class="docutils literal notranslate"><span class="pre">pages</span></code> and keeps the original page numbers; the
+page locator’s index OCRs raster pages too, so scans can be targeted.
+<code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code> apply only to OCR pages, each time the text is read.
+<code class="docutils literal notranslate"><span class="pre">pdf_inspection</span></code> and discovery screening read native text only.</p>
+<p><strong>Caches.</strong> Raw OCR: one entry per page in <code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.ocr/&lt;page&gt;.json</span></code>,
+keyed by the source SHA-256, the page number and the OCR engine/render version,
+and shared by the page locator’s index, page-range runs and whole-document
+extraction, so a raster page is OCR-ed once. Entries hold raw text only (the
+configured corrections are applied on read) and are replaced atomically; an
+unreadable, mismatched or tampered entry is a miss and is rewritten. The entry
+key includes the PyMuPDF version but not the Tesseract version, so upgrading
+Tesseract keeps existing OCR text until the <code class="docutils literal notranslate"><span class="pre">.ocr</span></code> directories are deleted.
+Discovery moves entries with their document (into <code class="docutils literal notranslate"><span class="pre">curated/</span></code>, to a same-SHA
+re-download, and out on removal). Transcripts
+and browser/API renders: <code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.txt</span></code> + <code class="docutils literal notranslate"><span class="pre">.meta.json</span></code> beside the
+document, verified by size, mtime and SHA-256 and carried to a re-downloaded file
+with the same SHA-256. Page/section targeting: <code class="docutils literal notranslate"><span class="pre">.pages/</span></code>,
 <code class="docutils literal notranslate"><span class="pre">.sections/</span></code>. Review grades: <code class="docutils literal notranslate"><span class="pre">discovered/.review_cache/</span></code>. Delete a cache
 directory to force that work again.</p>
 <section id="outputs">
@@ -1633,6 +1968,17 @@ directory to force that work again.</p>
 </pre></div>
 </div>
 </section>
+</section>
+<section id="offline-verification">
+<h2>Offline verification<a class="headerlink" href="#offline-verification" title="Link to this heading">¶</a></h2>
+<p>Testing is controlled by pytest/Pixi, not by domain <code class="docutils literal notranslate"><span class="pre">run.yaml</span></code> settings.
+<code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">--locked</span> <span class="pre">-e</span> <span class="pre">dev</span> <span class="pre">test</span></code> remains the complete offline CI gate, including
+real local TLS, subprocess CLI, ffmpeg, and large-scale regressions.
+<code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">--locked</span> <span class="pre">-e</span> <span class="pre">dev</span> <span class="pre">test-fast</span></code> is an optional development loop excluding
+explicit <code class="docutils literal notranslate"><span class="pre">integration</span></code>, <code class="docutils literal notranslate"><span class="pre">slow</span></code>, and <code class="docutils literal notranslate"><span class="pre">live</span></code> markers; unmarked tests still run.
+Unknown markers fail collection. Neither command enables external endpoints
+or changes extraction/review caches. See <a class="reference internal" href="contributing.html"><span class="std std-doc">Contributing</span></a> for
+focused commands and the explicitly opt-in live layer.</p>
 </section>
 <section id="environment-variables">
 <h2>Environment variables<a class="headerlink" href="#environment-variables" title="Link to this heading">¶</a></h2>
@@ -1753,8 +2099,19 @@ and browser variables are described in <a class="reference internal" href="secur
 </ul>
 </li>
 <li><a class="reference internal" href="#extraction">Extraction</a><ul>
+<li><a class="reference internal" href="#units-limits-and-unknowns">Units, limits and unknowns</a></li>
 <li><a class="reference internal" href="#page-selection">Page selection</a></li>
-<li><a class="reference internal" href="#llm-calls">LLM calls</a></li>
+<li><a class="reference internal" href="#llm-calls">LLM calls</a><ul>
+<li><a class="reference internal" href="#request-admission">Request admission</a></li>
+<li><a class="reference internal" href="#schema-contract-provider-strict-mode-versus-local-validation">Schema contract: provider strict mode versus local validation</a></li>
+<li><a class="reference internal" href="#response-outcomes-and-one-schema-feedback-generation">Response outcomes and one schema-feedback generation</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#selected-page-vision">Selected-page vision</a></li>
+<li><a class="reference internal" href="#record-input-provenance">Record input provenance</a></li>
+<li><a class="reference internal" href="#source-identity">Source identity</a></li>
+<li><a class="reference internal" href="#final-payload-acceptance">Final payload acceptance</a></li>
+<li><a class="reference internal" href="#current-admission-versus-preserved-history">Current admission versus preserved history</a></li>
 <li><a class="reference internal" href="#roster-anchored-extraction">Roster-anchored extraction</a></li>
 <li><a class="reference internal" href="#audio">Audio</a></li>
 </ul>
@@ -1772,6 +2129,7 @@ and browser variables are described in <a class="reference internal" href="secur
 <li><a class="reference internal" href="#outputs">Outputs</a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#offline-verification">Offline verification</a></li>
 <li><a class="reference internal" href="#environment-variables">Environment variables</a></li>
 </ul>
 </li>

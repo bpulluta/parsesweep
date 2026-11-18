@@ -57,7 +57,7 @@ Module Contents
    Find the text regions holding a described section in a large non-PDF document.
 
 
-   .. py:method:: locate(file_path: str | pathlib.Path) -> str | None
+   .. py:method:: locate(source: psweep.extraction.prepared_document.CapturedSource) -> str | None
 
       Return filtered section text for the document, or None.
 
@@ -67,9 +67,9 @@ Module Contents
 
 
 
-   .. py:method:: locate_cached(file_path: str | pathlib.Path) -> str | None
+   .. py:method:: locate_cached(source: psweep.extraction.prepared_document.CapturedSource) -> str | None
 
-      Return verified section text without document parsing.
+      Return section text verified against the captured version.
 
 
 

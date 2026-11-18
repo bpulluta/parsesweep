@@ -275,6 +275,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../exceptions/index.html">psweep.exceptions</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/admission/index.html">psweep.extraction.admission</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -282,8 +283,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/prepared_document/index.html">psweep.extraction.prepared_document</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/request_policy/index.html">psweep.extraction.request_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
@@ -416,8 +419,10 @@
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.config.runtime_config_loader.load_runtime_config_file">
-<span class="sig-prename descclassname"><span class="pre">psweep.config.runtime_config_loader.</span></span><span class="sig-name descname"><span class="pre">load_runtime_config_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.config.runtime_config_loader.load_runtime_config_file" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">psweep.config.runtime_config_loader.</span></span><span class="sig-name descname"><span class="pre">load_runtime_config_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.config.runtime_config_loader.load_runtime_config_file" title="Link to this definition">¶</a></dt>
 <dd><p>Load a run-level or section-level runtime config file.</p>
+<p><code class="docutils literal notranslate"><span class="pre">domain</span></code> (the <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override) replaces the config’s
+<code class="docutils literal notranslate"><span class="pre">domain</span></code> here, once, so every reader of <code class="docutils literal notranslate"><span class="pre">cfg[&quot;domain&quot;]</span></code> agrees.</p>
 </dd></dl>
 
 <dl class="py function">

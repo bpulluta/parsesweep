@@ -24,6 +24,7 @@ Exceptions
 
 .. autoapisummary::
 
+   psweep.discovery.document_reviewer.EvidenceError
    psweep.discovery.document_reviewer.ReviewError
    psweep.discovery.document_reviewer.UnreadableDocumentError
 
@@ -38,6 +39,20 @@ Classes
 
 Module Contents
 ---------------
+
+.. py:exception:: EvidenceError(kind: str, paths: dict[str, str])
+
+   Bases: :py:obj:`ReviewError`
+
+
+   A well-formed grade whose evidence the sampled source does not support.
+
+   ``failure`` is the audit detail: ``kind`` (``contract`` | ``ungrounded``), the
+   failing evidence ``paths`` and the rejected quote text, truncated. The quote text
+   stays in the local discovery manifest and never appears in the message.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
 
 .. py:exception:: ReviewError(message: str, *, usage_unknown: bool = False, retryable: bool = True)
 

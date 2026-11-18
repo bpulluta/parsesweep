@@ -275,6 +275,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../exceptions/index.html">psweep.exceptions</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/admission/index.html">psweep.extraction.admission</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -282,8 +283,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/prepared_document/index.html">psweep.extraction.prepared_document</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../extraction/request_policy/index.html">psweep.extraction.request_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
@@ -380,10 +383,13 @@ so a recording without one stays selected for extraction to transcribe.</p>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.document_reviewer.ReviewError" title="psweep.discovery.document_reviewer.ReviewError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReviewError</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.document_reviewer.EvidenceError" title="psweep.discovery.document_reviewer.EvidenceError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">EvidenceError</span></code></a></p></td>
+<td><p>A well-formed grade whose evidence the sampled source does not support.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.document_reviewer.ReviewError" title="psweep.discovery.document_reviewer.ReviewError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReviewError</span></code></a></p></td>
 <td><p>A per-file failure without sensitive provider error text.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.document_reviewer.UnreadableDocumentError" title="psweep.discovery.document_reviewer.UnreadableDocumentError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">UnreadableDocumentError</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.document_reviewer.UnreadableDocumentError" title="psweep.discovery.document_reviewer.UnreadableDocumentError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">UnreadableDocumentError</span></code></a></p></td>
 <td><p>No reviewable text; recorded as a terminal <code class="docutils literal notranslate"><span class="pre">skipped_unreadable</span></code>.</p></td>
 </tr>
 </tbody>
@@ -404,6 +410,17 @@ so a recording without one stays selected for extraction to transcribe.</p>
 </section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py exception">
+<dt class="sig sig-object py" id="psweep.discovery.document_reviewer.EvidenceError">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.discovery.document_reviewer.</span></span><span class="sig-name descname"><span class="pre">EvidenceError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">paths</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.discovery.document_reviewer.EvidenceError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#psweep.discovery.document_reviewer.ReviewError" title="psweep.discovery.document_reviewer.ReviewError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReviewError</span></code></a></p>
+<p>A well-formed grade whose evidence the sampled source does not support.</p>
+<p><code class="docutils literal notranslate"><span class="pre">failure</span></code> is the audit detail: <code class="docutils literal notranslate"><span class="pre">kind</span></code> (<code class="docutils literal notranslate"><span class="pre">contract</span></code> | <code class="docutils literal notranslate"><span class="pre">ungrounded</span></code>), the
+failing evidence <code class="docutils literal notranslate"><span class="pre">paths</span></code> and the rejected quote text, truncated. The quote text
+stays in the local discovery manifest and never appears in the message.</p>
+<p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
 <dl class="py exception">
 <dt class="sig sig-object py" id="psweep.discovery.document_reviewer.ReviewError">
 <span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.discovery.document_reviewer.</span></span><span class="sig-name descname"><span class="pre">ReviewError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">usage_unknown</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retryable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.discovery.document_reviewer.ReviewError" title="Link to this definition">¶</a></dt>
@@ -506,6 +523,7 @@ Files stay in place; the engine materializes selected files separately.</p>
 <li><a class="reference internal" href="#exceptions">Exceptions</a></li>
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#psweep.discovery.document_reviewer.EvidenceError"><code class="docutils literal notranslate"><span class="pre">EvidenceError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.document_reviewer.ReviewError"><code class="docutils literal notranslate"><span class="pre">ReviewError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.document_reviewer.UnreadableDocumentError"><code class="docutils literal notranslate"><span class="pre">UnreadableDocumentError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.document_reviewer.DocumentReviewer"><code class="docutils literal notranslate"><span class="pre">DocumentReviewer</span></code></a><ul>

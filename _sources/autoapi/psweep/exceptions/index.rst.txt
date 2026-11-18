@@ -32,9 +32,11 @@ Exceptions
    psweep.exceptions.ExtractionError
    psweep.exceptions.ParseSweepError
    psweep.exceptions.PipelineError
+   psweep.exceptions.ResponseOutcomeError
    psweep.exceptions.SchemaError
    psweep.exceptions.SchemaMetadataError
    psweep.exceptions.SchemaValidationError
+   psweep.exceptions.SourceChangedError
    psweep.exceptions.TargetingSafetyError
 
 
@@ -123,6 +125,28 @@ Module Contents
    Initialize self.  See help(type(self)) for accurate signature.
 
 
+.. py:exception:: ResponseOutcomeError(message: str, *, code: str, document: str | None = None)
+
+   Bases: :py:obj:`ExtractionError`
+
+
+   The model's answer was rejected as an explicit outcome.
+
+   ``code`` is stable and machine-readable (``response_truncated``,
+   ``response_refused``, ``response_empty``, ``response_not_json``); the message
+   never carries provider or document text. Only empty and non-JSON answers are
+   ``repairable``: truncation and refusal are never blindly regenerated.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+   .. py:property:: repairable
+      :type: bool
+
+
+      True when one schema-feedback generation may fix this outcome.
+
+
 .. py:exception:: SchemaError(message: str, *, hint: str | None = None)
 
    Bases: :py:obj:`ParseSweepError`
@@ -149,6 +173,16 @@ Module Contents
 
 
    Raised when a schema's structure fails validation.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:exception:: SourceChangedError(message: str, *, document: str | None = None, hint: str | None = None)
+
+   Bases: :py:obj:`ExtractionError`
+
+
+   Raised when a source no longer matches the identity extraction was prepared for.
 
    Initialize self.  See help(type(self)) for accurate signature.
 

@@ -1,0 +1,114 @@
+psweep.extraction.request_policy
+================================
+
+.. py:module:: psweep.extraction.request_policy
+
+.. autoapi-nested-parse::
+
+   Pure request admission: does the exact request fit the route's known limits?
+
+   No network and no model-name tables: limits come from the operator's
+   ``model_context_windows`` and LiteLLM's pinned local catalog. Estimates are
+   deliberately conservative; an unknown limit stays unknown and is never
+   treated as a large one.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.request_policy.RequestNotAdmittedError
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.request_policy.AttemptAllowance
+   psweep.extraction.request_policy.RouteLimits
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.request_policy.assess_request
+   psweep.extraction.request_policy.estimate_request_tokens
+   psweep.extraction.request_policy.estimate_text_tokens
+   psweep.extraction.request_policy.image_block
+   psweep.extraction.request_policy.route_limits
+
+
+Module Contents
+---------------
+
+.. py:exception:: RequestNotAdmittedError(message: str, *, document: str | None = None, hint: str | None = None)
+
+   Bases: :py:obj:`psweep.exceptions.ExtractionError`
+
+
+   The request cannot fit the route's known limits; nothing was sent.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: AttemptAllowance(limit: int)
+
+   Physical provider attempts one document may still send.
+
+   Passed as ``before_request`` for every request of that document, so the
+   original generation, a feedback generation, transport retries and the
+   temperature fallback all draw from one count. It is created per document
+   and never stored on a shared client.
+
+
+   .. py:method:: reserve() -> None
+
+      Reserve one attempt immediately before it is sent, or send nothing.
+
+
+
+   .. py:property:: remaining
+      :type: int
+
+
+      Attempts still available to this document.
+
+
+.. py:class:: RouteLimits
+
+   Known limits for one route; ``None`` means unknown, not unlimited.
+
+
+.. py:function:: assess_request(messages: list[dict[str, Any]], response_format: dict[str, Any] | None, limits: RouteLimits, *, output_cap: int | None = None) -> int
+
+   Raise ``RequestNotAdmittedError`` if the request exceeds a known limit.
+
+   Returns the estimated input tokens. ``output_cap`` is the maximum output
+   the caller will allow; it must also fit the route's output limit.
+
+
+.. py:function:: estimate_request_tokens(messages: list[dict[str, Any]], response_format: dict[str, Any] | None = None) -> int
+
+   Estimate input tokens of the final request: messages plus response schema.
+
+
+.. py:function:: estimate_text_tokens(text: str) -> int
+
+   Conservative upper estimate of text tokens.
+
+
+.. py:function:: image_block(image) -> dict[str, Any]
+
+   OpenAI-style inline image content block for a rendered page.
+
+
+.. py:function:: route_limits(*model_names: str, configured_windows: dict[str, int] | None = None) -> RouteLimits
+
+   Resolve limits: operator windows win, then the pinned local catalog.
+
+

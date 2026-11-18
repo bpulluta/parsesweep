@@ -51,6 +51,7 @@ Functions
    psweep.pipeline.count_extracted_documents
    psweep.pipeline.execute_run_stages
    psweep.pipeline.extract_documents
+   psweep.pipeline.extraction_lock_path
    psweep.pipeline.resolve_run_discovery_enabled
    psweep.pipeline.run_pipeline
    psweep.pipeline.run_validation_enabled
@@ -91,17 +92,18 @@ Module Contents
    Combined result from a full discover → extract → compile run.
 
 
-.. py:function:: build_run_stage_commands(config_path: str | pathlib.Path, *, base_cmd: collections.abc.Sequence[str], skip_discover: bool = False, skip_extract: bool = False, discovery_enabled: bool | None = None, fresh: bool = False, target_limit: int | None = None, extract_input_path: str | pathlib.Path | None = None, extra_flags: collections.abc.Sequence[str] = ()) -> list[tuple[str, list[str]]]
+.. py:function:: build_run_stage_commands(config_path: str | pathlib.Path, *, base_cmd: collections.abc.Sequence[str], skip_discover: bool = False, skip_extract: bool = False, discovery_enabled: bool | None = None, fresh: bool = False, target_limit: int | None = None, extract_input_path: str | pathlib.Path | None = None, extra_flags: collections.abc.Sequence[str] = (), domain: str | None = None) -> list[tuple[str, list[str]]]
 
    Build the subprocess commands used to execute a run config pipeline.
 
    ``fresh`` propagates a "start fresh" signal to discover (ignore the
    checkpoint and refresh the search cache), extract (re-extract already-
    processed documents), and compile (clear compiled outputs before writing),
-   giving ``run --fresh`` a fully clean pipeline across all stages.
+   giving ``run --fresh`` a fully clean pipeline across all stages. ``domain``
+   (``run --domain``) is forwarded to every stage.
 
 
-.. py:function:: compile_extractions(extraction_dir: str | pathlib.Path, schema: str | pathlib.Path, *, config_path: str | pathlib.Path | None = None, output_dir: str | pathlib.Path | None = None, report_format: str | None = None, dry_run: bool = False) -> CompilationResult
+.. py:function:: compile_extractions(extraction_dir: str | pathlib.Path, schema: str | pathlib.Path, *, config_path: str | pathlib.Path | None = None, output_dir: str | pathlib.Path | None = None, report_format: str | None = None, dry_run: bool = False, domain: str | None = None) -> CompilationResult
 
    Compile extracted JSON files into Excel/CSV output.
 
@@ -110,7 +112,7 @@ Module Contents
    ``outputs/<domain>/compiled`` with the domain inferred from *extraction_dir*.
 
 
-.. py:function:: compiled_table_fresh(extraction_dir: str | pathlib.Path, schema: str | pathlib.Path, *, config_path: str | pathlib.Path | None, output_dir: str | pathlib.Path | None) -> bool
+.. py:function:: compiled_table_fresh(extraction_dir: str | pathlib.Path, schema: str | pathlib.Path, *, config_path: str | pathlib.Path | None, output_dir: str | pathlib.Path | None, domain: str | None = None) -> bool
 
    True when the newest compile manifest matches the records and the CSV bytes.
 
@@ -140,6 +142,11 @@ Module Contents
 
    ``output_dir`` defaults to ``outputs/<domain>/extracted`` with the domain
    inferred from *documents_path*; per-document errors land in ``result.errors``.
+
+
+.. py:function:: extraction_lock_path(output: pathlib.Path) -> pathlib.Path
+
+   Sibling lock: one writer per extraction output, outside its inventoried tree.
 
 
 .. py:function:: resolve_run_discovery_enabled(config_path: str | pathlib.Path) -> bool

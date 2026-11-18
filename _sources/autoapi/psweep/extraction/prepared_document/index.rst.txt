@@ -1,0 +1,108 @@
+psweep.extraction.prepared_document
+===================================
+
+.. py:module:: psweep.extraction.prepared_document
+
+.. autoapi-nested-parse::
+
+   Immutable identity of the source version an extraction consumes.
+
+   A path, stat, or open descriptor is not a content snapshot. Extraction copies
+   the consumed source into a private document-local snapshot while hashing those
+   same bytes, compares that digest with the identity preparation fingerprinted,
+   and reads only the snapshot afterwards. The original path stays provenance.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.prepared_document.CapturedSource
+   psweep.extraction.prepared_document.CapturedText
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.prepared_document.capture_source
+   psweep.extraction.prepared_document.effective_identity
+   psweep.extraction.prepared_document.input_provenance
+   psweep.extraction.prepared_document.visual_pages
+
+
+Module Contents
+---------------
+
+.. py:class:: CapturedSource
+
+   A consumed source version: snapshot ``path`` plus the ``original`` it came from.
+
+
+   .. py:property:: identity
+      :type: dict
+
+
+      Bind retained scopes to this source and effective evidence.
+
+      Raw OCR is derived deterministically from the source and the OCR
+      engine, so it is proven by the record's per-page ``ocr_sha256`` and
+      :attr:`ocr_pages`, not part of a scope's identity.
+
+
+   .. py:property:: name
+      :type: str
+
+
+      Keep original document names in logs and worker context.
+
+
+.. py:class:: CapturedText
+
+   Verified raw text product frozen for one source lifetime.
+
+
+   .. py:property:: identity
+      :type: dict
+
+
+      Return compact method, content and representation proof.
+
+
+.. py:function:: capture_source(original: pathlib.Path, *, expected: str | None = None, expected_effective=_UNCHECKED, transcriber=None) -> collections.abc.Iterator[CapturedSource]
+
+   Snapshot *original* for one consumer and always remove the snapshot.
+
+   The snapshot lives in a new owner-only directory under the system temporary
+   directory, outside inventoried inputs and any output reset, and keeps the
+   original file name so suffix-dependent readers behave identically. When
+   *expected* is given, a digest mismatch raises :class:`SourceChangedError`
+   before the snapshot is handed out.
+
+
+.. py:function:: effective_identity(metadata: dict) -> dict
+
+   Compact identity of a verified text product, including representation.
+
+
+.. py:function:: input_provenance(mode: str, parser_scope: dict, visual: list[int]) -> dict
+
+   Bounded record of how the input was read: mode, per-page evidence, image use.
+
+   Holds metadata only (never rendered bytes). ``pages`` are the selected PDF
+   pages' representations; a document without a PDF parse has none.
+
+
+.. py:function:: visual_pages(mode: str, parser_scope: dict) -> list[int]
+
+   Original page numbers to attach as images under ``extraction.input_mode``.
+
+   ``text`` attaches none. ``auto`` attaches only pages no parser could turn
+   into text, so clean documents stay text-only. ``vision`` attaches every
+   meaningful (non-blank) selected page. Only PDF parsing reports pages, so
+   other document types never get visuals.
+
+

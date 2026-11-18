@@ -275,6 +275,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/exceptions/index.html">psweep.exceptions</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/admission/index.html">psweep.extraction.admission</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -282,8 +283,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/prepared_document/index.html">psweep.extraction.prepared_document</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/request_policy/index.html">psweep.extraction.request_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
@@ -531,6 +534,12 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 </dd></dl>
 
 <dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-domain">
+<span class="sig-name descname"><span class="pre">--domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-domain" title="Link to this definition">¶</a></dt>
+<dd><p>Domain key for the output workspace (overrides config <cite>domain:</cite>; every derived path follows it).</p>
+</dd></dl>
+
+<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-compile-q">
 <span id="cmdoption-psweep-compile-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-q" title="Link to this definition">¶</a></dt>
 <dd><p>Minimal output (machine-readable)</p>
@@ -679,7 +688,7 @@ Resumes from a checkpoint on later runs; pass –fresh to start over.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-discover-domain">
 <span class="sig-name descname"><span class="pre">--domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-domain" title="Link to this definition">¶</a></dt>
-<dd><p>Domain key for the output workspace (overrides config)</p>
+<dd><p>Domain key for the output workspace (overrides config <cite>domain:</cite>; every derived path follows it).</p>
 </dd></dl>
 
 <dl class="std option">
@@ -857,6 +866,12 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 <dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-domain">
+<span class="sig-name descname"><span class="pre">--domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-domain" title="Link to this definition">¶</a></dt>
+<dd><p>Domain key for the output workspace (overrides config <cite>domain:</cite>; every derived path follows it).</p>
 </dd></dl>
 
 <dl class="std option">
@@ -1120,6 +1135,12 @@ psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes
 </dd></dl>
 
 <dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-domain">
+<span class="sig-name descname"><span class="pre">--domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-run-domain" title="Link to this definition">¶</a></dt>
+<dd><p>Domain key for the output workspace (overrides config <cite>domain:</cite>; every derived path follows it).</p>
+</dd></dl>
+
+<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-run-skip-discover">
 <span class="sig-name descname"><span class="pre">--skip-discover</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-skip-discover" title="Link to this definition">¶</a></dt>
 <dd><p>Use existing curated documents.</p>
@@ -1208,6 +1229,12 @@ psweep run –config config/my_domain/run.yaml –target-limit 3 –fresh –yes
 <dt class="sig sig-object std" id="cmdoption-psweep-validate-validate-config">
 <span class="sig-name descname"><span class="pre">--validate-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-validate-config" title="Link to this definition">¶</a></dt>
 <dd><p>Validate the validation: section and exit.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-domain">
+<span class="sig-name descname"><span class="pre">--domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-validate-domain" title="Link to this definition">¶</a></dt>
+<dd><p>Domain key for the output workspace (overrides config <cite>domain:</cite>; every derived path follows it).</p>
 </dd></dl>
 
 <dl class="std option">

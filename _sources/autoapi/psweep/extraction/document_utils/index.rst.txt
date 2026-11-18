@@ -16,7 +16,9 @@ Functions
 
    psweep.extraction.document_utils.extract_text_from_document
    psweep.extraction.document_utils.is_supported_document
+   psweep.extraction.document_utils.ocr_page_cache
    psweep.extraction.document_utils.read_text_cache
+   psweep.extraction.document_utils.text_cache_files
    psweep.extraction.document_utils.text_cache_paths
    psweep.extraction.document_utils.write_text_cache
 
@@ -24,7 +26,7 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_ranges: psweep.utils.page_range.PageRanges | None = None, ocr_corrections: list | None = None, *, return_meta: bool = False, transcriber=None)
+.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_ranges: psweep.utils.page_range.PageRanges | None = None, ocr_corrections: list | None = None, *, return_meta: bool = False, transcriber=None, source: psweep.extraction.prepared_document.CapturedSource | None = None)
 
    Extract text from any supported document format.
 
@@ -41,6 +43,10 @@ Module Contents
    :type return_meta: bool
    :param transcriber: Transcribes uncached audio; without one, only cached transcripts.
    :type transcriber: Optional[transcription.Transcriber]
+   :param source: The consumed version of ``file_path``. Content is read from its
+                  snapshot; cache evidence is keyed to ``file_path`` and judged by its
+                  captured digest.
+   :type source: Optional[CapturedSource]
 
    :returns: Text, or ``(text, metadata)`` when ``return_meta`` is True.
    :rtype: str or tuple
@@ -60,12 +66,28 @@ Module Contents
    :rtype: bool
 
 
-.. py:function:: read_text_cache(file_path: pathlib.Path, *, return_meta: bool = False)
+.. py:function:: ocr_page_cache(original: pathlib.Path, source_sha256: str) -> psweep.extraction.pdf_utils.OcrPageCache
+
+   Return the raw-OCR page cache of one source version, beside its text cache.
+
+
+.. py:function:: read_text_cache(file_path: pathlib.Path, *, return_meta: bool = False, source_sha256: str | None = None)
 
    Return cached text if its source and text still match.
 
    Size/mtime and source SHA-256 identify the document. Text SHA-256
    rejects partial or mismatched pairs. Stem-only caches are ignored.
+   With ``source_sha256`` (a captured or fingerprinted digest) that digest
+   identifies the document and the live path is not reopened.
+
+
+.. py:function:: text_cache_files(file_path: pathlib.Path) -> list[pathlib.Path]
+
+   Return every cache file that travels with a document through discovery.
+
+   The text-cache pair plus the raw-OCR page entries (``.text/<name>.ocr/*.json``).
+   Lifecycle code (link, remove, protect, inherit) uses this; read and write
+   sites keep :func:`text_cache_paths`.
 
 
 .. py:function:: text_cache_paths(file_path: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]
@@ -73,13 +95,16 @@ Module Contents
    Return text/metadata paths keyed by the full filename.
 
 
-.. py:function:: write_text_cache(file_path: pathlib.Path, text: str, method: str = 'ocr', *, page_count: int | None = None) -> None
+.. py:function:: write_text_cache(file_path: pathlib.Path, text: str, method: str = 'text', *, page_count: int | None = None, source: psweep.extraction.prepared_document.CapturedSource | None = None) -> None
 
    Write the cache via flushed temporary files, metadata last.
 
-   OCR callers supply raw text, never corrected text. Discovery also
-   caches browser/API products under their own ``method``. Cheap native
-   document parsing remains uncached.
+   A ``source`` capture supplies the identity of the bytes the text came
+   from; without one the live path is read.
+
+   Discovery caches browser/API products and extraction caches transcripts
+   under their own ``method``. OCR is cached per page instead
+   (:func:`ocr_page_cache`); cheap native document parsing stays uncached.
    Each file is atomically replaced, not the pair as a transaction.
    An interruption between replacements is a miss because readers
    verify both digests. ``method`` is recorded for transparency.

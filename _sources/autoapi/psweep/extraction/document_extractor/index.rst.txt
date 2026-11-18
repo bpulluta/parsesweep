@@ -65,7 +65,7 @@ Module Contents
    :type reasoning_models: Optional[List[str]]
 
 
-   .. py:method:: extract(text: str, schema: dict[str, Any]) -> ExtractionResult
+   .. py:method:: extract(text: str, schema: dict[str, Any], page_images: list | None = None) -> ExtractionResult
 
       Extract structured data from document.
 
@@ -78,6 +78,8 @@ Module Contents
       :type text: str
       :param schema: JSON schema defining structure to extract (must have 'type' and 'properties')
       :type schema: Dict[str, Any]
+      :param page_images: Rendered PDF pages sent with the text (``extraction.input_mode``).
+      :type page_images: list, optional
 
       :returns: ExtractionResult containing:
 

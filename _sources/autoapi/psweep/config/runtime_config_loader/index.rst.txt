@@ -40,9 +40,12 @@ Module Contents
    Map resolved field names to the config key paths users write.
 
 
-.. py:function:: load_runtime_config_file(config_path: pathlib.Path) -> dict[str, Any]
+.. py:function:: load_runtime_config_file(config_path: pathlib.Path, *, domain: str | None = None) -> dict[str, Any]
 
    Load a run-level or section-level runtime config file.
+
+   ``domain`` (the ``--domain`` workspace override) replaces the config's
+   ``domain`` here, once, so every reader of ``cfg["domain"]`` agrees.
 
 
 .. py:function:: resolve_command_config(*, command: str, cli_values: dict[str, Any], config_data: dict[str, Any] | None) -> dict[str, Any]

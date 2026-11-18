@@ -39,14 +39,14 @@ Package Contents
    Roster keys of targets with at least one anchored curated document.
 
 
-.. py:function:: run_validation(config_path: pathlib.Path, *, fresh: bool = False, notify: Notify = _quiet) -> dict
+.. py:function:: run_validation(config_path: pathlib.Path, *, fresh: bool = False, notify: Notify = _quiet, domain: str | None = None) -> dict
 
    Score the primary against challengers and references; returns ``summary.json``.
 
    One run per domain at a time: the lock spans ``--fresh``, challenger work and staging.
 
 
-.. py:function:: write_sample(config_path: pathlib.Path, *, n: int, seed: int = 0, notify: Notify = _quiet) -> pathlib.Path
+.. py:function:: write_sample(config_path: pathlib.Path, *, n: int, seed: int = 0, notify: Notify = _quiet, domain: str | None = None) -> pathlib.Path
 
    Write ``validated/sample_<n>.csv`` for blind labelling; no LLM call.
 

@@ -15,6 +15,7 @@ Submodules
 .. toctree::
    :maxdepth: 1
 
+   /autoapi/psweep/extraction/admission/index
    /autoapi/psweep/extraction/document_extractor/index
    /autoapi/psweep/extraction/document_utils/index
    /autoapi/psweep/extraction/llm_client/index
@@ -22,8 +23,10 @@ Submodules
    /autoapi/psweep/extraction/page_locator/index
    /autoapi/psweep/extraction/pdf_inspection/index
    /autoapi/psweep/extraction/pdf_utils/index
+   /autoapi/psweep/extraction/prepared_document/index
    /autoapi/psweep/extraction/provenance/index
    /autoapi/psweep/extraction/record_writer/index
+   /autoapi/psweep/extraction/request_policy/index
    /autoapi/psweep/extraction/roster/index
    /autoapi/psweep/extraction/schema_utils/index
    /autoapi/psweep/extraction/section_locator/index

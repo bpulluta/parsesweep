@@ -275,6 +275,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/exceptions/index.html">psweep.exceptions</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/admission/index.html">psweep.extraction.admission</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -282,8 +283,10 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/prepared_document/index.html">psweep.extraction.prepared_document</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/request_policy/index.html">psweep.extraction.request_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
@@ -407,26 +410,41 @@ Tracked: <span class="sb">`src/`</span>, <span class="sb">`tests/`</span>, <span
 
 <span class="gu">## Testing</span>
 
-Run the full suite before opening a PR:
+Use the fast loop while iterating; run the full suite before opening a PR:
 
 <span class="sb">```bash</span>
-pixi<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span>
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>test-fast
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span><span class="nb">test</span>
+<span class="c1"># A focused module is usually the fastest feedback loop.</span>
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span><span class="nb">test</span><span class="w"> </span>tests/test_&lt;area&gt;.py
 <span class="sb">```</span>
+
+<span class="sb">`test`</span> remains the complete CI gate. <span class="sb">`test-fast`</span> excludes only explicitly
+marked <span class="sb">`integration`</span>, <span class="sb">`slow`</span>, and <span class="sb">`live`</span> cases; it includes unmarked tests.
+Real subprocess, local TLS, and ffmpeg checks are <span class="sb">`integration`</span>; the largest
+scheduling and checkpoint cases are <span class="sb">`slow`</span>. Smaller scale cases remain in
+the fast loop. Markers are strict: a misspelled marker fails collection.
+Use <span class="sb">`-v`</span> when individual test names are useful, and <span class="sb">`--durations=20`</span> to
+measure bottlenecks before consolidating anything.
 
 Ordinary tests block external sockets and disable dotenv loading. Local
 HTTP/TLS servers use synthetic data; external endpoint tests require an
 explicit <span class="sb">`--live`</span> opt-in:
 
 <span class="sb">```bash</span>
-pixi<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-m<span class="w"> </span>integration
-pixi<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-m<span class="w"> </span>live<span class="w"> </span>--live
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-m<span class="w"> </span><span class="s1">'integration or slow'</span>
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-m<span class="w"> </span>live<span class="w"> </span>--live
 <span class="sb">```</span>
 
-Use the <span class="sb">`unit`</span>, <span class="sb">`contract`</span>, <span class="sb">`integration`</span>, and <span class="sb">`live`</span> markers for new tests.
+Use the <span class="sb">`unit`</span>, <span class="sb">`contract`</span>, <span class="sb">`integration`</span>, and <span class="sb">`live`</span> validation layers for
+new tests; <span class="sb">`slow`</span> marks expensive scale checks independently of their layer.
 Mock the narrow remote transport boundary, not entire installed modules.
-Keep regression invariants when consolidating repeated fixtures. Release
-validation must also run a synthetic subprocess CLI pipeline and inspect its
-actual outputs; passing mocked requests is not an end-to-end smoke test.
+Keep regression invariants when consolidating repeated fixtures. Share only
+immutable fixture inputs; mutable workspaces, servers and call histories
+must stay test-local. Allocation profiling belongs in a dedicated benchmark,
+not a correctness test that merely prints timings. Release validation must
+also run a synthetic subprocess CLI pipeline and inspect its actual outputs;
+passing mocked requests is not an end-to-end smoke test.
 Never use real credentials or sensitive documents in tests.
 
 Lint and format with ruff (docstrings are enforced NumPy-style):

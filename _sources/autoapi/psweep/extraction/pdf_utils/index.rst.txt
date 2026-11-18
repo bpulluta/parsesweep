@@ -9,6 +9,16 @@ psweep.extraction.pdf_utils
 
 
 
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.pdf_utils.OcrPageCache
+   psweep.extraction.pdf_utils.PageImage
+   psweep.extraction.pdf_utils.PageRepresentation
+
+
 Functions
 ---------
 
@@ -16,29 +26,109 @@ Functions
 
    psweep.extraction.pdf_utils.extract_pages_text
    psweep.extraction.pdf_utils.extract_text_from_pdf
+   psweep.extraction.pdf_utils.ocr_reuse_conflict
+   psweep.extraction.pdf_utils.render_pages
    psweep.extraction.pdf_utils.validate_pdf_scope
 
 
 Module Contents
 ---------------
 
-.. py:function:: extract_pages_text(pdf_path: pathlib.Path) -> list[str]
+.. py:class:: OcrPageCache(directory: pathlib.Path, source_sha256: str)
 
-   Return plain text per page (index 0 = page 1), best-effort.
+   Raw OCR text per original page, keyed by source digest, page and engine.
+
+   One file per page, replaced atomically, so a page-range run, the locator
+   index and a whole-document run share OCR work. Entries hold raw text only;
+   configured corrections are applied by the reader. Any entry that is
+   unreadable, from another source or engine version, or whose text no longer
+   matches its digest is a miss.
 
 
-.. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, page_ranges: psweep.utils.page_range.PageRanges | None = None, return_meta: bool = False, ocr_corrections: list | None = None)
+   .. py:method:: entries() -> dict[int, str]
 
-   Extract selected pages with native, pypdf, then OCR fallbacks.
+      Map every valid cached page to the digest of its text.
+
+
+
+   .. py:method:: get(page: int) -> str | None
+
+      Return the cached raw OCR text of *page*, or ``None`` on a miss.
+
+
+
+   .. py:method:: put(page: int, text: str) -> None
+
+      Atomically publish *page*; a failed write leaves any prior entry intact.
+
+
+
+.. py:class:: PageImage
+
+   One rendered PDF page for visual extraction (original 1-indexed number).
+
+
+.. py:class:: PageRepresentation
+
+   How one original PDF page is represented as evidence.
+
+   ``native``: the embedded text layer is the evidence. ``ocr``: local OCR
+   supplied the text because the page is mostly raster. ``blank``: nothing to
+   read. ``unreadable``: the page has visual content no parser could turn into
+   text (including a raster page whose OCR failed), so its text, if any, is
+   known to be incomplete. Later steps route ``unreadable`` pages to visuals.
+
+
+   .. py:method:: as_dict() -> dict
+
+      Return a JSON-safe record with the original 1-indexed page number.
+
+
+
+.. py:function:: extract_pages_text(pdf_path: pathlib.Path, *, ocr: bool = False, ocr_cache: OcrPageCache | None = None) -> list[str]
+
+   Return text per page (index 0 = page 1), best-effort.
+
+   Native text only by default (cheap discovery screening). ``ocr=True`` also
+   OCRs raster pages, for the page locator's index, sharing ``ocr_cache``
+   with extraction. Text is raw: corrections apply only when extraction reads.
+
+
+.. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, page_ranges: psweep.utils.page_range.PageRanges | None = None, return_meta: bool = False, ocr_corrections: list | None = None, ocr_cache: OcrPageCache | None = None)
+
+   Extract selected pages, deciding native text versus OCR per page.
 
    ``page_ranges`` holds 1-indexed inclusive ``(start, end)`` pairs; ``None``
    reads the whole PDF. Ranges running past the last page are clamped; invalid
    selections raise ValueError. Every parser honors the selection and marks
-   pages left out between selected ones. ``return_meta`` always returns a pair,
-   including on failure. Metadata describes the clamped ``page_ranges`` and
-   ``selected_pages``, total ``page_count``, and ``extracted_pages`` (OCR can
-   skip failed pages). OCR also returns ``raw_ocr_text`` for caching before
-   applying current corrections.
+   pages left out between them. ``return_meta`` always returns a pair, also on
+   failure. Metadata carries the clamped ``page_ranges`` and ``selected_pages``,
+   total ``page_count``, a ``pages`` list of :class:`PageRepresentation` records
+   keyed by original page number, and ``extracted_pages``: the pages whose
+   content is represented (native, OCR or blank), never merely iterated.
+   ``ocr_cache`` supplies and receives raw OCR per page; each page that had OCR
+   output carries that text's ``ocr_sha256``. Configured corrections touch only
+   OCR pages and are applied here, never stored.
+
+
+.. py:function:: ocr_reuse_conflict(pages: list[dict], entries: dict[int, str]) -> bool
+
+   True when a present OCR entry disagrees with what a record's pages used.
+
+   ``pages`` are a record's per-page provenance; ``entries`` map page numbers to
+   the text digests of the valid cache entries now present. A missing entry is
+   unknown and regenerable, so it never conflicts. A present entry conflicts
+   when the record's page carries another digest, or none (a page the record
+   could not read has become readable). Entries for pages the record did not
+   select are outside its scope.
+
+
+.. py:function:: render_pages(pdf_path: pathlib.Path, pages: list[int]) -> list[PageImage]
+
+   Render only the requested pages, in page order, at full page size.
+
+   Pages are never cropped, resized to fit a budget, or dropped: a page that
+   cannot be sent is the request policy's decision, not this renderer's.
 
 
 .. py:function:: validate_pdf_scope(pdf_path: pathlib.Path, page_ranges: psweep.utils.page_range.PageRanges) -> psweep.utils.page_range.PageRanges

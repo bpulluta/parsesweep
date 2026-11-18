@@ -1,0 +1,65 @@
+psweep.extraction.admission
+===========================
+
+.. py:module:: psweep.extraction.admission
+
+.. autoapi-nested-parse::
+
+   Current-admission view of one extraction output.
+
+   Record bytes are history; this view says which of them the latest invocation
+   that covered each document admitted. Compilation reads only admitted records.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.admission.AdmissionError
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.admission.admission_path
+   psweep.extraction.admission.load_admission
+   psweep.extraction.admission.publish_admission
+
+
+Module Contents
+---------------
+
+.. py:exception:: AdmissionError
+
+   Bases: :py:obj:`ValueError`
+
+
+   Admission evidence is unreadable, malformed, or contradicts record bytes.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:function:: admission_path(output: pathlib.Path) -> pathlib.Path
+
+   Location of the atomic current-view pointer (not a run manifest).
+
+
+.. py:function:: load_admission(output: pathlib.Path) -> dict[str, dict[str, Any]] | None
+
+   Return ``{relative record path: entry}``; ``None`` when never published.
+
+
+.. py:function:: publish_admission(output: pathlib.Path, *, run_id: str, scope: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]
+
+   Merge this invocation's scope into prior qualification and publish atomically.
+
+   Unrelated prior entries survive while their record file exists; entries for
+   documents in ``scope`` are replaced. Call while holding the output's
+   publication lock. Unusable prior evidence qualifies nothing for the
+   documents outside ``scope`` until a run covers them.
+
+

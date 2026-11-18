@@ -130,7 +130,7 @@ Module Contents
 
 .. py:function:: inherit_text_caches(targets: collections.abc.Iterable[pathlib.Path], donors: collections.abc.Iterable[pathlib.Path]) -> None
 
-   Copy a donor's valid text cache to each uncached target with the same SHA-256.
+   Copy a donor's valid text cache and OCR page entries to each target with the same SHA-256.
 
 
 .. py:function:: load_checkpoint(path: pathlib.Path, *, fingerprint: str | None = None, validate_artifacts: bool = True) -> dict[str, dict[str, object]]
@@ -167,13 +167,16 @@ Module Contents
 .. py:function:: promote_curated(*, run_curated_dir: pathlib.Path, domain_dir: pathlib.Path, attempted_partitions=None, blocked_partitions=None, run_index: pathlib.Path | None = None) -> None
 
    Publish run curation and its consolidated provenance; blocked
-   partitions are published additively.
+   partitions are published additively, except that an owner renamed by this
+   run keeps only its new path.
 
 
 .. py:function:: publish_manual_curation(*, paths: PublicationPaths, download_records: list[dict[str, object]], run_index: pathlib.Path, run_index_content: str, metadata_updates: collections.abc.Mapping[pathlib.Path, str], attempted_partitions=None, blocked_partitions=None, completed: set[str] = frozenset(), pdf_screening_patterns: list[str] | None = None, _lock_held: bool = False) -> tuple[pathlib.Path, int]
 
    Publish local/consolidated human curation and its provenance
-   together; ``completed`` targets/sources reconcile their documents.
+   together. Final per-document decisions (human reject, final
+   non-selection) apply in blocked partitions as well; ``completed``
+   targets/sources reconcile their documents outside blocked partitions.
 
 
 .. py:function:: record_is_curated(record: collections.abc.Mapping[str, object], *, review_ran: bool) -> bool

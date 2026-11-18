@@ -9,6 +9,14 @@ psweep.compilation.input_provenance
 
 
 
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.compilation.input_provenance.CompileInputs
+
+
 Functions
 ---------
 
@@ -17,14 +25,44 @@ Functions
    psweep.compilation.input_provenance.analyze_compile_input_provenance
    psweep.compilation.input_provenance.list_compile_record_files
    psweep.compilation.input_provenance.read_compile_record
+   psweep.compilation.input_provenance.select_compile_inputs
 
 
 Module Contents
 ---------------
 
-.. py:function:: analyze_compile_input_provenance(input_dir: pathlib.Path) -> list[str]
+.. py:class:: CompileInputs
 
-   Return non-fatal warnings about mixed/stale extraction inputs.
+   The one record set compilation may use, with its qualification.
+
+   ``current``: admitted by the extraction output's current-admission view.
+   ``historical_unverified``: an explicit standalone directory with no run
+   evidence; its records were never verified against live sources.
+
+
+   .. py:method:: empty_message(input_dir: pathlib.Path) -> str
+
+      Why nothing can be compiled.
+
+
+
+   .. py:property:: files
+      :type: list[pathlib.Path]
+
+
+      Admitted record paths.
+
+
+   .. py:property:: summary
+      :type: dict[str, int | str]
+
+
+      Counts recorded in manifests and accounting.
+
+
+.. py:function:: analyze_compile_input_provenance(inputs: CompileInputs) -> list[str]
+
+   Return non-fatal warnings about mixed lineage among the admitted records.
 
 
 .. py:function:: list_compile_record_files(input_dir: pathlib.Path) -> list[pathlib.Path]
@@ -32,8 +70,19 @@ Module Contents
    Return sorted record JSON files under input_dir, excluding internal dirs.
 
 
-.. py:function:: read_compile_record(path: pathlib.Path) -> dict
+.. py:function:: read_compile_record(path: pathlib.Path, *, sha256: str | None = None) -> dict
 
    Read the compilation envelope, rejecting invalid or missing payloads.
+
+   With ``sha256`` the same bytes that are parsed must match the admitted digest.
+
+
+.. py:function:: select_compile_inputs(input_dir: pathlib.Path) -> CompileInputs
+
+   Select admitted records, verifying the exact bytes admission described.
+
+   Preserved historical records that are not admitted are reported, never
+   compiled. Run evidence that is missing, broken, or contradicted by record
+   bytes fails closed instead of falling back to directory enumeration.
 
 

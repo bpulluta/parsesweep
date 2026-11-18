@@ -23,9 +23,14 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: build_extraction_record(*, doc_path: pathlib.Path, source_document_id: str, source: psweep.extraction.provenance.SourceContext | None = None, result: Any, model: str, provider: str | None, runtime_artifact: dict[str, Any] | None = None, run_id: str | None = None, schema_id: str | None = None, schema_metadata: psweep.utils.schema_metadata.SchemaMetadata, input_fingerprint: str | None = None) -> tuple[dict[str, Any], int]
+.. py:function:: build_extraction_record(*, doc_path: pathlib.Path, source_document_id: str, source: psweep.extraction.provenance.SourceContext | None = None, result: Any, model: str, provider: str | None, runtime_artifact: dict[str, Any] | None = None, run_id: str | None = None, schema_id: str | None = None, schema_metadata: psweep.utils.schema_metadata.SchemaMetadata, source_sha256: str, input_provenance: dict[str, Any], input_fingerprint: str | None = None) -> tuple[dict[str, Any], int]
 
    Build a source-identified record using domain schema metadata.
+
+   ``source_sha256`` is the digest of the captured source version the payload
+   was extracted from; the live path is never rehashed to certify it.
+   ``input_provenance`` records how that source was read (mode, per-page
+   representation, image use).
 
 
 .. py:function:: build_lineage(*, runtime_artifact: dict[str, Any] | None, run_id: str | None, model: str, provider: str | None, schema_id: str | None, default_run_fragment: str, extracted_at: str) -> dict[str, Any]
@@ -33,13 +38,19 @@ Module Contents
    Build canonical lineage metadata for extraction records.
 
 
-.. py:function:: record_extraction_scope(result: Any, *, page_ranges: psweep.utils.page_range.PageRanges | None = None, omitted_page_ranges: psweep.utils.page_range.PageRanges | None = None, section_filtered: bool = False, parser_scope: dict | None = None, targeting_incomplete: bool = False) -> None
+.. py:function:: record_extraction_scope(result: Any, *, page_ranges: psweep.utils.page_range.PageRanges | None = None, omitted_page_ranges: psweep.utils.page_range.PageRanges | None = None, section_filtered: bool = False, parser_scope: dict | None = None, targeting_incomplete: bool = False, visual_pages: list[int] | None = None) -> None
 
    Retain selected-input limitations in the canonical result.
 
 
-.. py:function:: write_extraction_record(output_path: pathlib.Path, *, doc_path: pathlib.Path, source_document_id: str, source: psweep.extraction.provenance.SourceContext | None = None, result: Any, model: str, provider: str | None, runtime_artifact: dict[str, Any] | None = None, run_id: str | None = None, schema_id: str | None = None, schema_metadata: psweep.utils.schema_metadata.SchemaMetadata, input_fingerprint: str | None = None, record_validator: Any = None) -> int
+.. py:function:: write_extraction_record(output_path: pathlib.Path, *, doc_path: pathlib.Path, source_document_id: str, source: psweep.extraction.provenance.SourceContext | None = None, result: Any, model: str, provider: str | None, runtime_artifact: dict[str, Any] | None = None, run_id: str | None = None, schema_id: str | None = None, schema_metadata: psweep.utils.schema_metadata.SchemaMetadata, source_sha256: str, input_provenance: dict[str, Any], input_fingerprint: str | None = None, payload_validator: Any, record_validator: Any = None) -> tuple[int, str]
 
-   Publish a record atomically and return its item count.
+   Publish atomically and return item count and exact published-byte SHA-256.
+
+   ``payload_validator`` is the resolved domain-schema validator. It is the
+   final acceptance gate: the payload is checked after every mutation
+   (normalization, roster filtering, quote verification) and before the
+   envelope check and publication, so a contract-invalid payload never
+   replaces an existing record.
 
 

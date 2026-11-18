@@ -275,6 +275,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="autoapi/psweep/exceptions/index.html">psweep.exceptions</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/admission/index.html">psweep.extraction.admission</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -282,8 +283,10 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/prepared_document/index.html">psweep.extraction.prepared_document</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/request_policy/index.html">psweep.extraction.request_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
@@ -371,6 +374,326 @@
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="unreleased">
 <h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<section id="upgrade-impact-vs-main">
+<h3>Upgrade impact vs main<a class="headerlink" href="#upgrade-impact-vs-main" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>One paid re-extraction of every document: the consumed-input fingerprint
+(<code class="docutils literal notranslate"><span class="pre">captured-input-v1</span></code>), record contract 3.0.0 and the extraction behavior
+versions all change the fingerprint, and older records are not read.</p></li>
+<li><p>One paid re-location wherever page/section targeting is enabled
+(<code class="docutils literal notranslate"><span class="pre">captured-scope-v4</span></code>).</p></li>
+<li><p>One local re-OCR of scanned PDFs into the per-page cache (Tesseract, no LLM
+cost).</p></li>
+<li><p>No discovery regrade.</p></li>
+<li><p>No image cost for <code class="docutils literal notranslate"><span class="pre">input_mode:</span> <span class="pre">text</span></code> (the default).</p></li>
+<li><p>Older records are not read: there is no legacy layer.</p></li>
+</ul>
+</section>
+<section id="added-one-domain-workspace-override-on-every-config-driven-stage">
+<h3>Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)<a class="headerlink" href="#added-one-domain-workspace-override-on-every-config-driven-stage" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">extract</span></code>, <code class="docutils literal notranslate"><span class="pre">compile</span></code>, <code class="docutils literal notranslate"><span class="pre">validate</span></code> and <code class="docutils literal notranslate"><span class="pre">run</span></code> now take the <code class="docutils literal notranslate"><span class="pre">--domain</span></code> that only
+<code class="docutils literal notranslate"><span class="pre">discover</span></code> had, so a second workspace (for example <code class="docutils literal notranslate"><span class="pre">aq_permits_va_s12</span></code> from
+<code class="docutils literal notranslate"><span class="pre">config/aq_permits_va/run.yaml</span></code>) is addressed the same way at every stage
+without <code class="docutils literal notranslate"><span class="pre">-o</span></code>, which recorded the wrong domain and broke compile and validate
+chaining. The override is applied once, in <code class="docutils literal notranslate"><span class="pre">load_runtime_config_file</span></code>, so
+every reader of the domain agrees; <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--domain</span></code> forwards it to every stage.
+<code class="docutils literal notranslate"><span class="pre">curate</span></code> and <code class="docutils literal notranslate"><span class="pre">gc</span></code> keep their positional domain argument (the same key).
+Without the option nothing changes. No cache or regrade impact.</p></li>
+</ul>
+</section>
+<section id="fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">
+<h3>Fixed (discovery publication: final decisions apply in incomplete partitions)<a class="headerlink" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>A shared partition left incomplete by one retryable failure used to publish
+additively and ignore every other decision, so the consolidated <code class="docutils literal notranslate"><span class="pre">curated/</span></code>
+and <code class="docutils literal notranslate"><span class="pre">download_index.csv</span></code> kept a document the run had finally rejected (a human
+<code class="docutils literal notranslate"><span class="pre">reject</span></code> via <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span></code>), finally not selected (<code class="docutils literal notranslate"><span class="pre">keep_top</span></code>,
+<code class="docutils literal notranslate"><span class="pre">max_per_target</span></code>) or republished under a new name. Those three decisions now
+apply there too, in <code class="docutils literal notranslate"><span class="pre">discover</span></code> and in <code class="docutils literal notranslate"><span class="pre">curate</span></code>. Unchanged: a retryable failure
+withdraws nothing, a document the run did not decide stays, and “absent from a
+completed target” still waits for the partition to complete. User-visible
+effect: a later <code class="docutils literal notranslate"><span class="pre">discover</span></code> or <code class="docutils literal notranslate"><span class="pre">curate</span></code> can remove documents that previously
+lingered in <code class="docutils literal notranslate"><span class="pre">curated/</span></code>; their extraction records become historical through the
+existing admission rules and nothing under <code class="docutils literal notranslate"><span class="pre">extracted/</span></code> is deleted. No cache
+or regrade impact: no cache key, fingerprint or LLM call changes.</p></li>
+</ul>
+</section>
+<section id="changed-document-review-diagnosable-grounding-failures">
+<h3>Changed (document review: diagnosable grounding failures)<a class="headerlink" href="#changed-document-review-diagnosable-grounding-failures" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>A review grade whose quotes the sampled excerpt does not support now fails with
+the kind and the failing evidence paths (<code class="docutils literal notranslate"><span class="pre">invalid</span> <span class="pre">document</span> <span class="pre">grade</span> <span class="pre">evidence:</span> <span class="pre">ungrounded</span> <span class="pre">evidence.content_quote</span></code>; <code class="docutils literal notranslate"><span class="pre">contract</span></code> when the grade itself is
+malformed) instead of one generic message, in the audit as
+<code class="docutils literal notranslate"><span class="pre">review_initial_error</span></code>. The record’s review audit
+(<code class="docutils literal notranslate"><span class="pre">review_initial_failure</span></code>, or <code class="docutils literal notranslate"><span class="pre">review_escalation_failure</span></code>) keeps the kind, the
+paths and each rejected quote truncated to 300 characters, in the local
+discovery manifest only. A run note counts the files that failed grounding.
+Grounding stays exactly as strict. No grade cache key, prompt or sampler
+change: no existing cache is invalidated and no regrade is triggered.</p></li>
+</ul>
+</section>
+<section id="changed-document-review-one-bounded-grounding-repair">
+<h3>Changed (document review: one bounded grounding repair)<a class="headerlink" href="#changed-document-review-one-bounded-grounding-repair" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>When a reviewer’s well-formed grade quotes text the sampled excerpt does not
+contain contiguously (a “cleaned” run-together word, <code class="docutils literal notranslate"><span class="pre">and/or</span></code>, a word completed
+across a <code class="docutils literal notranslate"><span class="pre">[...]</span></code> cut), review sends ONE same-model follow-up that repeats the
+rejected quote text and the failing evidence paths and restates the copy rule.
+The system never supplies, snaps or fuzzy-matches candidate text: the reply is
+verified by the same strict matcher. A second failure ends as an unverifiable document (next entry).
+The repair is metered and counts against the review attempt budget; it is not
+used when <code class="docutils literal notranslate"><span class="pre">escalate_model</span></code> is set or after a provider error. A run note counts
+repaired and failed grounding. Cost: at most one extra review call per failing
+grade. Cache: none; the first-attempt prompt and the grade cache key are
+unchanged, and a repaired grade is stored under the same key and re-verified on
+every read like any other grade.</p></li>
+</ul>
+</section>
+<section id="changed-document-review-unverifiable-documents-are-terminal-and-never-re-billed">
+<h3>Changed (document review: unverifiable documents are terminal and never re-billed)<a class="headerlink" href="#changed-document-review-unverifiable-documents-are-terminal-and-never-re-billed" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>A document whose grade still fails quote grounding after the repair (or, with
+<code class="docutils literal notranslate"><span class="pre">escalate_model</span></code>, after both routes) is now a settled <code class="docutils literal notranslate"><span class="pre">review_unverifiable</span></code>
+outcome (<code class="docutils literal notranslate"><span class="pre">review_failed</span></code>, <code class="docutils literal notranslate"><span class="pre">review_retryable:</span> <span class="pre">false</span></code>, <code class="docutils literal notranslate"><span class="pre">review_unverifiable:</span> <span class="pre">true</span></code>; the reason is shown in <code class="docutils literal notranslate"><span class="pre">review.csv</span></code> <code class="docutils literal notranslate"><span class="pre">llm_reason</span></code>) instead of a retryable
+failure. Before, the same inputs were re-billed on every discover run and the
+partition never completed. It is stored as a negative entry in
+<code class="docutils literal notranslate"><span class="pre">.review_cache/</span></code> under the grade’s own key; it is never read as a grade. The
+document stays held (not curated); <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">curate</span></code> with <code class="docutils literal notranslate"><span class="pre">human_decision</span></code>
+<code class="docutils literal notranslate"><span class="pre">keep</span></code>/<code class="docutils literal notranslate"><span class="pre">reject</span></code> resolves it. Any change to a grading input (model,
+description, prompt, keywords, <code class="docutils literal notranslate"><span class="pre">max_chars</span></code>, sampling id) changes the key, so
+the document is retried automatically. Provider, transport and attempt-budget
+failures stay retryable and write no entry. Worst case: 2 calls per unique
+document per grading-input version. Run notes count repaired and unverifiable
+documents. Cache: no grade cache key changes, no existing cache is
+invalidated and no regrade is triggered.</p></li>
+</ul>
+</section>
+<section id="added-selected-page-vision-opt-in">
+<h3>Added (selected-page vision, opt-in)<a class="headerlink" href="#added-selected-page-vision-opt-in" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">extraction.input_mode:</span> <span class="pre">text</span> <span class="pre">|</span> <span class="pre">auto</span> <span class="pre">|</span> <span class="pre">vision</span></code> (default <code class="docutils literal notranslate"><span class="pre">text</span></code>; unknown values
+fail at load). <code class="docutils literal notranslate"><span class="pre">auto</span></code> sends images of PDF pages that neither native text nor
+OCR could read; <code class="docutils literal notranslate"><span class="pre">vision</span></code> sends images of every non-blank selected page. Images
+go through the same request path as text as labeled inline PNG blocks, with
+original page numbers. A route not known to accept images holds before any
+request; image tokens are estimated from PNG dimensions and counted against
+known windows. A record with unreadable pages is never reused, so <code class="docutils literal notranslate"><span class="pre">auto</span></code> and
+<code class="docutils literal notranslate"><span class="pre">vision</span></code> domains pay again on every re-run of such a document.</p></li>
+<li><p>Image-only content has no text to verify quotes against; records say so
+(<code class="docutils literal notranslate"><span class="pre">input</span></code> block, <code class="docutils literal notranslate"><span class="pre">image_only_pages</span></code> coverage and a warning). Native PDF
+transport is not implemented.</p></li>
+</ul>
+</section>
+<section id="changed-record-contract-3-0-0-input-provenance">
+<h3>Changed (record contract 3.0.0: input provenance)<a class="headerlink" href="#changed-record-contract-3-0-0-input-provenance" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Every extraction record has an <code class="docutils literal notranslate"><span class="pre">input</span></code> block: <code class="docutils literal notranslate"><span class="pre">input_mode</span></code>, per-page PDF
+representation (<code class="docutils literal notranslate"><span class="pre">status</span></code>, <code class="docutils literal notranslate"><span class="pre">chars</span></code>, <code class="docutils literal notranslate"><span class="pre">image_fraction</span></code>, and <code class="docutils literal notranslate"><span class="pre">ocr_sha256</span></code> where OCR
+output was obtained), <code class="docutils literal notranslate"><span class="pre">visual_pages</span></code> and <code class="docutils literal notranslate"><span class="pre">render_dpi</span></code>. Coverage adds
+<code class="docutils literal notranslate"><span class="pre">unreadable_pages</span></code> and <code class="docutils literal notranslate"><span class="pre">image_only_pages</span></code>; the <code class="docutils literal notranslate"><span class="pre">parser_partial</span></code> warning names
+the unreadable pages. The always-false <code class="docutils literal notranslate"><span class="pre">coverage.context_truncated</span></code> key is
+removed. <code class="docutils literal notranslate"><span class="pre">contract_version</span></code> is <code class="docutils literal notranslate"><span class="pre">3.0.0</span></code>.</p></li>
+<li><p>OCR reuse is proved per page. A record is stale when a present OCR page entry
+disagrees with the digest the record used (or the record could not read that
+page); a missing entry still reuses with no provider call. Transcripts carry
+<code class="docutils literal notranslate"><span class="pre">derived_text_sha256</span></code> in the run manifest.</p></li>
+<li><p>The extraction fingerprint binds the prompt/repair behavior version for every
+document and the OCR and page-representation versions for PDFs only; the page
+locator fingerprint binds the same PDF versions.</p></li>
+</ul>
+</section>
+<section id="changed-response-outcomes-one-schema-feedback-generation">
+<h3>Changed (response outcomes, one schema-feedback generation)<a class="headerlink" href="#changed-response-outcomes-one-schema-feedback-generation" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Primary extraction rejects length-terminated (<code class="docutils literal notranslate"><span class="pre">response_truncated</span></code>) and
+refused (<code class="docutils literal notranslate"><span class="pre">response_refused</span></code>) answers as explicit <code class="docutils literal notranslate"><span class="pre">model_response</span></code> failures
+instead of accepting them (a schema-valid <code class="docutils literal notranslate"><span class="pre">items:</span> <span class="pre">[]</span></code> with
+<code class="docutils literal notranslate"><span class="pre">finish_reason=length</span></code> used to pass). They are never regenerated.</p></li>
+<li><p>An empty, non-JSON or schema-invalid answer gets at most one feedback
+generation: the original request, unchanged, plus the rejected answer and
+bounded path/rule diagnostics (no values). It draws on one per-document
+allowance of 4 physical attempts shared with transport retries and the
+temperature fallback; the allowance is document-local. Both generations’ cost
+and tokens are in the record and in failures. <code class="docutils literal notranslate"><span class="pre">schema_diagnostics</span></code> is shared
+with reconciliation, whose repair diagnostics also name unexpected keys and
+expected types.</p></li>
+<li><p>The extraction prompt says conversions apply only where a schema field
+description explicitly requires them, that unsupported conversions are
+<code class="docutils literal notranslate"><span class="pre">null</span></code>, and that evidence quotes stay verbatim.</p></li>
+<li><p>Discovery, reconciliation, locators, judges and transcription keep their
+response handling.</p></li>
+</ul>
+</section>
+<section id="changed-per-page-pdf-representation-and-ocr-cache">
+<h3>Changed (per-page PDF representation and OCR cache)<a class="headerlink" href="#changed-per-page-pdf-representation-and-ocr-cache" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>PDF text extraction decides native text versus OCR per page instead of from
+an aggregate 500-character total, so a raster rate table can no longer be
+hidden behind a readable cover page. Each selected page is recorded as
+<code class="docutils literal notranslate"><span class="pre">native</span></code>, <code class="docutils literal notranslate"><span class="pre">ocr</span></code>, <code class="docutils literal notranslate"><span class="pre">blank</span></code> or <code class="docutils literal notranslate"><span class="pre">unreadable</span></code> with its original page number. Blank
+pages are covered and never OCR-ed; a raster page OCR cannot read is
+<code class="docutils literal notranslate"><span class="pre">unreadable</span></code>, is not counted in <code class="docutils literal notranslate"><span class="pre">extracted_pages</span></code>, and makes the record
+<code class="docutils literal notranslate"><span class="pre">parser_partial</span></code> with a warning. <code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code> touch OCR pages only.</p></li>
+<li><p>The page locator’s index OCRs raster pages, so scanned documents can be
+targeted instead of being held as unreadable.</p></li>
+<li><p>OCR is cached once per page (<code class="docutils literal notranslate"><span class="pre">.text/&lt;file&gt;.ocr/&lt;page&gt;.json</span></code>), keyed by the
+source SHA-256, page number and OCR engine/render version. The locator index,
+page-range runs and whole-document extraction share it, so a raster page is
+OCR-ed once per source. Entries are raw text written atomically;
+<code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code> are applied on every read. A corrupt, tampered or
+other-source entry is a miss.</p></li>
+<li><p>Discovery carries the OCR page entries with their document: they are linked
+into <code class="docutils literal notranslate"><span class="pre">curated/</span></code>, inherited by a same-SHA re-download (never by a different
+file), protected with a kept or held document, and removed with the document.
+A scanned PDF OCR-ed during discovery review is not OCR-ed again by extraction.</p></li>
+</ul>
+</section>
+<section id="changed-scope-budgeting-explicit-locator">
+<h3>Changed (scope budgeting, explicit locator)<a class="headerlink" href="#changed-scope-budgeting-explicit-locator" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Targeting triggers at <code class="docutils literal notranslate"><span class="pre">min(trigger_chars,</span> <span class="pre">max_context)</span></code>: a document too large
+for <code class="docutils literal notranslate"><span class="pre">max_context</span></code> is targeted even when under <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code>. A locator
+candidate index the route cannot admit is split in halves (at most 8
+requests); any unsendable remainder holds the document.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">extraction.max_context</span></code> is enforced on every path, including CSV and
+<code class="docutils literal notranslate"><span class="pre">pages.range</span></code> scope, disabled targeting and unsupported types. Oversized
+input is held (<code class="docutils literal notranslate"><span class="pre">targeting_context_budget_exceeded</span></code>) and the primary is not
+called; input is never sliced to a prefix.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pages.auto_locate.model</span></code> is required when auto-locate is enabled and must
+resolve to a different provider/model than <code class="docutils literal notranslate"><span class="pre">extraction.model</span></code>; the silent
+inherit-the-primary default is removed. Configs that enabled auto-locate
+without a model now fail validation.</p></li>
+</ul>
+</section>
+<section id="fixed-crawl-budget-starved-by-excluded-links">
+<h3>Fixed (crawl budget starved by excluded links)<a class="headerlink" href="#fixed-crawl-budget-starved-by-excluded-links" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Linked documents that selection eligibility (exclusion terms, URL/text
+patterns, draft filters) drops after crawling no longer consume the raw-link
+budget of <code class="docutils literal notranslate"><span class="pre">runtime.max_files</span></code>. Previously a listing whose first links were all
+excluded could exhaust the budget on every run and never reach a later wanted
+link; the crawl now widens its budget by the number of dropped links, so
+repeated runs converge. No fingerprint or cache change; a budget-limited
+listing may fetch more pages in the same run.</p></li>
+</ul>
+</section>
+<section id="fixed-review-ledger-no-longer-invents-an-llm-verdict">
+<h3>Fixed (review ledger no longer invents an LLM verdict)<a class="headerlink" href="#fixed-review-ledger-no-longer-invents-an-llm-verdict" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">review.csv</span></code> leaves <code class="docutils literal notranslate"><span class="pre">llm_selected</span></code> blank for documents no relevance review
+graded, instead of defaulting it to <code class="docutils literal notranslate"><span class="pre">True</span></code> for every downloaded file. Use
+<code class="docutils literal notranslate"><span class="pre">curated_selected</span></code> for what was effectively published. <code class="docutils literal notranslate"><span class="pre">curate</span></code> already treats
+a blank <code class="docutils literal notranslate"><span class="pre">llm_selected</span></code> as “no verdict”. Ledger-only change: no fingerprint,
+cache, regrade or cost impact.</p></li>
+</ul>
+</section>
+<section id="fixed-conflicting-page-scopes-fail-at-load">
+<h3>Fixed (conflicting page scopes fail at load)<a class="headerlink" href="#fixed-conflicting-page-scopes-fail-at-load" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">extraction.pages.csv</span></code> together with <code class="docutils literal notranslate"><span class="pre">extraction.pages.range</span></code> is now a config
+error instead of silently ignoring the range. Configs that set both must drop
+one. Load-time validation only: no fingerprint, cache or cost impact.</p></li>
+</ul>
+</section>
+<section id="fixed-central-request-admission">
+<h3>Fixed (central request admission)<a class="headerlink" href="#fixed-central-request-admission" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">LLMClient.complete</span></code> admits the exact final request (messages plus response
+schema) against <code class="docutils literal notranslate"><span class="pre">model_context_windows</span></code> before any provider attempt, for
+every caller. Extraction and locator calls additionally use LiteLLM’s pinned
+local catalog and send the route’s output limit as <code class="docutils literal notranslate"><span class="pre">max_tokens</span></code>. Estimates
+are conservative (3 UTF-8 bytes per token). Unknown limits are not guarded: a
+custom route with no known output limit is sent without <code class="docutils literal notranslate"><span class="pre">max_tokens</span></code>, and
+truncation is rejected after the fact by the response-outcome check. A
+rejected request sends and meters nothing. Discovery, reconciliation and
+transcription get no catalog guard or output cap. Very large inputs on known
+routes hold with <code class="docutils literal notranslate"><span class="pre">context_window_exceeded</span></code>.</p></li>
+</ul>
+</section>
+<section id="changed-test-efficiency">
+<h3>Changed (test efficiency)<a class="headerlink" href="#changed-test-efficiency" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>The full offline suite and CI retain all distinct regression scenarios;
+two duplicate config-validation parameter cases are consolidated into
+existing stronger checks. Scheduling scale tests no longer collect
+unasserted allocation/timing diagnostics. TLS tests share immutable
+certificate files, keep isolated servers/call histories, and shut down
+without the default half-second polling delay.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">--locked</span> <span class="pre">-e</span> <span class="pre">dev</span> <span class="pre">test-fast</span></code> is an optional local loop excluding
+explicit <code class="docutils literal notranslate"><span class="pre">integration</span></code>, <code class="docutils literal notranslate"><span class="pre">slow</span></code>, and <code class="docutils literal notranslate"><span class="pre">live</span></code> cases. The ordinary <code class="docutils literal notranslate"><span class="pre">test</span></code> task
+still runs real CLI/TLS/ffmpeg checks and the largest scale cases. Pytest
+defaults to concise output and rejects unknown markers; <code class="docutils literal notranslate"><span class="pre">-v</span></code> remains available.</p></li>
+</ul>
+</section>
+<section id="fixed-extraction-admission-and-outcomes">
+<h3>Fixed (extraction admission and outcomes)<a class="headerlink" href="#fixed-extraction-admission-and-outcomes" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Preserved historical records no longer enter a current compilation.
+Extraction publishes an atomic <code class="docutils literal notranslate"><span class="pre">run_manifests/current_admission.json</span></code> with a
+per-document disposition (<code class="docutils literal notranslate"><span class="pre">new</span></code>, <code class="docutils literal notranslate"><span class="pre">reused</span></code>, <code class="docutils literal notranslate"><span class="pre">failed</span></code>, <code class="docutils literal notranslate"><span class="pre">deferred</span></code>) and the exact
+record digest, source digest and input fingerprint for admitted records,
+scoped to the invocation (before <code class="docutils literal notranslate"><span class="pre">limit</span></code>) and merged with prior qualification.
+Failed or deferred documents keep their old bytes on disk but are not
+admitted; succeeded and verified-reused siblings of a partial run are.
+Previously a changed document that failed re-extraction compiled alongside
+new siblings with no warning. A run marks its pending documents <code class="docutils literal notranslate"><span class="pre">deferred</span></code>
+before rewriting records, so an interrupted run excludes them until
+<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span></code> is rerun. Extraction holds a per-output single-writer lock,
+and records judged reusable at preparation are re-hashed under it.</p></li>
+<li><p>Compilation, dry-run, <code class="docutils literal notranslate"><span class="pre">compiled_table_fresh</span></code>, provenance and the build
+fingerprint share one selector that verifies and reads the same admitted
+bytes; broken, missing or contradicted admission fails closed, and excluded
+records are a count rather than a warning. Standalone directories without run
+evidence compile as <code class="docutils literal notranslate"><span class="pre">historical_unverified</span></code>; a directory with run manifests
+but no admission is refused until <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span></code> publishes one. Compile
+manifests record <code class="docutils literal notranslate"><span class="pre">outputs.admission</span></code>.</p></li>
+<li><p>A compiled table with zero rows beside failed documents has status <code class="docutils literal notranslate"><span class="pre">failed</span></code>;
+valid all-empty results remain successful.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">run_accounting.json</span></code> is version 3.0.0: runs carry result and
+processed/succeeded/failed/item counts, extraction <code class="docutils literal notranslate"><span class="pre">status</span></code> follows the latest
+run (<code class="docutils literal notranslate"><span class="pre">completed</span></code>, <code class="docutils literal notranslate"><span class="pre">completed_with_errors</span></code>, <code class="docutils literal notranslate"><span class="pre">failed</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown</span></code>), and a
+<code class="docutils literal notranslate"><span class="pre">current</span></code> block reports admitted/failed/deferred documents and items.
+<code class="docutils literal notranslate"><span class="pre">summary.documents_extracted</span></code> and <code class="docutils literal notranslate"><span class="pre">cost_per_document_usd</span></code> are replaced by
+<code class="docutils literal notranslate"><span class="pre">documents_billed</span></code>, <code class="docutils literal notranslate"><span class="pre">cost_per_billed_document_usd</span></code>, and current
+<code class="docutils literal notranslate"><span class="pre">documents_admitted</span></code>/<code class="docutils literal notranslate"><span class="pre">documents_failed</span></code>/<code class="docutils literal notranslate"><span class="pre">items_admitted</span></code>/
+<code class="docutils literal notranslate"><span class="pre">cost_per_admitted_document_usd</span></code> (null when unknown). Billed attempts are no
+longer presented as successful extractions.</p></li>
+</ul>
+</section>
+<section id="fixed-extraction-source-identity">
+<h3>Fixed (extraction source identity)<a class="headerlink" href="#fixed-extraction-source-identity" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Extraction consumes one verified version of each source. Preparation
+fingerprints the source digest; extraction stream-copies the document into a
+private, owner-only, per-document snapshot (removed on success, failure, or
+interruption), compares that digest with the prepared one, and reads only the
+snapshot, including text-cache and transcript evidence. A source that changed
+in between fails that document with <code class="docutils literal notranslate"><span class="pre">document_io/source_changed</span></code> before any
+paid request, and the record’s <code class="docutils literal notranslate"><span class="pre">document.source_sha256</span></code> is the consumed
+digest. Previously a document prepared as A but read as B could publish a
+B-derived payload under A’s fingerprint and be reused when the file returned
+to A.</p></li>
+<li><p>Capture precedes page/section targeting and freezes verified browser/API
+text, raw OCR and matching-model transcripts; roster scans, no-match
+decisions, locator caches and reuse all use that version. Fresh preflight
+keeps captures bounded, rechecks retained scopes, and preserves prior output
+on a mismatch; stale products are cleaned only after all fresh documents
+succeed, and an empty input inventory preserves previous outputs.</p></li>
+<li><p>The record writer returns the item count and SHA-256 of the exact bytes it
+published; manifests never rehash a later replacement as proof.</p></li>
+</ul>
+</section>
+<section id="fixed-extraction-publication">
+<h3>Fixed (extraction publication)<a class="headerlink" href="#fixed-extraction-publication" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">write_extraction_record</span></code> validates the finalized payload against the
+resolved domain schema after roster filtering and quote verification and
+before publishing. Previously a sole unsupported row removed by quote
+filtering published <code class="docutils literal notranslate"><span class="pre">items:</span> <span class="pre">[]</span></code> under a <code class="docutils literal notranslate"><span class="pre">minItems:</span> <span class="pre">1</span></code> contract. Such a
+document now fails with <code class="docutils literal notranslate"><span class="pre">schema_contract</span></code> and keeps its prior record.</p></li>
+</ul>
+</section>
 <section id="security">
 <h3>Security<a class="headerlink" href="#security" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -391,8 +714,7 @@ before the extraction request (<code class="docutils literal notranslate"><span 
 <code class="docutils literal notranslate"><span class="pre">targeting_context_budget_exceeded</span></code>, category <code class="docutils literal notranslate"><span class="pre">targeting</span></code>) instead of sending
 the whole document or a silently sliced prefix. A hold ends the extract stage
 <code class="docutils literal notranslate"><span class="pre">failed</span></code> (exit 1), so <code class="docutils literal notranslate"><span class="pre">run</span></code> does not compile historical records. A
-document with no readable native PDF text is now held too (use a blank CSV
-row to force OCR of the full document).</p></li>
+PDF with no page readable as text or OCR is now held too.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--fresh</span></code> runs these checks before deleting output and keeps previous records
 when a document is held; blocked documents report no primary calls or tokens.</p></li>
 <li><p>The final selected reference frontier is read even when the page cap is full,
@@ -815,6 +1137,25 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
             <ul>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>
+<li><a class="reference internal" href="#added-one-domain-workspace-override-on-every-config-driven-stage">Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)</a></li>
+<li><a class="reference internal" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">Fixed (discovery publication: final decisions apply in incomplete partitions)</a></li>
+<li><a class="reference internal" href="#changed-document-review-diagnosable-grounding-failures">Changed (document review: diagnosable grounding failures)</a></li>
+<li><a class="reference internal" href="#changed-document-review-one-bounded-grounding-repair">Changed (document review: one bounded grounding repair)</a></li>
+<li><a class="reference internal" href="#changed-document-review-unverifiable-documents-are-terminal-and-never-re-billed">Changed (document review: unverifiable documents are terminal and never re-billed)</a></li>
+<li><a class="reference internal" href="#added-selected-page-vision-opt-in">Added (selected-page vision, opt-in)</a></li>
+<li><a class="reference internal" href="#changed-record-contract-3-0-0-input-provenance">Changed (record contract 3.0.0: input provenance)</a></li>
+<li><a class="reference internal" href="#changed-response-outcomes-one-schema-feedback-generation">Changed (response outcomes, one schema-feedback generation)</a></li>
+<li><a class="reference internal" href="#changed-per-page-pdf-representation-and-ocr-cache">Changed (per-page PDF representation and OCR cache)</a></li>
+<li><a class="reference internal" href="#changed-scope-budgeting-explicit-locator">Changed (scope budgeting, explicit locator)</a></li>
+<li><a class="reference internal" href="#fixed-crawl-budget-starved-by-excluded-links">Fixed (crawl budget starved by excluded links)</a></li>
+<li><a class="reference internal" href="#fixed-review-ledger-no-longer-invents-an-llm-verdict">Fixed (review ledger no longer invents an LLM verdict)</a></li>
+<li><a class="reference internal" href="#fixed-conflicting-page-scopes-fail-at-load">Fixed (conflicting page scopes fail at load)</a></li>
+<li><a class="reference internal" href="#fixed-central-request-admission">Fixed (central request admission)</a></li>
+<li><a class="reference internal" href="#changed-test-efficiency">Changed (test efficiency)</a></li>
+<li><a class="reference internal" href="#fixed-extraction-admission-and-outcomes">Fixed (extraction admission and outcomes)</a></li>
+<li><a class="reference internal" href="#fixed-extraction-source-identity">Fixed (extraction source identity)</a></li>
+<li><a class="reference internal" href="#fixed-extraction-publication">Fixed (extraction publication)</a></li>
 <li><a class="reference internal" href="#security">Security</a></li>
 <li><a class="reference internal" href="#fixed-extraction-targeting-safety">Fixed (extraction targeting safety)</a></li>
 <li><a class="reference internal" href="#changed-breaking-config">Changed (breaking config)</a></li>

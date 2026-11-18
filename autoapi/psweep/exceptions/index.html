@@ -275,6 +275,7 @@
 </li>
 <li class="toctree-l3 current current-page"><a class="current reference internal" href="#">psweep.exceptions</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../extraction/admission/index.html">psweep.extraction.admission</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -282,8 +283,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../extraction/prepared_document/index.html">psweep.extraction.prepared_document</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../extraction/request_policy/index.html">psweep.extraction.request_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../extraction/section_locator/index.html">psweep.extraction.section_locator</a></li>
@@ -403,14 +406,20 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.PipelineError" title="psweep.exceptions.PipelineError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PipelineError</span></code></a></p></td>
 <td><p>Raised when a multi-stage pipeline run fails.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaError" title="psweep.exceptions.SchemaError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaError</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.ResponseOutcomeError" title="psweep.exceptions.ResponseOutcomeError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ResponseOutcomeError</span></code></a></p></td>
+<td><p>The model's answer was rejected as an explicit outcome.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaError" title="psweep.exceptions.SchemaError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaError</span></code></a></p></td>
 <td><p>Raised when a schema file is missing, malformed, or fails $metadata validation.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaMetadataError" title="psweep.exceptions.SchemaMetadataError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaMetadataError</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaMetadataError" title="psweep.exceptions.SchemaMetadataError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaMetadataError</span></code></a></p></td>
 <td><p>Raised when a schema's <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> section is missing or invalid.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaValidationError" title="psweep.exceptions.SchemaValidationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaValidationError</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.SchemaValidationError" title="psweep.exceptions.SchemaValidationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaValidationError</span></code></a></p></td>
 <td><p>Raised when a schema's structure fails validation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.exceptions.SourceChangedError" title="psweep.exceptions.SourceChangedError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SourceChangedError</span></code></a></p></td>
+<td><p>Raised when a source no longer matches the identity extraction was prepared for.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.exceptions.TargetingSafetyError" title="psweep.exceptions.TargetingSafetyError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TargetingSafetyError</span></code></a></p></td>
 <td><p>Raised when automatic targeting leaves no safe input for the primary request.</p></td>
@@ -487,6 +496,24 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 </dd></dl>
 
 <dl class="py exception">
+<dt class="sig sig-object py" id="psweep.exceptions.ResponseOutcomeError">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.exceptions.</span></span><span class="sig-name descname"><span class="pre">ResponseOutcomeError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">code</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">document</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.exceptions.ResponseOutcomeError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#psweep.exceptions.ExtractionError" title="psweep.exceptions.ExtractionError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ExtractionError</span></code></a></p>
+<p>The model’s answer was rejected as an explicit outcome.</p>
+<p><code class="docutils literal notranslate"><span class="pre">code</span></code> is stable and machine-readable (<code class="docutils literal notranslate"><span class="pre">response_truncated</span></code>,
+<code class="docutils literal notranslate"><span class="pre">response_refused</span></code>, <code class="docutils literal notranslate"><span class="pre">response_empty</span></code>, <code class="docutils literal notranslate"><span class="pre">response_not_json</span></code>); the message
+never carries provider or document text. Only empty and non-JSON answers are
+<code class="docutils literal notranslate"><span class="pre">repairable</span></code>: truncation and refusal are never blindly regenerated.</p>
+<p>Initialize self.  See help(type(self)) for accurate signature.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="psweep.exceptions.ResponseOutcomeError.repairable">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">repairable</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><a class="headerlink" href="#psweep.exceptions.ResponseOutcomeError.repairable" title="Link to this definition">¶</a></dt>
+<dd><p>True when one schema-feedback generation may fix this outcome.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
 <dt class="sig sig-object py" id="psweep.exceptions.SchemaError">
 <span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.exceptions.</span></span><span class="sig-name descname"><span class="pre">SchemaError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">hint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.exceptions.SchemaError" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#psweep.exceptions.ParseSweepError" title="psweep.exceptions.ParseSweepError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ParseSweepError</span></code></a></p>
@@ -507,6 +534,14 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.exceptions.</span></span><span class="sig-name descname"><span class="pre">SchemaValidationError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">hint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.exceptions.SchemaValidationError" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#psweep.exceptions.SchemaError" title="psweep.exceptions.SchemaError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SchemaError</span></code></a></p>
 <p>Raised when a schema’s structure fails validation.</p>
+<p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="psweep.exceptions.SourceChangedError">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.exceptions.</span></span><span class="sig-name descname"><span class="pre">SourceChangedError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">document</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.exceptions.SourceChangedError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#psweep.exceptions.ExtractionError" title="psweep.exceptions.ExtractionError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ExtractionError</span></code></a></p>
+<p>Raised when a source no longer matches the identity extraction was prepared for.</p>
 <p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
@@ -591,9 +626,14 @@ them via Rich; the programmatic API lets them propagate naturally.</p>
 <li><a class="reference internal" href="#psweep.exceptions.ExtractionError"><code class="docutils literal notranslate"><span class="pre">ExtractionError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.ParseSweepError"><code class="docutils literal notranslate"><span class="pre">ParseSweepError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.PipelineError"><code class="docutils literal notranslate"><span class="pre">PipelineError</span></code></a></li>
+<li><a class="reference internal" href="#psweep.exceptions.ResponseOutcomeError"><code class="docutils literal notranslate"><span class="pre">ResponseOutcomeError</span></code></a><ul>
+<li><a class="reference internal" href="#psweep.exceptions.ResponseOutcomeError.repairable"><code class="docutils literal notranslate"><span class="pre">ResponseOutcomeError.repairable</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#psweep.exceptions.SchemaError"><code class="docutils literal notranslate"><span class="pre">SchemaError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.SchemaMetadataError"><code class="docutils literal notranslate"><span class="pre">SchemaMetadataError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.SchemaValidationError"><code class="docutils literal notranslate"><span class="pre">SchemaValidationError</span></code></a></li>
+<li><a class="reference internal" href="#psweep.exceptions.SourceChangedError"><code class="docutils literal notranslate"><span class="pre">SourceChangedError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.exceptions.TargetingSafetyError"><code class="docutils literal notranslate"><span class="pre">TargetingSafetyError</span></code></a></li>
 </ul>
 </li>

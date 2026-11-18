@@ -41,6 +41,7 @@ Functions
 
 .. autoapisummary::
 
+   psweep.extraction.transcription.accepts_transcript
    psweep.extraction.transcription.build_transcriber
    psweep.extraction.transcription.chunk_starts
    psweep.extraction.transcription.is_audio
@@ -83,6 +84,11 @@ Module Contents
       Calls, tokens and cost so far (empty when none were sent).
 
 
+.. py:function:: accepts_transcript(method: str | None, transcriber: Transcriber | None) -> bool
+
+   Use the configured identity, or a cached transcript when no model is configured.
+
+
 .. py:function:: build_transcriber(inputs: dict[str, Any]) -> Transcriber | None
 
    The run's transcriber; None without ``transcription_model``.
@@ -106,11 +112,13 @@ Module Contents
    ``[hh:mm:ss]`` marker for an offset in seconds.
 
 
-.. py:function:: transcript(source: pathlib.Path, transcriber: Transcriber | None) -> str
+.. py:function:: transcript(source: pathlib.Path, transcriber: Transcriber | None, *, captured: psweep.extraction.prepared_document.CapturedSource | None = None) -> str
 
    The recording's transcript: cached, or transcribed and cached.
 
    Without a transcriber (review, validation, CLI utilities) any cached
    transcript is used; with one, only a transcript of its identity is.
+   A ``captured`` version is transcribed from its snapshot and cached for
+   ``source`` under its captured digest.
 
 

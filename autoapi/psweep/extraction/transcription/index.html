@@ -275,6 +275,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../exceptions/index.html">psweep.exceptions</a></li>
 <li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" checked="" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../admission/index.html">psweep.extraction.admission</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../document_extractor/index.html">psweep.extraction.document_extractor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../document_utils/index.html">psweep.extraction.document_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../llm_client/index.html">psweep.extraction.llm_client</a></li>
@@ -282,8 +283,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../pdf_inspection/index.html">psweep.extraction.pdf_inspection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../prepared_document/index.html">psweep.extraction.prepared_document</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../request_policy/index.html">psweep.extraction.request_policy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../roster/index.html">psweep.extraction.roster</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../schema_utils/index.html">psweep.extraction.schema_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../section_locator/index.html">psweep.extraction.section_locator</a></li>
@@ -405,19 +408,22 @@ OCR text, keyed by the source bytes and <code class="xref py py-attr docutils li
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.transcription.build_transcriber" title="psweep.extraction.transcription.build_transcriber"><code class="xref py py-obj docutils literal notranslate"><span class="pre">build_transcriber</span></code></a>(→ Transcriber | None)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.transcription.accepts_transcript" title="psweep.extraction.transcription.accepts_transcript"><code class="xref py py-obj docutils literal notranslate"><span class="pre">accepts_transcript</span></code></a>(→ bool)</p></td>
+<td><p>Use the configured identity, or a cached transcript when no model is configured.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.transcription.build_transcriber" title="psweep.extraction.transcription.build_transcriber"><code class="xref py py-obj docutils literal notranslate"><span class="pre">build_transcriber</span></code></a>(→ Transcriber | None)</p></td>
 <td><p>The run's transcriber; None without <code class="docutils literal notranslate"><span class="pre">transcription_model</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.transcription.chunk_starts" title="psweep.extraction.transcription.chunk_starts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">chunk_starts</span></code></a>(→ list[float])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.transcription.chunk_starts" title="psweep.extraction.transcription.chunk_starts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">chunk_starts</span></code></a>(→ list[float])</p></td>
 <td><p>Chunk start times (seconds) for an RMS envelope.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.transcription.is_audio" title="psweep.extraction.transcription.is_audio"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_audio</span></code></a>(→ bool)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.transcription.is_audio" title="psweep.extraction.transcription.is_audio"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_audio</span></code></a>(→ bool)</p></td>
 <td><p>Whether <code class="docutils literal notranslate"><span class="pre">path</span></code> is a recording (by extension).</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.transcription.timestamp" title="psweep.extraction.transcription.timestamp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">timestamp</span></code></a>(→ str)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.transcription.timestamp" title="psweep.extraction.transcription.timestamp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">timestamp</span></code></a>(→ str)</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[hh:mm:ss]</span></code> marker for an offset in seconds.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.transcription.transcript" title="psweep.extraction.transcription.transcript"><code class="xref py py-obj docutils literal notranslate"><span class="pre">transcript</span></code></a>(→ str)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.transcription.transcript" title="psweep.extraction.transcription.transcript"><code class="xref py py-obj docutils literal notranslate"><span class="pre">transcript</span></code></a>(→ str)</p></td>
 <td><p>The recording's transcript: cached, or transcribed and cached.</p></td>
 </tr>
 </tbody>
@@ -456,6 +462,12 @@ cached runs make no client and no call.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.transcription.accepts_transcript">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.transcription.</span></span><span class="sig-name descname"><span class="pre">accepts_transcript</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transcriber</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#psweep.extraction.transcription.Transcriber" title="psweep.extraction.transcription.Transcriber"><span class="pre">Transcriber</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.extraction.transcription.accepts_transcript" title="Link to this definition">¶</a></dt>
+<dd><p>Use the configured identity, or a cached transcript when no model is configured.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="psweep.extraction.transcription.build_transcriber">
 <span class="sig-prename descclassname"><span class="pre">psweep.extraction.transcription.</span></span><span class="sig-name descname"><span class="pre">build_transcriber</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.extraction.transcription.Transcriber" title="psweep.extraction.transcription.Transcriber"><span class="pre">Transcriber</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.extraction.transcription.build_transcriber" title="Link to this definition">¶</a></dt>
 <dd><p>The run’s transcriber; None without <code class="docutils literal notranslate"><span class="pre">transcription_model</span></code>.</p>
@@ -483,10 +495,12 @@ cached runs make no client and no call.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.extraction.transcription.transcript">
-<span class="sig-prename descclassname"><span class="pre">psweep.extraction.transcription.</span></span><span class="sig-name descname"><span class="pre">transcript</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transcriber</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#psweep.extraction.transcription.Transcriber" title="psweep.extraction.transcription.Transcriber"><span class="pre">Transcriber</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.extraction.transcription.transcript" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.transcription.</span></span><span class="sig-name descname"><span class="pre">transcript</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transcriber</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#psweep.extraction.transcription.Transcriber" title="psweep.extraction.transcription.Transcriber"><span class="pre">Transcriber</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">captured</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../prepared_document/index.html#psweep.extraction.prepared_document.CapturedSource" title="psweep.extraction.prepared_document.CapturedSource"><span class="pre">psweep.extraction.prepared_document.CapturedSource</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.extraction.transcription.transcript" title="Link to this definition">¶</a></dt>
 <dd><p>The recording’s transcript: cached, or transcribed and cached.</p>
 <p>Without a transcriber (review, validation, CLI utilities) any cached
-transcript is used; with one, only a transcript of its identity is.</p>
+transcript is used; with one, only a transcript of its identity is.
+A <code class="docutils literal notranslate"><span class="pre">captured</span></code> version is transcribed from its snapshot and cached for
+<code class="docutils literal notranslate"><span class="pre">source</span></code> under its captured digest.</p>
 </dd></dl>
 
 </section>
@@ -561,6 +575,7 @@ transcript is used; with one, only a transcript of its identity is.</p>
 <li><a class="reference internal" href="#psweep.extraction.transcription.Transcriber.usage"><code class="docutils literal notranslate"><span class="pre">Transcriber.usage</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#psweep.extraction.transcription.accepts_transcript"><code class="docutils literal notranslate"><span class="pre">accepts_transcript()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.transcription.build_transcriber"><code class="docutils literal notranslate"><span class="pre">build_transcriber()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.transcription.chunk_starts"><code class="docutils literal notranslate"><span class="pre">chunk_starts()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.transcription.is_audio"><code class="docutils literal notranslate"><span class="pre">is_audio()</span></code></a></li>

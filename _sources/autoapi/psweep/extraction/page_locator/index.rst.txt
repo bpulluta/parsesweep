@@ -54,15 +54,15 @@ Module Contents
    Find the pages holding a described section, and those it refers to, in a large PDF.
 
 
-   .. py:method:: locate(pdf_path: str | pathlib.Path, pages: list[str] | None = None) -> PageSelection | None
+   .. py:method:: locate(source: psweep.extraction.prepared_document.CapturedSource) -> PageSelection | None
 
-      Return the pages for the section and the parts it refers to, or None.
+      Return a scope from captured pages, retaining original cache locations.
 
 
 
-   .. py:method:: locate_cached(pdf_path: str | pathlib.Path) -> PageSelection | None
+   .. py:method:: locate_cached(source: psweep.extraction.prepared_document.CapturedSource) -> PageSelection | None
 
-      Return a verified selection without parsing or client setup.
+      Return a selection verified against the consumed version.
 
 
 
