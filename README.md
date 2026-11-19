@@ -7,13 +7,14 @@
 
 **Find documents, extract schema-defined data with an LLM, and compile it into one table.**
 
-ParseSweep turns a list of targets (counties, utilities, products, …) into a
-complete data structure: it discovers the documents that answer
-your questions, extracts the fields your JSON schema defines, compiles them
-with sources, confidence and quotes, and validates the result against other
-models and human-labelled samples.
+You give ParseSweep a list of targets (counties, utilities, products, …) and a
+JSON schema of the fields you want. It finds the right documents and returns
+one table where every value shows its source, a confidence level and a quote.
 
-## Install
+- Re-runs reuse earlier work, so they are cheap (`--fresh` starts over).
+- It shows what a run will spend before it spends it.
+
+## 1. Install
 
 ```bash
 curl -fsSL https://pixi.sh/install.sh | bash      # pixi, if you don't have it
@@ -21,81 +22,77 @@ git clone https://github.com/bpulluta/parsesweep.git && cd parsesweep
 pixi install
 ```
 
-Put credentials in `.env` (never in YAML): one LLM provider for extraction, and
-`SERPAPI_API_KEY` only if discovery searches the web. Start from
-[`.env.example`](.env.example), or let `pixi run psweep init` write an OpenAI or
-Azure key.
+Add your keys to a `.env` file (never in YAML): one LLM provider key, plus
+`SERPAPI_API_KEY` only if you search the web. Copy [`.env.example`](.env.example),
+or run `pixi run psweep init`, which writes an OpenAI or Azure key.
 
-## Try the example
+## 2. Try the example
 
 ```bash
 pixi run psweep run --config config/example/run.yaml
 ```
 
-The [example](config/example/run.yaml) downloads the solar permit pages of
-three counties directly, so it needs only the LLM key. It writes
-`outputs/example/compiled/example.csv` (and `.xlsx`): one row per county with
-the extracted fields plus `sources`, `confidence` and `evidence`.
+This downloads solar permit pages for three counties and extracts the fields in
+[`config/example/`](config/example/run.yaml). It needs only the LLM key. The
+result is `outputs/example/compiled/example.csv` (and `.xlsx`): one row per
+county, plus `sources`, `confidence` and `evidence` columns.
 
-## The pipeline
+## 3. Use it on your own data
 
-```text
-discover  →  extract  →  compile  →  validate
-web/sources  JSON per     one table     models and
-→ documents  document     per domain    references
-```
-
-```bash
-pixi run psweep run --config config/<domain>/run.yaml          # every configured stage
-pixi run psweep run --config config/<domain>/run.yaml -n 3     # first 3 targets only
-pixi run psweep discover --config config/<domain>/run.yaml     # or one stage at a time
-```
-
-Each stage reuses verified earlier work, so re-running is cheap and resumes
-where the last run stopped; `--fresh` starts over. Exit codes: 0 success,
-1 failure, 2 nothing found, 3 partial (re-run to retry).
-
-## A domain = schema + run.yaml + targets
+Each domain is a folder with three files:
 
 ```text
-config/<domain>/
-├── run.yaml       # how to run: models, discovery, extraction, compilation, validation
-├── schema.json    # what to extract: fields and their descriptions
-├── targets.csv    # who/what to cover: one row per target
-└── samples/       # optional hand-labelled reference sheets
+config/my_domain/
+├── run.yaml       # how to run it
+├── schema.json    # what to extract
+└── targets.csv    # who to cover, one row per target
 ```
 
 ```bash
 mkdir -p config/my_domain
-cp config/TEMPLATE.yaml config/my_domain/run.yaml      # then add targets.csv
-pixi run psweep discover --config config/my_domain/run.yaml --validate-config
-pixi run psweep run --config config/my_domain/run.yaml --validate-config  # after schema.json
+cp config/TEMPLATE.yaml config/my_domain/run.yaml   # starter for search + review
+# add schema.json and targets.csv, then check the setup (no cost):
+pixi run psweep run --config config/my_domain/run.yaml --validate-config
 ```
 
-[`config/TEMPLATE.yaml`](config/TEMPLATE.yaml) is a complete, valid starting
-point; domain folders you create under `config/` are git-ignored and stay local.
-Discovery alone needs neither a schema nor LLM credentials; the later stages
-need `schema.json`.
+If you already have the URLs, start from [`config/example/`](config/example/run.yaml)
+instead. Your `config/<domain>/` folders are git-ignored and stay local.
 
-## Outputs
+## 4. Iterate
 
-```text
-outputs/<domain>/
-├── discovered/   # runs/<run_id>/ (manifest, review.csv) and curated/ documents
-├── extracted/    # one JSON record per document
-├── compiled/     # <domain>.csv / .xlsx and run_accounting.json
-└── validated/    # cells.csv, summary.csv, summary.json
+Start small, look at the results, adjust, and widen:
+
+```bash
+pixi run psweep run --config config/my_domain/run.yaml -n 3   # first 3 targets only
 ```
+
+Check `outputs/my_domain/compiled/` for the table. If something is missing or
+wrong, [Tuning & Iteration](docs/tuning.md#converge-a-new-domain) maps each
+symptom to the setting that fixes it. When 3 targets look right, drop `-n 3`.
+
+## How it works
+
+`run` goes through four stages. Each one can also be run alone
+(`psweep discover`, `extract`, `compile`, `validate`).
+
+1. **discover**: find and download the documents for each target.
+2. **extract**: an LLM reads each document and fills in your schema.
+3. **compile**: merge the results into one table.
+4. **validate** (optional): compare against other models or hand-labelled samples.
+
+Exit codes: 0 success, 1 failure, 2 nothing found, 3 partial (re-run to retry).
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) — the example, then your own domain end to end
-- [Source Patterns](docs/sources.md) — searches, exports, listings, code hosts, audio
-- [Configuration Reference](docs/config-reference.md) — every `run.yaml` key, defaults, reuse and exit codes
-- [Tuning & Iteration](docs/tuning.md) — symptom → setting
-- [Schema Authoring](docs/schemas/index.md) — writing `schema.json`
-- [Commands](docs/commands/index.md) — every CLI option
-- [Security](docs/security.md) — trust model and protected operation
+| Page | What it covers |
+|---|---|
+| [Getting Started](docs/getting-started.md) | The example, then your own domain end to end |
+| [Configuration Reference](docs/config-reference.md) | Every `run.yaml` key, including [required keys, defaults and optional features](docs/config-reference.md#required-keys-defaults-and-optional-features) |
+| [Tuning & Iteration](docs/tuning.md) | Symptom → setting |
+| [Source Patterns](docs/sources.md) | Searches, exports, listings, code hosts, audio |
+| [Schema Authoring](docs/schemas/index.md) | Writing `schema.json` |
+| [Commands](docs/commands/index.md) | Every CLI option |
+| [Security](docs/security.md) | Trust model and protected operation |
 
 Published at <https://bpulluta.github.io/parsesweep/>.
 
