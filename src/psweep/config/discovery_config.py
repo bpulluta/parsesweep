@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
+from psweep.discovery.constants import DEFAULT_REVIEW_PREFER_NEWEST, RESERVED_SEARCH_PARAMS
 from psweep.discovery.targets import TargetSpecError, resolve_targets_spec
 from psweep.discovery.urls import is_http_url
 
@@ -297,7 +297,11 @@ def _check_adaptive_review(fields: dict[str, tuple[Any, str]]) -> None:
         if review.get(key) and not review.get("document_description"):
             raise RuntimeConfigError(f"document_review.{key} requires document_description")
     try:
-        validate_review_policy(context, coverage, prefer_newest=review.get("prefer_newest", False))
+        validate_review_policy(
+            context,
+            coverage,
+            prefer_newest=review.get("prefer_newest", DEFAULT_REVIEW_PREFER_NEWEST),
+        )
     except ValueError as exc:
         raise RuntimeConfigError(str(exc)) from exc
     templates = [*fallback, *coverage.values()]

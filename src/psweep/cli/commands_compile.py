@@ -24,6 +24,7 @@ from psweep.cli.ui import (
 )
 from psweep.compilation.data_compiler import DataCompiler
 from psweep.compilation.input_provenance import (
+    DEFAULT_PROVENANCE_POLICY,
     analyze_compile_input_provenance,
     select_compile_inputs,
 )
@@ -153,7 +154,7 @@ def _should_fail_on_provenance(
 @click.option(
     "--provenance-policy",
     type=click.Choice(["warn", "fail"], case_sensitive=False),
-    default="warn",
+    default=DEFAULT_PROVENANCE_POLICY,
     show_default=True,
     help=(
         "How to handle compile input provenance warnings "

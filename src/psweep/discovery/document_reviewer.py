@@ -33,6 +33,12 @@ from psweep.security import provider_error_category
 from psweep.utils.file_io import atomic_json
 from .attempt_budget import AttemptBudgetExceeded
 from .concurrency import bounded_results
+from .constants import (
+    DEFAULT_REVIEW_DEDUPLICATE_REDUNDANT,
+    DEFAULT_REVIEW_KEEP_TOP,
+    DEFAULT_REVIEW_MAX_CHARS,
+    DEFAULT_REVIEW_PREFER_NEWEST,
+)
 from .targets import target_identity
 from .review_policy import iter_review_scopes, validate_review_policy
 from .urls import redact_url, redact_urls_in_text
@@ -341,16 +347,16 @@ class DocumentReviewer:
         model: str | None = None,
         models: dict[str, str] | None = None,
         default_model: str | None = None,
-        keep_top: int = 1,
-        max_chars: int = 12000,
+        keep_top: int = DEFAULT_REVIEW_KEEP_TOP,
+        max_chars: int = DEFAULT_REVIEW_MAX_CHARS,
         review_keywords: list[str] | None = None,
-        deduplicate_redundant: bool = True,
+        deduplicate_redundant: bool = DEFAULT_REVIEW_DEDUPLICATE_REDUNDANT,
         dedup_key_fields: list[str] | None = None,
         cache_dir: Path | None = None,
         identity_fields: list[str] | None = None,
         context_fields: list[str] | None = None,
         escalate_model: str | None = None,
-        prefer_newest: bool = False,
+        prefer_newest: bool = DEFAULT_REVIEW_PREFER_NEWEST,
         attempt_budget: Any = None,
         max_per_host_per_target: int = 0,
         coverage: dict[str, str] | None = None,

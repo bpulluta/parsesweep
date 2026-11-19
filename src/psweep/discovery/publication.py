@@ -30,6 +30,7 @@ from psweep.extraction.document_utils import (
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
 from psweep.utils.retry import is_retryable, compute_backoff
+from .constants import DEFAULT_PDF_SCREENING
 from .eligibility import eligibility_held, screening_identity
 
 TOKEN_HEX_LENGTH = 32
@@ -1305,7 +1306,7 @@ def effective_discovery_fingerprint(request: object) -> str:
         }
 
     classifier = values.get("document_classifier") or {}
-    if classifier.get("pdf_screening", "off") != "off":
+    if classifier.get("pdf_screening", DEFAULT_PDF_SCREENING) != "off":
         from psweep.extraction.pdf_inspection import INSPECTOR_VERSION
 
         values["pdf_inspector_version"] = INSPECTOR_VERSION

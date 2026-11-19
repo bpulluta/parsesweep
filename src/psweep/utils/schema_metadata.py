@@ -16,6 +16,8 @@ from psweep.extraction.schema_utils import load_schema
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_OUTPUT_FORMAT = "both"
+
 
 # Shared severity token sets used to classify how impactful a field
 # difference is (e.g. by both schema metadata inference and compilation
@@ -209,7 +211,9 @@ class SchemaMetadata:
     def get_output_formats(self) -> list[str]:
         """Resolve effective formats; an absent setting retains CSV + Excel."""
         requested = (
-            self.metadata.get("compilation", {}).get("output", {}).get("default_format", "both")
+            self.metadata.get("compilation", {})
+            .get("output", {})
+            .get("default_format", DEFAULT_OUTPUT_FORMAT)
         )
         formats = {
             "csv": ["csv"],

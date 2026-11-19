@@ -36,7 +36,7 @@ from psweep.security import (
 )
 from psweep.exceptions import ExtractionError, ResponseOutcomeError
 from psweep.exceptions import AttemptBudgetExceeded
-from .llm_factory import DEFAULT_MODEL, detect_provider
+from .llm_factory import DEFAULT_LLM_TIMEOUT_SECONDS, DEFAULT_MODEL, detect_provider
 from psweep.utils.retry import compute_backoff, is_transient_error
 from .request_policy import (
     RequestNotAdmittedError,
@@ -90,7 +90,7 @@ class LLMClient:
     Automatically tracks costs and handles provider-specific parameters.
     """
 
-    DEFAULT_TIMEOUT = 120  # seconds; overridable via LLM_TIMEOUT env var
+    DEFAULT_TIMEOUT = DEFAULT_LLM_TIMEOUT_SECONDS  # seconds; overridable via LLM_TIMEOUT env var
 
     def __init__(
         self,

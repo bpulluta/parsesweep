@@ -137,7 +137,7 @@ query variants of a configured page (its pagination), which belong to that page.
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `runtime.max_files` | unbounded | Download budget per run; configured URLs never count, and neither do linked documents that selection eligibility drops after crawling. |
-| `runtime.timeout_seconds` | engine default | Request timeout, and the stall limit (time without data) for file downloads. |
+| `runtime.timeout_seconds` | per operation: search 45 s, robots/ToS checks 15 s, downloads 60 s, crawled pages 30 s, code-host API 30 s | One value overriding all five. Also the stall limit (time without data) for file downloads. |
 | `runtime.max_concurrent_downloads` | `2` | Parallel downloads. |
 | `runtime.min_request_interval_ms` | `0` | Minimum delay between outbound requests. |
 | `runtime.max_review_calls` | unbounded | Physical review LLM attempts per target per run, including escalation, transport retries, malformed-grade reattempts and comparative deduplication. Cache reuse consumes none. |

@@ -18,14 +18,26 @@ from psweep.discovery import (
     DEFAULT_TOS_POLICY_MODE,
     DiscoveryRequest,
 )
+from psweep.compilation.input_provenance import DEFAULT_PROVENANCE_POLICY
+from psweep.config.runtime_config_loader import VARIABLE_CATALOG
+from psweep.discovery import constants as discovery_constants
+from psweep.discovery.document_reviewer import DocumentReviewer
 from psweep.discovery.policies import DiscoveryPolicyEvaluator
 from psweep.extraction.llm_factory import resolve_model_name
-from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
+from psweep.extraction.llm_client import LLMClient
+from psweep.extraction.llm_factory import (
+    DEFAULT_LLM_TIMEOUT_SECONDS,
+    DEFAULT_MAX_CONCURRENT,
+    DEFAULT_MAX_CONTEXT,
+    DEFAULT_MODEL,
+    DEFAULT_PROVIDER_MODELS,
+)
 from psweep.extraction.page_locator import (
     DEFAULT_MAX_SELECTED_PAGES,
     DEFAULT_PAGE_TRIGGER_CHARS,
     PageLocator,
 )
+from psweep.utils.schema_metadata import DEFAULT_OUTPUT_FORMAT
 
 
 def _option_defaults(command_name: str) -> dict[str, object]:
@@ -82,3 +94,48 @@ def test_page_target_defaults_are_single_sourced():
     assert params["max_selected_pages"].default == DEFAULT_MAX_SELECTED_PAGES
     assert DEFAULT_PAGE_TRIGGER_CHARS == 200_000
     assert DEFAULT_MAX_SELECTED_PAGES == 30
+
+
+def test_review_and_classifier_defaults_are_single_sourced():
+    c = discovery_constants
+    params = inspect.signature(DocumentReviewer.__init__).parameters
+    assert params["keep_top"].default == c.DEFAULT_REVIEW_KEEP_TOP == 1
+    assert params["max_chars"].default == c.DEFAULT_REVIEW_MAX_CHARS == 12000
+    assert params["deduplicate_redundant"].default is c.DEFAULT_REVIEW_DEDUPLICATE_REDUNDANT
+    assert c.DEFAULT_REVIEW_DEDUPLICATE_REDUNDANT is True
+    assert params["prefer_newest"].default is c.DEFAULT_REVIEW_PREFER_NEWEST
+    assert c.DEFAULT_REVIEW_PREFER_NEWEST is False
+    assert c.DEFAULT_CLASSIFIER_MIN_REQUIRED_MATCHES == 1
+    assert c.DEFAULT_CLASSIFIER_ACTION == "warn"
+    assert c.DEFAULT_PDF_SCREENING == "off"
+
+
+def test_discovery_timeout_defaults():
+    c = discovery_constants
+    assert (
+        c.DEFAULT_SEARCH_TIMEOUT_SECONDS,
+        c.DEFAULT_POLICY_TIMEOUT_SECONDS,
+        c.DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+        c.DEFAULT_CRAWL_TIMEOUT_SECONDS,
+        c.DEFAULT_CODE_HOST_TIMEOUT_SECONDS,
+    ) == (45, 15, 60, 30, 30)
+
+
+def test_llm_timeout_and_provider_fallbacks_are_single_sourced():
+    assert LLMClient.DEFAULT_TIMEOUT == DEFAULT_LLM_TIMEOUT_SECONDS == 120
+    assert DEFAULT_PROVIDER_MODELS == {
+        "anthropic": "claude-3.5-sonnet",
+        "gemini": "gemini-1.5-pro",
+    }
+
+
+def test_compile_defaults_are_single_sourced():
+    assert DEFAULT_OUTPUT_FORMAT == "both"
+    assert DEFAULT_PROVENANCE_POLICY == "warn"
+    assert _option_defaults("compile")["provenance_policy"] == DEFAULT_PROVENANCE_POLICY
+
+
+def test_catalog_help_quotes_constants():
+    extraction = {row["name"]: row["description"] for row in VARIABLE_CATALOG["extraction"]}
+    assert str(DEFAULT_MAX_CONCURRENT) in extraction["max_concurrent"]
+    assert f"{DEFAULT_LLM_TIMEOUT_SECONDS}s" in extraction["timeout_seconds"]

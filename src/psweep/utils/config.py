@@ -42,6 +42,11 @@ class Config:
 
         env_vars = os.environ
 
+        # Single source of truth for the default models. Imported lazily:
+        # ``llm_factory`` imports ``get_config`` (also lazily, at call time),
+        # so a function-local import here avoids any import-order coupling.
+        from psweep.extraction.llm_factory import DEFAULT_MODEL, DEFAULT_PROVIDER_MODELS
+
         # Detect provider and model from environment.
         # Priority (highest → lowest):
         #   1. LLM_BASE_URL — generic OpenAI-compatible endpoint override.
@@ -70,19 +75,14 @@ class Config:
             )
         elif env_vars.get("ANTHROPIC_API_KEY") or env_vars.get("ANTHROPIC_MODEL"):
             config["provider"] = "anthropic"
-            config["model"] = env_vars.get("ANTHROPIC_MODEL", "claude-3.5-sonnet")
+            config["model"] = env_vars.get("ANTHROPIC_MODEL", DEFAULT_PROVIDER_MODELS["anthropic"])
             config["api_key"] = env_vars.get("ANTHROPIC_API_KEY")
         elif any(env_vars.get(key) for key in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_MODEL")):
             config["provider"] = "gemini"
-            config["model"] = env_vars.get("GEMINI_MODEL", "gemini-1.5-pro")
+            config["model"] = env_vars.get("GEMINI_MODEL", DEFAULT_PROVIDER_MODELS["gemini"])
             config["api_key"] = env_vars.get("GEMINI_API_KEY") or env_vars.get("GOOGLE_API_KEY")
         elif env_vars.get("OPENAI_API_KEY") or env_vars.get("OPENAI_MODEL"):
             config["provider"] = "openai"
-            # Single source of truth for the default model. Imported lazily:
-            # ``llm_factory`` imports ``get_config`` (also lazily, at call time),
-            # so a function-local import here avoids any import-order coupling.
-            from psweep.extraction.llm_factory import DEFAULT_MODEL
-
             config["model"] = env_vars.get("OPENAI_MODEL", DEFAULT_MODEL)
             config["api_key"] = env_vars.get("OPENAI_API_KEY")
 

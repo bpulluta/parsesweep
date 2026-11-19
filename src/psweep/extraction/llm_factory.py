@@ -27,6 +27,12 @@ from urllib.parse import urlsplit
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_LLM_TIMEOUT_SECONDS = 120
+# Fallback models when the environment names none (src/psweep/utils/config.py).
+DEFAULT_PROVIDER_MODELS: dict[str, str] = {
+    "anthropic": "claude-3.5-sonnet",
+    "gemini": "gemini-1.5-pro",
+}
 
 # Single source for the character limit shared by CLI/API extraction,
 # multi-model validation, and DocumentExtractor. See the defaults tests.

@@ -13,6 +13,7 @@ from psweep.utils.file_io import artifact_sha256
 INTERNAL_RECORD_DIRS = {"validation", "run_manifests", "qa_qc"}
 INTERNAL_RECORD_FILES = {"metadata.json", "comparison_summary.json"}
 _UNRESOLVED_ARTIFACT_ID = "artifact://runtime/unresolved"
+DEFAULT_PROVENANCE_POLICY = "warn"
 
 
 def read_compile_record(path: Path, *, sha256: str | None = None) -> dict:

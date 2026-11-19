@@ -6,6 +6,22 @@ from psweep._version import __version__
 from psweep.extraction import document_utils
 
 DEFAULT_MAX_CONCURRENT_DOWNLOADS = 2
+# Built-in defaults whose consumers repeated literals; pinned by
+# tests/test_defaults_single_source.py.
+DEFAULT_REVIEW_KEEP_TOP = 1
+DEFAULT_REVIEW_MAX_CHARS = 12000
+DEFAULT_REVIEW_DEDUPLICATE_REDUNDANT = True
+DEFAULT_REVIEW_PREFER_NEWEST = False
+DEFAULT_CLASSIFIER_MIN_REQUIRED_MATCHES = 1
+DEFAULT_CLASSIFIER_ACTION = "warn"
+DEFAULT_PDF_SCREENING = "off"
+# Per-operation network timeouts (seconds) when discovery.runtime.timeout_seconds
+# is unset; that one key overrides all five.
+DEFAULT_SEARCH_TIMEOUT_SECONDS = 45
+DEFAULT_POLICY_TIMEOUT_SECONDS = 15
+DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 60
+DEFAULT_CRAWL_TIMEOUT_SECONDS = 30
+DEFAULT_CODE_HOST_TIMEOUT_SECONDS = 30
 # robots.txt product token, and the one HTTP/browser User-Agent built from it.
 # The "compatible" form passes WAFs that reject non-browser agents or agents
 # carrying URLs/words like "discovery", without claiming a browser build.

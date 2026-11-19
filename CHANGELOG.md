@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No image cost for `input_mode: text` (the default).
 - Older records are not read: there is no legacy layer.
 
+### Changed (built-in defaults are single-sourced)
+- Review defaults (`keep_top`, `max_chars`, `deduplicate_redundant`,
+  `prefer_newest`), classifier defaults (`min_required_matches`, `action`,
+  `pdf_screening`), discovery's five per-operation network timeouts, the LLM
+  client timeout, the Anthropic/Gemini fallback models, the compile output
+  format and the provenance policy are now one named constant each instead of
+  repeated literals. `tests/test_defaults_single_source.py` pins them.
+- `--show-runtime-catalog` quotes the extraction concurrency and timeout from
+  their constants, and lists `max_review_calls` and `max_search_calls` under
+  `discovery.runtime`.
+- `docs/config-reference.md` lists discovery's per-operation timeouts.
+- Cost/cache impact: none (no behavior change).
+
 ### Added (one `--domain` workspace override on every config-driven stage)
 - `extract`, `compile`, `validate` and `run` now take the `--domain` that only
   `discover` had, so a second workspace (for example `aq_permits_va_s12` from

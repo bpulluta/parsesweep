@@ -44,6 +44,18 @@ def test_config_default_model_is_factory_default_model(monkeypatch, tmp_path):
     assert cfg.llm_config["model"] == llm_factory.DEFAULT_MODEL
 
 
+def test_config_provider_fallback_models_are_factory_constants(monkeypatch, tmp_path):
+    for env_key, provider in (("ANTHROPIC_API_KEY", "anthropic"), ("GEMINI_API_KEY", "gemini")):
+        for key in (*_PROVIDER_ENV_KEYS, "ANTHROPIC_MODEL", "GEMINI_MODEL"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setenv(env_key, "test-key")
+
+        cfg = Config(project_root=tmp_path)
+
+        assert cfg.llm_config["provider"] == provider
+        assert cfg.llm_config["model"] == llm_factory.DEFAULT_PROVIDER_MODELS[provider]
+
+
 def test_known_providers_is_shared_across_modules():
     for provider in llm_factory.KNOWN_PROVIDERS:
         resolved = llm_factory.resolve_llm_kwargs(
