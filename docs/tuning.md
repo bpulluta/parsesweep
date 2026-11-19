@@ -5,6 +5,34 @@ change **one setting at a time**. Each symptom below names the setting that
 addresses it; defaults and exact rules are in the
 [Configuration Reference](config-reference.md).
 
+## Converge a new domain
+
+1. **Start minimal.** Copy `config/TEMPLATE.yaml` (search and review) or
+   `config/example/` (known URLs). Set the required keys and run
+   `psweep run --config … --validate-config`.
+2. **Run a slice:** `psweep run --config … -n 3`. Re-runs of the same slice are
+   cheap: searches and grades are cached, and unchanged documents are reused.
+3. **Measure:**
+   - cost per stage in `compiled/run_accounting.json`,
+   - discovery quality in `review.csv`,
+   - accuracy against 3-5 hand-labelled targets in `samples/`, with
+     `validation.references` and `min_accuracy` set.
+4. **Change one setting** using the symptom sections below. Try the cheapest
+   lever first (query, filter, description) before a bigger model, more pages
+   or more documents.
+5. **Converged** means:
+   - the accuracy gate passes on targets you did not tune on (`validate --sample N`),
+   - cost per target is within budget,
+   - and the run ends without `partial_failure`.
+6. **Scale:** run the full roster, with `runtime.max_search_calls` at roughly
+   targets × queries and `runtime.max_review_calls` at roughly
+   3 × `max_per_target` as attempt ceilings. A review ceiling below a target's
+   need leaves it incomplete and keeps its older documents.
+7. **Keep the config honest:** every remaining key traces to a measurement;
+   delete keys that restate a built-in default. Exception: do not touch
+   `extraction.timeout_seconds` or `save_discovered` once records exist (they
+   are part of the reuse fingerprint).
+
 ## Discovery
 
 ### Too many irrelevant documents
@@ -17,12 +45,15 @@ addresses it; defaults and exact rules are in the
 - Restrict sources with `crawl.allowed_domains` plus `include_url_patterns`.
   Ranking boosts (`link_prioritization.domain_scores`) prefer hosts but never
   exclude others.
-- Check content after download with `document_classifier` (`action: filter`),
-  or add paid LLM curation with `document_review`.
+- Check content after download with `document_classifier` (`action: filter`
+  drops keyword failures before paid review), or add paid LLM curation with
+  `document_review`.
 
 ### Too few documents
 
 - Broaden or add `queries`; for Google add `search.params: {udm: web}`.
+- Queries that rarely find qualifying documents belong in
+  `search.fallback_queries`, which runs only for targets still below `keep_top`.
 - Raise `search.max_results` (candidates per query) and
   `selection.max_per_target` (downloads per target). `document_review.keep_top`
   only limits what is kept afterwards.

@@ -34,7 +34,7 @@ pixi run psweep discover --config config/<domain>/run.yaml --show-effective-conf
 
 `--show-effective-config` lists every setting with its source: `(config)` or `(cli)` for values you set, and `(default)` for the built-in value a run will use (`none` means unset; for `max_files`, `max_review_calls` and `max_search_calls` that means unbounded). `psweep config --show-runtime-catalog` tags each key `required`, `optional` or `advanced`; `discovery.targets` or `discovery.sources` must be present, which preflight enforces.
 
-`config/TEMPLATE.yaml` is a valid starting point covering all four stages:
+`config/TEMPLATE.yaml` is the search and review starter. Its uncommented values are required keys or deliberate recommendations, and the commented blocks are optional features:
 
 ```{literalinclude} ../config/TEMPLATE.yaml
 :language: yaml
@@ -58,6 +58,43 @@ pixi run psweep discover --config config/<domain>/run.yaml --show-effective-conf
 | `extraction` | — | [Extraction](#extraction). |
 | `compilation` | — | [Compilation](#compilation). |
 | `validation` | — | [Validation](#validation); `run` adds the validate stage when present. |
+
+## Required keys, defaults and optional features
+
+Defaults come in three layers: the built-in defaults in this reference, then a
+starter (`config/TEMPLATE.yaml` for search and review, `config/example/` for
+known URLs), then per-domain overrides that each trace to a measurement
+([Converge a new domain](tuning.md#converge-a-new-domain)). `domain` defaults
+to the folder name. A new domain needs only these keys:
+
+| Stage | Required |
+|---|---|
+| discover | `targets` or `sources`; `queries` unless every target has `urls` or `query`; `SERPAPI_API_KEY` for search |
+| extract | a schema (`schema.json` beside `run.yaml` or `schema:`); one LLM credential in `.env` |
+| compile | nothing |
+| validate | `models` or `references` |
+
+Optional features, by need. Each key is documented in its section; defaults are
+in the tables there.
+
+| Need | Keys | Cost note |
+|---|---|---|
+| Find documents by search | `queries`, `search.params`, `search.fallback_queries` | one SerpApi call per rendered query per target; cached by default |
+| Keep irrelevant downloads out of extraction | `document_review.{document_description, model, keep_top}`; `escalate_model`, `coverage`, `prefer_newest`, `context_fields` | one cheap call per graded download, about $0.003 measured, against $0.03-0.21 per extracted document |
+| Final or legal documents only | `selection.exclude_draft`, `draft_patterns`, `require_any`, `document_classifier.pdf_screening` | free |
+| Listings, code hosts, JavaScript sites | `sources`, `crawl.*`, `browser_escalation`, `code_host_adapters` | free (browser time) |
+| Large documents | `extraction.pages.auto_locate`, `max_context` | one cheap locator pass; fewer extraction tokens |
+| Scans, figures, audio | `input_mode`, `ocr_corrections`, `transcription_model` | image tokens per page; about $0.22 per audio hour |
+| One row per target | `partition_by`, `compilation.reconciliation` | calls only for disputed values |
+| Accuracy gate | `validation.references`, `min_accuracy`, `models`, `judge` | contenders re-extract every document |
+| Scale and politeness | `runtime.*`, `retention.documents: curated`, `policy.*` | ceilings bound attempts, not dollars |
+
+Advanced keys, whose defaults fit most domains: `link_prioritization`,
+`retry_policy`, `policy`, `ocr_corrections`, `severity_tokens`, `quote_field`,
+`fail_on_suspicious`, `provenance_policy`, `dry_run`, `report_format`,
+`extraction.provider`, `limit`, `max_concurrent`, `timeout_seconds`,
+`model_context_windows` and `reasoning_models`. `psweep config
+--show-runtime-catalog` lists the level of every key.
 
 ## Discovery
 

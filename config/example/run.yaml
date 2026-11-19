@@ -2,6 +2,8 @@
 #   pixi run psweep run --config config/example/run.yaml
 # Needs one LLM provider in .env; its default model is used unless you set
 # extraction.model. The target URLs need no search key.
+# Known URLs: no search, no review (configured URLs bypass both), so cost is
+# extraction only.
 # Result: outputs/example/compiled/example.csv (and .xlsx), one row per county.
 domain: example
 discovery:
