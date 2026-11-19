@@ -27,11 +27,11 @@ from urllib.parse import urlsplit
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gpt-4o-mini"
-DEFAULT_LLM_TIMEOUT_SECONDS = 120
+DEFAULT_LLM_TIMEOUT_SECONDS = 600
 # Fallback models when the environment names none (src/psweep/utils/config.py).
 DEFAULT_PROVIDER_MODELS: dict[str, str] = {
-    "anthropic": "claude-3.5-sonnet",
-    "gemini": "gemini-1.5-pro",
+    "anthropic": "claude-haiku-5-5",
+    "gemini": "gemini-3.1-flash-lite",
 }
 
 # Single source for the character limit shared by CLI/API extraction,

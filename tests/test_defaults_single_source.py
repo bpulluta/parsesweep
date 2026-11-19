@@ -21,6 +21,7 @@ from psweep.discovery import (
 from psweep.compilation.input_provenance import DEFAULT_PROVENANCE_POLICY
 from psweep.config.runtime_config_loader import VARIABLE_CATALOG
 from psweep.discovery import constants as discovery_constants
+from psweep.discovery.engine import DiscoveryEngine
 from psweep.discovery.document_reviewer import DocumentReviewer
 from psweep.discovery.policies import DiscoveryPolicyEvaluator
 from psweep.extraction.llm_factory import resolve_model_name
@@ -38,6 +39,7 @@ from psweep.extraction.page_locator import (
     PageLocator,
 )
 from psweep.utils.schema_metadata import DEFAULT_OUTPUT_FORMAT
+from psweep.workspace import Workspace
 
 
 def _option_defaults(command_name: str) -> dict[str, object]:
@@ -122,10 +124,10 @@ def test_discovery_timeout_defaults():
 
 
 def test_llm_timeout_and_provider_fallbacks_are_single_sourced():
-    assert LLMClient.DEFAULT_TIMEOUT == DEFAULT_LLM_TIMEOUT_SECONDS == 120
+    assert LLMClient.DEFAULT_TIMEOUT == DEFAULT_LLM_TIMEOUT_SECONDS == 600
     assert DEFAULT_PROVIDER_MODELS == {
-        "anthropic": "claude-3.5-sonnet",
-        "gemini": "gemini-1.5-pro",
+        "anthropic": "claude-haiku-5-5",
+        "gemini": "gemini-3.1-flash-lite",
     }
 
 
@@ -139,3 +141,12 @@ def test_catalog_help_quotes_constants():
     extraction = {row["name"]: row["description"] for row in VARIABLE_CATALOG["extraction"]}
     assert str(DEFAULT_MAX_CONCURRENT) in extraction["max_concurrent"]
     assert f"{DEFAULT_LLM_TIMEOUT_SECONDS}s" in extraction["timeout_seconds"]
+
+
+def test_search_cache_is_on_by_default():
+    request = DiscoveryRequest(domain="d")
+    assert discovery_constants.DEFAULT_SEARCH_CACHE is True
+    assert request.seeker_cache is True
+    assert DiscoveryEngine._resolve_seeker_cache_dir(request) == str(Workspace("d").serpapi_cache)
+    off = DiscoveryRequest(domain="d", seeker_cache=False)
+    assert DiscoveryEngine._resolve_seeker_cache_dir(off) is None

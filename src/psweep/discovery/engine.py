@@ -61,6 +61,7 @@ from .constants import (
     DEFAULT_REVIEW_KEEP_TOP,
     DEFAULT_REVIEW_MAX_CHARS,
     DEFAULT_REVIEW_PREFER_NEWEST,
+    DEFAULT_SEARCH_CACHE,
     DEFAULT_SEARCH_TIMEOUT_SECONDS,
     DOCUMENT_EXTENSIONS,
     DOWNLOADABLE_EXTENSIONS,
@@ -247,7 +248,7 @@ class DiscoveryRequest:
     models: dict[str, object] | None = None
     # Cache SerpApi results on disk so re-running acquire during tuning does not
     # re-pay for identical queries. TTL in minutes (0 = never expire).
-    seeker_cache: bool = False
+    seeker_cache: bool = DEFAULT_SEARCH_CACHE
     seeker_cache_ttl_minutes: float = 0.0
     # When True, ignore all prior work for this run: skip the checkpoint (do not
     # prune already-completed targets) and refresh the seeker cache (force live

@@ -412,6 +412,24 @@ def test_s2_five_contenders_no_reference(s2, fake):
     assert outputs() == before
 
 
+def test_judge_workers_default_to_the_shared_concurrency(s2, fake, monkeypatch):
+    from psweep import validation
+    from psweep.extraction.llm_factory import DEFAULT_MAX_CONCURRENT
+
+    seen = []
+    real = validation.judge_items
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs["workers"])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(validation, "judge_items", spy)
+    s2.write_run({"models": ["a", "b", "c", "d"], "judge": "judge"})
+    s2.validate()
+    assert seen
+    assert set(seen) == {DEFAULT_MAX_CONCURRENT}
+
+
 def test_s6_add_a_model(s2, fake):
     s2.write_run({"models": ["a", "b", "c"], "judge": "judge"})
     fake.calls.clear()

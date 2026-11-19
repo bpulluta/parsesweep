@@ -31,6 +31,7 @@ def _request(tmp_path, **changes):
         "tos_policy_mode": "ignore",
         "selection_primary_per_target": 2,
         "retry_max_attempts": 1,
+        "seeker_cache": False,  # these tests count live search calls
     }
     values.update(changes)
     return DiscoveryRequest(**values)

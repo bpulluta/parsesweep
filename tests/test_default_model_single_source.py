@@ -65,3 +65,10 @@ def test_known_providers_is_shared_across_modules():
         )
         assert resolved["provider"] == provider
     assert not hasattr(model_registry, "KNOWN_PROVIDERS")
+
+
+def test_every_builtin_default_model_has_a_known_price():
+    from psweep.utils.model_pricing import get_model_pricing
+
+    for model in (llm_factory.DEFAULT_MODEL, *llm_factory.DEFAULT_PROVIDER_MODELS.values()):
+        assert get_model_pricing(model) is not None, model

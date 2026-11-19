@@ -103,7 +103,7 @@ discovery:
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `max_results` | `10` | Unique candidates kept **per rendered query** (live, cached and news results together). No hidden pagination or refill. |
-| `cache` | `false` | Cache results on disk; a hit makes no live call. |
+| `cache` | `true` | Successful results are cached under `outputs/<domain>/discovered/.serpapi_cache/`; a hit makes no live call; `--fresh` skips reads. Set `false` only when every run must be live; prefer `cache_ttl_minutes` for freshness. |
 | `cache_ttl_minutes` | `0` | Cache expiry; `0` never expires. |
 | `params` | — | Extra SerpApi parameters sent verbatim (`{engine: bing}`, `{tbm: nws}`); `q`, `num`, `api_key` are reserved. |
 | `fallback_queries` | absent/off | One additional set of target templates, only for targets below `document_review.keep_top` distinct automatically qualified sources. Requires `document_review.document_description`. |
@@ -325,7 +325,6 @@ and are not counted as automatically verified evidence.
 discovery:
   queries: ['"{name}" "{area?}" technical specification']
   search:
-    cache: true
     fallback_queries: ['"{name}" "{area?}" manufacturer installation record']
   document_review:
     document_description: "Direct specification evidence for {name} at {address?}; not a sibling asset."
@@ -439,7 +438,7 @@ positionally) and writes one JSON record per document to
 | `skip_existing` | `true` | Reuse verified records (see [Reuse](#runs-reuse-and-exit-codes)). |
 | `max_context` | `600000` | Characters sent per call. A hard limit on the final prepared input on every path (automatic targeting, CSV/`pages.range` scope, or no targeting), source hints and candidate context included (characters, not tokens). Longer input is held, never cut to a prefix. |
 | `max_concurrent` | `4` | Documents extracted in parallel (also concurrent transcription chunks). |
-| `timeout_seconds` | `120` (`LLM_TIMEOUT`) | Per-request LLM timeout. |
+| `timeout_seconds` | `600` (`LLM_TIMEOUT`) | Per-request LLM timeout. Every LLM call without its own setting uses it (review, page locator, reconciliation, judge); `extraction.timeout_seconds` applies to extraction and transcription. |
 | `ocr_corrections` | — | `[{pattern, replacement, ignore_case}]` regex fixes applied to OCR-derived pages only; native text layers are never corrected. |
 | `pages` | — | Page selection for large documents (below). |
 
@@ -1040,7 +1039,9 @@ configuration and behaviour version, a non-`text` `input_mode` with its render
 dpi, the extraction behaviour version (prompt and one-feedback-generation
 policy) and, for PDFs only, the OCR and page-representation versions. Changing
 a PDF-only version never re-extracts other formats, and `input_mode: text`
-adds nothing to the fingerprint. A record is also never reused when it is
+adds nothing to the fingerprint. `extraction.timeout_seconds` and `pages.auto_locate.save_discovered` are part
+of the reuse fingerprint: adding, changing or removing either re-extracts
+every document of the domain (paid). Settle them before a large run. A record is also never reused when it is
 `parser_partial`, has `targeting_incomplete` under automatic targeting, has a
 different `contract_version`, or disagrees with a present OCR page entry (see
 [Record input provenance](#record-input-provenance)). Reuse needs no
@@ -1117,8 +1118,8 @@ focused commands and the explicitly opt-in live layer.
 | `LLM_BASE_URL` + `LLM_API_KEY` | Any OpenAI-compatible endpoint (highest priority). |
 | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` | Azure OpenAI. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Direct providers. |
-| `LLM_MODEL` (with `LLM_BASE_URL`), `AZURE_OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL` | The active provider's default model, used when the config names none. If unset, Anthropic uses `claude-3.5-sonnet`, Gemini `gemini-1.5-pro`, and every other provider `gpt-4o-mini`. |
-| `LLM_TIMEOUT` | LLM request timeout (seconds). |
+| `LLM_MODEL` (with `LLM_BASE_URL`), `AZURE_OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL` | The active provider's default model, used when the config names none. If unset, Anthropic uses `claude-haiku-5-5`, Gemini `gemini-3.1-flash-lite`, and every other provider `gpt-4o-mini`; all are priced in the pinned LiteLLM catalog. |
+| `LLM_TIMEOUT` | LLM request timeout (seconds); default 600. |
 | `PSWEEP_MAX_RESPONSE_BYTES` | Streamed-download byte limit. |
 | `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` | Approved CA roots. |
 

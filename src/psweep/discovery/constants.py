@@ -15,6 +15,8 @@ DEFAULT_REVIEW_PREFER_NEWEST = False
 DEFAULT_CLASSIFIER_MIN_REQUIRED_MATCHES = 1
 DEFAULT_CLASSIFIER_ACTION = "warn"
 DEFAULT_PDF_SCREENING = "off"
+# SerpApi results are cached under outputs/<domain>/discovered/.serpapi_cache/.
+DEFAULT_SEARCH_CACHE = True
 # Per-operation network timeouts (seconds) when discovery.runtime.timeout_seconds
 # is unset; that one key overrides all five.
 DEFAULT_SEARCH_TIMEOUT_SECONDS = 45
