@@ -744,19 +744,15 @@ target’s caps.</p>
 <td><p>—</p></td>
 <td><p>Domain-authored draft/non-final regexes (there is no built-in list).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">require_supported_document</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
-<td><p>Keep only <a class="reference internal" href="#document-types-and-limits">eligible URLs</a>.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">target_require_any</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">target_require_any</span></code></p></td>
 <td><p>—</p></td>
 <td><p>Templates rendered per target (<code class="docutils literal notranslate"><span class="pre">&quot;{jurisdiction}&quot;</span></code>); the candidate must match one.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">target_require_all</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">target_require_all</span></code></p></td>
 <td><p>—</p></td>
 <td><p>Rendered templates the candidate must all match.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">target_exclude</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">target_exclude</span></code></p></td>
 <td><p>—</p></td>
 <td><p>Rendered templates that disqualify a candidate.</p></td>
 </tr>
@@ -1144,27 +1140,23 @@ positionally) and writes one JSON record per document to
 <td><p>—</p></td>
 <td><p>Process only the first N documents.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">skip_existing</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
-<td><p>Reuse verified records (see <a class="reference internal" href="#runs-reuse-and-exit-codes">Reuse</a>).</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_context</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_context</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">600000</span></code></p></td>
 <td><p>Characters sent per call. A hard limit on the final prepared input on every path (automatic targeting, CSV/<code class="docutils literal notranslate"><span class="pre">pages.range</span></code> scope, or no targeting), source hints and candidate context included (characters, not tokens). Longer input is held, never cut to a prefix.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_concurrent</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_concurrent</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">4</span></code></p></td>
 <td><p>Documents extracted in parallel (also concurrent transcription chunks).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">600</span></code> (<code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code>)</p></td>
 <td><p>Per-request LLM timeout. Every LLM call without its own setting uses it (review, page locator, reconciliation, judge); <code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> applies to extraction and transcription.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code></p></td>
 <td><p>—</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[{pattern,</span> <span class="pre">replacement,</span> <span class="pre">ignore_case}]</span></code> regex fixes applied to OCR-derived pages only; native text layers are never corrected.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pages</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pages</span></code></p></td>
 <td><p>—</p></td>
 <td><p>Page selection for large documents (below).</p></td>
 </tr>
@@ -1825,7 +1817,7 @@ LLM calls. Outputs in <code class="docutils literal notranslate"><span class="pr
 </tbody>
 </table>
 </div>
-<p><strong>URL eligibility</strong> (<code class="docutils literal notranslate"><span class="pre">selection.require_supported_document</span></code>): a URL with a
+<p><strong>URL eligibility</strong> (always on): a URL with a
 supported extension, no extension, or a suffix unknown to Python’s MIME table
 (<code class="docutils literal notranslate"><span class="pre">.php</span></code>, <code class="docutils literal notranslate"><span class="pre">.aspx</span></code>, <code class="docutils literal notranslate"><span class="pre">.cfm</span></code>, …) is eligible — the response MIME type decides what
 it is. A suffix of a known unsupported type or encoding (<code class="docutils literal notranslate"><span class="pre">.jpg</span></code>, <code class="docutils literal notranslate"><span class="pre">.zip</span></code>, <code class="docutils literal notranslate"><span class="pre">.gz</span></code>)
@@ -1905,7 +1897,8 @@ errors and other 4xx responses are terminal.</p></li>
 completed listings (new children of a completed listing need it), and
 replaces the curated partitions of the targets it processes.</p></li>
 </ul>
-<p><strong>Extraction reuse.</strong> A record is reused only when source, schema, resolved
+<p><strong>Extraction reuse.</strong> Reuse is always on; <code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--fresh</span></code> re-extracts every
+document. A record is reused only when source, schema, resolved
 model and settings, and record bytes still match; otherwise it is re-extracted.
 The settings are the consumed source and effective-text digests, the locator
 configuration and behaviour version, a non-<code class="docutils literal notranslate"><span class="pre">text</span></code> <code class="docutils literal notranslate"><span class="pre">input_mode</span></code> with its render

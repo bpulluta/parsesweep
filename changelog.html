@@ -442,6 +442,30 @@ change model, so their documents are re-extracted and re-graded once (paid);
 configs that name models are unaffected.</p></li>
 </ul>
 </section>
+<section id="removed-extraction-skip-existing">
+<h3>Removed (extraction.skip_existing)<a class="headerlink" href="#removed-extraction-skip-existing" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>The YAML key <code class="docutils literal notranslate"><span class="pre">extraction.skip_existing</span></code> is gone. Reuse is always on and
+<code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--fresh</span></code> re-extracts. The Python API parameter
+<code class="docutils literal notranslate"><span class="pre">extract_documents(skip_existing=...)</span></code> is unchanged.</p></li>
+</ul>
+<p>Cost/cache impact: none; a config that sets the key now fails validation;
+delete the line. No local domain sets it.</p>
+</section>
+<section id="removed-selection-require-supported-document">
+<h3>Removed (selection.require_supported_document)<a class="headerlink" href="#removed-selection-require-supported-document" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">discovery.selection.require_supported_document</span></code> is gone. The
+supported-document filter (rejects known-unreadable suffixes such as <code class="docutils literal notranslate"><span class="pre">.jpg</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.zip</span></code>, <code class="docutils literal notranslate"><span class="pre">.gz</span></code>) is always on, because <code class="docutils literal notranslate"><span class="pre">false</span></code> only let unreadable downloads
+through.</p></li>
+</ul>
+<p>Cost/cache impact: every domain’s discovery fingerprint changes once (a request
+field is gone). On the next discover each target is re-evaluated: cached
+searches, verified local downloads and cached review grades are reused, so no
+paid search or grading for documents already seen. Local configs that set the
+key must delete the line.</p>
+</section>
 <section id="added-one-domain-workspace-override-on-every-config-driven-stage">
 <h3>Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)<a class="headerlink" href="#added-one-domain-workspace-override-on-every-config-driven-stage" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1209,6 +1233,8 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#changed-searches-are-cached-by-default">Changed (searches are cached by default)</a></li>
 <li><a class="reference internal" href="#changed-600-s-llm-timeout">Changed (600 s LLM timeout)</a></li>
 <li><a class="reference internal" href="#changed-priced-provider-fallback-models">Changed (priced provider fallback models)</a></li>
+<li><a class="reference internal" href="#removed-extraction-skip-existing">Removed (extraction.skip_existing)</a></li>
+<li><a class="reference internal" href="#removed-selection-require-supported-document">Removed (selection.require_supported_document)</a></li>
 <li><a class="reference internal" href="#added-one-domain-workspace-override-on-every-config-driven-stage">Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)</a></li>
 <li><a class="reference internal" href="#fixed-search-budget-a-target-s-query-slots-run-in-order">Fixed (search budget: a target’s query slots run in order)</a></li>
 <li><a class="reference internal" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">Fixed (discovery publication: final decisions apply in incomplete partitions)</a></li>
