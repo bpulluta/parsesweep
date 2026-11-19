@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No image cost for `input_mode: text` (the default).
 - Older records are not read: there is no legacy layer.
 
+### Docs (required keys, optional features, convergence loop, starters)
+- `docs/config-reference.md`: new "Required keys, defaults and optional
+  features" section (required keys per stage, optional features by need with
+  cost notes, advanced keys).
+- `docs/tuning.md`: new "Converge a new domain" loop; `fallback_queries` and
+  `document_classifier.action: filter` named as cost levers.
+- `config/TEMPLATE.yaml` is now a search + review starter: `max_per_target: 4`,
+  `keep_top: 2`, `document_review` on, `validation` commented out. A test pins
+  that it restates no built-in default. `config/README.md` names both starters;
+  `config/example/run.yaml` says its cost is extraction only. Supersedes the
+  comment edits of PR #28.
+Cost/cache impact: none for existing domains; new domains copied from TEMPLATE
+start with review on and validation off.
+
 ### Changed (built-in defaults are single-sourced)
 - Review defaults (`keep_top`, `max_chars`, `deduplicate_redundant`,
   `prefer_newest`), classifier defaults (`min_required_matches`, `action`,

@@ -767,11 +767,30 @@ def test_validate_config_flag_runs_schema_aware_validation_checks(tmp_path, monk
         encoding="utf-8",
     )
     config.write_text(
-        config.read_text(encoding="utf-8").replace(
-            "models: [secondary]", "models: [secondary]\n  key_fields: [featur]"
-        ),
+        config.read_text(encoding="utf-8")
+        + "validation:\n  models: [secondary]\n  key_fields: [featur]\n",
         encoding="utf-8",
     )
     result = CliRunner().invoke(cli, ["validate", "--config", str(config), "--validate-config"])
     assert result.exit_code == 1
     assert "did you mean 'feature'" in " ".join(result.output.replace("│", "").split())
+
+
+def test_template_restates_no_builtin_default(tmp_path):
+    """Starter values are required keys or deliberate recommendations, never built-ins."""
+    import yaml
+
+    from psweep.config import config_defaults
+    from psweep.config.discovery_config import resolve_discovery_section
+    from psweep.utils.schema_metadata import DEFAULT_OUTPUT_FORMAT
+
+    path = _template_domain(tmp_path)
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    resolved = resolve_discovery_section(data["discovery"], str(path))
+    defaults = config_defaults("discover")
+
+    shared = {name: value for name, (value, _) in resolved.items() if name in defaults}
+    assert shared, "TEMPLATE overrides no built-in discovery default; the guard checks nothing"
+    restated = {name: value for name, value in shared.items() if value == defaults[name]}
+    assert not restated, f"TEMPLATE restates built-in defaults: {restated}"
+    assert data["compilation"]["output"]["default_format"] != DEFAULT_OUTPUT_FORMAT
