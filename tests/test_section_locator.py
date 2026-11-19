@@ -209,6 +209,23 @@ class TestTriggerCharsSkipsSmallDoc:
         with capture_source(source) as captured:
             assert locator.locate(captured) is None
 
+    def test_docx_with_little_readable_text_skips_locator(self, tmp_path, monkeypatch):
+        import docx
+
+        document = docx.Document()
+        document.add_heading("Data center", level=1)
+        document.add_paragraph("The facility opened in 2024.")
+        source = tmp_path / "short.docx"
+        document.save(source)
+        locator = SectionLocator("data center timeline", trigger_chars=500)
+        monkeypatch.setattr(
+            locator, "_ensure_client", lambda: pytest.fail("short DOCX called locator model")
+        )
+        # The container (zip, styles, theme) is far larger than its readable text.
+        assert source.stat().st_size > locator.trigger_chars
+        with capture_source(source) as captured:
+            assert locator.locate(captured) is None
+
     def test_large_readable_html_still_uses_locator(self, tmp_path, monkeypatch):
         source = tmp_path / "large.html"
         source.write_text("<h1>Data center</h1><p>" + "construction timeline " * 4_000 + "</p>")

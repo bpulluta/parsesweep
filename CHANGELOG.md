@@ -93,6 +93,26 @@ key must delete the line.
 
 Cost/cache impact: none (output only).
 
+### Fixed (estimate inventory and model)
+- `psweep estimate <dir>` counts the documents extraction reads (no dot-directory
+  sidecars such as `.text/`, `.pages/`, `.sections/`, no `.section_target.txt`)
+  and samples them in path order, so the figure is stable across runs.
+- `psweep estimate --config <run.yaml>` prices `extraction.model` resolved through
+  the config's model registry; without it the environment model is still used.
+- Docs state that `discover --dry-run` searches live (paid unless cached), that
+  `document_classifier.action: warn` still sends keyword failures to paid review,
+  and that `parser_partial` and `targeting_incomplete` records are re-paid on every run.
+
+Cost/cache impact: none.
+
+### Fixed (section targeting: short DOCX no longer calls the locator)
+- A `.docx`/`.doc` whose file size exceeds `trigger_chars` but whose readable text
+  does not now skips the section-locator call, as the docs already described
+  (image-heavy documents were sent to the locator on raw size alone).
+
+Cost/cache impact: fewer locator calls for image-heavy DOCX; no re-extraction of
+already-targeted documents.
+
 ### Added (one `--domain` workspace override on every config-driven stage)
 - `extract`, `compile`, `validate` and `run` now take the `--domain` that only
   `discover` had, so a second workspace (for example `aq_permits_va_s12` from

@@ -53,6 +53,53 @@ class TestModelPricing:
         assert "price unknown for mystery-model" in result.output
         assert "$" not in result.output
 
+    def test_estimate_counts_only_extraction_inventory(self, tmp_path, monkeypatch):
+        from click.testing import CliRunner
+
+        from psweep.cli import utils_commands as uc
+
+        docs = tmp_path / "docs"
+        for rel in ("a.txt", ".text/a.txt", ".pages/a.json", "x.section_target.txt"):
+            (docs / rel).parent.mkdir(parents=True, exist_ok=True)
+            (docs / rel).write_text("x" * 400)
+
+        class _Config:
+            llm_config = {"model": "gpt-4.1-mini"}
+
+        monkeypatch.setattr(uc, "get_config", _Config)
+        monkeypatch.setattr(uc, "extract_text_from_document", lambda *a, **k: "x" * 400)
+        result = CliRunner().invoke(uc.estimate, [str(docs)], input="n\n")
+        assert result.exit_code == 0, result.output
+        assert "Total Documents 1" in " ".join(result.output.split())
+
+    def test_estimate_config_prices_the_extraction_alias(self, tmp_path, monkeypatch):
+        from click.testing import CliRunner
+
+        from psweep.cli import utils_commands as uc
+
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "a.txt").write_text("x" * 400)
+        run_yaml = tmp_path / "run.yaml"
+        run_yaml.write_text(
+            "domain: est_dom\n"
+            "models:\n  primary: gpt-4.1-mini\n"
+            "extraction:\n  model: primary\n"
+            "discovery:\n  sources: [https://example.com]\n"
+        )
+
+        class _Config:
+            llm_config = {"model": "mystery-model"}
+
+        monkeypatch.setattr(uc, "get_config", _Config)
+        monkeypatch.setattr(uc, "extract_text_from_document", lambda *a, **k: "x" * 400)
+        result = CliRunner().invoke(
+            uc.estimate, [str(docs), "--config", str(run_yaml)], input="n\n"
+        )
+        assert result.exit_code == 0, result.output
+        assert "gpt-4.1-mini" in result.output
+        assert "mystery-model" not in result.output
+
 
 class TestUIFunctions:
     """Test the unified key/value renderer."""
