@@ -374,6 +374,14 @@
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="unreleased">
 <h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<section id="fixed-model-answers-with-raw-control-characters">
+<h3>Fixed (model answers with raw control characters)<a class="headerlink" href="#fixed-model-answers-with-raw-control-characters" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>LLM answers whose JSON strings contain literal newlines or tabs (<code class="docutils literal notranslate"><span class="pre">Invalid</span> <span class="pre">control</span> <span class="pre">character</span></code>) are now parsed instead of rejected as non-JSON, so the paid call is no
+longer lost or sent to repair.</p></li>
+<li><p>Cache impact: none. No regrade, no re-extraction.</p></li>
+</ul>
+</section>
 <section id="fixed-review-dedup-no-longer-discards-a-whole-target">
 <h3>Fixed (review dedup no longer discards a whole target)<a class="headerlink" href="#fixed-review-dedup-no-longer-discards-a-whole-target" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1328,6 +1336,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
             <ul>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li><a class="reference internal" href="#fixed-model-answers-with-raw-control-characters">Fixed (model answers with raw control characters)</a></li>
 <li><a class="reference internal" href="#fixed-review-dedup-no-longer-discards-a-whole-target">Fixed (review dedup no longer discards a whole target)</a></li>
 <li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>
 <li><a class="reference internal" href="#docs-readme-refresh">Docs (README refresh)</a></li>
