@@ -221,7 +221,7 @@ def test_context_windows_remain_separate_from_alias_resolution(tmp_path, monkeyp
     config_path.write_text(
         "models:\n  primary: deployment\n"
         "model_context_windows:\n  deployment: 20000\n  other: 30000\n"
-        "schema: s.json\nextraction:\n  skip_existing: true\n",
+        "schema: s.json\nextraction: {}\n",
         encoding="utf-8",
     )
     config_data = load_runtime_config_file(config_path)

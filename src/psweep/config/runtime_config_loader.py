@@ -99,7 +99,6 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
                 f"Overrides the default {DEFAULT_LLM_TIMEOUT_SECONDS}s client timeout."
             ),
         ),
-        "skip_existing": ("advanced", "Skip files that already have output JSON."),
     },
     "compilation": {
         "reconciliation": (
@@ -381,11 +380,6 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
         raise RuntimeConfigError(
             f"extraction.input_mode must be one of: {', '.join(INPUT_MODES)} (got {mode!r})"
         )
-
-    if extraction.get("skip_existing") is not None and not isinstance(
-        extraction["skip_existing"], bool
-    ):
-        raise RuntimeConfigError("extraction.skip_existing must be a boolean")
 
     provider = extraction.get("provider")
     if provider is not None:
@@ -1010,7 +1004,6 @@ _FIELD_MAP: dict[str, str] = {
     "transcription_model": "transcription_model",
     "input_mode": "input_mode",
     "limit": "limit",
-    "skip_existing": "skip_existing",
     "max_context": "max_context",
     "max_concurrent": "max_concurrent",
     "timeout_seconds": "timeout_seconds",

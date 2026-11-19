@@ -359,16 +359,16 @@ class TestPerTargetSelection:
         selected, _notes = sel.select([[off_host]], primary_per_target=1)
         assert selected == [off_host]
 
-    def test_require_supported_document_prefers_pdf_to_provisional_web(self):
-        sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
+    def test_supported_document_filter_prefers_pdf_to_provisional_web(self):
+        sel = CandidateSelector(exclude_draft=False)
         page = _candidate("https://example.com/ordinance/chapter-9")
         pdf = _candidate("https://example.com/ordinance/chapter-9.pdf")
         selected, notes = sel.select([[page, pdf]], primary_per_target=1)
         assert selected == [pdf]
         assert not any("supported-document filter excluded" in n for n in notes)
 
-    def test_require_supported_document_accepts_extensionless_web(self):
-        sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
+    def test_supported_document_filter_accepts_extensionless_web(self):
+        sel = CandidateSelector(exclude_draft=False)
         page = _candidate("https://example.com/ordinance/chapter-9")
         selected, notes = sel.select([[page]], primary_per_target=1)
         assert selected == [page]
@@ -384,9 +384,9 @@ class TestPerTargetSelection:
             "https://a.gov/code/Title.Nine",
         ],
     )
-    def test_require_supported_document_keeps_server_routes(self, url):
+    def test_supported_document_filter_keeps_server_routes(self, url):
         # Unrecognised suffixes are routes whose type GET/MIME decides.
-        sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
+        sel = CandidateSelector(exclude_draft=False)
         page = _candidate(url)
         selected, notes = sel.select([[page]], primary_per_target=1)
         assert selected == [page]
@@ -402,8 +402,8 @@ class TestPerTargetSelection:
             "https://a.gov/dump.bz2",
         ],
     )
-    def test_require_supported_document_rejects_known_unreadable_files(self, url):
-        sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
+    def test_supported_document_filter_rejects_known_unreadable_files(self, url):
+        sel = CandidateSelector(exclude_draft=False)
         selected, notes = sel.select([[_candidate(url)]], primary_per_target=1)
         assert selected == []
         assert any("unsupported document type" in n for n in notes)

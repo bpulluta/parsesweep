@@ -56,9 +56,7 @@ def _preflight(config_path: Path, domain: str | None = None) -> dict:
         "validation"
     ]
     validate_protected_paths({"references": settings["references"]})
-    extract = resolve_command_config(
-        command="extract", cli_values={"skip_existing": True}, config_data=cfg
-    )
+    extract = resolve_command_config(command="extract", cli_values={}, config_data=cfg)
     plan = _prepare_extraction(extract, config_path=str(config_path))
     failed = failed_documents(plan["output"])
     stale = [
@@ -136,7 +134,7 @@ def _challenger(
     config_path, root = ctx["config_path"], ctx["workspace"].validated / alias
     inputs = resolve_command_config(
         command="extract",
-        cli_values={"model": alias, "output": str(root / "extracted"), "skip_existing": True},
+        cli_values={"model": alias, "output": str(root / "extracted")},
         config_data=ctx["cfg"],
     )
     plan = _prepare_extraction(inputs, config_path=str(config_path))

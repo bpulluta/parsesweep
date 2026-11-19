@@ -60,6 +60,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change model, so their documents are re-extracted and re-graded once (paid);
   configs that name models are unaffected.
 
+### Removed (extraction.skip_existing)
+- The YAML key `extraction.skip_existing` is gone. Reuse is always on and
+  `extract --fresh` re-extracts. The Python API parameter
+  `extract_documents(skip_existing=...)` is unchanged.
+
+Cost/cache impact: none; a config that sets the key now fails validation;
+delete the line. No local domain sets it.
+
+### Removed (selection.require_supported_document)
+- `discovery.selection.require_supported_document` is gone. The
+  supported-document filter (rejects known-unreadable suffixes such as `.jpg`,
+  `.zip`, `.gz`) is always on, because `false` only let unreadable downloads
+  through.
+
+Cost/cache impact: every domain's discovery fingerprint changes once (a request
+field is gone). On the next discover each target is re-evaluated: cached
+searches, verified local downloads and cached review grades are reused, so no
+paid search or grading for documents already seen. Local configs that set the
+key must delete the line.
+
 ### Added (one `--domain` workspace override on every config-driven stage)
 - `extract`, `compile`, `validate` and `run` now take the `--domain` that only
   `discover` had, so a second workspace (for example `aq_permits_va_s12` from

@@ -50,7 +50,6 @@ class CandidateSelector:
         relevance_exclude_any_terms: list[str] | None = None,
         exclude_url_patterns: list[str] | None = None,
         exclude_text_patterns: list[str] | None = None,
-        require_supported_document: bool = True,
         max_per_host_per_target: int = 0,
         target_require_any: list[str] | None = None,
         target_require_all: list[str] | None = None,
@@ -72,7 +71,6 @@ class CandidateSelector:
         self._exclude_text_patterns = [
             re.compile(p, re.IGNORECASE) for p in (exclude_text_patterns or []) if p and p.strip()
         ]
-        self._require_supported_document = require_supported_document
         self._max_per_host_per_target = max(0, int(max_per_host_per_target or 0))
         self._target_require_any = [
             t.strip() for t in (target_require_any or []) if t and t.strip()
@@ -250,18 +248,15 @@ class CandidateSelector:
                 continue
 
             # 4. Supported-document filter
-            if self._require_supported_document:
-                supported_only = [
-                    c for c in target_candidates if self._is_supported_document_url(c)
-                ]
-                unsupported_excluded_count = len(target_candidates) - len(supported_only)
-                if unsupported_excluded_count > 0:
-                    notes.append(
-                        f"{name}: supported-document filter "
-                        f"excluded {unsupported_excluded_count} of "
-                        f"{len(target_candidates)} candidate(s)."
-                    )
-                target_candidates = supported_only
+            supported_only = [c for c in target_candidates if self._is_supported_document_url(c)]
+            unsupported_excluded_count = len(target_candidates) - len(supported_only)
+            if unsupported_excluded_count > 0:
+                notes.append(
+                    f"{name}: supported-document filter "
+                    f"excluded {unsupported_excluded_count} of "
+                    f"{len(target_candidates)} candidate(s)."
+                )
+            target_candidates = supported_only
 
             if not target_candidates:
                 notes.append(

@@ -66,7 +66,6 @@ def test_request_headers_reach_discovery_engine(tmp_path):
         {"search": {"cache": "false"}},
         {"search": {"google_news": "false"}},
         {"selection": {"exclude_draft": "false"}},
-        {"selection": {"require_supported_document": "false"}},
         {"crawl": {"browser_escalation": {"enabled": "false"}}},
         {"crawl": {"code_host_adapters": {"enabled": "false"}}},
         {"document_review": {"deduplicate_redundant": "false"}},
@@ -89,6 +88,7 @@ def test_quoted_booleans_are_rejected(tmp_path, discovery):
         {"crawl": {"include_url_paterns": ["pdf"]}},
         {"crawl": {"browser_escalation": {"enable": True}}},
         {"document_review": {"deduplication": {"key_felds": ["path"]}}},
+        {"selection": {"require_supported_document": False}},
     ],
 )
 def test_nested_typos_are_rejected(tmp_path, discovery):

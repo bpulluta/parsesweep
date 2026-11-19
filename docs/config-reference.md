@@ -162,7 +162,6 @@ target's caps.
 | `exclude_text_patterns` | — | Case-insensitive regexes on candidate text. |
 | `exclude_draft` | `true` | Apply `draft_patterns`. |
 | `draft_patterns` | — | Domain-authored draft/non-final regexes (there is no built-in list). |
-| `require_supported_document` | `true` | Keep only [eligible URLs](#document-types-and-limits). |
 | `target_require_any` | — | Templates rendered per target (`"{jurisdiction}"`); the candidate must match one. |
 | `target_require_all` | — | Rendered templates the candidate must all match. |
 | `target_exclude` | — | Rendered templates that disqualify a candidate. |
@@ -435,7 +434,6 @@ positionally) and writes one JSON record per document to
 | `input_mode` | `text` | PDF modality: `text` (text only), `auto` (also attach images of pages no parser could read as text or OCR), `vision` (attach images of every non-blank selected page). See [Selected-page vision](#selected-page-vision). |
 | `transcription_model` | — | `models:` alias that transcribes audio; required when audio is present. |
 | `limit` | — | Process only the first N documents. |
-| `skip_existing` | `true` | Reuse verified records (see [Reuse](#runs-reuse-and-exit-codes)). |
 | `max_context` | `600000` | Characters sent per call. A hard limit on the final prepared input on every path (automatic targeting, CSV/`pages.range` scope, or no targeting), source hints and candidate context included (characters, not tokens). Longer input is held, never cut to a prefix. |
 | `max_concurrent` | `4` | Documents extracted in parallel (also concurrent transcription chunks). |
 | `timeout_seconds` | `600` (`LLM_TIMEOUT`) | Per-request LLM timeout. Every LLM call without its own setting uses it (review, page locator, reconciliation, judge); `extraction.timeout_seconds` applies to extraction and transcription. |
@@ -971,7 +969,7 @@ Supported inputs (discovery downloads exactly these; extraction reads them):
 | Data | `.csv` `.xlsx` `.json` | One `Header: value \| …` line per record (CSV, each sheet, JSON record arrays such as Socrata/ArcGIS/GeoJSON/CKAN); other JSON as indented text |
 | Audio | `.mp3` `.m4a` `.wav` `.ogg` `.flac` | Transcript ([Audio](#audio)) |
 
-**URL eligibility** (`selection.require_supported_document`): a URL with a
+**URL eligibility** (always on): a URL with a
 supported extension, no extension, or a suffix unknown to Python's MIME table
 (`.php`, `.aspx`, `.cfm`, …) is eligible — the response MIME type decides what
 it is. A suffix of a known unsupported type or encoding (`.jpg`, `.zip`, `.gz`)
@@ -1032,7 +1030,8 @@ that target; changing a target's `urls` or rendered queries re-runs it.
   completed listings (new children of a completed listing need it), and
   replaces the curated partitions of the targets it processes.
 
-**Extraction reuse.** A record is reused only when source, schema, resolved
+**Extraction reuse.** Reuse is always on; `extract --fresh` re-extracts every
+document. A record is reused only when source, schema, resolved
 model and settings, and record bytes still match; otherwise it is re-extracted.
 The settings are the consumed source and effective-text digests, the locator
 configuration and behaviour version, a non-`text` `input_mode` with its render
