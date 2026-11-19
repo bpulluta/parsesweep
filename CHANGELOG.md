@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No image cost for `input_mode: text` (the default).
 - Older records are not read: there is no legacy layer.
 
+### Docs (README refresh)
+- `README.md` is shorter and ordered for first-time readers: value statement,
+  what you get, install, quickstart, how it runs, your own domain, docs table.
+  The outputs tree and default values moved to the docs it links. TEMPLATE is
+  described as the search + review starter. `tests/test_readme_links.py` checks
+  that every relative link in the README points at a tracked file.
+Cost/cache impact: none.
+
 ### Docs (required keys, optional features, convergence loop, starters)
 - `docs/config-reference.md`: new "Required keys, defaults and optional
   features" section (required keys per stage, optional features by need with
