@@ -324,6 +324,15 @@ class TestResponseContentHandling:
         ):
             client.extract("text", SCHEMA)
 
+    def test_raw_control_characters_inside_strings_are_accepted(self):
+        # Models leave literal newlines/tabs inside long quoted strings.
+        out = self._run('{"items": [{"quote": "line one\nline\ttwo"}]}')
+        assert out["data"] == {"items": [{"quote": "line one\nline\ttwo"}]}
+
+    def test_control_characters_with_trailing_prose_are_recovered(self):
+        out = self._run('{"items": [{"quote": "a\nb"}]}\nHope this helps.')
+        assert out["data"] == {"items": [{"quote": "a\nb"}]}
+
     def test_invalid_json_raises_extraction_error(self):
         # Model returned non-JSON text (preamble, markdown fence, etc.)
         with pytest.raises(ExtractionError, match="non-JSON content"):

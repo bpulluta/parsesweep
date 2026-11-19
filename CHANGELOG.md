@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (model answers with raw control characters)
+- LLM answers whose JSON strings contain literal newlines or tabs (`Invalid control
+  character`) are now parsed instead of rejected as non-JSON, so the paid call is no
+  longer lost or sent to repair.
+- Cache impact: none. No regrade, no re-extraction.
+
 ### Fixed (review dedup no longer discards a whole target)
 - Redundant-copy detection among qualified documents is now computed in code from the
   verified review evidence, with no LLM call. Documents with equal scope, claim kind and
