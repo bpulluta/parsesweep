@@ -373,6 +373,42 @@
 change <strong>one setting at a time</strong>. Each symptom below names the setting that
 addresses it; defaults and exact rules are in the
 <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a>.</p>
+<section id="converge-a-new-domain">
+<h2>Converge a new domain<a class="headerlink" href="#converge-a-new-domain" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p><strong>Start minimal.</strong> Copy <code class="docutils literal notranslate"><span class="pre">config/TEMPLATE.yaml</span></code> (search and review) or
+<code class="docutils literal notranslate"><span class="pre">config/example/</span></code> (known URLs). Set the required keys and run
+<code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">run</span> <span class="pre">--config</span> <span class="pre">…</span> <span class="pre">--validate-config</span></code>.</p></li>
+<li><p><strong>Run a slice:</strong> <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">run</span> <span class="pre">--config</span> <span class="pre">…</span> <span class="pre">-n</span> <span class="pre">3</span></code>. Re-runs of the same slice are
+cheap: searches and grades are cached, and unchanged documents are reused.</p></li>
+<li><p><strong>Measure:</strong></p>
+<ul class="simple">
+<li><p>cost per stage in <code class="docutils literal notranslate"><span class="pre">compiled/run_accounting.json</span></code>,</p></li>
+<li><p>discovery quality in <code class="docutils literal notranslate"><span class="pre">review.csv</span></code>,</p></li>
+<li><p>accuracy against 3-5 hand-labelled targets in <code class="docutils literal notranslate"><span class="pre">samples/</span></code>, with
+<code class="docutils literal notranslate"><span class="pre">validation.references</span></code> and <code class="docutils literal notranslate"><span class="pre">min_accuracy</span></code> set.</p></li>
+</ul>
+</li>
+<li><p><strong>Change one setting</strong> using the symptom sections below. Try the cheapest
+lever first (query, filter, description) before a bigger model, more pages
+or more documents.</p></li>
+<li><p><strong>Converged</strong> means:</p>
+<ul class="simple">
+<li><p>the accuracy gate passes on targets you did not tune on (<code class="docutils literal notranslate"><span class="pre">validate</span> <span class="pre">--sample</span> <span class="pre">N</span></code>),</p></li>
+<li><p>cost per target is within budget,</p></li>
+<li><p>and the run ends without <code class="docutils literal notranslate"><span class="pre">partial_failure</span></code>.</p></li>
+</ul>
+</li>
+<li><p><strong>Scale:</strong> run the full roster, with <code class="docutils literal notranslate"><span class="pre">runtime.max_search_calls</span></code> at roughly
+targets × queries and <code class="docutils literal notranslate"><span class="pre">runtime.max_review_calls</span></code> at roughly
+3 × <code class="docutils literal notranslate"><span class="pre">max_per_target</span></code> as attempt ceilings. A review ceiling below a target’s
+need leaves it incomplete and keeps its older documents.</p></li>
+<li><p><strong>Keep the config honest:</strong> every remaining key traces to a measurement;
+delete keys that restate a built-in default. Exception: do not touch
+<code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> or <code class="docutils literal notranslate"><span class="pre">save_discovered</span></code> once records exist (they
+are part of the reuse fingerprint).</p></li>
+</ol>
+</section>
 <section id="discovery">
 <h2>Discovery<a class="headerlink" href="#discovery" title="Link to this heading">¶</a></h2>
 <section id="too-many-irrelevant-documents">
@@ -385,14 +421,17 @@ addresses it; defaults and exact rules are in the
 <li><p>Restrict sources with <code class="docutils literal notranslate"><span class="pre">crawl.allowed_domains</span></code> plus <code class="docutils literal notranslate"><span class="pre">include_url_patterns</span></code>.
 Ranking boosts (<code class="docutils literal notranslate"><span class="pre">link_prioritization.domain_scores</span></code>) prefer hosts but never
 exclude others.</p></li>
-<li><p>Check content after download with <code class="docutils literal notranslate"><span class="pre">document_classifier</span></code> (<code class="docutils literal notranslate"><span class="pre">action:</span> <span class="pre">filter</span></code>),
-or add paid LLM curation with <code class="docutils literal notranslate"><span class="pre">document_review</span></code>.</p></li>
+<li><p>Check content after download with <code class="docutils literal notranslate"><span class="pre">document_classifier</span></code> (<code class="docutils literal notranslate"><span class="pre">action:</span> <span class="pre">filter</span></code>
+drops keyword failures before paid review), or add paid LLM curation with
+<code class="docutils literal notranslate"><span class="pre">document_review</span></code>.</p></li>
 </ul>
 </section>
 <section id="too-few-documents">
 <h3>Too few documents<a class="headerlink" href="#too-few-documents" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p>Broaden or add <code class="docutils literal notranslate"><span class="pre">queries</span></code>; for Google add <code class="docutils literal notranslate"><span class="pre">search.params:</span> <span class="pre">{udm:</span> <span class="pre">web}</span></code>.</p></li>
+<li><p>Queries that rarely find qualifying documents belong in
+<code class="docutils literal notranslate"><span class="pre">search.fallback_queries</span></code>, which runs only for targets still below <code class="docutils literal notranslate"><span class="pre">keep_top</span></code>.</p></li>
 <li><p>Raise <code class="docutils literal notranslate"><span class="pre">search.max_results</span></code> (candidates per query) and
 <code class="docutils literal notranslate"><span class="pre">selection.max_per_target</span></code> (downloads per target). <code class="docutils literal notranslate"><span class="pre">document_review.keep_top</span></code>
 only limits what is kept afterwards.</p></li>
@@ -592,6 +631,7 @@ reported with a 95% Wilson interval.</p></li>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Tuning &amp; Iteration</a><ul>
+<li><a class="reference internal" href="#converge-a-new-domain">Converge a new domain</a></li>
 <li><a class="reference internal" href="#discovery">Discovery</a><ul>
 <li><a class="reference internal" href="#too-many-irrelevant-documents">Too many irrelevant documents</a></li>
 <li><a class="reference internal" href="#too-few-documents">Too few documents</a></li>

@@ -389,6 +389,23 @@ cost).</p></li>
 <li><p>Older records are not read: there is no legacy layer.</p></li>
 </ul>
 </section>
+<section id="docs-required-keys-optional-features-convergence-loop-starters">
+<h3>Docs (required keys, optional features, convergence loop, starters)<a class="headerlink" href="#docs-required-keys-optional-features-convergence-loop-starters" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">docs/config-reference.md</span></code>: new “Required keys, defaults and optional
+features” section (required keys per stage, optional features by need with
+cost notes, advanced keys).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">docs/tuning.md</span></code>: new “Converge a new domain” loop; <code class="docutils literal notranslate"><span class="pre">fallback_queries</span></code> and
+<code class="docutils literal notranslate"><span class="pre">document_classifier.action:</span> <span class="pre">filter</span></code> named as cost levers.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config/TEMPLATE.yaml</span></code> is now a search + review starter: <code class="docutils literal notranslate"><span class="pre">max_per_target:</span> <span class="pre">4</span></code>,
+<code class="docutils literal notranslate"><span class="pre">keep_top:</span> <span class="pre">2</span></code>, <code class="docutils literal notranslate"><span class="pre">document_review</span></code> on, <code class="docutils literal notranslate"><span class="pre">validation</span></code> commented out. A test pins
+that it restates no built-in default. <code class="docutils literal notranslate"><span class="pre">config/README.md</span></code> names both starters;
+<code class="docutils literal notranslate"><span class="pre">config/example/run.yaml</span></code> says its cost is extraction only. Supersedes the
+comment edits of PR #28.
+Cost/cache impact: none for existing domains; new domains copied from TEMPLATE
+start with review on and validation off.</p></li>
+</ul>
+</section>
 <section id="changed-built-in-defaults-are-single-sourced">
 <h3>Changed (built-in defaults are single-sourced)<a class="headerlink" href="#changed-built-in-defaults-are-single-sourced" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1283,6 +1300,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
 <li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>
+<li><a class="reference internal" href="#docs-required-keys-optional-features-convergence-loop-starters">Docs (required keys, optional features, convergence loop, starters)</a></li>
 <li><a class="reference internal" href="#changed-built-in-defaults-are-single-sourced">Changed (built-in defaults are single-sourced)</a></li>
 <li><a class="reference internal" href="#changed-searches-are-cached-by-default">Changed (searches are cached by default)</a></li>
 <li><a class="reference internal" href="#changed-600-s-llm-timeout">Changed (600 s LLM timeout)</a></li>

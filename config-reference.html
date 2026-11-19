@@ -396,13 +396,14 @@ pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">--show-effective-config</span></code> lists every setting with its source: <code class="docutils literal notranslate"><span class="pre">(config)</span></code> or <code class="docutils literal notranslate"><span class="pre">(cli)</span></code> for values you set, and <code class="docutils literal notranslate"><span class="pre">(default)</span></code> for the built-in value a run will use (<code class="docutils literal notranslate"><span class="pre">none</span></code> means unset; for <code class="docutils literal notranslate"><span class="pre">max_files</span></code>, <code class="docutils literal notranslate"><span class="pre">max_review_calls</span></code> and <code class="docutils literal notranslate"><span class="pre">max_search_calls</span></code> that means unbounded). <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">config</span> <span class="pre">--show-runtime-catalog</span></code> tags each key <code class="docutils literal notranslate"><span class="pre">required</span></code>, <code class="docutils literal notranslate"><span class="pre">optional</span></code> or <code class="docutils literal notranslate"><span class="pre">advanced</span></code>; <code class="docutils literal notranslate"><span class="pre">discovery.targets</span></code> or <code class="docutils literal notranslate"><span class="pre">discovery.sources</span></code> must be present, which preflight enforces.</p>
-<p><code class="docutils literal notranslate"><span class="pre">config/TEMPLATE.yaml</span></code> is a valid starting point covering all four stages:</p>
+<p><code class="docutils literal notranslate"><span class="pre">config/TEMPLATE.yaml</span></code> is the search and review starter. Its uncommented values are required keys or deliberate recommendations, and the commented blocks are optional features:</p>
 <div class="literal-block-wrapper docutils container" id="id1">
 <div class="code-block-caption"><span class="caption-text">config/TEMPLATE.yaml</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># Copy to config/&lt;domain&gt;/run.yaml beside schema.json and targets.csv.</span>
-<span class="c1"># Every key, default and rule: docs/config-reference.md. Keys go in .env.</span>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># Search + review starter. Copy to config/&lt;domain&gt;/run.yaml beside schema.json and targets.csv.</span>
+<span class="c1"># Required: discovery.targets (or sources) and, for search, queries. Every other key</span>
+<span class="c1"># has a built-in default (docs/config-reference.md). API keys never go in YAML; set them in .env.</span>
 <span class="nt">domain</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_domain</span>
-<span class="nt">models</span><span class="p">:</span><span class="w">                               </span><span class="c1"># aliases used by every stage</span>
+<span class="nt">models</span><span class="p">:</span><span class="w">                               </span><span class="c1"># one cheap and one strong model from your provider</span>
 <span class="w">  </span><span class="nt">primary</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gpt-4o</span>
 <span class="w">  </span><span class="nt">secondary</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gpt-4o-mini</span>
 <span class="nt">discovery</span><span class="p">:</span>
@@ -410,35 +411,32 @@ pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </
 <span class="w">  </span><span class="nt">queries</span><span class="p">:</span>
 <span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">'"{name}"</span><span class="nv"> </span><span class="s">{state}</span><span class="nv"> </span><span class="s">installation</span><span class="nv"> </span><span class="s">manual</span><span class="nv"> </span><span class="s">filetype:pdf'</span>
 <span class="w">  </span><span class="nt">partition_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">state</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">name</span><span class="p p-Indicator">]</span><span class="w">         </span><span class="c1"># curated/by_state/&lt;s&gt;/by_name/&lt;n&gt;/</span>
+<span class="w">  </span><span class="nt">search</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">params</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">udm</span><span class="p">:</span><span class="w"> </span><span class="nv">web</span><span class="p p-Indicator">}</span><span class="w">                </span><span class="c1"># Google "Web" tab: honours quotes and filetype:</span>
+<span class="w">    </span><span class="c1"># fallback_queries: ['"{name}" {state} manufacturer manual']  # only for targets still short; needs document_description</span>
 <span class="w">  </span><span class="nt">selection</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">max_per_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<span class="w">  </span><span class="c1"># Optional automatic qualification; domain requirements stay in this YAML.</span>
-<span class="w">  </span><span class="c1"># document_review:</span>
-<span class="w">  </span><span class="c1">#   document_description: "Installation manual for {name} in {state}."</span>
-<span class="w">  </span><span class="c1">#   model: secondary</span>
-<span class="w">  </span><span class="c1">#   escalate_model: primary</span>
-<span class="w">  </span><span class="c1">#   keep_top: 2</span>
-<span class="w">  </span><span class="c1">#   coverage:</span>
-<span class="w">  </span><span class="c1">#     installation: "Explicit installation instructions for {name}."</span>
-<span class="w">  </span><span class="c1">#     specification: "Applicable technical specifications for {name}."</span>
-<span class="w">  </span><span class="c1"># search:</span>
-<span class="w">  </span><span class="c1">#   cache: true</span>
-<span class="w">  </span><span class="c1">#   fallback_queries: ['"{name}" {state} manufacturer installation manual']</span>
-<span class="w">  </span><span class="c1"># runtime:</span>
-<span class="w">  </span><span class="c1">#   max_review_calls: 8              # physical attempts per target/run</span>
-<span class="w">  </span><span class="c1">#   max_search_calls: 100            # physical attempts across this run</span>
+<span class="w">    </span><span class="nt">max_per_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">                 </span><span class="c1"># downloads graded per target (&gt;= keep_top); one cheap review call each</span>
+<span class="w">  </span><span class="nt">document_review</span><span class="p">:</span><span class="w">                    </span><span class="c1"># cheap grading keeps irrelevant downloads out of paid extraction</span>
+<span class="w">    </span><span class="nt">document_description</span><span class="p">:</span><span class="w"> </span><span class="s">"Installation</span><span class="nv"> </span><span class="s">manual</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">{name}</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">{state}."</span>
+<span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secondary</span>
+<span class="w">    </span><span class="nt">keep_top</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w">                       </span><span class="c1"># documents extracted per target (&lt;= max_per_target): the main cost driver</span>
+<span class="w">    </span><span class="c1"># escalate_model: primary         # stronger model only for ambiguous or failed grades</span>
+<span class="w">  </span><span class="c1"># runtime:                          # attempt ceilings once you scale</span>
+<span class="w">  </span><span class="c1">#   max_search_calls: 200           # about targets x queries</span>
+<span class="w">  </span><span class="c1">#   max_review_calls: 12            # about 3 x max_per_target</span>
 <span class="nt">extraction</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">primary</span>
+<span class="w">  </span><span class="c1"># pages:                            # large PDFs: send only the relevant pages</span>
+<span class="w">  </span><span class="c1">#   auto_locate:</span>
+<span class="w">  </span><span class="c1">#     section_description: "the installation instructions"</span>
+<span class="w">  </span><span class="c1">#     model: secondary              # must differ from extraction.model</span>
 <span class="nt">compilation</span><span class="p">:</span>
-<span class="w">  </span><span class="c1"># Optional roster conflict resolver: docs/config-reference.md</span>
-<span class="w">  </span><span class="c1"># reconciliation:</span>
-<span class="w">  </span><span class="c1">#   enabled: true</span>
-<span class="w">  </span><span class="c1">#   model: primary</span>
-<span class="w">  </span><span class="c1">#   field_groups: [[amount, unit]]    # exact fields from your schema</span>
 <span class="w">  </span><span class="nt">output</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">default_format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">csv</span><span class="w">               </span><span class="c1"># csv | excel | both</span>
-<span class="nt">validation</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">secondary</span><span class="p p-Indicator">]</span><span class="w">                 </span><span class="c1"># contender; add references: [labels.csv]</span>
+<span class="w">    </span><span class="nt">default_format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">csv</span><span class="w">               </span><span class="c1"># csv scales; both adds .xlsx (built-in default)</span>
+<span class="c1"># validation:                         # when converging: measure accuracy</span>
+<span class="c1">#   references: [samples/labels.csv]  # hand-labelled targets; headers are compiled titles</span>
+<span class="c1">#   min_accuracy: 0.85</span>
+<span class="c1">#   models: [secondary]               # also compare a cheaper model (re-extracts every document)</span>
 </pre></div>
 </div>
 </div>
@@ -496,6 +494,92 @@ pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </
 </table>
 </div>
 </section>
+</section>
+<section id="required-keys-defaults-and-optional-features">
+<h2>Required keys, defaults and optional features<a class="headerlink" href="#required-keys-defaults-and-optional-features" title="Link to this heading">¶</a></h2>
+<p>Defaults come in three layers: the built-in defaults in this reference, then a
+starter (<code class="docutils literal notranslate"><span class="pre">config/TEMPLATE.yaml</span></code> for search and review, <code class="docutils literal notranslate"><span class="pre">config/example/</span></code> for
+known URLs), then per-domain overrides that each trace to a measurement
+(<a class="reference internal" href="tuning.html#converge-a-new-domain"><span class="std std-ref">Converge a new domain</span></a>). <code class="docutils literal notranslate"><span class="pre">domain</span></code> defaults
+to the folder name. A new domain needs only these keys:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Stage</p></th>
+<th class="head"><p>Required</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>discover</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">targets</span></code> or <code class="docutils literal notranslate"><span class="pre">sources</span></code>; <code class="docutils literal notranslate"><span class="pre">queries</span></code> unless every target has <code class="docutils literal notranslate"><span class="pre">urls</span></code> or <code class="docutils literal notranslate"><span class="pre">query</span></code>; <code class="docutils literal notranslate"><span class="pre">SERPAPI_API_KEY</span></code> for search</p></td>
+</tr>
+<tr class="row-odd"><td><p>extract</p></td>
+<td><p>a schema (<code class="docutils literal notranslate"><span class="pre">schema.json</span></code> beside <code class="docutils literal notranslate"><span class="pre">run.yaml</span></code> or <code class="docutils literal notranslate"><span class="pre">schema:</span></code>); one LLM credential in <code class="docutils literal notranslate"><span class="pre">.env</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>compile</p></td>
+<td><p>nothing</p></td>
+</tr>
+<tr class="row-odd"><td><p>validate</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">models</span></code> or <code class="docutils literal notranslate"><span class="pre">references</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Optional features, by need. Each key is documented in its section; defaults are
+in the tables there.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Need</p></th>
+<th class="head"><p>Keys</p></th>
+<th class="head"><p>Cost note</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Find documents by search</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">queries</span></code>, <code class="docutils literal notranslate"><span class="pre">search.params</span></code>, <code class="docutils literal notranslate"><span class="pre">search.fallback_queries</span></code></p></td>
+<td><p>one SerpApi call per rendered query per target; cached by default</p></td>
+</tr>
+<tr class="row-odd"><td><p>Keep irrelevant downloads out of extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">document_review.{document_description,</span> <span class="pre">model,</span> <span class="pre">keep_top}</span></code>; <code class="docutils literal notranslate"><span class="pre">escalate_model</span></code>, <code class="docutils literal notranslate"><span class="pre">coverage</span></code>, <code class="docutils literal notranslate"><span class="pre">prefer_newest</span></code>, <code class="docutils literal notranslate"><span class="pre">context_fields</span></code></p></td>
+<td><p>one cheap call per graded download, about $0.003 measured, against $0.03-0.21 per extracted document</p></td>
+</tr>
+<tr class="row-even"><td><p>Final or legal documents only</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">selection.exclude_draft</span></code>, <code class="docutils literal notranslate"><span class="pre">draft_patterns</span></code>, <code class="docutils literal notranslate"><span class="pre">require_any</span></code>, <code class="docutils literal notranslate"><span class="pre">document_classifier.pdf_screening</span></code></p></td>
+<td><p>free</p></td>
+</tr>
+<tr class="row-odd"><td><p>Listings, code hosts, JavaScript sites</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sources</span></code>, <code class="docutils literal notranslate"><span class="pre">crawl.*</span></code>, <code class="docutils literal notranslate"><span class="pre">browser_escalation</span></code>, <code class="docutils literal notranslate"><span class="pre">code_host_adapters</span></code></p></td>
+<td><p>free (browser time)</p></td>
+</tr>
+<tr class="row-even"><td><p>Large documents</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">extraction.pages.auto_locate</span></code>, <code class="docutils literal notranslate"><span class="pre">max_context</span></code></p></td>
+<td><p>one cheap locator pass; fewer extraction tokens</p></td>
+</tr>
+<tr class="row-odd"><td><p>Scans, figures, audio</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">input_mode</span></code>, <code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code>, <code class="docutils literal notranslate"><span class="pre">transcription_model</span></code></p></td>
+<td><p>image tokens per page; about $0.22 per audio hour</p></td>
+</tr>
+<tr class="row-even"><td><p>One row per target</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">partition_by</span></code>, <code class="docutils literal notranslate"><span class="pre">compilation.reconciliation</span></code></p></td>
+<td><p>calls only for disputed values</p></td>
+</tr>
+<tr class="row-odd"><td><p>Accuracy gate</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">validation.references</span></code>, <code class="docutils literal notranslate"><span class="pre">min_accuracy</span></code>, <code class="docutils literal notranslate"><span class="pre">models</span></code>, <code class="docutils literal notranslate"><span class="pre">judge</span></code></p></td>
+<td><p>contenders re-extract every document</p></td>
+</tr>
+<tr class="row-even"><td><p>Scale and politeness</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">runtime.*</span></code>, <code class="docutils literal notranslate"><span class="pre">retention.documents:</span> <span class="pre">curated</span></code>, <code class="docutils literal notranslate"><span class="pre">policy.*</span></code></p></td>
+<td><p>ceilings bound attempts, not dollars</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Advanced keys, whose defaults fit most domains: <code class="docutils literal notranslate"><span class="pre">link_prioritization</span></code>,
+<code class="docutils literal notranslate"><span class="pre">retry_policy</span></code>, <code class="docutils literal notranslate"><span class="pre">policy</span></code>, <code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code>, <code class="docutils literal notranslate"><span class="pre">severity_tokens</span></code>, <code class="docutils literal notranslate"><span class="pre">quote_field</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fail_on_suspicious</span></code>, <code class="docutils literal notranslate"><span class="pre">provenance_policy</span></code>, <code class="docutils literal notranslate"><span class="pre">dry_run</span></code>, <code class="docutils literal notranslate"><span class="pre">report_format</span></code>,
+<code class="docutils literal notranslate"><span class="pre">extraction.provider</span></code>, <code class="docutils literal notranslate"><span class="pre">limit</span></code>, <code class="docutils literal notranslate"><span class="pre">max_concurrent</span></code>, <code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code>,
+<code class="docutils literal notranslate"><span class="pre">model_context_windows</span></code> and <code class="docutils literal notranslate"><span class="pre">reasoning_models</span></code>. <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">config</span> <span class="pre">--show-runtime-catalog</span></code> lists the level of every key.</p>
 </section>
 <section id="discovery">
 <h2>Discovery<a class="headerlink" href="#discovery" title="Link to this heading">¶</a></h2>
@@ -2094,6 +2178,7 @@ and browser variables are described in <a class="reference internal" href="secur
 <li><a class="reference internal" href="#top-level-keys">Top-level keys</a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#required-keys-defaults-and-optional-features">Required keys, defaults and optional features</a></li>
 <li><a class="reference internal" href="#discovery">Discovery</a><ul>
 <li><a class="reference internal" href="#inputs">Inputs</a></li>
 <li><a class="reference internal" href="#search"><code class="docutils literal notranslate"><span class="pre">search</span></code></a></li>
