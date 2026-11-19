@@ -389,6 +389,22 @@ cost).</p></li>
 <li><p>Older records are not read: there is no legacy layer.</p></li>
 </ul>
 </section>
+<section id="changed-built-in-defaults-are-single-sourced">
+<h3>Changed (built-in defaults are single-sourced)<a class="headerlink" href="#changed-built-in-defaults-are-single-sourced" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Review defaults (<code class="docutils literal notranslate"><span class="pre">keep_top</span></code>, <code class="docutils literal notranslate"><span class="pre">max_chars</span></code>, <code class="docutils literal notranslate"><span class="pre">deduplicate_redundant</span></code>,
+<code class="docutils literal notranslate"><span class="pre">prefer_newest</span></code>), classifier defaults (<code class="docutils literal notranslate"><span class="pre">min_required_matches</span></code>, <code class="docutils literal notranslate"><span class="pre">action</span></code>,
+<code class="docutils literal notranslate"><span class="pre">pdf_screening</span></code>), discovery’s five per-operation network timeouts, the LLM
+client timeout, the Anthropic/Gemini fallback models, the compile output
+format and the provenance policy are now one named constant each instead of
+repeated literals. <code class="docutils literal notranslate"><span class="pre">tests/test_defaults_single_source.py</span></code> pins them.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--show-runtime-catalog</span></code> quotes the extraction concurrency and timeout from
+their constants, and lists <code class="docutils literal notranslate"><span class="pre">max_review_calls</span></code> and <code class="docutils literal notranslate"><span class="pre">max_search_calls</span></code> under
+<code class="docutils literal notranslate"><span class="pre">discovery.runtime</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">docs/config-reference.md</span></code> lists discovery’s per-operation timeouts.</p></li>
+<li><p>Cost/cache impact: none (no behavior change).</p></li>
+</ul>
+</section>
 <section id="added-one-domain-workspace-override-on-every-config-driven-stage">
 <h3>Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)<a class="headerlink" href="#added-one-domain-workspace-override-on-every-config-driven-stage" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1152,6 +1168,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
 <li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>
+<li><a class="reference internal" href="#changed-built-in-defaults-are-single-sourced">Changed (built-in defaults are single-sourced)</a></li>
 <li><a class="reference internal" href="#added-one-domain-workspace-override-on-every-config-driven-stage">Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)</a></li>
 <li><a class="reference internal" href="#fixed-search-budget-a-target-s-query-slots-run-in-order">Fixed (search budget: a target’s query slots run in order)</a></li>
 <li><a class="reference internal" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">Fixed (discovery publication: final decisions apply in incomplete partitions)</a></li>

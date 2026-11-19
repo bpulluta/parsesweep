@@ -663,8 +663,8 @@ query variants of a configured page (its pagination), which belong to that page.
 <td><p>Download budget per run; configured URLs never count, and neither do linked documents that selection eligibility drops after crawling.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">runtime.timeout_seconds</span></code></p></td>
-<td><p>engine default</p></td>
-<td><p>Request timeout, and the stall limit (time without data) for file downloads.</p></td>
+<td><p>per operation: search 45 s, robots/ToS checks 15 s, downloads 60 s, crawled pages 30 s, code-host API 30 s</p></td>
+<td><p>One value overriding all five. Also the stall limit (time without data) for file downloads.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">runtime.max_concurrent_downloads</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
