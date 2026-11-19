@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -15,6 +17,9 @@ from psweep.cli.commands_discover import discover
 from psweep.cli.commands_extract import extract
 from psweep.cli.commands_gc import gc
 from psweep.cli.commands_validate import validate
+from psweep.discovery.constants import DEFAULT_REVIEW_KEEP_TOP
+from psweep.discovery.engine import DiscoveryEngine, DiscoveryRequest
+from psweep.discovery.garbage_collector import GarbageCollector
 from psweep.discovery.request_inputs import discovery_request_fields
 from psweep.discovery.targets import iter_targets
 from psweep.exceptions import PipelineError
@@ -27,6 +32,103 @@ from psweep.pipeline import (
     resolve_run_discovery_enabled,
 )
 from psweep.workspace import Workspace
+
+
+def _paid_call_rows(
+    cfg: dict[str, Any],
+    discover_fields: dict[str, object] | None,
+    stages: Sequence[str],
+) -> dict[str, str]:
+    """Run-plan rows for the paid stages; no network or LLM call is made.
+
+    Search counts are an upper bound before the cache. Models resolve through
+    the config's registry; any without a catalog price are listed because
+    their spend is not metered in dollars.
+    """
+    from psweep.discovery.connectors.serpapi_seeker import resolve_search_queries
+    from psweep.utils.model_pricing import get_model_pricing
+
+    registry = cfg["_model_registry"]
+    rows: dict[str, str] = {}
+    models: list[str] = []
+
+    def resolve(alias: object) -> str:
+        name = registry.get_model(str(alias) if alias else None).model
+        models.append(name)
+        return name
+
+    if discover_fields is not None and "discover" in stages:
+        request = DiscoveryRequest(**discover_fields)
+        # The engine's own per-target query builder, so the plan counts what search runs.
+        inputs = DiscoveryEngine._build_seeker_inputs(request)  # noqa: SLF001
+        queries = sum(len(resolve_search_queries(item)) for item in inputs)
+        if queries:
+            ceiling = request.max_search_calls
+            rows["Search"] = (
+                f"SerpApi ≤{queries} queries for {len(inputs)} "
+                f"target{'' if len(inputs) == 1 else 's'} "
+                f"(cache {'on' if request.seeker_cache else 'off'}; "
+                f"ceiling {ceiling if ceiling is not None else 'none'})"
+                + (" + fallback for weak targets" if request.fallback_queries else "")
+            )
+        review = request.document_review or {}
+        if str(review.get("document_description") or "").strip():
+            keep_top = review.get("keep_top", DEFAULT_REVIEW_KEEP_TOP)
+            parts = [
+                (
+                    f"{resolve(review.get('model'))} grades "
+                    f"≤{request.selection_primary_per_target} downloads/target, keeps {keep_top}"
+                )
+            ]
+            if review.get("escalate_model"):
+                parts.append(f"escalate {resolve(review['escalate_model'])}")
+            if request.max_review_calls is not None:
+                parts.append(f"ceiling {request.max_review_calls}/target")
+            rows["Review"] = "; ".join(parts)
+
+    if "extract" in stages:
+        extraction = cfg.get("extraction") or {}
+        extract_model = resolve(extraction.get("model"))
+        row = extract_model
+        targeting = extraction.get("page_targeting") or {}
+        if targeting.get("enabled"):
+            locator = resolve(targeting["model"]) if targeting.get("model") else extract_model
+            row += f"; page targeting {locator}"
+        rows["Extract"] = row
+        if extraction.get("transcription_model"):
+            resolve(extraction["transcription_model"])
+
+    reconciliation = (cfg.get("compilation") or {}).get("reconciliation") or {}
+    if reconciliation.get("enabled"):
+        rows["Reconcile"] = resolve(reconciliation.get("model"))
+
+    validation = cfg.get("validation") if "validate" in stages else None
+    if validation:
+        for alias in validation["models"]:
+            resolve(alias)
+        if validation["judge"]:
+            resolve(validation["judge"])
+
+    unpriced = [name for name in dict.fromkeys(models) if get_model_pricing(name) is None]
+    if unpriced:
+        rows["Price unknown"] = f"{', '.join(unpriced)} (spend will not be metered in dollars)"
+    return rows
+
+
+def partial_discovery_warning(workspace: Workspace) -> str:
+    """Warn that extraction follows a partial discovery (read-only checkpoint scan)."""
+    try:
+        incomplete = len(
+            GarbageCollector(workspace.root).scan_checkpoint_reachability().incomplete_owners
+        )
+        count = f" {incomplete} targets in the checkpoint are incomplete." if incomplete else ""
+    except (OSError, ValueError):
+        count = ""
+    return (
+        f"Discovery ended partial.{count} Extraction will use the current curated set, "
+        "which keeps earlier documents for incomplete targets. Re-run `psweep discover` "
+        "(completed work is reused) before paying for extraction, or let this run continue."
+    )
 
 
 @click.group(name="psweep", no_args_is_help=True)
@@ -241,6 +343,7 @@ def run(
             ]
         )
     plan_rows["Stages"] = " → ".join(stages_list)
+    plan_rows.update(_paid_call_rows(cfg, discover_fields, stages_list))
 
     view.config(plan_rows, title="Run Plan")
 
@@ -286,8 +389,14 @@ def run(
             f"Phase {index}/{total_stages}: {stage_labels.get(stage_name, stage_name.title())}"
         )
 
+    def _warn_partial(stage_name: str) -> None:
+        if stage_name == "discover" and any(name == "extract" for name, _ in stage_cmds):
+            view.warning(partial_discovery_warning(workspace))
+
     try:
-        partial_stages = execute_run_stages(stage_cmds, on_stage=_announce)
+        partial_stages = execute_run_stages(
+            stage_cmds, on_stage=_announce, on_partial=_warn_partial
+        )
     except PipelineError as exc:
         view.error(str(exc))
         raise click.exceptions.Exit(exc.returncode or 1) from exc

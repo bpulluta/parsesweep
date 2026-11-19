@@ -80,6 +80,19 @@ searches, verified local downloads and cached review grades are reused, so no
 paid search or grading for documents already seen. Local configs that set the
 key must delete the line.
 
+### Added (cost visibility before paid stages)
+- The `psweep run` plan lists the paid stages before anything runs: an upper
+  bound on SerpApi queries (before the cache) with the cache state and
+  `max_search_calls` ceiling, the review model with its downloads per target,
+  `keep_top`, escalation model and `max_review_calls`, the extraction and
+  page-targeting models, the reconciliation model, and a `Price unknown` row
+  naming every resolved model with no catalog price.
+- `run` warns before extraction when discovery ended partial, naming the number
+  of incomplete targets in the checkpoint, and then continues as before.
+  `execute_run_stages` takes an optional `on_partial` callback.
+
+Cost/cache impact: none (output only).
+
 ### Added (one `--domain` workspace override on every config-driven stage)
 - `extract`, `compile`, `validate` and `run` now take the `--domain` that only
   `discover` had, so a second workspace (for example `aq_permits_va_s12` from
