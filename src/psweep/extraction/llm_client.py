@@ -620,14 +620,16 @@ class LLMClient:
                 raise rejected(message, "response_empty")
 
             # Parse JSON while retaining usage on a rejected response.
+            # strict=False: models often leave raw newlines/tabs inside long quoted strings.
+            decoder = json.JSONDecoder(strict=False)
             try:
-                data = json.loads(content)
+                data = decoder.decode(content)
             except json.JSONDecodeError as e:
                 # Recover JSON before trailing prose.
                 data = None
                 if "Extra data" in str(e):
                     try:
-                        data, _ = json.JSONDecoder().raw_decode(content)
+                        data, _ = decoder.raw_decode(content)
                         logger.debug(
                             "Recovered trailing content (model=%s, at=%s)",
                             self.model,
