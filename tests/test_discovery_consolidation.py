@@ -587,7 +587,7 @@ def test_cached_raw_grade_is_independent_of_pdf_dedup_selection(tmp_path):
         "doc_kind": "record",
         "reason": "original raw grade",
     }
-    reviewer._find_redundant_docs = lambda records, context: {1}
+    reviewer._find_redundant_docs = lambda records: {1}
     reviewer.review(records, [])
     assert sum(record["review_selected"] for record in records) == 1
     assert records[1]["review_grade"]["reason"] == "original raw grade"

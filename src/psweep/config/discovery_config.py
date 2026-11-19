@@ -249,7 +249,6 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
                 "keywords": _Key(_strings),
                 "deduplicate_redundant": _Key(_bool),
                 "prefer_newest": _Key(_bool),
-                "deduplication": {"key_fields": _Key(_strings)},
             }
         ),
         "document_review",

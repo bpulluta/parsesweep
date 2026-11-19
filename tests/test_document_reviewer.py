@@ -185,7 +185,6 @@ class TestReviewSelection:
         reviewer = DocumentReviewer(
             document_description="the electric tariff book",
             keep_top=2,
-            dedup_key_fields=["path_basename", "review_doc_kind"],
         )
         _stub_grades(
             reviewer,
@@ -868,8 +867,8 @@ def test_default_selection_ignores_dates_so_other_domains_are_unchanged():
     assert reviewer._next_complement([new, old], set()) is old
 
 
-def _edition_review(tmp_path, *, prefer_newest: bool, keep: int):
-    """Old grade-4 and new grade-3 editions with distinct bytes and a valid dedup reply."""
+def _edition_review(tmp_path, *, prefer_newest: bool):
+    """Old grade-4 and new grade-3 editions with distinct bytes and identical evidence."""
     records = [_record(tmp_path, name, "T") for name in ("old.pdf", "new.pdf")]
     Path(records[1]["path"]).write_text("new edition bytes", encoding="utf-8")
     reviewer = DocumentReviewer(
@@ -883,34 +882,114 @@ def _edition_review(tmp_path, *, prefer_newest: bool, keep: int):
             "precision": "day",
             "quote": "dummy",
         }
-
-    class Client(MeteredReviewClient):
-        def respond(self, **_kwargs):
-            refs = [{"index": i, "field": "content_quote", "quote": "dummy"} for i in (0, 1)]
-            group = {
-                "keep_index": keep,
-                "redundant_indices": [1 - keep],
-                "reason": "same schedule",
-                "evidence_refs": refs,
-            }
-            return {"data": {"redundancy_groups": [group]}}
-
-    reviewer._client = Client()
-    reviewer._ensure_client = lambda: reviewer._client
     _, notes = reviewer.review(records, [])
     return {Path(r["path"]).name: r for r in records}, notes
 
 
-@pytest.mark.parametrize("keep", [0, 1])
-def test_prefer_newest_keeps_newest_edition_through_comparative_dedup(tmp_path, keep):
-    records, _ = _edition_review(tmp_path, prefer_newest=True, keep=keep)
+def test_prefer_newest_keeps_newest_edition_through_dedup(tmp_path):
+    records, _ = _edition_review(tmp_path, prefer_newest=True)
     assert records["new.pdf"]["review_selected"]
     assert records["old.pdf"]["review_redundant"] and not records["old.pdf"]["review_selected"]
 
 
 def test_default_dedup_keeper_is_unchanged(tmp_path):
-    records, _ = _edition_review(tmp_path, prefer_newest=False, keep=0)
+    records, _ = _edition_review(tmp_path, prefer_newest=False)
     assert records["old.pdf"]["review_selected"] and records["new.pdf"]["review_redundant"]
+
+
+def _evidenced(quote="same source", *, scope=None, claim=None, coverage=None, date=None):
+    evidence = _evidence(quote)
+    if scope:
+        evidence["scope"]["value"] = scope
+    if claim:
+        evidence["claim_kind"]["value"] = claim
+    evidence["coverage"] = {label: {"quote": quote} for label in coverage or ()}
+    if date:
+        evidence["source_date"] = {"value": date, "precision": "day", "quote": quote}
+    return {"review_evidence": evidence}
+
+
+def _redundant(*records, prefer_newest=False, coverage=("a", "b")):
+    reviewer = DocumentReviewer(
+        document_description="records",
+        coverage={label: label for label in coverage},
+        prefer_newest=prefer_newest and not coverage,
+    )
+    return reviewer._find_redundant_docs(list(records))
+
+
+def test_identical_evidence_drops_all_but_the_best_ranked_copy():
+    assert _redundant(_evidenced(), _evidenced(), _evidenced()) == {1, 2}
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"scope": "other phase"},
+        {"claim": "reported claim"},
+        {"quote": "a different quote"},
+        {"coverage": ["a"]},
+    ],
+)
+def test_differing_scope_claim_quote_or_coverage_keeps_both(other):
+    keep = _evidenced(coverage=["b"])
+    changed = _evidenced(
+        other.get("quote", "same source"),
+        scope=other.get("scope"),
+        claim=other.get("claim"),
+        coverage=other.get("coverage", ["b"]),
+    )
+    assert _redundant(keep, changed) == set()
+
+
+def test_coverage_value_differing_on_a_shared_label_keeps_both():
+    first, second = _evidenced(coverage=["a"]), _evidenced(coverage=["a"])
+    second["review_evidence"]["coverage"]["a"] = {"quote": "other", "scope": "x"}
+    assert _redundant(first, second) == set()
+
+
+def test_coverage_superset_is_the_keeper_even_when_ranked_later():
+    narrow, broad = _evidenced(coverage=["a"]), _evidenced(coverage=["a", "b"])
+    assert _redundant(narrow, broad) == {0}
+    assert _redundant(broad, narrow) == {1}
+
+
+def test_invalid_evidence_is_never_dropped_and_raises_nothing():
+    invalid = {"review_evidence": {"content_quote": "same source"}}
+    assert _redundant(_evidenced(), invalid, {}, _evidenced()) == {3}
+
+
+def test_prefer_newest_keeps_the_latest_start_among_copies():
+    old = _evidenced(date="2008-01-11")
+    new = _evidenced(date="2026-03-01")
+    assert _redundant(old, new, prefer_newest=True, coverage=()) == {0}
+    assert _redundant(new, old, prefer_newest=True, coverage=()) == {1}
+
+
+def test_dedup_makes_no_llm_call_and_cannot_fail_a_large_target(tmp_path):
+    records = [_record(tmp_path, f"copy{i}.txt", "T") for i in range(31)]
+    reviewer = DocumentReviewer(document_description="records", keep_top=31)
+    _stub_grades(reviewer, {f"copy{i}.txt": _equal_grade(1.0) for i in range(31)})
+
+    def _unexpected():
+        raise AssertionError("dedup must not build an LLM client")
+
+    reviewer._ensure_client = _unexpected
+    reviewer.review(records, [])
+    assert not any(record.get("review_failed") for record in records)
+    assert sum(record["review_selected"] for record in records) == 1
+    assert sum(bool(record.get("review_redundant")) for record in records) == 30
+    assert reviewer.get_costs()["llm_calls"] == 0
+
+
+def test_dedup_disabled_drops_nothing(tmp_path):
+    records = [_record(tmp_path, f"copy{i}.txt", "T") for i in range(3)]
+    reviewer = DocumentReviewer(
+        document_description="records", keep_top=3, deduplicate_redundant=False
+    )
+    _stub_grades(reviewer, {f"copy{i}.txt": _equal_grade(1.0) for i in range(3)})
+    reviewer.review(records, [])
+    assert all(record["review_selected"] for record in records)
 
 
 def test_prefer_newest_notes_undated_candidates_only_when_contested(tmp_path):
@@ -1016,57 +1095,6 @@ def test_coverage_descriptions_render_per_target_without_shared_mutation(tmp_pat
     assert reviewer._coverage == {"role": "Records for {label}"}
 
 
-@pytest.mark.parametrize("change", ["reference", "cycle", "scope", "claim", "content", "labels"])
-def test_dedup_rejects_unsupported_or_complementary_decisions(change):
-    from copy import deepcopy
-
-    reviewer = DocumentReviewer(document_description="records", coverage={"role": "need"})
-    records = [{"review_evidence": deepcopy(_evidence("same source"))} for _ in range(2)]
-    group = {
-        "keep_index": 0,
-        "redundant_indices": [1],
-        "reason": "same",
-        "evidence_refs": [
-            {"index": i, "field": "content_quote", "quote": "same source"} for i in (0, 1)
-        ],
-    }
-    groups = [group]
-    if change == "reference":
-        group["evidence_refs"][1]["quote"] = "invented"
-    elif change == "cycle":
-        groups.append({**group, "keep_index": 1, "redundant_indices": [0]})
-    elif change == "scope":
-        records[1]["review_evidence"]["scope"]["value"] = "other phase"
-    elif change == "claim":
-        records[1]["review_evidence"]["claim_kind"]["value"] = "reported"
-    elif change == "content":
-        records[1]["review_evidence"]["content_quote"] = "conflicting source"
-        group["evidence_refs"][1]["quote"] = "conflicting source"
-    else:
-        records[1]["review_evidence"]["coverage"] = {"role": {"quote": "same source"}}
-    with pytest.raises(document_reviewer.ReviewError, match="dedup"):
-        reviewer._redundant_indices({"data": {"redundancy_groups": groups}}, records)
-
-
-def test_structural_keys_do_not_drop_differing_content(tmp_path):
-    records = [_record(tmp_path, f"{name}.txt", "A") for name in ("a", "b")]
-    reviewer = DocumentReviewer(
-        document_description="records", keep_top=2, dedup_key_fields=["review_doc_kind"]
-    )
-    grades = {f"{name}.txt": _equal_grade(1.0) for name in ("a", "b")}
-    _stub_grades(reviewer, grades)
-    Path(records[1]["path"]).write_text("different bytes", encoding="utf-8")
-
-    class Client(MeteredReviewClient):
-        def respond(self, **_kwargs):
-            return {"data": {"redundancy_groups": []}}
-
-    reviewer._client = Client()
-    reviewer._ensure_client = lambda: reviewer._client
-    reviewer.review(records, [])
-    assert all(record["review_selected"] for record in records)
-
-
 def test_missing_mandatory_content_is_a_valid_grade_one(tmp_path, monkeypatch):
     monkeypatch.setattr(
         document_utils, "extract_text_from_document", lambda _p: "identity only " * 30
@@ -1170,7 +1198,7 @@ def test_forged_cached_quote_is_not_a_successful_reuse(tmp_path, monkeypatch):
     reviewer.review([record], [])
     assert record["review_selected"] and not record["review_cached"]
     assert len(reviewer._client.prompts) == 2
-    assert not reviewer._grade_memo and not reviewer._dedup_memo
+    assert not reviewer._grade_memo
 
 
 def _shared_records(tmp_path, names):
