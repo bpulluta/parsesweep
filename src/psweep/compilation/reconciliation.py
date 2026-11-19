@@ -429,16 +429,16 @@ class Reconciler:
         group_support = []
         for unit, fields in self.groups.items():
             chosen = by_id.get(selections.get(unit))
+            support = 0
             if chosen:
-                group_support.append(
-                    len(
-                        {
-                            o["url"]
-                            for o in observations
-                            if self._key(o["item"], fields) == self._key(chosen["item"], fields)
-                        }
-                    )
+                support = len(
+                    {
+                        o["url"]
+                        for o in observations
+                        if self._key(o["item"], fields) == self._key(chosen["item"], fields)
+                    }
                 )
+                group_support.append(support)
             for field in fields:
                 value = self._value(chosen["item"], field) if chosen else None
                 row[field] = NA if _missing(value) else to_cell(value)
@@ -451,6 +451,7 @@ class Reconciler:
                         "source_date": chosen["source_date"],
                         "observation_id": chosen["id"],
                         "resolution": state,
+                        "support": support,
                         **({"conflict": True} if unit in disputed else {}),
                     }
                     urls.append(chosen["url"])

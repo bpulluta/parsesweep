@@ -173,6 +173,7 @@ def compile_roster(
                 "value": first["value"],
                 **({"quote": first["quote"]} if field in evidence else {}),
                 "url": first["url"],
+                "support": len(urls),
                 **flags,
             }
             sources.extend(urls)

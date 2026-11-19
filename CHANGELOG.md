@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (per-cell support in compiled evidence)
+- Every cell of the compiled `evidence` JSON now carries `support`: the number of distinct
+  source URLs that agree with the chosen value (roster compile and reconciliation alike).
+  Row `confidence` keeps its meaning (weakest cell); `docs/config-reference.md` now states it
+  precisely and points to `support` for ranking cells.
+- Cache impact: none. Reconciliation decisions are cached on observations, not on output
+  rows. No regrade, no re-extraction. Compiled `evidence` columns gain a key, so a recompile
+  differs from earlier outputs.
+
 ### Added (identity phrases for page targeting)
 - New opt-in `extraction.pages.auto_locate.subject_fields`: a list of target columns whose
   values the page and section locators use as identity phrases, in addition to the

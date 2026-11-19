@@ -880,11 +880,18 @@ compile emits one row per target in roster order. Agreeing values win; conflicts
 prefer target-scoped sources, then the value backed by most sources; missing
 values (null, blank, or an empty list or object) are `NA`. A list of primitives
 becomes one comma-joined cell; other lists and objects become compact JSON.
-Extra target columns pass through, plus `sources`, `confidence` (`high` ≥ 2
-agreeing sources, `medium`, `low` on conflict, `none`) and `evidence`
-(`{field: {value, url}}`, adding the `quote` of each
+Extra target columns pass through, plus `sources`, `confidence` and `evidence`
+(`{field: {value, url, support}}`, adding the `quote` of each
 [evidence field](schemas/best-practices.md#evidence-fields) and
-`conflict: true` when sources disagree).
+`conflict: true` when sources disagree). `support` is the number of distinct
+source URLs that agree with the cell's chosen value; rank cells by it.
+
+`confidence` is a weakest-cell flag for the whole row, not a quality score: the
+lowest level over its populated cells, where a cell is `high` with `support` ≥ 2,
+`medium` with `support` 1, and `low` when its sources conflicted (any cell that
+needed arbitration, with reconciliation on). A row with no populated cell is
+`none`. One conflicted or single-source cell therefore lowers the row, however
+well the other cells are supported.
 
 Excel batches above 1,048,575 rows or with cells over 32,767 characters fail
 before export; use CSV for large outputs.
@@ -932,8 +939,9 @@ Nonnullable requirements that prevent abstention remain explicit failures.
 A partial result exits 3; no usable answers with failures exits 1. Dry runs and
 config checks make no calls or cache writes and report pending targets.
 
-Per-field `evidence` retains value/quote/URL/conflict and adds source date,
-observation ID and resolution state. `_reconciliation` contains the reason,
+Per-field `evidence` retains value/quote/URL/conflict/support and adds source date,
+observation ID and resolution state; `support` counts distinct URLs whose
+observation agrees with the chosen one for the whole atomic unit. `_reconciliation` contains the reason,
 unresolved units and a `decisions/<hash>.json` alternatives reference relative
 to `outputs/<domain>/.reconciliation/`. These sidecars retain original competing
 observations without growing spreadsheet cells past Excel limits. Confidence
