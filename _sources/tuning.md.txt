@@ -116,7 +116,10 @@ to log each request's size, response time and token counts.
   ```
 
 - Iterate on a slice: `-n` on `run`/`discover` (first N targets) or `extract`
-  (first N documents). `psweep estimate <dir>` prices a batch beforehand.
+  (first N documents). `psweep estimate <dir> --config <run.yaml>` prices a
+  batch beforehand with the configured `extraction.model`; it counts the
+  documents extraction would read, and ignores reuse, targeting, review and
+  search spend.
 - Re-runs reuse verified work and make no model calls for unchanged inputs.
   Per-stage costs are in `outputs/<domain>/compiled/run_accounting.json`.
 - `psweep run --yes` skips the confirmation prompt for unattended runs.

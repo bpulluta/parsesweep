@@ -487,7 +487,10 @@ to log each request’s size, response time and token counts.</p>
 </div>
 </li>
 <li><p>Iterate on a slice: <code class="docutils literal notranslate"><span class="pre">-n</span></code> on <code class="docutils literal notranslate"><span class="pre">run</span></code>/<code class="docutils literal notranslate"><span class="pre">discover</span></code> (first N targets) or <code class="docutils literal notranslate"><span class="pre">extract</span></code>
-(first N documents). <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">estimate</span> <span class="pre">&lt;dir&gt;</span></code> prices a batch beforehand.</p></li>
+(first N documents). <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">estimate</span> <span class="pre">&lt;dir&gt;</span> <span class="pre">--config</span> <span class="pre">&lt;run.yaml&gt;</span></code> prices a
+batch beforehand with the configured <code class="docutils literal notranslate"><span class="pre">extraction.model</span></code>; it counts the
+documents extraction would read, and ignores reuse, targeting, review and
+search spend.</p></li>
 <li><p>Re-runs reuse verified work and make no model calls for unchanged inputs.
 Per-stage costs are in <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/compiled/run_accounting.json</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">run</span> <span class="pre">--yes</span></code> skips the confirmation prompt for unattended runs.</p></li>

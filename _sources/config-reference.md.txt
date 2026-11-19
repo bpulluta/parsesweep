@@ -195,6 +195,10 @@ crawl also needs a browser (`crawl.browser_escalation` or
 | `action` | `warn` | `warn` records the keyword result; `filter` rejects failing downloads (never configured URLs). |
 | `pdf_screening` | `"off"` | `"off"` skips PDF revision screening; `warn` records evidence; `hold` keeps flagged or incompletely inspected PDFs out of automated curation pending human review. Quote `"off"` in YAML so it is not parsed as a boolean. |
 
+`action: warn` still sends keyword failures to paid review; `filter` drops
+them first. Before switching, compare `classification_passed` in
+`download_index.csv` with the review outcome (`review_is_primary`).
+
 PDF screening is independent of keyword relevance and applies to configured URLs
 as well as discovered PDFs. Other formats are unchanged. For example:
 
@@ -354,7 +358,8 @@ valid queries. Configured TTL remains honored; expired responses may need a
 new request. Completed unchanged targets still skip work. Low source coverage
 after exhausting fallback is reported separately from an interrupted failure.
 Adaptive dry runs/config checks make no paid calls. Without fallback,
-discovery dry-run search semantics remain unchanged.
+`discover --dry-run` performs live searches (paid unless cached) and downloads
+nothing; adaptive (`fallback_queries`) dry runs skip search and review.
 
 ### Grounded review evidence and bounded selection
 
@@ -1049,7 +1054,9 @@ policy) and, for PDFs only, the OCR and page-representation versions. Changing
 a PDF-only version never re-extracts other formats, and `input_mode: text`
 adds nothing to the fingerprint. `extraction.timeout_seconds` and `pages.auto_locate.save_discovered` are part
 of the reuse fingerprint: adding, changing or removing either re-extracts
-every document of the domain (paid). Settle them before a large run. A record is also never reused when it is
+every document of the domain (paid). Settle them before a large run. `parser_partial` and `targeting_incomplete`
+records are re-paid on every run (see **Re-run cost** under
+[Selected-page vision](#selected-page-vision)). A record is also never reused when it is
 `parser_partial`, has `targeting_incomplete` under automatic targeting, has a
 different `contract_version`, or disagrees with a present OCR page entry (see
 [Record input provenance](#record-input-provenance)). Reuse needs no

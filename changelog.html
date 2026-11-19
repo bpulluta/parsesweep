@@ -481,6 +481,30 @@ of incomplete targets in the checkpoint, and then continues as before.
 </ul>
 <p>Cost/cache impact: none (output only).</p>
 </section>
+<section id="fixed-estimate-inventory-and-model">
+<h3>Fixed (estimate inventory and model)<a class="headerlink" href="#fixed-estimate-inventory-and-model" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">estimate</span> <span class="pre">&lt;dir&gt;</span></code> counts the documents extraction reads (no dot-directory
+sidecars such as <code class="docutils literal notranslate"><span class="pre">.text/</span></code>, <code class="docutils literal notranslate"><span class="pre">.pages/</span></code>, <code class="docutils literal notranslate"><span class="pre">.sections/</span></code>, no <code class="docutils literal notranslate"><span class="pre">.section_target.txt</span></code>)
+and samples them in path order, so the figure is stable across runs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">estimate</span> <span class="pre">--config</span> <span class="pre">&lt;run.yaml&gt;</span></code> prices <code class="docutils literal notranslate"><span class="pre">extraction.model</span></code> resolved through
+the config’s model registry; without it the environment model is still used.</p></li>
+<li><p>Docs state that <code class="docutils literal notranslate"><span class="pre">discover</span> <span class="pre">--dry-run</span></code> searches live (paid unless cached), that
+<code class="docutils literal notranslate"><span class="pre">document_classifier.action:</span> <span class="pre">warn</span></code> still sends keyword failures to paid review,
+and that <code class="docutils literal notranslate"><span class="pre">parser_partial</span></code> and <code class="docutils literal notranslate"><span class="pre">targeting_incomplete</span></code> records are re-paid on every run.</p></li>
+</ul>
+<p>Cost/cache impact: none.</p>
+</section>
+<section id="fixed-section-targeting-short-docx-no-longer-calls-the-locator">
+<h3>Fixed (section targeting: short DOCX no longer calls the locator)<a class="headerlink" href="#fixed-section-targeting-short-docx-no-longer-calls-the-locator" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>A <code class="docutils literal notranslate"><span class="pre">.docx</span></code>/<code class="docutils literal notranslate"><span class="pre">.doc</span></code> whose file size exceeds <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code> but whose readable text
+does not now skips the section-locator call, as the docs already described
+(image-heavy documents were sent to the locator on raw size alone).</p></li>
+</ul>
+<p>Cost/cache impact: fewer locator calls for image-heavy DOCX; no re-extraction of
+already-targeted documents.</p>
+</section>
 <section id="added-one-domain-workspace-override-on-every-config-driven-stage">
 <h3>Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)<a class="headerlink" href="#added-one-domain-workspace-override-on-every-config-driven-stage" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1251,6 +1275,8 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#removed-extraction-skip-existing">Removed (extraction.skip_existing)</a></li>
 <li><a class="reference internal" href="#removed-selection-require-supported-document">Removed (selection.require_supported_document)</a></li>
 <li><a class="reference internal" href="#added-cost-visibility-before-paid-stages">Added (cost visibility before paid stages)</a></li>
+<li><a class="reference internal" href="#fixed-estimate-inventory-and-model">Fixed (estimate inventory and model)</a></li>
+<li><a class="reference internal" href="#fixed-section-targeting-short-docx-no-longer-calls-the-locator">Fixed (section targeting: short DOCX no longer calls the locator)</a></li>
 <li><a class="reference internal" href="#added-one-domain-workspace-override-on-every-config-driven-stage">Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)</a></li>
 <li><a class="reference internal" href="#fixed-search-budget-a-target-s-query-slots-run-in-order">Fixed (search budget: a target’s query slots run in order)</a></li>
 <li><a class="reference internal" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">Fixed (discovery publication: final decisions apply in incomplete partitions)</a></li>

@@ -752,6 +752,7 @@ cost and time estimates before you commit to processing.</p>
 <div class="line">psweep estimate documents/tariffs/</div>
 <div class="line">psweep estimate documents/permits/ –workers 8</div>
 <div class="line">psweep estimate documents/tariffs/ –pages-csv config/tariffs/page_ranges.csv</div>
+<div class="line">psweep estimate outputs/tariffs/discovered/curated –config config/tariffs/run.yaml</div>
 </div>
 </div>
 <p class="rubric">Usage</p>
@@ -769,6 +770,12 @@ cost and time estimates before you commit to processing.</p>
 <dt class="sig sig-object std" id="cmdoption-psweep-estimate-pages-csv">
 <span class="sig-name descname"><span class="pre">--pages-csv</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;pages_csv&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-estimate-pages-csv" title="Link to this definition">¶</a></dt>
 <dd><p>CSV file mapping documents to page ranges</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-estimate-config">
+<span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-estimate-config" title="Link to this definition">¶</a></dt>
+<dd><p>Domain run config; prices extraction.model instead of the environment model</p>
 </dd></dl>
 
 <p class="rubric">Arguments</p>

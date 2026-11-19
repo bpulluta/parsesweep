@@ -836,6 +836,9 @@ crawl also needs a browser (<code class="docutils literal notranslate"><span cla
 </tbody>
 </table>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">action:</span> <span class="pre">warn</span></code> still sends keyword failures to paid review; <code class="docutils literal notranslate"><span class="pre">filter</span></code> drops
+them first. Before switching, compare <code class="docutils literal notranslate"><span class="pre">classification_passed</span></code> in
+<code class="docutils literal notranslate"><span class="pre">download_index.csv</span></code> with the review outcome (<code class="docutils literal notranslate"><span class="pre">review_is_primary</span></code>).</p>
 <p>PDF screening is independent of keyword relevance and applies to configured URLs
 as well as discovered PDFs. Other formats are unchanged. For example:</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">discovery</span><span class="p">:</span>
@@ -1023,7 +1026,8 @@ valid queries. Configured TTL remains honored; expired responses may need a
 new request. Completed unchanged targets still skip work. Low source coverage
 after exhausting fallback is reported separately from an interrupted failure.
 Adaptive dry runs/config checks make no paid calls. Without fallback,
-discovery dry-run search semantics remain unchanged.</p>
+<code class="docutils literal notranslate"><span class="pre">discover</span> <span class="pre">--dry-run</span></code> performs live searches (paid unless cached) and downloads
+nothing; adaptive (<code class="docutils literal notranslate"><span class="pre">fallback_queries</span></code>) dry runs skip search and review.</p>
 </section>
 <section id="grounded-review-evidence-and-bounded-selection">
 <h3>Grounded review evidence and bounded selection<a class="headerlink" href="#grounded-review-evidence-and-bounded-selection" title="Link to this heading">¶</a></h3>
@@ -1915,7 +1919,9 @@ policy) and, for PDFs only, the OCR and page-representation versions. Changing
 a PDF-only version never re-extracts other formats, and <code class="docutils literal notranslate"><span class="pre">input_mode:</span> <span class="pre">text</span></code>
 adds nothing to the fingerprint. <code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> and <code class="docutils literal notranslate"><span class="pre">pages.auto_locate.save_discovered</span></code> are part
 of the reuse fingerprint: adding, changing or removing either re-extracts
-every document of the domain (paid). Settle them before a large run. A record is also never reused when it is
+every document of the domain (paid). Settle them before a large run. <code class="docutils literal notranslate"><span class="pre">parser_partial</span></code> and <code class="docutils literal notranslate"><span class="pre">targeting_incomplete</span></code>
+records are re-paid on every run (see <strong>Re-run cost</strong> under
+<a class="reference internal" href="#selected-page-vision">Selected-page vision</a>). A record is also never reused when it is
 <code class="docutils literal notranslate"><span class="pre">parser_partial</span></code>, has <code class="docutils literal notranslate"><span class="pre">targeting_incomplete</span></code> under automatic targeting, has a
 different <code class="docutils literal notranslate"><span class="pre">contract_version</span></code>, or disagrees with a present OCR page entry (see
 <a class="reference internal" href="#record-input-provenance">Record input provenance</a>). Reuse needs no
