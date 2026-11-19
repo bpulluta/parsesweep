@@ -389,6 +389,17 @@ cost).</p></li>
 <li><p>Older records are not read: there is no legacy layer.</p></li>
 </ul>
 </section>
+<section id="docs-readme-refresh">
+<h3>Docs (README refresh)<a class="headerlink" href="#docs-readme-refresh" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">README.md</span></code> is shorter and ordered for first-time readers: value statement,
+what you get, install, quickstart, how it runs, your own domain, docs table.
+The outputs tree and default values moved to the docs it links. TEMPLATE is
+described as the search + review starter. <code class="docutils literal notranslate"><span class="pre">tests/test_readme_links.py</span></code> checks
+that every relative link in the README points at a tracked file.
+Cost/cache impact: none.</p></li>
+</ul>
+</section>
 <section id="docs-required-keys-optional-features-convergence-loop-starters">
 <h3>Docs (required keys, optional features, convergence loop, starters)<a class="headerlink" href="#docs-required-keys-optional-features-convergence-loop-starters" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1300,6 +1311,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
 <li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>
+<li><a class="reference internal" href="#docs-readme-refresh">Docs (README refresh)</a></li>
 <li><a class="reference internal" href="#docs-required-keys-optional-features-convergence-loop-starters">Docs (required keys, optional features, convergence loop, starters)</a></li>
 <li><a class="reference internal" href="#changed-built-in-defaults-are-single-sourced">Changed (built-in defaults are single-sourced)</a></li>
 <li><a class="reference internal" href="#changed-searches-are-cached-by-default">Changed (searches are cached by default)</a></li>
