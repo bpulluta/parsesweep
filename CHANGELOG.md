@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (identity phrases for page targeting)
+- New opt-in `extraction.pages.auto_locate.subject_fields`: a list of target columns whose
+  values the page and section locators use as identity phrases, in addition to the
+  discovery label. Before, only the last `partition_by` field was used, so a long PDF that
+  never repeats a directory-style label (`Company: Site, ST`) was held with
+  `targeting_no_usable_scope`. Values are read from the full target row, so columns outside
+  `partition_by` work. Validated: non-empty list of unique names, `discovery.targets`
+  required, every name a target column.
+- Cache impact: none for domains that do not set the key (fingerprints are unchanged).
+  Setting it changes the extraction fingerprint (the whole `auto_locate` block is part of
+  it), so every document in that domain is extracted again once (paid); locator calls are
+  re-run only for PDFs and sections whose identity phrases changed. No regrade.
+
 ### Fixed (model answers with raw control characters)
 - LLM answers whose JSON strings contain literal newlines or tabs (`Invalid control
   character`) are now parsed instead of rejected as non-JSON, so the paid call is no

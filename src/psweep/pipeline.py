@@ -49,6 +49,7 @@ from psweep.compilation.input_provenance import (
     select_compile_inputs,
 )
 from psweep.discovery.request_inputs import discovery_request_fields
+from psweep.discovery.targets import TARGET_INPUT_FIELDS, iter_targets
 from psweep.discovery.concurrency import bounded_results
 from jsonschema import ValidationError
 
@@ -700,6 +701,7 @@ def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
             "must use an explicit model other than the extraction model"
         )
         raise ValueError(message)
+    _check_subject_fields(inputs, targeting.get("subject_fields"))
     locator = resolve_llm_kwargs(
         targeting["model"],
         models=inputs.get("models"),
@@ -713,6 +715,47 @@ def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
         )
         raise ValueError(message)
     return locator
+
+
+def _check_subject_fields(inputs: dict, subject_fields: Any) -> None:
+    """Require ``pages.auto_locate.subject_fields`` to name existing target columns."""
+    if subject_fields is None:
+        return
+    if not inputs.get("targets"):
+        message = "pages.auto_locate.subject_fields requires discovery.targets"
+        raise ValueError(message)
+    columns = {
+        key
+        for row in iter_targets(inputs["targets"])
+        for key in row
+        if key not in TARGET_INPUT_FIELDS
+    }
+    unknown = [field for field in subject_fields if field not in columns]
+    if unknown:
+        message = (
+            f"pages.auto_locate.subject_fields names fields that are not target columns: {unknown}"
+        )
+        raise ValueError(message)
+
+
+def _subject_phrases(
+    subject_fields: Sequence[str] | None,
+    fields: Sequence[str] | None,
+    identity: dict,
+    info: Any,
+) -> tuple[str, ...]:
+    """Identity phrases for the locator.
+
+    Default: the last ``partition_by`` field. With ``subject_fields``: those
+    columns of the full target row (the roster identity holds only the
+    ``partition_by`` fields).
+    """
+    if subject_fields:
+        row = {**identity, **((info.target_metadata or {}) if info is not None else {})}
+        names = subject_fields
+    else:
+        row, names = identity, fields[-1:] if fields else ()
+    return tuple(str(row[name]) for name in names if row.get(name) is not None)
 
 
 def _prepare_extraction(
@@ -1250,8 +1293,10 @@ def _target_extraction_inputs(plan: dict):
         identity = {}
         if info is not None:
             identity = roster.targets.get(info.target_id, {}) if roster else info.target_metadata
-        subject = identity.get(fields[-1]) if fields else None
-        locator.set_source_context(info, subject=str(subject) if subject is not None else None)
+        locator.set_source_context(
+            info,
+            subjects=_subject_phrases(targeting.get("subject_fields"), fields, identity, info),
+        )
         with document_scope(doc.name):
             selection = locator.locate(source)
             if locator_type is PageLocator:

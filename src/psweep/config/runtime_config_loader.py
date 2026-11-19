@@ -238,6 +238,7 @@ _AUTO_LOCATE_KEYS = (
     "model",
     "keywords",
     "save_discovered",
+    "subject_fields",
 )
 
 INPUT_MODES = ("text", "auto", "vision")
@@ -471,6 +472,15 @@ def _validate_page_targeting_block(pt: Any) -> None:
         or any(not isinstance(keyword, str) for keyword in pt["keywords"])
     ):
         message = "pages.auto_locate.keywords must be a list of strings"
+        raise RuntimeConfigError(message)
+    fields = pt.get("subject_fields")
+    if fields is not None and (
+        not isinstance(fields, list)
+        or not fields
+        or any(not isinstance(field, str) or not field.strip() for field in fields)
+        or len(set(fields)) != len(fields)
+    ):
+        message = "pages.auto_locate.subject_fields must be a non-empty list of unique field names"
         raise RuntimeConfigError(message)
     if pt.get("save_discovered") is not None and not isinstance(pt["save_discovered"], bool):
         raise RuntimeConfigError("pages.auto_locate.save_discovered must be a boolean")
