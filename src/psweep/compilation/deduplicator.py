@@ -78,7 +78,7 @@ class Deduplicator:
         # Annotation column: configurable via compilation.output.annotation_column,
         # defaults to "Notes" which is the ParseSweep framework standard.
         output_cfg = schema_metadata.metadata.get("compilation", {}).get("output", {})
-        self._annotation_col: str = output_cfg.get("annotation_column", "Notes")
+        self._annotation_col: str = output_cfg.get("annotation_column", COL_NOTES)
 
     def deduplicate(self, df: pd.DataFrame) -> pd.DataFrame:
         """

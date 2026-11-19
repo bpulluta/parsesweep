@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from psweep.extraction.llm_factory import DEFAULT_LLM_TIMEOUT_SECONDS, DEFAULT_MAX_CONCURRENT
 from psweep.workspace import (
     Workspace,
     config_relative_path,
@@ -87,12 +88,15 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "limit": ("optional", "Process only the first N files."),
         "max_context": ("advanced", "Maximum characters to pass to extraction context."),
-        "max_concurrent": ("advanced", "Documents extracted in parallel (default: 4)."),
+        "max_concurrent": (
+            "advanced",
+            f"Documents extracted in parallel (default: {DEFAULT_MAX_CONCURRENT}).",
+        ),
         "timeout_seconds": (
             "advanced",
             (
                 "Per-request LLM timeout for extraction calls (seconds). "
-                "Overrides the default 120s client timeout."
+                f"Overrides the default {DEFAULT_LLM_TIMEOUT_SECONDS}s client timeout."
             ),
         ),
         "skip_existing": ("advanced", "Skip files that already have output JSON."),
@@ -163,7 +167,10 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "runtime": (
             "advanced",
-            "max_files, timeout_seconds, max_concurrent_downloads, min_request_interval_ms.",
+            (
+                "max_files, max_review_calls (per target), max_search_calls (per run), "
+                "timeout_seconds, max_concurrent_downloads, min_request_interval_ms."
+            ),
         ),
         "search": ("advanced", "Search provider: max_results, cache, cache_ttl_minutes, params."),
         "selection": ("advanced", "Per-target candidate filters and caps."),

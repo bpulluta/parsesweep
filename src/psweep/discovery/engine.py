@@ -49,7 +49,19 @@ from .connectors import DiggerInput, resolve_digger_connector
 from .targets import TARGET_INPUT_FIELDS, identify_target, target_identity
 from .review_policy import iter_review_scopes, render_review_scope
 from .constants import (
+    DEFAULT_CLASSIFIER_ACTION,
+    DEFAULT_CLASSIFIER_MIN_REQUIRED_MATCHES,
+    DEFAULT_CODE_HOST_TIMEOUT_SECONDS,
+    DEFAULT_CRAWL_TIMEOUT_SECONDS,
+    DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
     DEFAULT_MAX_CONCURRENT_DOWNLOADS,
+    DEFAULT_PDF_SCREENING,
+    DEFAULT_POLICY_TIMEOUT_SECONDS,
+    DEFAULT_REVIEW_DEDUPLICATE_REDUNDANT,
+    DEFAULT_REVIEW_KEEP_TOP,
+    DEFAULT_REVIEW_MAX_CHARS,
+    DEFAULT_REVIEW_PREFER_NEWEST,
+    DEFAULT_SEARCH_TIMEOUT_SECONDS,
     DOCUMENT_EXTENSIONS,
     DOWNLOADABLE_EXTENSIONS,
     MIME_TO_EXTENSION,
@@ -531,7 +543,7 @@ class DiscoveryEngine:
             retry_max_backoff_seconds=request.retry_max_backoff_seconds,
             min_request_interval_seconds=max(0.0, float(request.min_request_interval_ms) / 1000.0),
             cache_dir=DiscoveryEngine._resolve_seeker_cache_dir(request),
-            timeout_seconds=request.timeout_seconds or 45,
+            timeout_seconds=request.timeout_seconds or DEFAULT_SEARCH_TIMEOUT_SECONDS,
             cache_ttl_seconds=max(
                 0.0,
                 float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
@@ -1050,7 +1062,7 @@ class DiscoveryEngine:
             robots_policy_mode=request.robots_policy_mode,
             tos_policy_mode=request.tos_policy_mode,
             acknowledged_tos_domains=request.acknowledged_tos_domains,
-            timeout_seconds=request.timeout_seconds or 15,
+            timeout_seconds=request.timeout_seconds or DEFAULT_POLICY_TIMEOUT_SECONDS,
             rate_limiter=self._rate_limiter,
             source_gate=lambda target: matches_allowed_domain(target, request.allowed_domains)
             and not matches_url_exclusion(
@@ -1184,7 +1196,9 @@ class DiscoveryEngine:
         return send_get(
             url,
             headers=request_headers,
-            timeout=(request.timeout_seconds or 60) if request else 60,
+            timeout=(request.timeout_seconds or DEFAULT_DOWNLOAD_TIMEOUT_SECONDS)
+            if request
+            else DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
             verify=ssl_verify,
             stream=True,
             max_bytes=max_file_bytes(),
@@ -2230,7 +2244,7 @@ class DiscoveryEngine:
                         max_depth=request.max_depth,
                         max_pages=request.max_pages,
                         max_files=budget,
-                        timeout_seconds=request.timeout_seconds or 30,
+                        timeout_seconds=request.timeout_seconds or DEFAULT_CRAWL_TIMEOUT_SECONDS,
                         allowed_domains=request.allowed_domains,
                         include_url_patterns=request.include_url_patterns,
                         include_link_text_patterns=request.include_link_text_patterns,
@@ -2821,9 +2835,11 @@ class DiscoveryEngine:
 
         required = list(classifier_cfg.get("required_keywords") or [])
         nice_to_have = list(classifier_cfg.get("nice_to_have_keywords") or [])
-        min_matches = int(classifier_cfg.get("min_required_matches", 1))
-        action = str(classifier_cfg.get("action", "warn"))
-        screening = str(classifier_cfg.get("pdf_screening", "off"))
+        min_matches = int(
+            classifier_cfg.get("min_required_matches", DEFAULT_CLASSIFIER_MIN_REQUIRED_MATCHES)
+        )
+        action = str(classifier_cfg.get("action", DEFAULT_CLASSIFIER_ACTION))
+        screening = str(classifier_cfg.get("pdf_screening", DEFAULT_PDF_SCREENING))
         keyword_configured = any(key != "pdf_screening" for key in classifier_cfg)
         passed = failed = errors = 0
         for record in downloads:
@@ -2886,7 +2902,7 @@ class DiscoveryEngine:
             response, _ = send_get(
                 url,
                 headers=merged,
-                timeout=request.timeout_seconds or 30,
+                timeout=request.timeout_seconds or DEFAULT_CODE_HOST_TIMEOUT_SECONDS,
                 verify=ssl_verify,
                 gate=gate,
                 limiter=self._rate_limiter,
@@ -3384,7 +3400,7 @@ class DiscoveryEngine:
         # code-hosting domains
         by_target = self._group_records_by_target(download_records)
         doc_review = request.document_review or {}
-        keep_top = int(doc_review.get("keep_top", 1))
+        keep_top = int(doc_review.get("keep_top", DEFAULT_REVIEW_KEEP_TOP))
         coverage = doc_review.get("coverage")
 
         shell_urls: list[tuple[str, str, dict[str, object]]] = []
@@ -3568,7 +3584,7 @@ class DiscoveryEngine:
         # Group records by target, find targets with insufficient evidence
         by_target = self._group_records_by_target(download_records)
         doc_review = request.document_review or {}
-        keep_top = int(doc_review.get("keep_top", 1))
+        keep_top = int(doc_review.get("keep_top", DEFAULT_REVIEW_KEEP_TOP))
         coverage = doc_review.get("coverage")
 
         failed_targets: list[tuple[str, str, dict[str, object]]] = []
@@ -3835,7 +3851,7 @@ class DiscoveryEngine:
         eligible = eligible_targets(
             request.targets or [],
             records,
-            keep_top=int(request.document_review.get("keep_top", 1)),
+            keep_top=int(request.document_review.get("keep_top", DEFAULT_REVIEW_KEEP_TOP)),
             partition_by=request.partition_by,
             incomplete_keys=incomplete_keys,
             coverage=request.document_review.get("coverage"),
@@ -3973,7 +3989,7 @@ class DiscoveryEngine:
         coverage = set(request.document_review.get("coverage") or {})
         summary["low_coverage_targets"] = sum(
             distinct_accepted_count(grouped.get(key, []))
-            < int(request.document_review.get("keep_top", 1))
+            < int(request.document_review.get("keep_top", DEFAULT_REVIEW_KEEP_TOP))
             or bool(coverage - covered_labels(grouped.get(key, [])))
             for key in keys - self._fallback_pending
         )
@@ -4003,7 +4019,7 @@ class DiscoveryEngine:
             return
         grouped = self._group_records_by_target(records)
         required = set(request.document_review.get("coverage") or {})
-        goal = int(request.document_review.get("keep_top", 1))
+        goal = int(request.document_review.get("keep_top", DEFAULT_REVIEW_KEEP_TOP))
         for metric in metrics:
             target = request.targets[int(metric["target_index"])]
             key = identify_target(target, request.partition_by)
@@ -4091,10 +4107,16 @@ class DiscoveryEngine:
             document_description=description,
             model=(str(review_cfg["model"]) if review_cfg.get("model") else None),
             models={str(k): str(v) for k, v in (models or {}).items()} or None,
-            keep_top=int(review_cfg.get("keep_top", 1) or 1),
-            max_chars=int(review_cfg.get("max_chars", 12000) or 12000),
+            keep_top=int(
+                review_cfg.get("keep_top", DEFAULT_REVIEW_KEEP_TOP) or DEFAULT_REVIEW_KEEP_TOP
+            ),
+            max_chars=int(
+                review_cfg.get("max_chars", DEFAULT_REVIEW_MAX_CHARS) or DEFAULT_REVIEW_MAX_CHARS
+            ),
             review_keywords=review_cfg.get("keywords") or classifier_keywords,
-            deduplicate_redundant=bool(review_cfg.get("deduplicate_redundant", True)),
+            deduplicate_redundant=bool(
+                review_cfg.get("deduplicate_redundant", DEFAULT_REVIEW_DEDUPLICATE_REDUNDANT)
+            ),
             dedup_key_fields=[
                 str(field)
                 for field in ((review_cfg.get("deduplication") or {}).get("key_fields") or [])
@@ -4106,7 +4128,7 @@ class DiscoveryEngine:
             context_fields=review_cfg.get("context_fields"),
             coverage=review_cfg.get("coverage"),
             escalate_model=review_cfg.get("escalate_model"),
-            prefer_newest=review_cfg.get("prefer_newest", False),
+            prefer_newest=review_cfg.get("prefer_newest", DEFAULT_REVIEW_PREFER_NEWEST),
             attempt_budget=attempt_budget,
             max_per_host_per_target=max_per_host_per_target,
         )
