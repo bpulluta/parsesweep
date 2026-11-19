@@ -640,6 +640,49 @@ discovery:
     assert "selection_primary_per_target" not in output
 
 
+def test_discover_effective_config_shows_defaults_with_source(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "domain: fixture\ndiscovery:\n  queries: [records]\n  search:\n    max_results: 7\n",
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(
+        cli,
+        ["discover", "--config", str(config_path), "--show-effective-config", "--validate-config"],
+    )
+    assert result.exit_code == 0, result.output
+    output = " ".join(_panel_text(result.output).split())
+    assert "discovery.search.cache True (default)" in output
+    assert "discovery.selection.max_per_target 1 (default)" in output
+    assert "discovery.runtime.max_search_calls none (default)" in output
+    assert "discovery.search.max_results 7 (config)" in output
+
+
+def test_extract_effective_config_shows_defaults_and_config_values(
+    tmp_path, schema_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text("domain: demo\nextraction:\n  max_context: 1000\n", encoding="utf-8")
+    result = CliRunner().invoke(
+        cli,
+        ["extract", "--config", str(config_path), "--show-effective-config", "--validate-config"],
+    )
+    assert result.exit_code == 0, result.output
+    output = " ".join(_panel_text(result.output).split())
+    assert "extraction.timeout_seconds 600 (default)" in output
+    assert "extraction.max_context 1000 (config)" in output
+
+
+def test_runtime_catalog_levels_for_re_levelled_keys():
+    result = CliRunner().invoke(cli, ["config", "--show-runtime-catalog", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    levels = {entry["name"]: entry["level"] for entry in json.loads(result.output)["discovery"]}
+    assert levels["document_review"] == "optional"
+    assert levels["retry_policy"] == "advanced"
+
+
 def test_extract_validate_config_does_not_require_documents(tmp_path, schema_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     config_path = tmp_path / "run.yaml"

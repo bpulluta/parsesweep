@@ -32,6 +32,8 @@ pixi run psweep run --config config/<domain>/run.yaml --validate-config
 pixi run psweep discover --config config/<domain>/run.yaml --show-effective-config
 ```
 
+`--show-effective-config` lists every setting with its source: `(config)` or `(cli)` for values you set, and `(default)` for the built-in value a run will use (`none` means unset; for `max_files`, `max_review_calls` and `max_search_calls` that means unbounded). `psweep config --show-runtime-catalog` tags each key `required`, `optional` or `advanced`; `discovery.targets` or `discovery.sources` must be present, which preflight enforces.
+
 `config/TEMPLATE.yaml` is a valid starting point covering all four stages:
 
 ```{literalinclude} ../config/TEMPLATE.yaml

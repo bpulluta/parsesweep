@@ -70,7 +70,7 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
                 "applied to OCR-derived PDF text only."
             ),
         ),
-        "provider": ("optional", "LLM provider override (openai, azure, anthropic, gemini, auto)."),
+        "provider": ("advanced", "LLM provider override (openai, azure, anthropic, gemini, auto)."),
         "model": ("optional", "Model override for extraction runs."),
         "transcription_model": (
             "optional",
@@ -86,8 +86,8 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
                 "readable text), vision (page images of every meaningful selected page)."
             ),
         ),
-        "limit": ("optional", "Process only the first N files."),
-        "max_context": ("advanced", "Maximum characters to pass to extraction context."),
+        "limit": ("advanced", "Process only the first N files."),
+        "max_context": ("optional", "Maximum characters to pass to extraction context."),
         "max_concurrent": (
             "advanced",
             f"Documents extracted in parallel (default: {DEFAULT_MAX_CONCURRENT}).",
@@ -111,8 +111,8 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
             "advanced",
             "{high: [...], medium: [...]} field-name tokens that rank suspicious dedup groups.",
         ),
-        "dry_run": ("optional", "Preview deduplication without writing files."),
-        "report_format": ("optional", "Dry-run output format (text or json)."),
+        "dry_run": ("advanced", "Preview deduplication without writing files."),
+        "report_format": ("advanced", "Dry-run output format (text or json)."),
         "fail_on_suspicious": (
             "advanced",
             "Fail threshold for suspicious dedup groups in dry-run.",
@@ -152,9 +152,18 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
     "discovery": {
         "targets": (
             "optional",
-            "Targets: .csv/.json path, inline list, or {cross_product: {dimensions}}.",
+            (
+                "Targets: .csv/.json path, inline list, or {cross_product: {dimensions}} "
+                "(one of targets/sources is required)."
+            ),
         ),
-        "sources": ("optional", "Shared document/page URLs downloaded for every run."),
+        "sources": (
+            "optional",
+            (
+                "Shared document/page URLs downloaded for every run "
+                "(one of targets/sources is required)."
+            ),
+        ),
         "queries": ("optional", "Search query templates ({field} / {field?}); enable search."),
         "partition_by": (
             "optional",
@@ -165,30 +174,30 @@ _KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
             "Link following: provider, max_depth (0 = off), max_pages, allowed_domains, patterns.",
         ),
         "runtime": (
-            "advanced",
+            "optional",
             (
                 "max_files, max_review_calls (per target), max_search_calls (per run), "
                 "timeout_seconds, max_concurrent_downloads, min_request_interval_ms."
             ),
         ),
-        "search": ("advanced", "Search provider: max_results, cache, cache_ttl_minutes, params."),
-        "selection": ("advanced", "Per-target candidate filters and caps."),
+        "search": ("optional", "Search provider: max_results, cache, cache_ttl_minutes, params."),
+        "selection": ("optional", "Per-target candidate filters and caps."),
         "link_prioritization": (
             "advanced",
             "Candidate ranking: mode, top_k, keywords, domain_scores, shopping_path_keywords.",
         ),
         "document_classifier": (
-            "advanced",
+            "optional",
             "Keyword checks applied to downloaded document content.",
         ),
-        "document_review": ("advanced", "LLM curation of downloaded documents."),
+        "document_review": ("optional", "LLM curation of downloaded documents."),
         "retry_policy": (
             "advanced",
             "Transient-failure retries: max_attempts, initial/max backoff seconds.",
         ),
         "policy": ("advanced", "robots_mode / tos_mode: ignore, warn, or enforce."),
         "retention": (
-            "advanced",
+            "optional",
             "Which downloaded documents to keep (documents: all, curated, none).",
         ),
     },
@@ -1015,6 +1024,35 @@ _FIELD_MAP: dict[str, str] = {
     "severity_tokens": "severity_tokens",
     "reconciliation": "reconciliation",
 }
+
+
+def config_defaults(command: str) -> dict[str, Any]:
+    """Built-in defaults for ``command``, keyed like the resolved field names."""
+    if command == "discover":
+        import dataclasses
+
+        from psweep.discovery.engine import DiscoveryRequest
+
+        paths = discovery_key_paths()
+        return {
+            f.name: f.default
+            for f in dataclasses.fields(DiscoveryRequest)
+            if f.name in paths and f.default is not dataclasses.MISSING
+        }
+    if command == "extract":
+        from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
+
+        return {
+            "max_context": DEFAULT_MAX_CONTEXT,
+            "max_concurrent": DEFAULT_MAX_CONCURRENT,
+            "timeout_seconds": DEFAULT_LLM_TIMEOUT_SECONDS,
+            "input_mode": INPUT_MODES[0],
+        }
+    if command == "compile":
+        from psweep.compilation.input_provenance import DEFAULT_PROVENANCE_POLICY
+
+        return {"provenance_policy": DEFAULT_PROVENANCE_POLICY}
+    return {}
 
 
 def config_key_paths(command: str) -> dict[str, str]:

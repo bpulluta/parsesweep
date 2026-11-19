@@ -20,6 +20,7 @@ from psweep.cli.ui import (
     set_verbosity,
 )
 from psweep.config import (
+    config_defaults,
     config_key_paths,
     load_runtime_config_file,
     resolve_command_config,
@@ -57,9 +58,16 @@ def _print_effective_config(command_name: str, resolved_values: dict[str, Any]) 
     """Print resolved values under their config key paths with source layer."""
     sources = resolved_values.get("_config_sources", {})
     paths = config_key_paths(command_name)
+    values = {
+        **{k: v for k, v in config_defaults(command_name).items() if k not in resolved_values},
+        **resolved_values,
+    }
     display = {
-        paths.get(key, key): (f"{value} [dim]({sources.get(key, 'default').split('.')[0]})[/dim]")
-        for key, value in resolved_values.items()
+        paths.get(key, key): (
+            f"{'none' if value is None else value} "
+            f"[dim]({sources.get(key, 'default').split('.')[0]})[/dim]"
+        )
+        for key, value in values.items()
         if not key.startswith("_")
     }
     print_header(f"{command_name.upper()} EFFECTIVE CONFIG")
