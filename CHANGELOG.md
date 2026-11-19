@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (review dedup no longer discards a whole target)
+- Redundant-copy detection among qualified documents is now computed in code from the
+  verified review evidence, with no LLM call. Documents with equal scope, claim kind and
+  content quote are copies; the one with the broadest coverage (ties: best rank, or with
+  `prefer_newest` the latest edition) is kept. Before, one malformed LLM dedup answer
+  marked every qualified document of the target as failed, and re-runs repeated the same
+  failure, so large targets (31 qualified documents) kept nothing.
+- Removed `document_review.deduplication.key_fields`. It only hinted the LLM comparison,
+  so it is now rejected as an unknown key; delete it from run configs.
+- Cache impact: no regrade, grade caches are untouched. Existing `*-dedup.json` review
+  cache files are no longer read. Curated sets can shrink slightly where dedup is on,
+  because exact evidence duplicates the LLM declined are now dropped; only newly selected
+  documents extract. Review cost drops by one call per target, and dedup no longer counts
+  toward `runtime.max_review_calls`.
+
 ### Upgrade impact vs main
 - One paid re-extraction of every document: the consumed-input fingerprint
   (`captured-input-v1`), record contract 3.0.0 and the extraction behavior

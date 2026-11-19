@@ -4116,12 +4116,6 @@ class DiscoveryEngine:
             deduplicate_redundant=bool(
                 review_cfg.get("deduplicate_redundant", DEFAULT_REVIEW_DEDUPLICATE_REDUNDANT)
             ),
-            dedup_key_fields=[
-                str(field)
-                for field in ((review_cfg.get("deduplication") or {}).get("key_fields") or [])
-                if str(field).strip()
-            ]
-            or None,
             cache_dir=cache_dir,
             identity_fields=identity_fields,
             context_fields=review_cfg.get("context_fields"),

@@ -87,7 +87,7 @@ def test_quoted_booleans_are_rejected(tmp_path, discovery):
         {"output": {"document_dir": "documents"}},
         {"crawl": {"include_url_paterns": ["pdf"]}},
         {"crawl": {"browser_escalation": {"enable": True}}},
-        {"document_review": {"deduplication": {"key_felds": ["path"]}}},
+        {"document_review": {"deduplication": {"key_fields": ["path"]}}},
         {"selection": {"require_supported_document": False}},
     ],
 )

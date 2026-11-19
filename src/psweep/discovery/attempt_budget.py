@@ -25,7 +25,7 @@ class AttemptBudget:
         self._lock = Lock()
 
     def reserve_review(self, target_key: str) -> None:
-        """Reserve one grading, escalation, deduplication or retry request."""
+        """Reserve one grading, escalation or retry request."""
         with self._lock:
             if (
                 self.max_review_calls is not None

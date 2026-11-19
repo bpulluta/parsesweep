@@ -378,65 +378,6 @@ def test_pending_grade_futures_are_bounded(tmp_path, monkeypatch):
     assert all(not record.get("review_failed") for record in records)
 
 
-def test_comparative_dedup_exception_marks_survivors_without_losing_grades(
-    tmp_path,
-):
-    """A failed comparative call blocks survivors but retains raw grades."""
-    records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
-
-    class Client(MeteredReviewClient):
-        def respond(self, **kwargs):
-            raise RuntimeError("api_key=secret-provider-message")
-
-    reviewer = _stub_reviewer(keep_top=2)
-    reviewer._deduplicate_redundant = True
-    reviewer._client = Client()
-    reviewer.review(records, [])
-    for record in records:
-        assert record["review_failed"] is True
-        assert record["review_selected"] is False
-        assert record["review_usage_unknown"] is True
-        assert record["review_grade"] == _GRADE
-        assert "dedup" in record["review_error"]
-        assert "secret" not in record["review_error"]
-    costs = reviewer.get_costs()
-    assert costs["usage_unknown_calls"] == 1
-    assert costs["llm_calls"] == 1
-    assert costs["total_cost_usd"] == 0
-
-
-def test_comparative_prompt_includes_the_complete_response_contract(tmp_path):
-    """Custom prompts must request required group reasons as well as indices."""
-    records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
-
-    class Client(MeteredReviewClient):
-        def respond(self, **kwargs):
-            assert json.dumps(kwargs["schema"], indent=2) in kwargs["user_prompt"]
-            return {
-                "data": {
-                    "redundancy_groups": [
-                        {
-                            "keep_index": 0,
-                            "redundant_indices": [1],
-                            "reason": "same text",
-                            "evidence_refs": [
-                                {"index": i, "field": "content_quote", "quote": "fixture document"}
-                                for i in (0, 1)
-                            ],
-                        }
-                    ]
-                }
-            }
-
-    reviewer = _stub_reviewer(keep_top=2)
-    reviewer._deduplicate_redundant = True
-    reviewer._client = Client()
-    reviewer.review(records, [])
-    assert records[0]["review_selected"] is True
-    assert records[1]["review_selected"] is False
-    assert not any(record.get("review_failed") for record in records)
-
-
 def test_client_setup_failure_is_explicit_and_sanitized(tmp_path):
     """Setup errors do not leak credentials into records or notes."""
     records = [_record(tmp_path)]
@@ -496,55 +437,6 @@ def test_normal_sampling_remains_byte_identical(keywords, expected):
     assert hashlib.sha256(sample.encode()).hexdigest() == expected
 
 
-@pytest.mark.parametrize(
-    "data",
-    [
-        {"redundancy_groups": "not a list"},
-        {"redundancy_groups": [None]},
-        {
-            "redundancy_groups": [
-                {
-                    "keep_index": True,
-                    "redundant_indices": [1],
-                    "reason": "bad",
-                },
-            ]
-        },
-        {
-            "redundancy_groups": [
-                {"keep_index": 0, "redundant_indices": None, "reason": "bad"},
-            ]
-        },
-    ],
-)
-def test_invalid_comparative_assessment_preserves_grade_and_usage(tmp_path, data):
-    """Invalid dedup data fails explicitly with the actual returned usage."""
-    records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
-
-    class Client(MeteredReviewClient):
-        def respond(self, **kwargs):
-            return {
-                "data": data,
-                "cost": 0.2,
-                "input_tokens": 20,
-                "output_tokens": 5,
-            }
-
-    reviewer = _stub_reviewer(keep_top=2)
-    reviewer._deduplicate_redundant = True
-    reviewer._client = Client()
-    reviewer.review(records, [])
-    assert all(record["review_failed"] for record in records)
-    assert all(record["review_grade"] == _GRADE for record in records)
-    assert not any(record["review_selected"] for record in records)
-    costs = reviewer.get_costs()
-    assert costs["total_cost_usd"] == 0.2
-    assert costs["total_input_tokens"] == 20
-    assert costs["total_output_tokens"] == 5
-    assert costs["llm_calls"] == 1
-    assert costs["usage_unknown_calls"] == 0
-
-
 def test_unreadable_document_is_a_terminal_skip_with_one_note(tmp_path, monkeypatch):
     """Too little text is a terminal skip, not an error, with one aggregated note."""
     monkeypatch.setattr(document_utils, "extract_text_from_document", lambda _path: "")
@@ -601,24 +493,6 @@ def test_review_failure_memo_does_not_retain_document_frames(tmp_path):
     reviewer.review([record], [])
     assert reviewer.get_costs()["llm_calls"] == 1
     assert record["review_failed"]
-
-
-def test_comparison_failure_memo_does_not_retain_tracebacks(tmp_path):
-    records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
-
-    class Client(MeteredReviewClient):
-        def respond(self, **kwargs):
-            raise RuntimeError("private provider failure")
-
-    reviewer = _stub_reviewer(keep_top=2)
-    reviewer._deduplicate_redundant = True
-    reviewer._client = Client()
-    reviewer.review(records, [])
-    (failure,) = reviewer._dedup_failures.values()
-    assert not isinstance(failure, BaseException)
-    reviewer.review(records, [])
-    assert reviewer.get_costs()["llm_calls"] == 1
-    assert all(record["review_failed"] for record in records)
 
 
 def test_cache_miss_hashes_source_only_once_and_does_not_memoize_unused_grades(
