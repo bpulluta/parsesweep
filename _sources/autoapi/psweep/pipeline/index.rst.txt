@@ -127,13 +127,14 @@ Module Contents
    Count extracted JSONs, excluding ``run_manifests/*.json``.
 
 
-.. py:function:: execute_run_stages(stage_cmds: collections.abc.Sequence[tuple[str, list[str]]], on_stage: collections.abc.Callable[[int, str], None] | None = None) -> list[str]
+.. py:function:: execute_run_stages(stage_cmds: collections.abc.Sequence[tuple[str, list[str]]], on_stage: collections.abc.Callable[[int, str], None] | None = None, on_partial: collections.abc.Callable[[str], None] | None = None) -> list[str]
 
    Run stage subprocesses in order and return the stages that ended partial.
 
    A partial stage (usable output plus recorded errors) does not stop the
-   stages after it; re-running retries its failed items. Any other non-zero
-   exit raises ``PipelineError``.
+   stages after it; re-running retries its failed items. ``on_partial`` is
+   called with the stage name as soon as a stage ends partial, before the
+   next one starts. Any other non-zero exit raises ``PipelineError``.
 
 
 .. py:function:: extract_documents(documents_path: str | pathlib.Path, schema: str | pathlib.Path, *, output_dir: str | pathlib.Path | None = None, model: str | None = None, provider: str = 'auto', max_context: int = DEFAULT_MAX_CONTEXT, skip_existing: bool = True, limit: int | None = None, pages_csv: str | pathlib.Path | None = None) -> ExtractionRunResult

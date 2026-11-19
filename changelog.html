@@ -466,6 +466,21 @@ searches, verified local downloads and cached review grades are reused, so no
 paid search or grading for documents already seen. Local configs that set the
 key must delete the line.</p>
 </section>
+<section id="added-cost-visibility-before-paid-stages">
+<h3>Added (cost visibility before paid stages)<a class="headerlink" href="#added-cost-visibility-before-paid-stages" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">run</span></code> plan lists the paid stages before anything runs: an upper
+bound on SerpApi queries (before the cache) with the cache state and
+<code class="docutils literal notranslate"><span class="pre">max_search_calls</span></code> ceiling, the review model with its downloads per target,
+<code class="docutils literal notranslate"><span class="pre">keep_top</span></code>, escalation model and <code class="docutils literal notranslate"><span class="pre">max_review_calls</span></code>, the extraction and
+page-targeting models, the reconciliation model, and a <code class="docutils literal notranslate"><span class="pre">Price</span> <span class="pre">unknown</span></code> row
+naming every resolved model with no catalog price.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">run</span></code> warns before extraction when discovery ended partial, naming the number
+of incomplete targets in the checkpoint, and then continues as before.
+<code class="docutils literal notranslate"><span class="pre">execute_run_stages</span></code> takes an optional <code class="docutils literal notranslate"><span class="pre">on_partial</span></code> callback.</p></li>
+</ul>
+<p>Cost/cache impact: none (output only).</p>
+</section>
 <section id="added-one-domain-workspace-override-on-every-config-driven-stage">
 <h3>Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)<a class="headerlink" href="#added-one-domain-workspace-override-on-every-config-driven-stage" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1235,6 +1250,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#changed-priced-provider-fallback-models">Changed (priced provider fallback models)</a></li>
 <li><a class="reference internal" href="#removed-extraction-skip-existing">Removed (extraction.skip_existing)</a></li>
 <li><a class="reference internal" href="#removed-selection-require-supported-document">Removed (selection.require_supported_document)</a></li>
+<li><a class="reference internal" href="#added-cost-visibility-before-paid-stages">Added (cost visibility before paid stages)</a></li>
 <li><a class="reference internal" href="#added-one-domain-workspace-override-on-every-config-driven-stage">Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)</a></li>
 <li><a class="reference internal" href="#fixed-search-budget-a-target-s-query-slots-run-in-order">Fixed (search budget: a target’s query slots run in order)</a></li>
 <li><a class="reference internal" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">Fixed (discovery publication: final decisions apply in incomplete partitions)</a></li>

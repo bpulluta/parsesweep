@@ -994,6 +994,15 @@ limit and rediscover with `--fresh`.
 `run` stops at 1 or 2, continues past 3, and exits 3 at the end when any stage
 was partial. Exit codes do not depend on `-q`/`-v`.
 
+Before anything runs, the `run` plan lists the paid stages: the upper bound on
+SerpApi queries (before the cache) with its ceiling, the review, extraction,
+page-targeting and reconciliation models, and any model without a catalog price
+(`Price unknown`: its spend is not metered in dollars). `--yes` and `-q` skip
+the prompt. After a partial discovery, `run` warns before extraction starts
+(extraction uses the current curated set, which keeps earlier documents for
+incomplete targets) and then continues; re-run `psweep discover` first to
+retry the incomplete targets without paying for extraction.
+
 **Discovery resume.** The checkpoint (`discovered/checkpoint.json`) records
 each target and shared source separately, keyed by the effective config
 fingerprint and SHA-256 evidence of its files. Adding a target fetches only
