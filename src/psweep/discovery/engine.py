@@ -219,7 +219,6 @@ class DiscoveryRequest:
     selection_exclude_url_patterns: list[str] | None = None
     selection_exclude_text_patterns: list[str] | None = None
     selection_max_per_host_per_target: int = 0
-    selection_require_supported_document: bool = True
     selection_target_require_any: list[str] | None = None
     selection_target_require_all: list[str] | None = None
     selection_target_exclude: list[str] | None = None
@@ -523,7 +522,6 @@ class DiscoveryEngine:
             relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms or None,
             exclude_url_patterns=request.selection_exclude_url_patterns or None,
             exclude_text_patterns=request.selection_exclude_text_patterns or None,
-            require_supported_document=bool(request.selection_require_supported_document),
             max_per_host_per_target=max(0, int(request.selection_max_per_host_per_target or 0)),
             target_require_any=request.selection_target_require_any or None,
             target_require_all=request.selection_target_require_all or None,

@@ -213,7 +213,6 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
         "exclude_url_patterns": _Key(_patterns, "selection_exclude_url_patterns"),
         "exclude_text_patterns": _Key(_patterns, "selection_exclude_text_patterns"),
         "max_per_host_per_target": _Key(_int(0), "selection_max_per_host_per_target"),
-        "require_supported_document": _Key(_bool, "selection_require_supported_document"),
         "target_require_any": _Key(_strings, "selection_target_require_any"),
         "target_require_all": _Key(_strings, "selection_target_require_all"),
         "target_exclude": _Key(_strings, "selection_target_exclude"),

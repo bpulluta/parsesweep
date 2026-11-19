@@ -93,7 +93,7 @@ def test_domain_defaults_to_config_dir_and_outputs_are_derived(tmp_path):
 def test_top_level_schema_overrides_sibling_default(tmp_path):
     path = _domain_config(
         tmp_path,
-        "schema: shared/contract.json\nextraction:\n  skip_existing: true\n",
+        "schema: shared/contract.json\nextraction: {}\n",
     )
     (path.parent / "schema.json").write_text("{}")
     for command in ("extract", "compile"):

@@ -42,7 +42,6 @@ def test_process_validate_config_rejects_unknown_key(tmp_path, schema_path):
         f"""
 schema: {schema_path.as_posix()}
 extraction:
-  skip_existing: true
   mystery_option: true
 """,
         encoding="utf-8",
@@ -91,7 +90,6 @@ def test_run_validate_config_only_passes_with_valid_runtime_config(tmp_path, sch
 domain: demo
 schema: {schema_path.as_posix()}
 extraction:
-  skip_existing: true
 """,
         encoding="utf-8",
     )
@@ -111,7 +109,6 @@ def test_run_validate_config_fails_on_unknown_keys(tmp_path, schema_path):
 domain: demo
 schema: {schema_path.as_posix()}
 extraction:
-  skip_existing: true
   mystery_option: true
 """,
         encoding="utf-8",
@@ -140,7 +137,6 @@ def test_run_fresh_delegates_safe_cleanup_to_extraction(tmp_path, monkeypatch, s
 domain: demo
 schema: {schema_path.as_posix()}
 extraction:
-  skip_existing: true
 """,
         encoding="utf-8",
     )
@@ -174,7 +170,6 @@ discovery:
       query: q1
 schema: {schema_path.as_posix()}
 extraction:
-  skip_existing: true
 """,
         encoding="utf-8",
     )

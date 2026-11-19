@@ -27,7 +27,6 @@ def test_resolve_command_config_merges_cli_and_file_values(tmp_path: Path):
 domain: my_domain
 schema: config/my_domain/schema.json
 extraction:
-  skip_existing: true
   max_context: 111111
   timeout_seconds: 480
 """,
@@ -156,7 +155,6 @@ def test_load_runtime_config_file_rejects_invalid_extraction_timeout(tmp_path: P
         f"""
 schema: config/my_domain/schema.json
 extraction:
-  skip_existing: true
   timeout_seconds: {timeout_value!r}
 """,
         encoding="utf-8",
@@ -172,7 +170,6 @@ def test_load_runtime_config_file_accepts_ocr_corrections(tmp_path: Path):
         """
 schema: config/my_domain/schema.json
 extraction:
-  skip_existing: true
   ocr_corrections:
     - {pattern: '\\bIbs\\b', replacement: 'lbs'}
     - {pattern: 'gaspowered', replacement: 'gas powered', ignore_case: true}
@@ -200,10 +197,7 @@ def test_load_runtime_config_file_rejects_invalid_ocr_corrections(
 ):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        "schema: config/my_domain/schema.json\n"
-        "extraction:\n"
-        "  skip_existing: true\n"
-        "  ocr_corrections:\n" + rules_block,
+        "schema: config/my_domain/schema.json\nextraction:\n  ocr_corrections:\n" + rules_block,
         encoding="utf-8",
     )
     with pytest.raises(RuntimeConfigError, match=match):
@@ -323,7 +317,7 @@ def test_load_runtime_config_file_rejects_split_processing_override(tmp_path: Pa
     """Report both paths; adjacent-file contents never affect rejection."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "schema: config/my_domain/schema.json\nextraction:\n  skip_existing: true\n",
+        "schema: config/my_domain/schema.json\nextraction: {}\n",
         encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(
@@ -345,7 +339,7 @@ def test_load_runtime_config_file_rejects_all_split_files_for_same_section(
     """Every conflicting override is listed in the migration error."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "schema: s.json\nextraction:\n  skip_existing: true\n",
+        "schema: s.json\nextraction: {}\n",
         encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(
@@ -467,7 +461,6 @@ discovery:
         exclude:
             - state brief
             - specific plan
-        require_supported_document: true
 """,
         encoding="utf-8",
     )
@@ -481,7 +474,18 @@ discovery:
 
     assert resolved["selection_relevance_require_any_terms"] == ["ordinance", "municipal code"]
     assert resolved["selection_relevance_exclude_any_terms"] == ["state brief", "specific plan"]
-    assert resolved["selection_require_supported_document"] is True
+
+
+def test_removed_extraction_skip_existing_key_is_rejected(tmp_path: Path):
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text("schema: s.json\nextraction:\n  skip_existing: true\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeConfigError, match=r"unknown key 'extraction.skip_existing'"):
+        resolve_command_config(
+            command="extract",
+            cli_values={},
+            config_data=load_runtime_config_file(run_path),
+        )
 
 
 def test_resolve_command_config_maps_split_selection_exclusions(tmp_path: Path):
@@ -675,7 +679,6 @@ discovery:
   queries: ["a"]
 schema: config/x/schema.json
 extraction:
-  skip_existing: true
 compilation:
   dry_run: false
 """,
@@ -722,7 +725,7 @@ def _write(tmp_path: Path, body: str) -> Path:
 def test_processing_validator_rejects_invalid_fields(tmp_path: Path, snippet: str, match: str):
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  skip_existing: true\n  " + snippet,
+        "schema: s.json\nextraction:\n  " + snippet,
     )
     with pytest.raises(RuntimeConfigError, match=match):
         load_runtime_config_file(cfg)
@@ -743,7 +746,7 @@ def test_pages_csv_and_range_together_fail_at_load(tmp_path: Path):
 def test_processing_validator_accepts_valid_block(tmp_path: Path):
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  skip_existing: true\n  max_context: 600000\n"
+        "schema: s.json\nextraction:\n  max_context: 600000\n"
         "  provider: azure\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
@@ -781,7 +784,7 @@ def test_pages_block_variants(
 ):
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  skip_existing: true\n" + pages_block,
+        "schema: s.json\nextraction:\n" + pages_block,
     )
     loaded = load_runtime_config_file(cfg)
     ext = loaded["extraction"]
@@ -802,7 +805,7 @@ def test_pages_auto_locate_accepts_save_discovered(tmp_path: Path):
     """save_discovered is consumed by extract; a bool must be accepted."""
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  skip_existing: true\n"
+        "schema: s.json\nextraction:\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
         "      save_discovered: true\n",
@@ -815,7 +818,7 @@ def test_pages_auto_locate_rejects_non_bool_save_discovered(tmp_path: Path):
     """A mistyped (non-bool) save_discovered fails loudly instead of no-op'ing."""
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  skip_existing: true\n"
+        "schema: s.json\nextraction:\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
         "      save_discovered: yesplease\n",
@@ -878,7 +881,7 @@ def test_old_flat_pages_keys_rejected(tmp_path: Path):
     """Internal pages_csv / page_targeting keys fail like any unknown key."""
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  skip_existing: true\n"
+        "schema: s.json\nextraction:\n"
         "  pages_csv: old.csv\n"
         "  page_targeting:\n    enabled: true\n"
         "    section_description: old style\n",
@@ -890,8 +893,7 @@ def test_old_flat_pages_keys_rejected(tmp_path: Path):
 def test_model_context_windows_validates_and_passes_through(tmp_path: Path):
     cfg = _write(
         tmp_path,
-        "model_context_windows:\n  my-deploy: 300000\n"
-        "schema: s.json\nextraction:\n  skip_existing: true\n",
+        "model_context_windows:\n  my-deploy: 300000\nschema: s.json\nextraction: {}\n",
     )
     config_data = load_runtime_config_file(cfg)
     resolved = resolve_command_config(command="extract", cli_values={}, config_data=config_data)
@@ -1156,7 +1158,6 @@ reasoning_models:
   - my-thinker
 schema: config/x/schema.json
 extraction:
-  skip_existing: true
 """,
         encoding="utf-8",
     )
@@ -1177,7 +1178,6 @@ reasoning_models:
   - 5
 schema: config/x/schema.json
 extraction:
-  skip_existing: true
 """,
         encoding="utf-8",
     )

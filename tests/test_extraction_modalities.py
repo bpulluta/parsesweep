@@ -30,9 +30,9 @@ SCHEMA = {"type": "object", "properties": {}}
 
 
 def _resolved(tmp_path, value=None):
-    body = "" if value is None else f"  input_mode: {value}\n"
+    body = " {}\n" if value is None else f"\n  input_mode: {value}\n"
     path = tmp_path / "run.yaml"
-    path.write_text(f"schema: s.json\nextraction:\n  skip_existing: true\n{body}", encoding="utf-8")
+    path.write_text(f"schema: s.json\nextraction:{body}", encoding="utf-8")
     return resolve_command_config(
         command="extract", cli_values={}, config_data=load_runtime_config_file(path)
     )

@@ -125,7 +125,6 @@ def test_source_policy_uses_synthetic_config(tmp_path, url, allowed):
     config = load_runtime_config_file(path)
     selector = CandidateSelector(
         exclude_draft=False,
-        require_supported_document=False,
         exclude_url_patterns=config["discovery"]["selection"]["exclude_url_patterns"],
     )
     candidate = DiscoveryCandidate(url=url, source="test", score=CandidateScore())
