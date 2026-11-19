@@ -551,10 +551,10 @@ class SectionLocator(_BaseLocator):
         if not chunks:
             self.incomplete = True
             return None
-        # HTML markup, scripts and navigation can dwarf a short article. The
-        # cheap raw-size check above is only a pre-filter; target readable text.
+        # HTML markup, scripts and navigation, or DOCX images and styles, can dwarf
+        # a short document. The raw-size check above is only a pre-filter.
         if (
-            ext in {".html", ".htm"}
+            ext in {".html", ".htm", ".docx", ".doc"}
             and sum(len(chunk.to_text()) for chunk in chunks) <= self.trigger_chars
         ):
             return None

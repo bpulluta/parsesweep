@@ -485,7 +485,14 @@ def preview(document_path: str):
     default=None,
     help="CSV file mapping documents to page ranges",
 )
-def estimate(documents_path: str, workers: int, pages_csv: str):
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Domain run config; prices extraction.model instead of the environment model",
+)
+def estimate(documents_path: str, workers: int, pages_csv: str, config_path: str | None):
     """
     Estimate cost and time for batch document extraction.
 
@@ -497,6 +504,7 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
         psweep estimate documents/tariffs/
         psweep estimate documents/permits/ --workers 8
         psweep estimate documents/tariffs/ --pages-csv config/tariffs/page_ranges.csv
+        psweep estimate outputs/tariffs/discovered/curated --config config/tariffs/run.yaml
     """
     docs_path = Path(documents_path)
 
@@ -514,9 +522,11 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
             print_error(f"Unsupported file type: {docs_path.suffix}")
             return
     else:
-        doc_files = []
-        for ext in SUPPORTED_EXTENSIONS:
-            doc_files.extend(sorted(docs_path.rglob(f"*{ext}")))
+        # The inventory extraction itself reads: no dot-directories or sidecars.
+        from psweep.pipeline import _input_documents
+
+        doc_files, input_root = _input_documents(docs_path)
+        doc_files = sorted(doc_files, key=lambda p: p.relative_to(input_root).as_posix())
 
         if not doc_files:
             supported = ", ".join(SUPPORTED_EXTENSIONS)
@@ -569,8 +579,19 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     avg_chars = total_chars / sample_size
     estimated_total_chars = avg_chars * len(doc_files)
 
-    config = get_config()
-    model_name = config.llm_config.get("model", DEFAULT_MODEL)
+    if config_path:
+        from psweep.config import RuntimeConfigError, load_runtime_config_file
+
+        try:
+            cfg = load_runtime_config_file(Path(config_path))
+            alias = (cfg.get("extraction") or {}).get("model")
+            model_name = cfg["_model_registry"].get_model(alias).model
+        except (RuntimeConfigError, ValueError, KeyError) as e:
+            print_error(f"Could not resolve extraction model from config: {e}")
+            return
+    else:
+        config = get_config()
+        model_name = config.llm_config.get("model", DEFAULT_MODEL)
 
     est = estimate_extraction_cost(estimated_total_chars, model_name, workers=workers)
     estimated_tokens = est.input_tokens
