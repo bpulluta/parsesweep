@@ -102,7 +102,7 @@ def test_validate_passes_the_override_to_the_validation_run(config):
 def test_run_forwards_the_override_to_every_stage(config):
     captured = []
 
-    def fake(stage_cmds, on_stage=None):
+    def fake(stage_cmds, on_stage=None, on_partial=None):
         captured.extend(stage_cmds)
         return []
 

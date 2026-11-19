@@ -1932,12 +1932,14 @@ def run_pipeline(
 def execute_run_stages(
     stage_cmds: Sequence[tuple[str, list[str]]],
     on_stage: Callable[[int, str], None] | None = None,
+    on_partial: Callable[[str], None] | None = None,
 ) -> list[str]:
     """Run stage subprocesses in order and return the stages that ended partial.
 
     A partial stage (usable output plus recorded errors) does not stop the
-    stages after it; re-running retries its failed items. Any other non-zero
-    exit raises ``PipelineError``.
+    stages after it; re-running retries its failed items. ``on_partial`` is
+    called with the stage name as soon as a stage ends partial, before the
+    next one starts. Any other non-zero exit raises ``PipelineError``.
     """
     partial: list[str] = []
     for index, (stage, cmd) in enumerate(stage_cmds, 1):
@@ -1946,6 +1948,8 @@ def execute_run_stages(
         returncode = subprocess.run(cmd, check=False).returncode  # noqa: S603 - argv built from sys.executable
         if returncode == EXIT_PARTIAL:
             partial.append(stage)
+            if on_partial is not None:
+                on_partial(stage)
         elif returncode != 0:
             raise PipelineError(
                 f"Stage '{stage}' failed (exit {returncode})",
