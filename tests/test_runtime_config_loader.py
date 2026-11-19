@@ -144,7 +144,7 @@ def test_catalog_for_command_contains_required_and_advanced_fields():
     assert "max_concurrent" in names
     assert "schema" in names
     assert levels["schema"] == "optional"
-    assert levels["max_context"] == "advanced"
+    assert levels["max_context"] == "optional"
     assert levels["timeout_seconds"] == "advanced"
 
 

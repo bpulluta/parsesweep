@@ -80,6 +80,18 @@ searches, verified local downloads and cached review grades are reused, so no
 paid search or grading for documents already seen. Local configs that set the
 key must delete the line.
 
+### Added (effective defaults are visible)
+- `--show-effective-config` on `discover`, `extract` and `compile` now also lists
+  the built-in default of every setting you did not set, labelled `(default)`;
+  unset limits print `none`. The defaults come from the same constants and
+  `DiscoveryRequest` fields the run uses.
+- `psweep config --show-runtime-catalog` re-levels keys: `document_review`,
+  `selection`, `search`, `runtime`, `document_classifier`, `retention` and
+  `extraction.max_context` are `optional`; `extraction.limit`,
+  `extraction.provider`, `compilation.dry_run` and `compilation.report_format`
+  are `advanced`. `targets` and `sources` note that one of them is required.
+- Cost/cache impact: none.
+
 ### Added (cost visibility before paid stages)
 - The `psweep run` plan lists the paid stages before anything runs: an upper
   bound on SerpApi queries (before the cache) with the cache state and
