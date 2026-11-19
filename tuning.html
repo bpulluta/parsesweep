@@ -459,14 +459,14 @@ with its own timer, and each prints a line with its item count and time as
 soon as it finishes. The bar reads <code class="docutils literal notranslate"><span class="pre">Preparing</span></code> while page targeting runs. A
 call must return its whole answer within the timeout. Otherwise it is resent,
 up to 4 attempts in total, and each retry logs a warning that names the
-document, such as <code class="docutils literal notranslate"><span class="pre">tariffs.pdf:</span> <span class="pre">gpt-4o</span> <span class="pre">did</span> <span class="pre">not</span> <span class="pre">finish</span> <span class="pre">within</span> <span class="pre">the</span> <span class="pre">120s</span> <span class="pre">timeout;</span> <span class="pre">retrying</span> <span class="pre">in</span> <span class="pre">2s</span> <span class="pre">(attempt</span> <span class="pre">2/4)</span></code>. Every attempt resends the whole prompt and may
+document, such as <code class="docutils literal notranslate"><span class="pre">tariffs.pdf:</span> <span class="pre">gpt-4o</span> <span class="pre">did</span> <span class="pre">not</span> <span class="pre">finish</span> <span class="pre">within</span> <span class="pre">the</span> <span class="pre">600s</span> <span class="pre">timeout;</span> <span class="pre">retrying</span> <span class="pre">in</span> <span class="pre">2s</span> <span class="pre">(attempt</span> <span class="pre">2/4)</span></code>. Every attempt resends the whole prompt and may
 be billed, and a model that needs longer than the timeout usually needs it
 again.</p>
 <p>Response time grows mostly with the answer, because every item is written out
 in full: a one-page sheet that lists many items can take minutes, and page
 targeting only trims long inputs. First narrow the schema’s scope to the
 subset you need, such as one customer class. If calls still run long, raise
-<code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> (default <code class="docutils literal notranslate"><span class="pre">120</span></code>, or <code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code>). Add <code class="docutils literal notranslate"><span class="pre">--debug</span></code>
+<code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> (default <code class="docutils literal notranslate"><span class="pre">600</span></code>, or <code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code>). Add <code class="docutils literal notranslate"><span class="pre">--debug</span></code>
 to log each request’s size, response time and token counts.</p>
 </section>
 </section>
@@ -491,6 +491,9 @@ to log each request’s size, response time and token counts.</p>
 <li><p>Re-runs reuse verified work and make no model calls for unchanged inputs.
 Per-stage costs are in <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/compiled/run_accounting.json</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">run</span> <span class="pre">--yes</span></code> skips the confirmation prompt for unattended runs.</p></li>
+<li><p>Settle <code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> and <code class="docutils literal notranslate"><span class="pre">pages.auto_locate.save_discovered</span></code>
+before a large run: they are part of the extraction reuse fingerprint, so
+adding, changing or removing either re-extracts every document (paid).</p></li>
 </ul>
 </section>
 <section id="compilation">

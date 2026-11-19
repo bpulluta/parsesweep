@@ -405,6 +405,43 @@ their constants, and lists <code class="docutils literal notranslate"><span clas
 <li><p>Cost/cache impact: none (no behavior change).</p></li>
 </ul>
 </section>
+<section id="changed-searches-are-cached-by-default">
+<h3>Changed (searches are cached by default)<a class="headerlink" href="#changed-searches-are-cached-by-default" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">discovery.search.cache</span></code> now defaults to <code class="docutils literal notranslate"><span class="pre">true</span></code> (<code class="docutils literal notranslate"><span class="pre">DEFAULT_SEARCH_CACHE</span></code>). Set
+<code class="docutils literal notranslate"><span class="pre">cache:</span> <span class="pre">false</span></code> for always-live searches; <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> still skips reads.</p></li>
+<li><p>Cost/cache impact: fewer paid SerpApi calls on re-runs, tuning and
+dry-run-then-run; no discovery re-evaluation (cache settings are excluded
+from the discovery fingerprint); configs that set cache: true may drop it.</p></li>
+</ul>
+</section>
+<section id="changed-600-s-llm-timeout">
+<h3>Changed (600 s LLM timeout)<a class="headerlink" href="#changed-600-s-llm-timeout" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>The built-in LLM request timeout is 600 s (was 120 s). <code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code> and
+<code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> still override it.</p></li>
+<li><p>The validation judge now defaults to the shared extraction concurrency
+(4 workers, was 1) when <code class="docutils literal notranslate"><span class="pre">extraction.max_concurrent</span></code> is unset.</p></li>
+<li><p>The docs warn that <code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> and
+<code class="docutils literal notranslate"><span class="pre">pages.auto_locate.save_discovered</span></code> are part of the reuse fingerprint.</p></li>
+<li><p>Cost/cache impact: fewer paid full-prompt retries on long requests; no
+re-extraction (the reuse fingerprint records only a configured
+extraction.timeout_seconds). Judge concurrency is speed only; the judge
+cache is unchanged.</p></li>
+</ul>
+</section>
+<section id="changed-priced-provider-fallback-models">
+<h3>Changed (priced provider fallback models)<a class="headerlink" href="#changed-priced-provider-fallback-models" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>The Anthropic and Gemini environment fallbacks are now <code class="docutils literal notranslate"><span class="pre">claude-haiku-5-5</span></code>
+and <code class="docutils literal notranslate"><span class="pre">gemini-3.1-flash-lite</span></code>, and a test asserts every built-in default model
+has a known price in the pinned catalog.</p></li>
+<li><p>Cost/cache impact: only setups that rely on the Anthropic or Gemini
+environment fallback (no model in config, no ANTHROPIC_MODEL/GEMINI_MODEL)
+change model, so their documents are re-extracted and re-graded once (paid);
+configs that name models are unaffected.</p></li>
+</ul>
+</section>
 <section id="added-one-domain-workspace-override-on-every-config-driven-stage">
 <h3>Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)<a class="headerlink" href="#added-one-domain-workspace-override-on-every-config-driven-stage" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1169,6 +1206,9 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
 <li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>
 <li><a class="reference internal" href="#changed-built-in-defaults-are-single-sourced">Changed (built-in defaults are single-sourced)</a></li>
+<li><a class="reference internal" href="#changed-searches-are-cached-by-default">Changed (searches are cached by default)</a></li>
+<li><a class="reference internal" href="#changed-600-s-llm-timeout">Changed (600 s LLM timeout)</a></li>
+<li><a class="reference internal" href="#changed-priced-provider-fallback-models">Changed (priced provider fallback models)</a></li>
 <li><a class="reference internal" href="#added-one-domain-workspace-override-on-every-config-driven-stage">Added (one <code class="docutils literal notranslate"><span class="pre">--domain</span></code> workspace override on every config-driven stage)</a></li>
 <li><a class="reference internal" href="#fixed-search-budget-a-target-s-query-slots-run-in-order">Fixed (search budget: a target’s query slots run in order)</a></li>
 <li><a class="reference internal" href="#fixed-discovery-publication-final-decisions-apply-in-incomplete-partitions">Fixed (discovery publication: final decisions apply in incomplete partitions)</a></li>

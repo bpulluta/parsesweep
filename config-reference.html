@@ -566,8 +566,8 @@ both row locations. <code class="docutils literal notranslate"><span class="pre"
 <td><p>Unique candidates kept <strong>per rendered query</strong> (live, cached and news results together). No hidden pagination or refill.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cache</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
-<td><p>Cache results on disk; a hit makes no live call.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Successful results are cached under <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/discovered/.serpapi_cache/</span></code>; a hit makes no live call; <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> skips reads. Set <code class="docutils literal notranslate"><span class="pre">false</span></code> only when every run must be live; prefer <code class="docutils literal notranslate"><span class="pre">cache_ttl_minutes</span></code> for freshness.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cache_ttl_minutes</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
@@ -998,7 +998,6 @@ and are not counted as automatically verified evidence.</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">discovery</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">queries</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">'"{name}"</span><span class="nv"> </span><span class="s">"{area?}"</span><span class="nv"> </span><span class="s">technical</span><span class="nv"> </span><span class="s">specification'</span><span class="p p-Indicator">]</span>
 <span class="w">  </span><span class="nt">search</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">cache</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="w">    </span><span class="nt">fallback_queries</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">'"{name}"</span><span class="nv"> </span><span class="s">"{area?}"</span><span class="nv"> </span><span class="s">manufacturer</span><span class="nv"> </span><span class="s">installation</span><span class="nv"> </span><span class="s">record'</span><span class="p p-Indicator">]</span>
 <span class="w">  </span><span class="nt">document_review</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">document_description</span><span class="p">:</span><span class="w"> </span><span class="s">"Direct</span><span class="nv"> </span><span class="s">specification</span><span class="nv"> </span><span class="s">evidence</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">{name}</span><span class="nv"> </span><span class="s">at</span><span class="nv"> </span><span class="s">{address?};</span><span class="nv"> </span><span class="s">not</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">sibling</span><span class="nv"> </span><span class="s">asset."</span>
@@ -1158,8 +1157,8 @@ positionally) and writes one JSON record per document to
 <td><p>Documents extracted in parallel (also concurrent transcription chunks).</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">120</span></code> (<code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code>)</p></td>
-<td><p>Per-request LLM timeout.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">600</span></code> (<code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code>)</p></td>
+<td><p>Per-request LLM timeout. Every LLM call without its own setting uses it (review, page locator, reconciliation, judge); <code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> applies to extraction and transcription.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ocr_corrections</span></code></p></td>
 <td><p>—</p></td>
@@ -1913,7 +1912,9 @@ configuration and behaviour version, a non-<code class="docutils literal notrans
 dpi, the extraction behaviour version (prompt and one-feedback-generation
 policy) and, for PDFs only, the OCR and page-representation versions. Changing
 a PDF-only version never re-extracts other formats, and <code class="docutils literal notranslate"><span class="pre">input_mode:</span> <span class="pre">text</span></code>
-adds nothing to the fingerprint. A record is also never reused when it is
+adds nothing to the fingerprint. <code class="docutils literal notranslate"><span class="pre">extraction.timeout_seconds</span></code> and <code class="docutils literal notranslate"><span class="pre">pages.auto_locate.save_discovered</span></code> are part
+of the reuse fingerprint: adding, changing or removing either re-extracts
+every document of the domain (paid). Settle them before a large run. A record is also never reused when it is
 <code class="docutils literal notranslate"><span class="pre">parser_partial</span></code>, has <code class="docutils literal notranslate"><span class="pre">targeting_incomplete</span></code> under automatic targeting, has a
 different <code class="docutils literal notranslate"><span class="pre">contract_version</span></code>, or disagrees with a present OCR page entry (see
 <a class="reference internal" href="#record-input-provenance">Record input provenance</a>). Reuse needs no
@@ -2003,10 +2004,10 @@ focused commands and the explicitly opt-in live layer.</p>
 <td><p>Direct providers.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LLM_MODEL</span></code> (with <code class="docutils literal notranslate"><span class="pre">LLM_BASE_URL</span></code>), <code class="docutils literal notranslate"><span class="pre">AZURE_OPENAI_MODEL</span></code>, <code class="docutils literal notranslate"><span class="pre">ANTHROPIC_MODEL</span></code>, <code class="docutils literal notranslate"><span class="pre">GEMINI_MODEL</span></code>, <code class="docutils literal notranslate"><span class="pre">OPENAI_MODEL</span></code></p></td>
-<td><p>The active provider’s default model, used when the config names none. If unset, Anthropic uses <code class="docutils literal notranslate"><span class="pre">claude-3.5-sonnet</span></code>, Gemini <code class="docutils literal notranslate"><span class="pre">gemini-1.5-pro</span></code>, and every other provider <code class="docutils literal notranslate"><span class="pre">gpt-4o-mini</span></code>.</p></td>
+<td><p>The active provider’s default model, used when the config names none. If unset, Anthropic uses <code class="docutils literal notranslate"><span class="pre">claude-haiku-5-5</span></code>, Gemini <code class="docutils literal notranslate"><span class="pre">gemini-3.1-flash-lite</span></code>, and every other provider <code class="docutils literal notranslate"><span class="pre">gpt-4o-mini</span></code>; all are priced in the pinned LiteLLM catalog.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code></p></td>
-<td><p>LLM request timeout (seconds).</p></td>
+<td><p>LLM request timeout (seconds); default 600.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PSWEEP_MAX_RESPONSE_BYTES</span></code></p></td>
 <td><p>Streamed-download byte limit.</p></td>
