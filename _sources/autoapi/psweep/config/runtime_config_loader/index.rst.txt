@@ -16,6 +16,7 @@ Functions
 
    psweep.config.runtime_config_loader.build_model_registry
    psweep.config.runtime_config_loader.catalog_for_command
+   psweep.config.runtime_config_loader.config_defaults
    psweep.config.runtime_config_loader.config_key_paths
    psweep.config.runtime_config_loader.load_runtime_config_file
    psweep.config.runtime_config_loader.resolve_command_config
@@ -33,6 +34,11 @@ Module Contents
 .. py:function:: catalog_for_command(command: str) -> list[dict[str, str]]
 
    Return catalog entries for a command plus global variables.
+
+
+.. py:function:: config_defaults(command: str) -> dict[str, Any]
+
+   Built-in defaults for ``command``, keyed like the resolved field names.
 
 
 .. py:function:: config_key_paths(command: str) -> dict[str, str]

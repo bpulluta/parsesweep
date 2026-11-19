@@ -466,6 +466,21 @@ searches, verified local downloads and cached review grades are reused, so no
 paid search or grading for documents already seen. Local configs that set the
 key must delete the line.</p>
 </section>
+<section id="added-effective-defaults-are-visible">
+<h3>Added (effective defaults are visible)<a class="headerlink" href="#added-effective-defaults-are-visible" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--show-effective-config</span></code> on <code class="docutils literal notranslate"><span class="pre">discover</span></code>, <code class="docutils literal notranslate"><span class="pre">extract</span></code> and <code class="docutils literal notranslate"><span class="pre">compile</span></code> now also lists
+the built-in default of every setting you did not set, labelled <code class="docutils literal notranslate"><span class="pre">(default)</span></code>;
+unset limits print <code class="docutils literal notranslate"><span class="pre">none</span></code>. The defaults come from the same constants and
+<code class="docutils literal notranslate"><span class="pre">DiscoveryRequest</span></code> fields the run uses.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">config</span> <span class="pre">--show-runtime-catalog</span></code> re-levels keys: <code class="docutils literal notranslate"><span class="pre">document_review</span></code>,
+<code class="docutils literal notranslate"><span class="pre">selection</span></code>, <code class="docutils literal notranslate"><span class="pre">search</span></code>, <code class="docutils literal notranslate"><span class="pre">runtime</span></code>, <code class="docutils literal notranslate"><span class="pre">document_classifier</span></code>, <code class="docutils literal notranslate"><span class="pre">retention</span></code> and
+<code class="docutils literal notranslate"><span class="pre">extraction.max_context</span></code> are <code class="docutils literal notranslate"><span class="pre">optional</span></code>; <code class="docutils literal notranslate"><span class="pre">extraction.limit</span></code>,
+<code class="docutils literal notranslate"><span class="pre">extraction.provider</span></code>, <code class="docutils literal notranslate"><span class="pre">compilation.dry_run</span></code> and <code class="docutils literal notranslate"><span class="pre">compilation.report_format</span></code>
+are <code class="docutils literal notranslate"><span class="pre">advanced</span></code>. <code class="docutils literal notranslate"><span class="pre">targets</span></code> and <code class="docutils literal notranslate"><span class="pre">sources</span></code> note that one of them is required.</p></li>
+<li><p>Cost/cache impact: none.</p></li>
+</ul>
+</section>
 <section id="added-cost-visibility-before-paid-stages">
 <h3>Added (cost visibility before paid stages)<a class="headerlink" href="#added-cost-visibility-before-paid-stages" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1274,6 +1289,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
 <li><a class="reference internal" href="#changed-priced-provider-fallback-models">Changed (priced provider fallback models)</a></li>
 <li><a class="reference internal" href="#removed-extraction-skip-existing">Removed (extraction.skip_existing)</a></li>
 <li><a class="reference internal" href="#removed-selection-require-supported-document">Removed (selection.require_supported_document)</a></li>
+<li><a class="reference internal" href="#added-effective-defaults-are-visible">Added (effective defaults are visible)</a></li>
 <li><a class="reference internal" href="#added-cost-visibility-before-paid-stages">Added (cost visibility before paid stages)</a></li>
 <li><a class="reference internal" href="#fixed-estimate-inventory-and-model">Fixed (estimate inventory and model)</a></li>
 <li><a class="reference internal" href="#fixed-section-targeting-short-docx-no-longer-calls-the-locator">Fixed (section targeting: short DOCX no longer calls the locator)</a></li>
