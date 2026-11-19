@@ -179,7 +179,7 @@ query variants of a configured page (its pagination), which belong to that page.
 | `runtime.timeout_seconds` | per operation: search 45 s, robots/ToS checks 15 s, downloads 60 s, crawled pages 30 s, code-host API 30 s | One value overriding all five. Also the stall limit (time without data) for file downloads. |
 | `runtime.max_concurrent_downloads` | `2` | Parallel downloads. |
 | `runtime.min_request_interval_ms` | `0` | Minimum delay between outbound requests. |
-| `runtime.max_review_calls` | unbounded | Physical review LLM attempts per target per run, including escalation, transport retries, malformed-grade reattempts and comparative deduplication. Cache reuse consumes none. |
+| `runtime.max_review_calls` | unbounded | Physical review LLM attempts per target per run, including escalation, transport retries, and malformed-grade reattempts. Cache reuse consumes none. |
 | `runtime.max_search_calls` | unbounded | Physical live search attempts across the run, including retries and fallback/recovery searches. Cache reuse consumes none. |
 | `retry_policy.max_attempts` | `3` | Total attempts per request. |
 | `retry_policy.initial_backoff_seconds` | `1.0` | Attempt N waits `initial · 2^(N−2)` … |
@@ -294,8 +294,7 @@ Optional, paid LLM curation; it runs only when `document_description` is set.
 | `coverage` | absent/off | Domain-defined label → evidence-description map. Descriptions support target templates. Verified labels guide complementary source selection and trigger fallback for missing coverage. Labels use letters/digits/`_`/`-`, starting with a letter. |
 | `max_chars` | `12000` | Text sent per document. |
 | `keywords` | classifier keywords | Terms used to pick the excerpt sent for review. |
-| `deduplicate_redundant` | `true` | Drop redundant copies before keeping the top ones. |
-| `deduplication.key_fields` | — | Fields that identify redundant copies (e.g. `[path_basename, review_doc_kind]`). |
+| `deduplicate_redundant` | `true` | Drop copies whose review evidence (scope, claim kind, content quote, coverage) is identical. Deterministic; no LLM call. |
 
 The reviewer grades each document 0–4 against an anchored rubric. Grades3–4
 must satisfy every mandatory requirement in `document_description`; 'partial'
@@ -350,8 +349,7 @@ when `escalate_model` is configured. Exhausted provider routes are not repeatedl
 hammered during that run: eligible escalation is used or work remains pending.
 Successful initial grades are reused when a failed escalation resumes.
 Document/request-specific rejections do not disable unrelated requests on that
-route. Comparative deduplication can also use the configured escalation route
-after an exhausted initial-route failure, with both attempts budgeted and metered.
+route.
 
 With `search.fallback_queries`, discovery runs at most one extra stage for
 weak targets below `document_review.keep_top` distinct qualified sources or
@@ -420,11 +418,11 @@ for publication dates. Direct/reported statements and scope stay source-specific
 hints in the extraction record and reconciliation input; they are not automatically
 promoted to achieved facts or a domain-independent authority ranking.
 
-Comparative dedup uses verified source evidence and requires references for keep/drop
-decisions. Complementary labels, differing scopes/history, conflicting claims or
-unsupported/cyclic decisions cannot silently erase a source. Structural keys group
-comparisons but differing content is not dropped on key equality alone. Exact-byte
-and URL mirrors remain cheap to deduplicate.
+Review dedup is computed in code from the verified source evidence, with no LLM call.
+Byte-identical files are dropped first. Then documents whose scope, claim kind and
+content quote are equal are copies: the one with the broadest coverage (ties: best rank)
+is kept. A differing scope, claim kind, quote or coverage value keeps both sources, and
+documents with invalid evidence are never dropped.
 
 Finite `runtime.max_files` allocates new ordinary fetch opportunities round-robin
 across owners, retaining their ranking. Configured/reused outcomes stay free;

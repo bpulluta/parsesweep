@@ -374,6 +374,24 @@
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="unreleased">
 <h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<section id="fixed-review-dedup-no-longer-discards-a-whole-target">
+<h3>Fixed (review dedup no longer discards a whole target)<a class="headerlink" href="#fixed-review-dedup-no-longer-discards-a-whole-target" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Redundant-copy detection among qualified documents is now computed in code from the
+verified review evidence, with no LLM call. Documents with equal scope, claim kind and
+content quote are copies; the one with the broadest coverage (ties: best rank, or with
+<code class="docutils literal notranslate"><span class="pre">prefer_newest</span></code> the latest edition) is kept. Before, one malformed LLM dedup answer
+marked every qualified document of the target as failed, and re-runs repeated the same
+failure, so large targets (31 qualified documents) kept nothing.</p></li>
+<li><p>Removed <code class="docutils literal notranslate"><span class="pre">document_review.deduplication.key_fields</span></code>. It only hinted the LLM comparison,
+so it is now rejected as an unknown key; delete it from run configs.</p></li>
+<li><p>Cache impact: no regrade, grade caches are untouched. Existing <code class="docutils literal notranslate"><span class="pre">*-dedup.json</span></code> review
+cache files are no longer read. Curated sets can shrink slightly where dedup is on,
+because exact evidence duplicates the LLM declined are now dropped; only newly selected
+documents extract. Review cost drops by one call per target, and dedup no longer counts
+toward <code class="docutils literal notranslate"><span class="pre">runtime.max_review_calls</span></code>.</p></li>
+</ul>
+</section>
 <section id="upgrade-impact-vs-main">
 <h3>Upgrade impact vs main<a class="headerlink" href="#upgrade-impact-vs-main" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1310,6 +1328,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
             <ul>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li><a class="reference internal" href="#fixed-review-dedup-no-longer-discards-a-whole-target">Fixed (review dedup no longer discards a whole target)</a></li>
 <li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>
 <li><a class="reference internal" href="#docs-readme-refresh">Docs (README refresh)</a></li>
 <li><a class="reference internal" href="#docs-required-keys-optional-features-convergence-loop-starters">Docs (required keys, optional features, convergence loop, starters)</a></li>

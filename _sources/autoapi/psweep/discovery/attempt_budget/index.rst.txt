@@ -42,7 +42,7 @@ Module Contents
 
    .. py:method:: reserve_review(target_key: str) -> None
 
-      Reserve one grading, escalation, deduplication or retry request.
+      Reserve one grading, escalation or retry request.
 
 
 
