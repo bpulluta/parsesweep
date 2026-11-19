@@ -133,6 +133,7 @@ def _engine_request(tmp_path, *, dry_run=True):
         link_prioritization_mode="off",
         partition_by=["label"],
         retry_max_attempts=1,
+        seeker_cache=False,  # these tests count live search calls
         robots_policy_mode="ignore",
         tos_policy_mode="ignore",
     )

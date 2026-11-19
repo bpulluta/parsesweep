@@ -17,7 +17,7 @@ from pathlib import Path
 from psweep.compilation.roster import METADATA_COLUMNS
 from psweep.config import load_runtime_config_file, resolve_command_config
 from psweep.config.runtime_config_loader import resolve_compilation_metadata
-from psweep.extraction.llm_factory import build_llm_client, model_identity
+from psweep.extraction.llm_factory import DEFAULT_MAX_CONCURRENT, build_llm_client, model_identity
 from psweep.extraction.provenance import source_context
 from psweep.extraction.roster import Roster
 from psweep.pipeline import (
@@ -231,7 +231,7 @@ def _run(ctx: dict, config_path: Path, *, fresh: bool, notify: Notify) -> dict:
             judge_items,
             client=build_llm_client(settings["judge"], models=models),
             cache_path=validated / ".judge_cache.jsonl",
-            workers=ctx["extract"].get("max_concurrent") or 1,
+            workers=ctx["extract"].get("max_concurrent") or DEFAULT_MAX_CONCURRENT,
         )
     inputs = {
         "config_sha256": artifact_sha256(config_path),

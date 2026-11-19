@@ -32,6 +32,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/config-reference.md` lists discovery's per-operation timeouts.
 - Cost/cache impact: none (no behavior change).
 
+### Changed (searches are cached by default)
+- `discovery.search.cache` now defaults to `true` (`DEFAULT_SEARCH_CACHE`). Set
+  `cache: false` for always-live searches; `--fresh` still skips reads.
+- Cost/cache impact: fewer paid SerpApi calls on re-runs, tuning and
+  dry-run-then-run; no discovery re-evaluation (cache settings are excluded
+  from the discovery fingerprint); configs that set cache: true may drop it.
+
+### Changed (600 s LLM timeout)
+- The built-in LLM request timeout is 600 s (was 120 s). `LLM_TIMEOUT` and
+  `extraction.timeout_seconds` still override it.
+- The validation judge now defaults to the shared extraction concurrency
+  (4 workers, was 1) when `extraction.max_concurrent` is unset.
+- The docs warn that `extraction.timeout_seconds` and
+  `pages.auto_locate.save_discovered` are part of the reuse fingerprint.
+- Cost/cache impact: fewer paid full-prompt retries on long requests; no
+  re-extraction (the reuse fingerprint records only a configured
+  extraction.timeout_seconds). Judge concurrency is speed only; the judge
+  cache is unchanged.
+
+### Changed (priced provider fallback models)
+- The Anthropic and Gemini environment fallbacks are now `claude-haiku-5-5`
+  and `gemini-3.1-flash-lite`, and a test asserts every built-in default model
+  has a known price in the pinned catalog.
+- Cost/cache impact: only setups that rely on the Anthropic or Gemini
+  environment fallback (no model in config, no ANTHROPIC_MODEL/GEMINI_MODEL)
+  change model, so their documents are re-extracted and re-graded once (paid);
+  configs that name models are unaffected.
+
 ### Added (one `--domain` workspace override on every config-driven stage)
 - `extract`, `compile`, `validate` and `run` now take the `--domain` that only
   `discover` had, so a second workspace (for example `aq_permits_va_s12` from
