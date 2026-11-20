@@ -43,10 +43,18 @@ Classes
    psweep.extraction.page_locator.PageSelection
 
 
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.page_locator.normalize_subjects
+
+
 Module Contents
 ---------------
 
-.. py:class:: PageLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, llm_config: dict | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, max_selected_pages: int = DEFAULT_MAX_SELECTED_PAGES, keywords: list[str] | None = None, context_pages: int = 1, snippet_chars: int = 600, source_context: psweep.extraction.provenance.SourceContext | None = None, subject: str | None = None)
+.. py:class:: PageLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, llm_config: dict | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, max_selected_pages: int = DEFAULT_MAX_SELECTED_PAGES, keywords: list[str] | None = None, context_pages: int = 1, snippet_chars: int = 600, source_context: psweep.extraction.provenance.SourceContext | None = None, subjects: collections.abc.Sequence[str] = ())
 
    Bases: :py:obj:`_BaseLocator`
 
@@ -69,5 +77,10 @@ Module Contents
 .. py:class:: PageSelection
 
    Pages to extract, and relevant pages left out to stay within the budget.
+
+
+.. py:function:: normalize_subjects(subjects: collections.abc.Sequence[str]) -> tuple[str, ...]
+
+   Validate identity phrases: a sequence of strings (not one string), blanks dropped.
 
 

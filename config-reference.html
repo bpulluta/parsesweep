@@ -1297,6 +1297,7 @@ from a URL.</p>
 <span class="w">      </span><span class="nt">keywords</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">rate schedule</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># optional cheap pre-filter</span>
 <span class="w">      </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secondary</span><span class="w">            </span><span class="c1"># required when enabled; not the extraction model</span>
 <span class="w">      </span><span class="nt">save_discovered</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">       </span><span class="c1"># write found ranges for review</span>
+<span class="w">      </span><span class="nt">subject_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">utility_name</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">short_name</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># optional; target columns used as identity phrases</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">pages</span></code> accepts only <code class="docutils literal notranslate"><span class="pre">csv</span></code>, <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> and <code class="docutils literal notranslate"><span class="pre">range</span></code>, and <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> only
@@ -1319,9 +1320,31 @@ locator doesn’t hold up every other document. A fresh run with existing output
 performs bounded targeting preflight before deleting old records. Its <code class="docutils literal notranslate"><span class="pre">model</span></code>
 is required when <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> is enabled and must resolve to a different
 provider/model than <code class="docutils literal notranslate"><span class="pre">extraction.model</span></code>; it is never inherited.
-Target-scoped selections retain subject identity/header context. The subject
-comes from the last configured <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> field (the roster’s name field),
-not from parsing a display label or guessing metadata fields. Discovery labels
+Target-scoped selections retain subject identity/header context. By default the
+subject comes from the last configured <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> field (the roster’s name
+field), not from parsing a display label or guessing metadata fields. A source
+may name the target differently (a county minute never repeats a directory
+label such as <code class="docutils literal notranslate"><span class="pre">Company:</span> <span class="pre">Site,</span> <span class="pre">ST</span></code>), so <code class="docutils literal notranslate"><span class="pre">subject_fields</span></code> optionally lists target
+columns whose values are used as identity phrases, e.g. <code class="docutils literal notranslate"><span class="pre">[utility_name,</span> <span class="pre">short_name]</span></code>. Field names are exact column names, not fuzzy aliases. Phrases
+are alternate names for the configured target, not evidence; they are not
+required to be unique, and broad terms (an organization, place or category)
+are weaker hints. Matching stays whole-phrase after the same normalization as
+the roster. Phrases apply only to target-scoped documents that automatic
+targeting governs; shared-source hints, shared-roster candidate scans, manual
+page overrides and off-roster behaviour are unchanged. The key is opt-in and
+validated at config resolution (<code class="docutils literal notranslate"><span class="pre">run</span></code>/<code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--validate-config</span></code> included):
+it must be a non-empty list of unique names, <code class="docutils literal notranslate"><span class="pre">discovery.targets</span></code> must be set,
+every name must be a target column (<code class="docutils literal notranslate"><span class="pre">urls</span></code> and <code class="docutils literal notranslate"><span class="pre">query</span></code> are inputs, not
+columns), and column values must be scalars (null/blank are skipped; numbers
+and booleans use their string form; lists/objects are rejected). Values come
+from the <strong>current</strong> target rows, joined to each document by its stable target
+id, not from the metadata saved at discovery, so a corrected or newly added
+phrase takes effect without rediscovery. A target id missing from the current
+targets gets no phrases (a warning is logged). Absent, behaviour and caches are
+unchanged. Setting or changing the field list changes the extraction
+fingerprint, so documents are extracted again once; afterwards, editing a
+phrase value re-extracts only the targets whose phrases changed. No regrade
+or rediscovery. Discovery labels
 and metadata remain untrusted scope hints, never factual evidence. Cache
 identities include the configured identity, subject hints and locator behavior
 version. HTML/HTM targeting uses readable

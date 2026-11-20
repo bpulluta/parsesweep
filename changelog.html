@@ -374,6 +374,27 @@
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="unreleased">
 <h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<section id="added-identity-phrases-for-page-targeting">
+<h3>Added (identity phrases for page targeting)<a class="headerlink" href="#added-identity-phrases-for-page-targeting" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>New opt-in <code class="docutils literal notranslate"><span class="pre">extraction.pages.auto_locate.subject_fields</span></code>: target columns whose values
+the page and section locators use as identity phrases, in addition to the discovery
+label. Before, only the last <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> field was used, so a long PDF that never
+repeats a directory-style label (<code class="docutils literal notranslate"><span class="pre">Company:</span> <span class="pre">Site,</span> <span class="pre">ST</span></code>) was held with
+<code class="docutils literal notranslate"><span class="pre">targeting_no_usable_scope</span></code>. Phrases are read from the <strong>current</strong> target rows, joined
+to each document by its stable target id (not from stale discovery metadata), and only
+steer target-scoped documents under automatic targeting.</p></li>
+<li><p>Validated at config resolution, so <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--validate-config</span></code> and <code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--validate-config</span></code>
+fail before any stage: non-empty list of unique names, <code class="docutils literal notranslate"><span class="pre">discovery.targets</span></code> required, every
+name a target column (not <code class="docutils literal notranslate"><span class="pre">urls</span></code>/<code class="docutils literal notranslate"><span class="pre">query</span></code>), scalar values only. The locator constructors
+and <code class="docutils literal notranslate"><span class="pre">set_source_context</span></code> reject a bare string for <code class="docutils literal notranslate"><span class="pre">subjects</span></code>.</p></li>
+<li><p>Cache impact: none for domains that do not set the key (fingerprints are unchanged).
+Setting it changes the extraction fingerprint (the whole <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code> block is part of
+it), so every document in that domain is extracted again once (paid). Afterwards the
+frozen phrases are part of each target-scoped record and locator identity, so editing a
+phrase re-extracts only that target. No regrade, no rediscovery.</p></li>
+</ul>
+</section>
 <section id="fixed-model-answers-with-raw-control-characters">
 <h3>Fixed (model answers with raw control characters)<a class="headerlink" href="#fixed-model-answers-with-raw-control-characters" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1336,6 +1357,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
             <ul>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li><a class="reference internal" href="#added-identity-phrases-for-page-targeting">Added (identity phrases for page targeting)</a></li>
 <li><a class="reference internal" href="#fixed-model-answers-with-raw-control-characters">Fixed (model answers with raw control characters)</a></li>
 <li><a class="reference internal" href="#fixed-review-dedup-no-longer-discards-a-whole-target">Fixed (review dedup no longer discards a whole target)</a></li>
 <li><a class="reference internal" href="#upgrade-impact-vs-main">Upgrade impact vs main</a></li>

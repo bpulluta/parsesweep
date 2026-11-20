@@ -402,7 +402,10 @@ large cross product with <code class="docutils literal notranslate"><span class=
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.targets.resolve_targets_spec" title="psweep.discovery.targets.resolve_targets_spec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_targets_spec</span></code></a>(→ TargetSpec)</p></td>
 <td><p>Validate a spec and return it with paths resolved against <code class="docutils literal notranslate"><span class="pre">config_dir</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.targets.target_identity" title="psweep.discovery.targets.target_identity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">target_identity</span></code></a>(→ dict[str, Any])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.targets.subject_phrase_index" title="psweep.discovery.targets.subject_phrase_index"><code class="xref py py-obj docutils literal notranslate"><span class="pre">subject_phrase_index</span></code></a>(→ dict[str, tuple[str, ...]])</p></td>
+<td><p>Validate <code class="docutils literal notranslate"><span class="pre">subject_fields</span></code> and map stable target id -&gt; identity phrases.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.targets.target_identity" title="psweep.discovery.targets.target_identity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">target_identity</span></code></a>(→ dict[str, Any])</p></td>
 <td><p>Fields that identify a target: <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> when set, else every</p></td>
 </tr>
 </tbody>
@@ -443,6 +446,16 @@ large cross product with <code class="docutils literal notranslate"><span class=
 <dd><p>Validate a spec and return it with paths resolved against <code class="docutils literal notranslate"><span class="pre">config_dir</span></code>.</p>
 <p>Rows are streamed once to validate each row and to reject duplicate
 target identities (see <a class="reference internal" href="#psweep.discovery.targets.target_identity" title="psweep.discovery.targets.target_identity"><code class="xref py py-func docutils literal notranslate"><span class="pre">target_identity()</span></code></a>).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.targets.subject_phrase_index">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.targets.</span></span><span class="sig-name descname"><span class="pre">subject_phrase_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TargetSpec</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject_fields</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">partition_by</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.discovery.targets.subject_phrase_index" title="Link to this definition">¶</a></dt>
+<dd><p>Validate <code class="docutils literal notranslate"><span class="pre">subject_fields</span></code> and map stable target id -&gt; identity phrases.</p>
+<p>One streaming pass over the current targets. Only the selected phrases are
+retained, keyed by <a class="reference internal" href="#psweep.discovery.targets.identify_target" title="psweep.discovery.targets.identify_target"><code class="xref py py-func docutils literal notranslate"><span class="pre">identify_target()</span></code></a> (the id discovery stores in
+provenance). Null/blank values are skipped; scalar values become strings;
+list/object values are rejected.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -522,6 +535,7 @@ non-input field. Other (passthrough) fields never affect identity.</p>
 <li><a class="reference internal" href="#psweep.discovery.targets.iter_targets"><code class="docutils literal notranslate"><span class="pre">iter_targets()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.targets.render_target_template"><code class="docutils literal notranslate"><span class="pre">render_target_template()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.targets.resolve_targets_spec"><code class="docutils literal notranslate"><span class="pre">resolve_targets_spec()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.discovery.targets.subject_phrase_index"><code class="docutils literal notranslate"><span class="pre">subject_phrase_index()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.targets.target_identity"><code class="docutils literal notranslate"><span class="pre">target_identity()</span></code></a></li>
 </ul>
 </li>

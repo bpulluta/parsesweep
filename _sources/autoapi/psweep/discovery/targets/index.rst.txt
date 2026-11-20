@@ -30,6 +30,7 @@ Functions
    psweep.discovery.targets.iter_targets
    psweep.discovery.targets.render_target_template
    psweep.discovery.targets.resolve_targets_spec
+   psweep.discovery.targets.subject_phrase_index
    psweep.discovery.targets.target_identity
 
 
@@ -67,6 +68,16 @@ Module Contents
 
    Rows are streamed once to validate each row and to reject duplicate
    target identities (see :func:`target_identity`).
+
+
+.. py:function:: subject_phrase_index(spec: TargetSpec | None, subject_fields: collections.abc.Sequence[str], partition_by: collections.abc.Sequence[str] | None) -> dict[str, tuple[str, ...]]
+
+   Validate ``subject_fields`` and map stable target id -> identity phrases.
+
+   One streaming pass over the current targets. Only the selected phrases are
+   retained, keyed by :func:`identify_target` (the id discovery stores in
+   provenance). Null/blank values are skipped; scalar values become strings;
+   list/object values are rejected.
 
 
 .. py:function:: target_identity(target: collections.abc.Mapping[str, Any], fields: collections.abc.Sequence[str] | None = None) -> dict[str, Any]
