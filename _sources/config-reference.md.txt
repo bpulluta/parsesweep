@@ -893,11 +893,26 @@ compile emits one row per target in roster order. Agreeing values win; conflicts
 prefer target-scoped sources, then the value backed by most sources; missing
 values (null, blank, or an empty list or object) are `NA`. A list of primitives
 becomes one comma-joined cell; other lists and objects become compact JSON.
-Extra target columns pass through, plus `sources`, `confidence` (`high` ≥ 2
-agreeing sources, `medium`, `low` on conflict, `none`) and `evidence`
-(`{field: {value, url}}`, adding the `quote` of each
+Extra target columns pass through, plus `sources`, `confidence` and `evidence`
+(`{field: {value, url, support}}`, adding the `quote` of each
 [evidence field](schemas/best-practices.md#evidence-fields) and
-`conflict: true` when sources disagree).
+`conflict: true` when sources disagree). `support` is the number of distinct,
+nonblank recorded source URLs among the observations the resolver retained that
+agree with the chosen value. It is a URL-coverage count, not a truth,
+independence or authority score: several URLs can copy one claim, and local or
+manual evidence without a URL can populate a valid cell with `support: 0`.
+Compare counts only within the same resolver and group settings, and look at
+the sources.
+
+`confidence` is a row-level flag, not a quality score, and it is not derived
+from `support`. Without reconciliation it is the lowest level over the populated
+cells: `high` when two or more recorded sources agree, `medium` for one, `low`
+when a cell's sources conflicted; a row with no populated cell is `none`. With
+reconciliation it is `low` whenever the target needed arbitration or schema
+reconciliation (including abstained or unresolved units, even if another
+populated cell has several supporting URLs), otherwise `high` or `medium` from
+the weakest unit's source agreement. Manual or blank-URL sources still count
+toward this existing bookkeeping, which is why it can differ from `support`.
 
 Excel batches above 1,048,575 rows or with cells over 32,767 characters fail
 before export; use CSV for large outputs.
@@ -945,8 +960,13 @@ Nonnullable requirements that prevent abstention remain explicit failures.
 A partial result exits 3; no usable answers with failures exits 1. Dry runs and
 config checks make no calls or cache writes and report pending targets.
 
-Per-field `evidence` retains value/quote/URL/conflict and adds source date,
-observation ID and resolution state. `_reconciliation` contains the reason,
+Per-field `evidence` retains value/quote/URL/conflict/support and adds source date,
+observation ID and resolution state. Here `support` counts distinct nonblank URLs
+whose retained observation agrees with the chosen one for the whole configured
+atomic unit (every populated field of the unit gets that group count, not a
+per-field one). Observations with identical content and items are deduplicated
+before resolution, so two mirror URLs count once here but twice without
+reconciliation. Abstained units have no evidence entry. `_reconciliation` contains the reason,
 unresolved units and a `decisions/<hash>.json` alternatives reference relative
 to `outputs/<domain>/.reconciliation/`. These sidecars retain original competing
 observations without growing spreadsheet cells past Excel limits. Confidence

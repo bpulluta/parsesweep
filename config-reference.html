@@ -1725,11 +1725,25 @@ compile emits one row per target in roster order. Agreeing values win; conflicts
 prefer target-scoped sources, then the value backed by most sources; missing
 values (null, blank, or an empty list or object) are <code class="docutils literal notranslate"><span class="pre">NA</span></code>. A list of primitives
 becomes one comma-joined cell; other lists and objects become compact JSON.
-Extra target columns pass through, plus <code class="docutils literal notranslate"><span class="pre">sources</span></code>, <code class="docutils literal notranslate"><span class="pre">confidence</span></code> (<code class="docutils literal notranslate"><span class="pre">high</span></code> ≥ 2
-agreeing sources, <code class="docutils literal notranslate"><span class="pre">medium</span></code>, <code class="docutils literal notranslate"><span class="pre">low</span></code> on conflict, <code class="docutils literal notranslate"><span class="pre">none</span></code>) and <code class="docutils literal notranslate"><span class="pre">evidence</span></code>
-(<code class="docutils literal notranslate"><span class="pre">{field:</span> <span class="pre">{value,</span> <span class="pre">url}}</span></code>, adding the <code class="docutils literal notranslate"><span class="pre">quote</span></code> of each
+Extra target columns pass through, plus <code class="docutils literal notranslate"><span class="pre">sources</span></code>, <code class="docutils literal notranslate"><span class="pre">confidence</span></code> and <code class="docutils literal notranslate"><span class="pre">evidence</span></code>
+(<code class="docutils literal notranslate"><span class="pre">{field:</span> <span class="pre">{value,</span> <span class="pre">url,</span> <span class="pre">support}}</span></code>, adding the <code class="docutils literal notranslate"><span class="pre">quote</span></code> of each
 <a class="reference internal" href="schemas/best-practices.html#evidence-fields"><span class="std std-ref">evidence field</span></a> and
-<code class="docutils literal notranslate"><span class="pre">conflict:</span> <span class="pre">true</span></code> when sources disagree).</p>
+<code class="docutils literal notranslate"><span class="pre">conflict:</span> <span class="pre">true</span></code> when sources disagree). <code class="docutils literal notranslate"><span class="pre">support</span></code> is the number of distinct,
+nonblank recorded source URLs among the observations the resolver retained that
+agree with the chosen value. It is a URL-coverage count, not a truth,
+independence or authority score: several URLs can copy one claim, and local or
+manual evidence without a URL can populate a valid cell with <code class="docutils literal notranslate"><span class="pre">support:</span> <span class="pre">0</span></code>.
+Compare counts only within the same resolver and group settings, and look at
+the sources.</p>
+<p><code class="docutils literal notranslate"><span class="pre">confidence</span></code> is a row-level flag, not a quality score, and it is not derived
+from <code class="docutils literal notranslate"><span class="pre">support</span></code>. Without reconciliation it is the lowest level over the populated
+cells: <code class="docutils literal notranslate"><span class="pre">high</span></code> when two or more recorded sources agree, <code class="docutils literal notranslate"><span class="pre">medium</span></code> for one, <code class="docutils literal notranslate"><span class="pre">low</span></code>
+when a cell’s sources conflicted; a row with no populated cell is <code class="docutils literal notranslate"><span class="pre">none</span></code>. With
+reconciliation it is <code class="docutils literal notranslate"><span class="pre">low</span></code> whenever the target needed arbitration or schema
+reconciliation (including abstained or unresolved units, even if another
+populated cell has several supporting URLs), otherwise <code class="docutils literal notranslate"><span class="pre">high</span></code> or <code class="docutils literal notranslate"><span class="pre">medium</span></code> from
+the weakest unit’s source agreement. Manual or blank-URL sources still count
+toward this existing bookkeeping, which is why it can differ from <code class="docutils literal notranslate"><span class="pre">support</span></code>.</p>
 <p>Excel batches above 1,048,575 rows or with cells over 32,767 characters fail
 before export; use CSV for large outputs.</p>
 <section id="optional-evidence-reconciliation">
@@ -1799,8 +1813,13 @@ Unresolved claims are <code class="docutils literal notranslate"><span class="pr
 Nonnullable requirements that prevent abstention remain explicit failures.
 A partial result exits 3; no usable answers with failures exits 1. Dry runs and
 config checks make no calls or cache writes and report pending targets.</p>
-<p>Per-field <code class="docutils literal notranslate"><span class="pre">evidence</span></code> retains value/quote/URL/conflict and adds source date,
-observation ID and resolution state. <code class="docutils literal notranslate"><span class="pre">_reconciliation</span></code> contains the reason,
+<p>Per-field <code class="docutils literal notranslate"><span class="pre">evidence</span></code> retains value/quote/URL/conflict/support and adds source date,
+observation ID and resolution state. Here <code class="docutils literal notranslate"><span class="pre">support</span></code> counts distinct nonblank URLs
+whose retained observation agrees with the chosen one for the whole configured
+atomic unit (every populated field of the unit gets that group count, not a
+per-field one). Observations with identical content and items are deduplicated
+before resolution, so two mirror URLs count once here but twice without
+reconciliation. Abstained units have no evidence entry. <code class="docutils literal notranslate"><span class="pre">_reconciliation</span></code> contains the reason,
 unresolved units and a <code class="docutils literal notranslate"><span class="pre">decisions/&lt;hash&gt;.json</span></code> alternatives reference relative
 to <code class="docutils literal notranslate"><span class="pre">outputs/&lt;domain&gt;/.reconciliation/</span></code>. These sidecars retain original competing
 observations without growing spreadsheet cells past Excel limits. Confidence

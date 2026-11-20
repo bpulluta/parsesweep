@@ -19,6 +19,7 @@ Functions
    psweep.compilation.roster.roster_extras
    psweep.compilation.roster.roster_frame
    psweep.compilation.roster.roster_row
+   psweep.compilation.roster.url_support
    psweep.compilation.roster.value_key
 
 
@@ -48,6 +49,11 @@ Module Contents
 .. py:function:: roster_row(row: dict, extras: dict, sources: collections.abc.Iterable[str], confidence: str, evidence: dict) -> dict
 
    Assemble the shared roster output envelope around resolver-specific evidence.
+
+
+.. py:function:: url_support(urls: collections.abc.Iterable[Any]) -> int
+
+   Distinct nonblank recorded source URLs: a coverage count, not a truth score.
 
 
 .. py:function:: value_key(value: Any) -> tuple[str, Any]

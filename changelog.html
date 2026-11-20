@@ -374,6 +374,22 @@
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="unreleased">
 <h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<section id="added-per-cell-support-in-compiled-evidence">
+<h3>Added (per-cell support in compiled evidence)<a class="headerlink" href="#added-per-cell-support-in-compiled-evidence" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Every cell of the compiled roster <code class="docutils literal notranslate"><span class="pre">evidence</span></code> JSON now carries <code class="docutils literal notranslate"><span class="pre">support</span></code>: the number of
+distinct nonblank recorded source URLs among the retained observations that agree with the
+chosen value (the whole atomic unit under reconciliation). Missing or blank URLs (manual
+documents) are not counted, so URL-less evidence has <code class="docutils literal notranslate"><span class="pre">support:</span> <span class="pre">0</span></code> but still populates its
+cell. It is a coverage count, not a quality score. Winner selection and row <code class="docutils literal notranslate"><span class="pre">confidence</span></code> are
+unchanged; the docs now describe <code class="docutils literal notranslate"><span class="pre">confidence</span></code> separately for the two modes.</p></li>
+<li><p>Cache impact: roster compiled-table identity gains a roster-evidence output version, so
+existing roster tables are reported stale and rebuilt once by <code class="docutils literal notranslate"><span class="pre">compile</span></code>/<code class="docutils literal notranslate"><span class="pre">validate</span></code>
+(rows-mode tables are untouched). Extraction, discovery and paid reconciliation decisions
+are not invalidated; a rebuild reuses cached decisions, though targets with no cached
+decision still make their usual calls. No regrade, no re-extraction.</p></li>
+</ul>
+</section>
 <section id="added-identity-phrases-for-page-targeting">
 <h3>Added (identity phrases for page targeting)<a class="headerlink" href="#added-identity-phrases-for-page-targeting" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -1357,6 +1373,7 @@ CLI, YAML config, and JSON-schema-driven extraction.</p>
             <ul>
 <li><a class="reference internal" href="#">Changelog</a><ul>
 <li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li><a class="reference internal" href="#added-per-cell-support-in-compiled-evidence">Added (per-cell support in compiled evidence)</a></li>
 <li><a class="reference internal" href="#added-identity-phrases-for-page-targeting">Added (identity phrases for page targeting)</a></li>
 <li><a class="reference internal" href="#fixed-model-answers-with-raw-control-characters">Fixed (model answers with raw control characters)</a></li>
 <li><a class="reference internal" href="#fixed-review-dedup-no-longer-discards-a-whole-target">Fixed (review dedup no longer discards a whole target)</a></li>
