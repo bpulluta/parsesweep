@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from psweep.discovery.targets import TargetSpecError, subject_phrase_index
 from psweep.extraction.llm_factory import DEFAULT_LLM_TIMEOUT_SECONDS, DEFAULT_MAX_CONCURRENT
 from psweep.workspace import (
     Workspace,
@@ -1207,6 +1208,14 @@ def resolve_command_config(
     if section_name == "extraction" and (cfg.get("validation") or {}).get("quote_field"):
         merged["quote_field"] = cfg["validation"]["quote_field"]
         sources["quote_field"] = "config.validation.quote_field"
+
+    if section_name == "extraction" and (
+        fields := (merged.get("page_targeting") or {}).get("subject_fields")
+    ):
+        try:
+            subject_phrase_index(merged.get("targets"), fields, merged.get("partition_by"))
+        except TargetSpecError as exc:
+            raise RuntimeConfigError(str(exc)) from exc
 
     missing = [name for name in _REQUIRED_FIELDS.get(section_name, ()) if not merged.get(name)]
     if missing:

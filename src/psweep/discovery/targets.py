@@ -71,6 +71,56 @@ def identify_target(target: Mapping[str, Any], fields: Sequence[str] | None = No
     return hashlib.md5(encoded.encode()).hexdigest()[:12]
 
 
+SUBJECT_FIELDS_KEY = "extraction.pages.auto_locate.subject_fields"
+_SCALAR_TYPES = (str, int, float, bool)
+
+
+def subject_phrase_index(
+    spec: TargetSpec | None,
+    subject_fields: Sequence[str],
+    partition_by: Sequence[str] | None,
+) -> dict[str, tuple[str, ...]]:
+    """Validate ``subject_fields`` and map stable target id -> identity phrases.
+
+    One streaming pass over the current targets. Only the selected phrases are
+    retained, keyed by :func:`identify_target` (the id discovery stores in
+    provenance). Null/blank values are skipped; scalar values become strings;
+    list/object values are rejected.
+    """
+    if not spec:
+        raise TargetSpecError(f"{SUBJECT_FIELDS_KEY} requires discovery.targets")
+    inputs = [name for name in subject_fields if name in TARGET_INPUT_FIELDS]
+    if inputs:
+        raise TargetSpecError(f"{SUBJECT_FIELDS_KEY} names target inputs, not columns: {inputs}")
+    found: set[str] = set()
+    index: dict[str, list[str]] = {}
+    for row in iter_targets(spec):
+        phrases: list[str] = []
+        for name in subject_fields:
+            if name not in row:
+                continue
+            found.add(name)
+            value = row[name]
+            if value is None:
+                continue
+            if not isinstance(value, _SCALAR_TYPES):
+                raise TargetSpecError(
+                    f"{SUBJECT_FIELDS_KEY}: field {name!r} must hold scalar values, "
+                    f"got {type(value).__name__}"
+                )
+            if text := str(value).strip():
+                phrases.append(text)
+        if phrases:
+            known = index.setdefault(identify_target(row, partition_by), [])
+            known.extend(text for text in phrases if text not in known)
+    unknown = [name for name in subject_fields if name not in found]
+    if unknown:
+        raise TargetSpecError(
+            f"{SUBJECT_FIELDS_KEY} names fields that are not target columns: {unknown}"
+        )
+    return {key: tuple(value) for key, value in index.items()}
+
+
 def _normalize_urls(value: Any, where: str, *, from_csv: bool) -> list[str]:
     if from_csv and isinstance(value, str):
         value = [segment.strip() for segment in value.split("|")]
