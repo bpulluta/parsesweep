@@ -144,6 +144,14 @@ _LOCATE_SCHEMA: dict[str, Any] = {
 }
 
 
+def normalize_subjects(subjects: Sequence[str]) -> tuple[str, ...]:
+    """Validate identity phrases: a sequence of strings (not one string), blanks dropped."""
+    if isinstance(subjects, (str, bytes)) or any(not isinstance(item, str) for item in subjects):
+        message = "subjects must be a sequence of strings, not a single string"
+        raise TypeError(message)
+    return tuple(item.strip() for item in subjects if item.strip())
+
+
 class _BaseLocator:
     """Shared infrastructure for LLM-assisted document section locators."""
 
@@ -180,7 +188,7 @@ class _BaseLocator:
         self._client: Any = None
         self.incomplete = False
         self._source_context = source_context
-        self._subjects = tuple(subjects)
+        self._subjects = normalize_subjects(subjects)
 
     @property
     def _subject_hints(self) -> list[str]:
@@ -218,7 +226,7 @@ class _BaseLocator:
     ) -> None:
         """Bind untrusted hints and the configured identity subject, not a parsed display label."""
         self._source_context = context
-        self._subjects = tuple(subjects)
+        self._subjects = normalize_subjects(subjects)
         self.incomplete = False
 
     def _scope_prompt(self, prompt: str) -> str:

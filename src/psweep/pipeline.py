@@ -49,7 +49,7 @@ from psweep.compilation.input_provenance import (
     select_compile_inputs,
 )
 from psweep.discovery.request_inputs import discovery_request_fields
-from psweep.discovery.targets import TARGET_INPUT_FIELDS, iter_targets
+from psweep.discovery.targets import subject_phrase_index
 from psweep.discovery.concurrency import bounded_results
 from jsonschema import ValidationError
 
@@ -529,6 +529,7 @@ def _extraction_fingerprints(
     effective_inputs,
     roster_text_digests,
     transcriber=None,
+    subject_phrases=None,
 ):
     """Bind reused records to effective behavior and the prepared source digests."""
     targeting = inputs.get("page_targeting") or {}
@@ -598,6 +599,13 @@ def _extraction_fingerprints(
         }
         if doc in anchors:
             data["roster_text_sha256"] = roster_text_digests.get(doc)
+        if (
+            subject_phrases is not None
+            and info is not None
+            and info.scope == "target"
+            and doc not in ranges
+        ):  # opt-in: only documents these phrases can steer
+            data["subject_phrases"] = list(subject_phrases.get(info.target_id, ()))
         if audio:
             # A transcript derives from source bytes and this identity.
             data["transcription"] = getattr(transcriber, "identity", None)
@@ -701,7 +709,6 @@ def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
             "must use an explicit model other than the extraction model"
         )
         raise ValueError(message)
-    _check_subject_fields(inputs, targeting.get("subject_fields"))
     locator = resolve_llm_kwargs(
         targeting["model"],
         models=inputs.get("models"),
@@ -717,45 +724,33 @@ def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
     return locator
 
 
-def _check_subject_fields(inputs: dict, subject_fields: Any) -> None:
-    """Require ``pages.auto_locate.subject_fields`` to name existing target columns."""
-    if subject_fields is None:
-        return
-    if not inputs.get("targets"):
-        message = "pages.auto_locate.subject_fields requires discovery.targets"
-        raise ValueError(message)
-    columns = {
-        key
-        for row in iter_targets(inputs["targets"])
-        for key in row
-        if key not in TARGET_INPUT_FIELDS
-    }
-    unknown = [field for field in subject_fields if field not in columns]
-    if unknown:
-        message = (
-            f"pages.auto_locate.subject_fields names fields that are not target columns: {unknown}"
-        )
-        raise ValueError(message)
+def _subject_phrase_map(inputs: dict) -> dict[str, tuple[str, ...]] | None:
+    """Frozen id -> phrases map from the *current* targets; ``None`` when the key is unset."""
+    fields = (inputs.get("page_targeting") or {}).get("subject_fields")
+    if not fields:
+        return None
+    return subject_phrase_index(inputs.get("targets"), fields, inputs.get("partition_by"))
 
 
-def _subject_phrases(
-    subject_fields: Sequence[str] | None,
-    fields: Sequence[str] | None,
-    identity: dict,
-    info: Any,
-) -> tuple[str, ...]:
+def _subject_phrases(plan: dict, fields: Sequence[str] | None, identity: dict, info: Any):
     """Identity phrases for the locator.
 
-    Default: the last ``partition_by`` field. With ``subject_fields``: those
-    columns of the full target row (the roster identity holds only the
-    ``partition_by`` fields).
+    Default: the last ``partition_by`` field. With ``subject_fields``: the phrases
+    frozen from the current target row with the same stable id (never the stored
+    discovery metadata, which may be stale).
     """
-    if subject_fields:
-        row = {**identity, **((info.target_metadata or {}) if info is not None else {})}
-        names = subject_fields
-    else:
-        row, names = identity, fields[-1:] if fields else ()
-    return tuple(str(row[name]) for name in names if row.get(name) is not None)
+    if (phrase_map := plan["subject_phrases"]) is not None:
+        if info is None:
+            return ()
+        if info.target_id not in phrase_map:
+            logger.warning(
+                "Target %s has no subject_fields phrases in the current targets; "
+                "targeting uses only its discovery label",
+                info.target_id,
+            )
+        return phrase_map.get(info.target_id, ())
+    value = identity.get(fields[-1]) if fields else None
+    return (str(value),) if value is not None else ()
 
 
 def _prepare_extraction(
@@ -776,6 +771,7 @@ def _prepare_extraction(
         llm_config=inputs.get("llm_config"),
     )
     locator = _extraction_locator_config(inputs, llm)
+    subject_phrases = _subject_phrase_map(inputs)
     transcriber = transcription.build_transcriber(inputs)
     context = build_source_context_map(Path(inputs["path"]).resolve())
     roster = load_roster(inputs, plan["metadata"])
@@ -811,6 +807,7 @@ def _prepare_extraction(
         effective_inputs,
         roster_text_digests,
         transcriber,
+        subject_phrases,
     )
     if fresh and not validate_only:
         for doc, selected in ranges.items():
@@ -857,6 +854,7 @@ def _prepare_extraction(
         "ranges": ranges,
         "context": context,
         "roster": roster,
+        "subject_phrases": subject_phrases,
         "candidates": candidates,
         "anchors": anchors,
         "roster_errors": roster_errors,
@@ -1295,7 +1293,7 @@ def _target_extraction_inputs(plan: dict):
             identity = roster.targets.get(info.target_id, {}) if roster else info.target_metadata
         locator.set_source_context(
             info,
-            subjects=_subject_phrases(targeting.get("subject_fields"), fields, identity, info),
+            subjects=_subject_phrases(plan, fields, identity, info),
         )
         with document_scope(doc.name):
             selection = locator.locate(source)

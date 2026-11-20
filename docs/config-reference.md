@@ -543,14 +543,27 @@ subject comes from the last configured `partition_by` field (the roster's name
 field), not from parsing a display label or guessing metadata fields. A source
 may name the target differently (a county minute never repeats a directory
 label such as `Company: Site, ST`), so `subject_fields` optionally lists target
-columns whose values are all used as identity phrases, e.g. `[utility_name,
-short_name]` for a utility roster. Matching stays whole-phrase after the same
-normalization as the roster; there is no fuzzy matching. The key is opt-in and
-validated: it must be a non-empty list of unique names, `discovery.targets`
-must be set, and every name must be a target column (`urls` and `query` are
-inputs, not columns). Values come from the full target row, so columns outside
-`partition_by` work. Absent, behaviour and caches are unchanged; setting or changing it changes the extraction
-fingerprint, so documents are extracted again once. Discovery labels
+columns whose values are used as identity phrases, e.g. `[utility_name,
+short_name]`. Field names are exact column names, not fuzzy aliases. Phrases
+are alternate names for the configured target, not evidence; they are not
+required to be unique, and broad terms (an organization, place or category)
+are weaker hints. Matching stays whole-phrase after the same normalization as
+the roster. Phrases apply only to target-scoped documents that automatic
+targeting governs; shared-source hints, shared-roster candidate scans, manual
+page overrides and off-roster behaviour are unchanged. The key is opt-in and
+validated at config resolution (`run`/`extract --validate-config` included):
+it must be a non-empty list of unique names, `discovery.targets` must be set,
+every name must be a target column (`urls` and `query` are inputs, not
+columns), and column values must be scalars (null/blank are skipped; numbers
+and booleans use their string form; lists/objects are rejected). Values come
+from the **current** target rows, joined to each document by its stable target
+id, not from the metadata saved at discovery, so a corrected or newly added
+phrase takes effect without rediscovery. A target id missing from the current
+targets gets no phrases (a warning is logged). Absent, behaviour and caches are
+unchanged. Setting or changing the field list changes the extraction
+fingerprint, so documents are extracted again once; afterwards, editing a
+phrase value re-extracts only the targets whose phrases changed. No regrade
+or rediscovery. Discovery labels
 and metadata remain untrusted scope hints, never factual evidence. Cache
 identities include the configured identity, subject hints and locator behavior
 version. HTML/HTM targeting uses readable
