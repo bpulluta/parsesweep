@@ -147,8 +147,14 @@ def test_agreement_across_two_documents_is_high(compiled):
     row = _row(compiled[1], "Maricopa County")
     evidence = json.loads(row["evidence"])
     assert row["online"] == "Yes"
-    assert evidence["online"] == {"value": "Yes", "quote": "Apply online", "url": "https://m.gov/a"}
+    assert evidence["online"] == {
+        "value": "Yes",
+        "quote": "Apply online",
+        "url": "https://m.gov/a",
+        "support": 2,
+    }
     assert evidence["stamp"]["url"] == "https://m.gov/a"
+    assert evidence["stamp"]["support"] == 1
     assert row["confidence"] == "medium"  # stamp has a single source
     assert row["sources"] == "https://m.gov/a; https://m.gov/b"
 
@@ -161,6 +167,7 @@ def test_target_scope_wins_conflict_with_low_confidence(compiled):
         "value": "No",
         "quote": "quoted",
         "url": "https://p.gov",
+        "support": 1,
         "conflict": True,
     }
     assert row["stamp"] == "Yes"
@@ -341,5 +348,6 @@ def test_agreeing_cell_cites_the_targets_own_page_over_a_shared_listing(tmp_path
         "value": "Yes",
         "quote": "Apply for permits online",
         "url": "https://m.gov/permits",
+        "support": 2,
     }
     assert row["confidence"] == "high"

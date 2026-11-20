@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (per-cell support in compiled evidence)
+- Every cell of the compiled roster `evidence` JSON now carries `support`: the number of
+  distinct nonblank recorded source URLs among the retained observations that agree with the
+  chosen value (the whole atomic unit under reconciliation). Missing or blank URLs (manual
+  documents) are not counted, so URL-less evidence has `support: 0` but still populates its
+  cell. It is a coverage count, not a quality score. Winner selection and row `confidence` are
+  unchanged; the docs now describe `confidence` separately for the two modes.
+- Cache impact: roster compiled-table identity gains a roster-evidence output version, so
+  existing roster tables are reported stale and rebuilt once by `compile`/`validate`
+  (rows-mode tables are untouched). Extraction, discovery and paid reconciliation decisions
+  are not invalidated; a rebuild reuses cached decisions, though targets with no cached
+  decision still make their usual calls. No regrade, no re-extraction.
+
 ### Added (identity phrases for page targeting)
 - New opt-in `extraction.pages.auto_locate.subject_fields`: target columns whose values
   the page and section locators use as identity phrases, in addition to the discovery

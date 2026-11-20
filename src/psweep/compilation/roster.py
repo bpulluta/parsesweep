@@ -46,6 +46,16 @@ def value_key(value: Any) -> tuple[str, Any]:
     return "text", text.casefold()
 
 
+# Bump when the roster evidence envelope (per-cell keys) changes shape, so older
+# compiled tables are rebuilt. Not a paid-decision or extraction version.
+ROSTER_EVIDENCE_VERSION = 1
+
+
+def url_support(urls: Iterable[Any]) -> int:
+    """Distinct nonblank recorded source URLs: a coverage count, not a truth score."""
+    return len({url for url in urls if isinstance(url, str) and url.strip()})
+
+
 def _resolve(candidates: list[dict[str, Any]]) -> tuple[dict, str, list[dict], list[str]]:
     """Pick a cell value: agreement wins; on conflict target scope beats shared scope."""
     groups: dict[str, list[dict[str, Any]]] = {}
@@ -173,6 +183,7 @@ def compile_roster(
                 "value": first["value"],
                 **({"quote": first["quote"]} if field in evidence else {}),
                 "url": first["url"],
+                "support": url_support(urls),
                 **flags,
             }
             sources.extend(urls)

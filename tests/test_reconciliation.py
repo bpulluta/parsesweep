@@ -343,3 +343,50 @@ def test_yaml_policy_is_strict(tmp_path, policy):
     config.write_text(json.dumps({"domain": "fixture", "compilation": {"reconciliation": policy}}))
     with pytest.raises(ValueError):
         load_runtime_config_file(config)
+
+
+def _cells(frame):
+    return json.loads(frame.iloc[0]["evidence"])
+
+
+def test_cell_support_counts_distinct_agreeing_urls(setup):
+    records, _inputs, calls, write, compiler, *_ = setup
+    write("a", "same", "unit")
+    write("b", "same", "unit", quote="other words")
+    write("c", "same", "unit", url="https://example.org/a")  # same URL as a: counted once
+    frame, _ = compiler().compile_from_directory(records)
+    assert not calls
+    cells = _cells(frame)
+    assert cells["answer"]["support"] == 2
+    assert cells["qualifier"]["support"] == 2
+
+
+def test_cell_support_after_arbitration_counts_the_chosen_value_only(setup):
+    records, _inputs, calls, write, compiler, *_ = setup
+    write("old", "old", "coarse", "2024-01-01")
+    write("new", "new", "exact", "2025-01-01")
+    frame, _ = compiler().compile_from_directory(records)
+    assert len(calls) == 1
+    cells = _cells(frame)
+    assert cells["answer"]["conflict"] and cells["answer"]["support"] == 1
+
+
+def test_abstained_unit_has_no_cell_and_so_no_support(setup):
+    records, _inputs, _calls, write, compiler, *_ = setup
+    write("a", "A", "unit")
+    write("b", "B", "other")
+    frame, _ = compiler().compile_from_directory(records, allow_model=False)
+    cells = _cells(frame)
+    assert "answer" not in cells
+    assert all("support" in cell for key, cell in cells.items() if not key.startswith("_"))
+
+
+def test_cached_decision_reproduces_support_without_new_calls(setup):
+    records, _inputs, calls, write, compiler, *_ = setup
+    write("old", "old", "coarse", "2024-01-01")
+    write("new", "new", "exact", "2025-01-01")
+    first, _ = compiler().compile_from_directory(records)
+    assert len(calls) == 1
+    again, _ = compiler().compile_from_directory(records)
+    assert len(calls) == 1  # decision cache hit
+    assert _cells(again)["answer"]["support"] == _cells(first)["answer"]["support"] == 1
