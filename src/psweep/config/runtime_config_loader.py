@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from psweep.discovery.targets import TargetSpecError, subject_phrase_index
 from psweep.extraction.llm_factory import DEFAULT_LLM_TIMEOUT_SECONDS, DEFAULT_MAX_CONCURRENT
 from psweep.workspace import (
     Workspace,
@@ -238,6 +239,7 @@ _AUTO_LOCATE_KEYS = (
     "model",
     "keywords",
     "save_discovered",
+    "subject_fields",
 )
 
 INPUT_MODES = ("text", "auto", "vision")
@@ -471,6 +473,15 @@ def _validate_page_targeting_block(pt: Any) -> None:
         or any(not isinstance(keyword, str) for keyword in pt["keywords"])
     ):
         message = "pages.auto_locate.keywords must be a list of strings"
+        raise RuntimeConfigError(message)
+    fields = pt.get("subject_fields")
+    if fields is not None and (
+        not isinstance(fields, list)
+        or not fields
+        or any(not isinstance(field, str) or not field.strip() for field in fields)
+        or len(set(fields)) != len(fields)
+    ):
+        message = "pages.auto_locate.subject_fields must be a non-empty list of unique field names"
         raise RuntimeConfigError(message)
     if pt.get("save_discovered") is not None and not isinstance(pt["save_discovered"], bool):
         raise RuntimeConfigError("pages.auto_locate.save_discovered must be a boolean")
@@ -1197,6 +1208,14 @@ def resolve_command_config(
     if section_name == "extraction" and (cfg.get("validation") or {}).get("quote_field"):
         merged["quote_field"] = cfg["validation"]["quote_field"]
         sources["quote_field"] = "config.validation.quote_field"
+
+    if section_name == "extraction" and (
+        fields := (merged.get("page_targeting") or {}).get("subject_fields")
+    ):
+        try:
+            subject_phrase_index(merged.get("targets"), fields, merged.get("partition_by"))
+        except TargetSpecError as exc:
+            raise RuntimeConfigError(str(exc)) from exc
 
     missing = [name for name in _REQUIRED_FIELDS.get(section_name, ()) if not merged.get(name)]
     if missing:

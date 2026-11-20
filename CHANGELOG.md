@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (identity phrases for page targeting)
+- New opt-in `extraction.pages.auto_locate.subject_fields`: target columns whose values
+  the page and section locators use as identity phrases, in addition to the discovery
+  label. Before, only the last `partition_by` field was used, so a long PDF that never
+  repeats a directory-style label (`Company: Site, ST`) was held with
+  `targeting_no_usable_scope`. Phrases are read from the **current** target rows, joined
+  to each document by its stable target id (not from stale discovery metadata), and only
+  steer target-scoped documents under automatic targeting.
+- Validated at config resolution, so `run --validate-config` and `extract --validate-config`
+  fail before any stage: non-empty list of unique names, `discovery.targets` required, every
+  name a target column (not `urls`/`query`), scalar values only. The locator constructors
+  and `set_source_context` reject a bare string for `subjects`.
+- Cache impact: none for domains that do not set the key (fingerprints are unchanged).
+  Setting it changes the extraction fingerprint (the whole `auto_locate` block is part of
+  it), so every document in that domain is extracted again once (paid). Afterwards the
+  frozen phrases are part of each target-scoped record and locator identity, so editing a
+  phrase re-extracts only that target. No regrade, no rediscovery.
+
 ### Fixed (model answers with raw control characters)
 - LLM answers whose JSON strings contain literal newlines or tabs (`Invalid control
   character`) are now parsed instead of rejected as non-JSON, so the paid call is no

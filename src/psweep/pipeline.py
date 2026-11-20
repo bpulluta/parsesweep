@@ -49,6 +49,7 @@ from psweep.compilation.input_provenance import (
     select_compile_inputs,
 )
 from psweep.discovery.request_inputs import discovery_request_fields
+from psweep.discovery.targets import subject_phrase_index
 from psweep.discovery.concurrency import bounded_results
 from jsonschema import ValidationError
 
@@ -528,6 +529,7 @@ def _extraction_fingerprints(
     effective_inputs,
     roster_text_digests,
     transcriber=None,
+    subject_phrases=None,
 ):
     """Bind reused records to effective behavior and the prepared source digests."""
     targeting = inputs.get("page_targeting") or {}
@@ -597,6 +599,13 @@ def _extraction_fingerprints(
         }
         if doc in anchors:
             data["roster_text_sha256"] = roster_text_digests.get(doc)
+        if (
+            subject_phrases is not None
+            and info is not None
+            and info.scope == "target"
+            and doc not in ranges
+        ):  # opt-in: only documents these phrases can steer
+            data["subject_phrases"] = list(subject_phrases.get(info.target_id, ()))
         if audio:
             # A transcript derives from source bytes and this identity.
             data["transcription"] = getattr(transcriber, "identity", None)
@@ -715,6 +724,35 @@ def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
     return locator
 
 
+def _subject_phrase_map(inputs: dict) -> dict[str, tuple[str, ...]] | None:
+    """Frozen id -> phrases map from the *current* targets; ``None`` when the key is unset."""
+    fields = (inputs.get("page_targeting") or {}).get("subject_fields")
+    if not fields:
+        return None
+    return subject_phrase_index(inputs.get("targets"), fields, inputs.get("partition_by"))
+
+
+def _subject_phrases(plan: dict, fields: Sequence[str] | None, identity: dict, info: Any):
+    """Identity phrases for the locator.
+
+    Default: the last ``partition_by`` field. With ``subject_fields``: the phrases
+    frozen from the current target row with the same stable id (never the stored
+    discovery metadata, which may be stale).
+    """
+    if (phrase_map := plan["subject_phrases"]) is not None:
+        if info is None:
+            return ()
+        if info.target_id not in phrase_map:
+            logger.warning(
+                "Target %s has no subject_fields phrases in the current targets; "
+                "targeting uses only its discovery label",
+                info.target_id,
+            )
+        return phrase_map.get(info.target_id, ())
+    value = identity.get(fields[-1]) if fields else None
+    return (str(value),) if value is not None else ()
+
+
 def _prepare_extraction(
     inputs: dict,
     *,
@@ -733,6 +771,7 @@ def _prepare_extraction(
         llm_config=inputs.get("llm_config"),
     )
     locator = _extraction_locator_config(inputs, llm)
+    subject_phrases = _subject_phrase_map(inputs)
     transcriber = transcription.build_transcriber(inputs)
     context = build_source_context_map(Path(inputs["path"]).resolve())
     roster = load_roster(inputs, plan["metadata"])
@@ -768,6 +807,7 @@ def _prepare_extraction(
         effective_inputs,
         roster_text_digests,
         transcriber,
+        subject_phrases,
     )
     if fresh and not validate_only:
         for doc, selected in ranges.items():
@@ -814,6 +854,7 @@ def _prepare_extraction(
         "ranges": ranges,
         "context": context,
         "roster": roster,
+        "subject_phrases": subject_phrases,
         "candidates": candidates,
         "anchors": anchors,
         "roster_errors": roster_errors,
@@ -1250,8 +1291,10 @@ def _target_extraction_inputs(plan: dict):
         identity = {}
         if info is not None:
             identity = roster.targets.get(info.target_id, {}) if roster else info.target_metadata
-        subject = identity.get(fields[-1]) if fields else None
-        locator.set_source_context(info, subject=str(subject) if subject is not None else None)
+        locator.set_source_context(
+            info,
+            subjects=_subject_phrases(plan, fields, identity, info),
+        )
         with document_scope(doc.name):
             selection = locator.locate(source)
             if locator_type is PageLocator:

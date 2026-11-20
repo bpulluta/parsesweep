@@ -28,6 +28,7 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -192,7 +193,7 @@ class SectionLocator(_BaseLocator):
         keywords: list[str] | None = None,
         snippet_chars: int = 600,
         source_context: SourceContext | None = None,
-        subject: str | None = None,
+        subjects: Sequence[str] = (),
     ) -> None:
         super().__init__(
             section_description,
@@ -204,7 +205,7 @@ class SectionLocator(_BaseLocator):
             keywords=keywords,
             snippet_chars=snippet_chars,
             source_context=source_context,
-            subject=subject,
+            subjects=subjects,
         )
 
     # -- keyword heuristics ------------------------------------------------

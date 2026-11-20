@@ -644,12 +644,12 @@ class TestSubjectTargeting:
 
     def test_configured_identity_supplies_subject_without_a_display_label(self):
         context = SourceContext(None, "target", "1", None, {"asset": "Subject Alpha"})
-        locator = SectionLocator("evidence", source_context=context, subject="Subject Alpha")
+        locator = SectionLocator("evidence", source_context=context, subjects=["Subject Alpha"])
         assert locator._candidate_chunks([_Chunk("Subject Alpha", "miscellaneous")]) == [0]
 
     def test_joined_discovery_label_does_not_anchor_shared_location(self):
         context = SourceContext(None, "target", "1", "North, Subject Alpha", {"zone": "North"})
-        locator = SectionLocator("timeline", source_context=context, subject="Subject Alpha")
+        locator = SectionLocator("timeline", source_context=context, subjects=["Subject Alpha"])
         chunks = [
             _Chunk("Subject Alpha", "withdrawn", 1),
             _Chunk("North Subject Beta", "other project", 1),
@@ -658,7 +658,7 @@ class TestSubjectTargeting:
 
     def test_subject_names_with_commas_do_not_depend_on_label_formatting(self):
         context = SourceContext(None, "target", "1", "North — Alpha, Unit 7", {"region": "North"})
-        locator = SectionLocator("timeline", source_context=context, subject="Alpha, Unit 7")
+        locator = SectionLocator("timeline", source_context=context, subjects=["Alpha, Unit 7"])
         chunks = [
             _Chunk("Alpha, Unit 7", "withdrawn", 1),
             _Chunk("North Unit 7", "another asset", 1),

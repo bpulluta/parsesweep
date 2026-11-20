@@ -34,6 +34,7 @@ import json
 import logging
 import re
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -143,6 +144,14 @@ _LOCATE_SCHEMA: dict[str, Any] = {
 }
 
 
+def normalize_subjects(subjects: Sequence[str]) -> tuple[str, ...]:
+    """Validate identity phrases: a sequence of strings (not one string), blanks dropped."""
+    if isinstance(subjects, (str, bytes)) or any(not isinstance(item, str) for item in subjects):
+        message = "subjects must be a sequence of strings, not a single string"
+        raise TypeError(message)
+    return tuple(item.strip() for item in subjects if item.strip())
+
+
 class _BaseLocator:
     """Shared infrastructure for LLM-assisted document section locators."""
 
@@ -158,7 +167,7 @@ class _BaseLocator:
         keywords: list[str] | None = None,
         snippet_chars: int = 600,
         source_context: SourceContext | None = None,
-        subject: str | None = None,
+        subjects: Sequence[str] = (),
     ) -> None:
         self._description = section_description
         self._model = model
@@ -179,7 +188,7 @@ class _BaseLocator:
         self._client: Any = None
         self.incomplete = False
         self._source_context = source_context
-        self._subject = subject
+        self._subjects = normalize_subjects(subjects)
 
     @property
     def _subject_hints(self) -> list[str]:
@@ -188,7 +197,9 @@ class _BaseLocator:
         if info is None or info.scope != "target":
             return []
         return [
-            value.strip() for value in (info.target_label, self._subject) if value and value.strip()
+            value.strip()
+            for value in (info.target_label, *self._subjects)
+            if value and value.strip()
         ]
 
     def _normalized_hints(self) -> set[str]:
@@ -211,11 +222,11 @@ class _BaseLocator:
         return indices
 
     def set_source_context(
-        self, context: SourceContext | None, *, subject: str | None = None
+        self, context: SourceContext | None, *, subjects: Sequence[str] = ()
     ) -> None:
         """Bind untrusted hints and the configured identity subject, not a parsed display label."""
         self._source_context = context
-        self._subject = subject
+        self._subjects = normalize_subjects(subjects)
         self.incomplete = False
 
     def _scope_prompt(self, prompt: str) -> str:
@@ -310,7 +321,9 @@ class _BaseLocator:
             "locator": type(self).__name__,
             "behavior_version": LOCATOR_BEHAVIOR_VERSION,
             "source_context": asdict(self._source_context) if self._source_context else None,
-            "subject": self._subject,
+            "subject": self._subjects[0]
+            if len(self._subjects) == 1
+            else list(self._subjects) or None,
             "description": self._description,
             "keywords": self._keywords,
             "trigger_chars": self.trigger_chars,
@@ -384,7 +397,7 @@ class PageLocator(_BaseLocator):
         context_pages: int = 1,
         snippet_chars: int = 600,
         source_context: SourceContext | None = None,
-        subject: str | None = None,
+        subjects: Sequence[str] = (),
     ) -> None:
         super().__init__(
             section_description,
@@ -396,7 +409,7 @@ class PageLocator(_BaseLocator):
             keywords=keywords,
             snippet_chars=snippet_chars,
             source_context=source_context,
-            subject=subject,
+            subjects=subjects,
         )
         self._max_pages = max(1, int(max_selected_pages))
         self._context = max(0, int(context_pages))
