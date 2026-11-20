@@ -22,7 +22,7 @@ from .deduplicator import (
 )
 from .excel_formatter import ExcelFormatter
 from .input_provenance import CompileInputs, read_compile_record, select_compile_inputs
-from .roster import compile_roster
+from .roster import ROSTER_EVIDENCE_VERSION, compile_roster
 from psweep.discovery.targets import iter_targets
 from psweep.exceptions import SchemaMetadataError
 from psweep.extraction.roster import load_roster
@@ -112,7 +112,11 @@ class DataCompiler:
             targets = hashlib.sha256()
             for row in iter_targets(self.inputs["targets"]):
                 targets.update(json.dumps(row, sort_keys=True, default=str).encode() + b"\n")
-            roster = {"fields": list(self.roster.fields), "targets_sha256": targets.hexdigest()}
+            roster = {
+                "fields": list(self.roster.fields),
+                "targets_sha256": targets.hexdigest(),
+                "evidence_version": ROSTER_EVIDENCE_VERSION,
+            }
         reconciliation = None
         if self.reconciliation_policy:
             from .reconciliation import VERSION, resolve_model

@@ -379,3 +379,14 @@ def test_abstained_unit_has_no_cell_and_so_no_support(setup):
     cells = _cells(frame)
     assert "answer" not in cells
     assert all("support" in cell for key, cell in cells.items() if not key.startswith("_"))
+
+
+def test_cached_decision_reproduces_support_without_new_calls(setup):
+    records, _inputs, calls, write, compiler, *_ = setup
+    write("old", "old", "coarse", "2024-01-01")
+    write("new", "new", "exact", "2025-01-01")
+    first, _ = compiler().compile_from_directory(records)
+    assert len(calls) == 1
+    again, _ = compiler().compile_from_directory(records)
+    assert len(calls) == 1  # decision cache hit
+    assert _cells(again)["answer"]["support"] == _cells(first)["answer"]["support"] == 1
